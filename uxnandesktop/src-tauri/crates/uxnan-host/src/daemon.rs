@@ -476,6 +476,17 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
     paths::ensure_private_dir(&paths::run_dir())?;
     let listener = bind().await?;
     let ours = socket_identity();
+    // The daemon of record now: this build is in use while it lives, and the
+    // builds nothing runs any more can go.
+    let _in_use = crate::versions::hold();
+    let swept = tokio::task::spawn_blocking(|| crate::versions::sweep(crate::versions::MIN_AGE));
+    tokio::spawn(async move {
+        if let Ok(removed) = swept.await {
+            if !removed.is_empty() {
+                log::line(&format!("removed old builds: {}", removed.join(", ")));
+            }
+        }
+    });
     let daemon = Arc::new(Daemon::new());
     log::line(&format!(
         "daemon {} started (protocol {PROTOCOL}, epoch {})",

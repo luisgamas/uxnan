@@ -399,7 +399,9 @@ laptop lid, a Wi-Fi handover or an app restart.
   engine takes over only once the older one has nothing left to do. A feature
   the older engine lacks (watching, for one) simply waits for it.
 - **It does not linger.** With no terminal running and nobody attached, the
-  engine exits on its own after 30 minutes. Its log (`~/.uxnan/host/host.log`)
+  engine exits on its own after 30 minutes. Nor do old builds: an engine that
+  starts removes the builds of earlier versions that nothing runs from any more
+  (a build in use, or uploaded in the last 10 minutes, stays). Its log (`~/.uxnan/host/host.log`)
   records lifecycle only — never what a terminal showed or what was typed.
 
 **Where it does not run yet:** Windows hosts (their terminals stay on plain

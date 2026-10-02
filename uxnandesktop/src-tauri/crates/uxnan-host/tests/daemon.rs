@@ -39,7 +39,12 @@ impl Daemon {
     fn start_with(idle_secs: u64, flags: &[&str]) -> Self {
         let home = tempfile::tempdir().unwrap();
         std::fs::create_dir(home.path().join("user")).unwrap();
-        let child = Command::new(BIN)
+        Self::spawn(Path::new(BIN), home, idle_secs, flags)
+    }
+
+    /// Started from `exe`, in a home prepared beforehand.
+    fn spawn(exe: &Path, home: tempfile::TempDir, idle_secs: u64, flags: &[&str]) -> Self {
+        let child = Command::new(exe)
             .arg("serve")
             .args(flags)
             .env("UXNAN_HOST_HOME", home.path())
@@ -738,4 +743,61 @@ async fn a_terminal_keeps_the_accounts_umask() {
         "77",
         "the daemon's terminals got umask 077"
     );
+}
+
+/// Make `dir` look `secs` old.
+fn age(dir: &Path, secs: u64) {
+    let when = std::time::SystemTime::now() - Duration::from_secs(secs);
+    std::fs::File::open(dir)
+        .unwrap()
+        .set_modified(when)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_new_daemon_removes_the_old_builds_nothing_runs_from() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir(home.path().join("user")).unwrap();
+    let versions = home.path().join("versions");
+    for name in ["current", "old-unused", "old-held", "just-uploaded"] {
+        std::fs::create_dir_all(versions.join(name)).unwrap();
+    }
+    // The daemon runs from a build folder, as `attach` starts it.
+    let exe = versions.join("current").join("uxnan-host");
+    std::fs::copy(BIN, &exe).unwrap();
+    // Another process runs from this one: it holds the shared lock.
+    let held = std::fs::File::create(versions.join("old-held").join(".in-use")).unwrap();
+    {
+        use std::os::unix::io::AsRawFd;
+        assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_SH) }, 0);
+    }
+    for name in ["current", "old-unused", "old-held"] {
+        age(&versions.join(name), 3600);
+    }
+
+    let daemon = Daemon::spawn(&exe, home, 600, &[]);
+    let _ = connect(&daemon.socket()).await;
+    for _ in 0..100 {
+        if !versions.join("old-unused").exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        !versions.join("old-unused").exists(),
+        "an old build nothing runs is removed"
+    );
+    assert!(
+        versions.join("old-held").exists(),
+        "a build a process runs from stays"
+    );
+    assert!(
+        versions.join("just-uploaded").exists(),
+        "a fresh upload stays"
+    );
+    assert!(
+        versions.join("current").exists(),
+        "the daemon's own build stays"
+    );
+    drop(held);
 }

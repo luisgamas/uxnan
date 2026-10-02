@@ -20,6 +20,7 @@ mod daemon;
 mod hooks;
 mod log;
 mod paths;
+mod versions;
 
 use uxnan_host_protocol::{PROTOCOL, PROTOCOL_MIN};
 

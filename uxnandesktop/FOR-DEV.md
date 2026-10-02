@@ -30,8 +30,8 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,071 Rust tests (913 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 60
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 16 in `uxnan-host` (12 against the daemon itself) + 45
+`docs/chat.md`). 1,072 Rust tests (913 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 60
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 17 in `uxnan-host` (13 against the daemon itself) + 45
 integration), of which 58 are ignored probes that need something real to talk to
 (50 live SSH probes — 38 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -1128,14 +1128,9 @@ already written for the day phase 2 below lands — nothing to relax then.
          endpoints are this machine's loopback). Then files, git and search
          served by the engine (removing `ssh/git.rs`, `ssh/search.rs`, the
          remote half of `fsRouter.ts` / `gitRouter.ts`).
-      4. **Old builds on a host are never cleaned up.** Each build installs
-         into its own `~/.uxnan/host/versions/<version>-<hash>/` (1.3 MB);
-         nothing removes the ones no daemon runs from. Remove the others after
-         a successful install, keeping any a live daemon was started from
-         (`ssh/engine.rs` → `ensure_installed`).
-      5. **Scrollback across an app restart:** a reattached tab gets the screen,
+      4. **Scrollback across an app restart:** a reattached tab gets the screen,
          not what scrolled above it (`crates/workspace-engine/src/screen.rs`).
-      6. **Settings → Agents → Hooks says nothing about hosts.** Which agents a
+      5. **Settings → Agents → Hooks says nothing about hosts.** Which agents a
          host's engine wired is only in the diagnostics log (`ssh-engine`); the
          panel reads this machine alone (`read_all_agent_status`). UI
          increment: the host's own rows, from a read-only engine call.
@@ -1738,7 +1733,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,071 Rust + 1,754 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,072 Rust + 1,754 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

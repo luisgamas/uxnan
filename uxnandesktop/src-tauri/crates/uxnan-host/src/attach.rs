@@ -25,6 +25,8 @@ const START_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[cfg(unix)]
 pub async fn attach() -> std::io::Result<()> {
+    // This build is in use for as long as the connection lasts.
+    let _in_use = crate::versions::hold();
     let path = paths::socket();
     let stream = match tokio::net::UnixStream::connect(&path).await {
         Ok(stream) => stream,

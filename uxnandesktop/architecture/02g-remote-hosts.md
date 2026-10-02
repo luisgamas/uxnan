@@ -1635,7 +1635,12 @@ segunda conserva la suya), y el propio binario prueba que corre ahi (`version`,
 con su ventana de protocolo). Nada se descarga ni se compila en el host. La
 carpeta se nombra por version **y contenido**, asi que otra build nunca reutiliza
 en silencio lo que ya hubiera, y una actualizacion nunca reemplaza el programa
-del que arranco un daemon vivo.
+del que arranco un daemon vivo. **Las builds viejas las quita el propio host**
+(`crates/uxnan-host/src/versions.rs`): cada proceso que corre de una build —el
+daemon, y cada `attach` mientras dura su conexion— tiene un `flock` compartido
+sobre el `.in-use` de su carpeta; un daemon que arranca borra las demas carpetas
+que nadie tiene y que tienen mas de 10 minutos (una subida reciente esta a punto
+de correr).
 
 **Distribucion: empaquetados, no descargados.** Cada instalador lleva las cuatro
 builds (Linux x86_64/aarch64 musl, macOS arm64/x86_64; ~1.5–1.9 MB cada una) como
@@ -1767,8 +1772,7 @@ pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
 empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
 detener un agente del host al pasar su sesion a un chat, la vista previa del transcript y el
 navegador/MCP para las terminales del motor; ficheros, git y busqueda servidos
-por el motor; limpiar builds viejas del host; y el historial por encima de la
-pantalla tras reiniciar la app.
+por el motor; y el historial por encima de la pantalla tras reiniciar la app.
 
 ## 6. Que funciona y que no en un contexto remoto
 

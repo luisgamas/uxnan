@@ -4842,7 +4842,7 @@ pub async fn get_hook_install(
 pub async fn list_agent_hooks() -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
     // FOR-DEV: a connected host's own rows (what its engine wired), from a
     // read-only engine call (`FOR-DEV.md` → Remote hosts → the host engine,
-    // item 6).
+    // item 5).
     Ok(agent_hooks::read_all_agent_status(
         &crate::agentcli::command_installed,
     ))

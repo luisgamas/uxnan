@@ -21,7 +21,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project folder is watched on that machine: the file tree, the open tabs and
   Changes follow an agent working in it or a commit made in a terminal there,
   with nothing polled. An updated app keeps talking to the engine that holds
-  the host's terminals, whichever build it is, so an update never strands them.
+  the host's terminals, whichever build it is, so an update never strands them,
+  and the builds no engine runs from any more are removed from the host.
   Windows hosts keep their channel terminals for now.
 - **An agent on a host shows its state as precisely as one here.** Connecting
   to a host wires the agents it has with the same reporters this machine uses —
