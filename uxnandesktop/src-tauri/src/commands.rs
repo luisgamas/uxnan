@@ -1756,7 +1756,7 @@ async fn settle_dial<R: tauri::Runtime>(
                 needed_secrets,
                 answered_challenges,
                 learned,
-            } = ready;
+            } = *ready;
             for (label, fingerprint) in &learned {
                 crate::diagnostics::log(
                     crate::diagnostics::Level::Info,

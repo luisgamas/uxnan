@@ -118,7 +118,7 @@ fn password(p: &str) -> Secrets {
 
 fn expect_ready(step: Step) -> dial::Ready {
     match step {
-        Step::Ready(ready) => ready,
+        Step::Ready(ready) => *ready,
         Step::Paused { challenge, .. } => panic!("paused on {challenge:?}"),
         Step::Stopped(stop) => panic!("stopped: {stop:?}"),
     }

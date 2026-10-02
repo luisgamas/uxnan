@@ -353,8 +353,8 @@ impl PendingKey {
 /// Where a dial got to.
 pub enum Step {
     /// Every hop is up and authenticated; the host's connection carries the
-    /// bastions it travels through.
-    Ready(Ready),
+    /// bastions it travels through. Boxed: it is far larger than the others.
+    Ready(Box<Ready>),
     /// Stopped; nothing is open.
     Stopped(Stop),
     /// The hop asked questions only the person can answer. Keep the [`Dial`]
@@ -439,7 +439,7 @@ impl Dial {
                 return Ok(step);
             }
         }
-        Ok(Step::Ready(self.finish()))
+        Ok(Step::Ready(Box::new(self.finish())))
     }
 
     /// Hand the person's answers to the paused hop, and carry on.
@@ -904,7 +904,7 @@ mod tests {
 
         async fn ready(route: Route) -> Ready {
             match Dial::new(route).run(&|_| Secrets::default()).await.unwrap() {
-                Step::Ready(ready) => ready,
+                Step::Ready(ready) => *ready,
                 Step::Stopped(stop) => panic!("stopped: {stop:?}"),
                 Step::Paused { challenge, .. } => panic!("asked for {challenge:?}"),
             }
