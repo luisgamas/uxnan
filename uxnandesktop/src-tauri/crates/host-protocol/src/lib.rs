@@ -25,7 +25,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 1: terminals (open, attach, detach, resize, close, list).
 /// - 2: folder watching (`Watch`, `Unwatch`, `Event::Changed`).
 /// - 3: agent hooks (`WireHooks`, `Reply::HooksWired`, `Event::Hook`).
-pub const PROTOCOL: u32 = 3;
+/// - 4: `Attach { history }` — the lines above the screen, for a viewer that
+///   starts empty.
+pub const PROTOCOL: u32 = 4;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -227,6 +229,11 @@ pub enum Call {
         session: u32,
         cols: u16,
         rows: u16,
+        /// Send the lines above the screen first: the viewer starts empty (the
+        /// app restarted). A viewer that kept its own — it only lost the
+        /// connection — leaves it off, or they would be printed twice.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        history: bool,
     },
     /// Stop watching. The terminal keeps running.
     Detach {
@@ -431,6 +438,7 @@ mod tests {
             session: 3,
             cols: 80,
             rows: 24,
+            history: false,
         };
         let json = serde_json::to_string(&ClientMessage::Request { id: 9, call }).unwrap();
         assert_eq!(

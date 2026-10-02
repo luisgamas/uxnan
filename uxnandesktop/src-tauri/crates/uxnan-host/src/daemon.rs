@@ -50,6 +50,10 @@ const EXITED_KEPT: Duration = Duration::from_secs(10 * 60);
 /// How often the daemon looks at whether it has anything left to do.
 const SWEEP: Duration = Duration::from_secs(15);
 
+/// The largest piece a screen snapshot is sent in. With its history a snapshot
+/// can outgrow a frame; the viewer applies the pieces in order.
+const SNAPSHOT_PIECE: usize = 64 * 1024;
+
 /// Reports held for a terminal nobody is watching. The newest matter — they
 /// are the agent's state now — so the oldest go first.
 const HELD_REPORTS: usize = 64;
@@ -257,6 +261,7 @@ impl Daemon {
         None
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn attach(
         &self,
         viewer_id: u64,
@@ -265,6 +270,7 @@ impl Daemon {
         session: u32,
         cols: u16,
         rows: u16,
+        history: bool,
     ) -> bool {
         let sessions = self.sessions.lock().unwrap();
         let Some(s) = sessions.get(&session) else {
@@ -284,10 +290,12 @@ impl Daemon {
                 },
             },
         }));
-        viewer.send(Frame::Data {
-            session,
-            bytes: shared.screen.snapshot(),
-        });
+        for piece in shared.screen.snapshot(history).chunks(SNAPSHOT_PIECE) {
+            viewer.send(Frame::Data {
+                session,
+                bytes: piece.to_vec(),
+            });
+        }
         // What the agent said while nobody was watching, after the screen
         // that shows where it got to.
         for report in shared.held.drain(..) {
@@ -356,8 +364,9 @@ impl Daemon {
                 session,
                 cols,
                 rows,
+                history,
             } => {
-                if self.attach(viewer_id, viewer, id, session, cols, rows) {
+                if self.attach(viewer_id, viewer, id, session, cols, rows, history) {
                     return None;
                 }
                 not_found(session)

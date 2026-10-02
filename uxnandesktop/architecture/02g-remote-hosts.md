@@ -1663,7 +1663,8 @@ socket por version haria que la app nueva arrancara otro daemon al lado y no
 viera nunca las terminales del viejo, justo lo que una actualizacion no debe
 hacer. Una llamada que el daemon no conoce (de un cliente mas nuevo) se responde
 con un error y la conexion sigue: colgar dejaria sin terminales por una funcion
-que ninguna usa. Versiones: 1 = terminales; 2 = vigilar carpetas. Imprime
+que ninguna usa. Versiones: 1 = terminales; 2 = vigilar carpetas; 3 = hooks de
+agentes; 4 = `Attach { history }`. Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1685,6 +1686,11 @@ canal abierto mantiene viva la conexion debajo.
   ese candado para cortar el snapshot y registrar al espectador; el cliente recibe
   la respuesta, el snapshot y luego todo lo que sigue, nada dos veces y nada
   perdido.
+- **El historial, solo a quien empieza vacio:** con `history` (protocolo 4) el
+  snapshot lleva antes las lineas por encima de la pantalla (hasta 2.000, con
+  sus colores) para que caigan en el scrollback del espectador; el desktop lo
+  pide al reencontrar una terminal tras reiniciar la app, no al reengancharla
+  tras un corte (ya tiene el suyo). Va en trozos de 64 KiB.
 - **Un espectador lento se corta**, no se acumula sin limite: cola acotada por
   conexion; el cliente vuelve y recibe un snapshot nuevo.
 - Una terminal terminada sigue **adjuntable** un rato (su ultima pantalla).
@@ -1772,7 +1778,7 @@ pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
 empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
 detener un agente del host al pasar su sesion a un chat, la vista previa del transcript y el
 navegador/MCP para las terminales del motor; ficheros, git y busqueda servidos
-por el motor; y el historial por encima de la pantalla tras reiniciar la app.
+por el motor.
 
 ## 6. Que funciona y que no en un contexto remoto
 

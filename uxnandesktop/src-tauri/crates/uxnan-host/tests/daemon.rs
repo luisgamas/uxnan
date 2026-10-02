@@ -263,6 +263,7 @@ async fn a_terminal_outlives_its_connection_and_repaints_the_next_one() {
             session,
             cols: 80,
             rows: 24,
+            history: false,
         })
         .await;
     assert_eq!(
@@ -327,6 +328,7 @@ async fn an_ended_program_is_reported_and_its_last_screen_kept() {
             session,
             cols: 40,
             rows: 5,
+            history: false,
         })
         .await;
     assert_eq!(
@@ -646,6 +648,7 @@ async fn an_agents_report_reaches_its_own_terminal_and_waits_while_nobody_watche
             session: mine,
             cols: 100,
             rows: 30,
+            history: false,
         })
         .await;
     assert!(matches!(
@@ -800,4 +803,59 @@ async fn a_new_daemon_removes_the_old_builds_nothing_runs_from() {
         "the daemon's own build stays"
     );
     drop(held);
+}
+
+/// Whether `row-1` itself (not `row-10`…) is in what was seen.
+fn has_row_one(seen: &str) -> bool {
+    seen.match_indices("row-1")
+        .any(|(i, m)| !seen[i + m.len()..].starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// Everything a session's screen-and-after sends, until `needle` shows up.
+async fn attach_and_read(client: &mut Client, session: u32, history: bool, needle: &str) -> String {
+    let attached = client
+        .call(Call::Attach {
+            session,
+            cols: 100,
+            rows: 30,
+            history,
+        })
+        .await;
+    assert!(matches!(
+        attached,
+        Outcome::Ok {
+            reply: Reply::Attached { .. }
+        }
+    ));
+    client.until_output(session, needle).await
+}
+
+#[tokio::test]
+async fn a_viewer_that_starts_empty_gets_the_history_above_the_screen() {
+    let daemon = Daemon::start(600);
+    let (mut first, _) = Client::hello(&daemon.socket()).await;
+    let session = open_shell(&mut first, "tab-history").await;
+    first
+        .type_in(
+            session,
+            "i=1; while [ $i -le 200 ]; do echo row-$i; i=$((i+1)); done; echo END_$((5*5))\n",
+        )
+        .await;
+    first.until_output(session, "END_25").await;
+    drop(first);
+
+    // The app restarted: the tab is empty, so it asks for the history.
+    let (mut fresh, _) = Client::hello(&daemon.socket()).await;
+    let seen = attach_and_read(&mut fresh, session, true, "END_25").await;
+    assert!(has_row_one(&seen), "the oldest rows come back");
+    assert!(seen.contains("row-200"));
+    drop(fresh);
+
+    // Only the connection dropped: the tab kept its own, so none is resent.
+    let (mut kept, _) = Client::hello(&daemon.socket()).await;
+    let seen = attach_and_read(&mut kept, session, false, "END_25").await;
+    assert!(
+        !seen.contains("row-1\r"),
+        "the history is not printed twice"
+    );
 }

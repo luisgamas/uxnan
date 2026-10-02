@@ -602,11 +602,14 @@ impl HostEngine {
     }
 
     /// Watch a running terminal: `sink` gets its screen, then its output.
+    /// Watch a running terminal again. `history`: this side starts empty (the
+    /// app restarted), so the lines above the screen come too.
     pub async fn attach(
         &self,
         session: u32,
         cols: u16,
         rows: u16,
+        history: bool,
         sink: Sink,
     ) -> Result<bool, AppError> {
         // Installed before asking, so the snapshot that follows the answer has
@@ -618,6 +621,7 @@ impl HostEngine {
                     session,
                     cols,
                     rows,
+                    history,
                 },
                 None,
             )

@@ -154,7 +154,9 @@ impl EngineTerminals {
             Some(found) => {
                 terminal.session = found.session;
                 let alive = engine
-                    .attach(found.session, spec.cols, spec.rows, terminal.sink())
+                    // A tab that starts empty: the history above the screen
+                    // comes too.
+                    .attach(found.session, spec.cols, spec.rows, true, terminal.sink())
                     .await?;
                 if !alive {
                     // It ended while nobody watched: its last screen was just
@@ -321,7 +323,8 @@ impl EngineTerminals {
         };
         for (id, session, epoch, cols, rows, sink, exit) in detached {
             let came_back = epoch == engine.epoch() && {
-                match engine.attach(session, cols, rows, sink).await {
+                // The tab kept its own history through the drop.
+                match engine.attach(session, cols, rows, false, sink).await {
                     Ok(alive) => {
                         if !alive {
                             fire(&exit);

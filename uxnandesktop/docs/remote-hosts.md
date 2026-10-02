@@ -386,8 +386,10 @@ laptop lid, a Wi-Fi handover or an app restart.
   without a word.
 - **The screen comes back, not the bytes.** The engine keeps what each terminal
   shows; a returning tab is repainted from that — a full-screen agent included —
-  and live output resumes after it. What scrolled above the screen before an app
-  restart is not carried over (within one run of the app, the tab still has it).
+  and live output resumes after it. After an app restart the tab also gets what
+  had scrolled above the screen (up to 2,000 lines, with their colours) in its
+  own scrollback; after a dropped connection it keeps the history it had, so
+  nothing is printed twice.
 - **A restart finds its terminals.** A tab is matched to its terminal by its
   persistent session id, so reopening the app reattaches to the terminal it had
   instead of opening a second one — and does not launch the agent again.
