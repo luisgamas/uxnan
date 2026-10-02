@@ -68,6 +68,7 @@ import {
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
+  type OpenCodePermissionPolicy,
   type OpenCodeProtocolVersion,
   type PermissionReply,
 } from './opencode-protocol.js';
@@ -274,6 +275,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * model output; one resumed from an earlier turn or process is never in it.
    */
   readonly #promptOnlySessions = new Set<string>();
+  /**
+   * The permission policy each session runs under, as this process last set
+   * it. A session asks under the rules it was created with until they are
+   * replaced, so a turn whose access mode differs — or whose session this
+   * process did not create, and so cannot vouch for — sets them first.
+   */
+  readonly #policyBySession = new Map<string, OpenCodePermissionPolicy>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** cwd → the server's commands there, briefly reused (see `listCommands`). */
@@ -388,17 +396,37 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         sessionId = undefined;
       }
     }
+    const policy = permissionPolicyFor(options.accessMode);
+    if (sessionId && this.#policyBySession.get(sessionId) !== policy) {
+      // The conversation's access mode is the one it has now, not the one its
+      // session was created under — in both directions: a session made to ask
+      // that is now in full access must stop asking, and one made to allow
+      // that is now set to ask must ask again.
+      try {
+        await server.setPermission(sessionId, policy);
+        this.#policyBySession.set(sessionId, policy);
+      } catch (err) {
+        this.emit({
+          type: 'turn_error',
+          threadId,
+          turnId,
+          data: { text: `could not apply the access mode to OpenCode: ${errorMessage(err)}` },
+        });
+        return;
+      }
+    }
     if (!sessionId) {
       try {
         sessionId = await server.createSession({
           title: threadId,
-          permission: permissionPolicyFor(options.accessMode),
+          permission: policy,
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
         });
         this.setNativeSession(threadId, sessionId);
         this.#confirmedSessions.add(sessionId);
         this.#promptOnlySessions.add(sessionId);
+        this.#policyBySession.set(sessionId, policy);
       } catch (err) {
         this.emit({
           type: 'turn_error',

@@ -188,6 +188,12 @@ export interface IOpenCodeServer {
     variant?: string;
   }): Promise<string>;
   /**
+   * Replace a session's permission rules: the policy a session asks under is
+   * the one it was created with until this changes it, so a conversation whose
+   * access mode changed carries it here before its next turn.
+   */
+  setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void>;
+  /**
    * Whether the server knows a session — the store it serves is the CLI's own,
    * so a session started in a terminal is known too. False only when the
    * server says it does not exist; throws when it cannot say.

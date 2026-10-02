@@ -12,6 +12,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the duplicate emptied the card above the composer and left only a
   "waiting for you" line. Every approval and question now carries its own id
   as `blockId`, so the second copy replaces the first everywhere.
+- **OpenCode follows the conversation's access mode on every turn.** OpenCode
+  kept the permission rules a session was created with, so a conversation
+  switched to Full access kept asking — and one switched back to Ask for
+  approval kept running without asking. The bridge now re-applies the rules
+  whenever the mode changes, and on the first turn of a session it did not
+  create. Verified on OpenCode 1.18.34 and 2.0.19.
 
 ## [0.0.43-alpha.20261002] - 20261002
 ### Fixed
