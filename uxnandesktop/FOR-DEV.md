@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,078 Rust tests (893 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 83
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 20 in `uxnan-host` (16 against the daemon itself) + 45
-integration), of which 58 are ignored probes that need something real to talk to
-(50 live SSH probes — 38 against a real `sshd` and 12 against a **Linux host in a
+`docs/chat.md`). 1,083 Rust tests (881 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 97
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 23 in `uxnan-host` (19 against the daemon itself) + 45
+integration), of which 59 are ignored probes that need something real to talk to
+(51 live SSH probes — 39 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,754 frontend Vitest tests across two
+GitHub tests) + 1,757 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1122,8 +1122,8 @@ already written for the day phase 2 below lands — nothing to relax then.
          run there), but: handing its session to a chat needs a chat for that
          host — its sessions are on the host, out of this machine's bridge's
          sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
-         own bridge, plan phase F8; and `UXNAN_BROWSER_*` / the browser MCP
-         in engine terminals (their endpoints are this machine's loopback). Then files, git and search
+         own bridge, plan phase F8. (Its tools — the control surface's MCP
+         server and the integrated browser — reach it through the engine.) Then files, git and search
          served by the engine (removing `ssh/git.rs`, `ssh/search.rs`, the
          remote half of `fsRouter.ts` / `gitRouter.ts`).
       4. **Settings → Agents → Hooks says nothing about hosts.** Which agents a
@@ -1729,7 +1729,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,078 Rust + 1,754 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,083 Rust + 1,757 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

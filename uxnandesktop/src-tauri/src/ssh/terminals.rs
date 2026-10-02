@@ -792,6 +792,109 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_WIRE=1; runs the host's Claude Code once"]
+        async fn the_hosts_own_claude_calls_this_apps_tools_through_the_engine() {
+            // Nothing stood in but the window: the host's Claude, launched with
+            // the catalog the host's engine gave, calls `uxnan_status`; the
+            // engine relays it here, the app's own MCP server answers as the
+            // tab that shows the terminal — and Claude prints which tab that is.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            assert_eq!(
+                std::env::var("UXNAN_SSH_TEST_WIRE").as_deref(),
+                Ok("1"),
+                "set UXNAN_SSH_TEST_WIRE=1: this runs the host's Claude Code"
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let app = tauri::test::mock_builder()
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .unwrap();
+            tauri::Manager::manage(
+                &app,
+                crate::state::AppState::new(
+                    crate::persistence::PersistenceManager::new(dir.path()),
+                    crate::model::AppData::default(),
+                    dir.path().to_path_buf(),
+                ),
+            );
+            let state = tauri::Manager::state::<crate::state::AppState>(app.handle());
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            crate::commands::serve_host_tools(app.handle(), "live", &engine);
+            let tools = engine.agent_tools().await.expect("the engine relays tools");
+            let catalog = crate::mcpinject::agent_infos(
+                Some(&tools.mcp_url),
+                tools.claude_config.as_deref(),
+                tools.opencode_major,
+            );
+            let claude = catalog.iter().find(|a| a.id == "claude").unwrap();
+            assert!(
+                !claude.args.is_empty(),
+                "a Claude launch config on the host"
+            );
+
+            let tab = "tab-claude-tools";
+            let mut env = vec![("UXNAN_AGENT_ID".to_string(), tab.to_string())];
+            env.extend(crate::commands::host_tool_env(&state, &engine, Some("claude")).await);
+            let workdir = format!("/tmp/uxnan-tools-{}", std::process::id());
+            conn.exec(&format!("mkdir -p {workdir}")).await.unwrap();
+            let (seen, output) = collector();
+            state
+                .engine_terminals
+                .create(
+                    "live",
+                    &engine,
+                    EngineTerminalSpec {
+                        id: tab.into(),
+                        sid: None,
+                        cwd: Some(workdir.clone()),
+                        env,
+                        cols: 160,
+                        rows: 40,
+                    },
+                    output,
+                    || {},
+                )
+                .await
+                .unwrap();
+            let line = format!(
+                "claude -p 'Call the uxnan_status tool, then reply with only the value of caller.terminalId from its answer.' {} --allowedTools mcp__uxnan-browser__uxnan_status; echo CLAUDE_RAN_$((2+3))\n",
+                claude.args.join(" ")
+            );
+            state
+                .engine_terminals
+                .write(Some(&engine), tab, line.into_bytes())
+                .await
+                .unwrap();
+            for _ in 0..1800 {
+                if seen.lock().unwrap().contains("CLAUDE_RAN_5") {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            let shown = seen.lock().unwrap().clone();
+            state
+                .engine_terminals
+                .close(Some(&engine), tab)
+                .await
+                .unwrap();
+            conn.exec(&format!("rm -rf {workdir}")).await.unwrap();
+            // The answer is a line of its own: the typed command names the
+            // tab nowhere, so a line that is exactly its id is Claude's reply.
+            let answered = shown.lines().any(|l| l.trim() == tab);
+            println!("live: {alias}'s Claude called this app's tools through the engine as {tab}: {answered}");
+            assert!(
+                shown.contains("CLAUDE_RAN_5"),
+                "Claude never finished: {shown}"
+            );
+            assert!(
+                answered,
+                "Claude did not print the tab the call was attributed to:\n{shown}"
+            );
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn an_engine_terminal_survives_a_new_connection_and_is_found_by_its_sid() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

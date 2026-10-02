@@ -1336,9 +1336,11 @@ export function browserSessions(): Promise<BrowserPageState[]> {
 }
 
 /** Browser-control MCP coordinates + supported-agent catalog for Settings →
- *  Browser (the live `/mcp` endpoint + token for the copy-paste snippet). */
-export function mcpInfo(): Promise<McpInfo> {
-  return invoke('mcp_info');
+ *  Browser (the live `/mcp` endpoint + token for the copy-paste snippet). With
+ *  an `ssh:<host>` target, the catalog a launch on that host needs — reached
+ *  through its engine — rather than this machine's. */
+export function mcpInfo(target?: string): Promise<McpInfo> {
+  return invoke('mcp_info', target ? { target } : {});
 }
 
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.

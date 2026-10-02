@@ -29,7 +29,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///   starts empty.
 /// - 5: `StopAgent` — close the agent a terminal runs, and only it.
 /// - 6: `TranscriptPreview` — the last turn of a transcript on this machine.
-pub const PROTOCOL: u32 = 6;
+/// - 7: agent tools — `AgentTools`, and the control surface's MCP server and
+///   the integrated browser reached from a terminal here (`Event::Mcp`,
+///   `ClientMessage::McpAnswer`, `Event::OpenUrl`).
+pub const PROTOCOL: u32 = 7;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -171,6 +174,13 @@ pub enum ClientMessage {
         id: u64,
         call: Call,
     },
+    /// The answer to an [`Event::Mcp`]: the HTTP status and the body the
+    /// client's own MCP server gave.
+    McpAnswer {
+        ticket: u64,
+        status: u16,
+        body: String,
+    },
 }
 
 /// What the daemon sends in a [`Frame::Control`].
@@ -279,6 +289,11 @@ pub enum Call {
         agent_type: String,
         path: String,
     },
+    /// What a launch on this machine needs to reach the client's tools: this
+    /// daemon's endpoint for them, the Claude config file it wrote here, and
+    /// the version of OpenCode installed here. The client builds the launch
+    /// catalog from these with the same code it uses for its own machine.
+    AgentTools,
 }
 
 /// How a call ended.
@@ -324,6 +339,21 @@ pub enum Reply {
     Transcript {
         prompt: Option<String>,
         summary: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    AgentTools {
+        /// The MCP endpoint a terminal here reaches (`…/mcp`).
+        mcp_url: String,
+        /// The browser endpoint the `$BROWSER` shim posts to (`…/browser`).
+        browser_url: String,
+        /// The token both take.
+        token: String,
+        /// The `$BROWSER` shim on this machine, if it is there.
+        browser_shim: Option<String>,
+        /// Claude Code's launch config on this machine, naming `mcp_url`.
+        claude_config: Option<String>,
+        /// The major version of the OpenCode installed here, if one is.
+        opencode_major: Option<u32>,
     },
     Done,
 }
@@ -386,6 +416,18 @@ pub enum Event {
         headers: Vec<(String, String)>,
         body: String,
     },
+    /// An agent in one of this connection's terminals called the client's MCP
+    /// server: answer with [`ClientMessage::McpAnswer`] and the same ticket.
+    /// The request waits for it on this machine.
+    Mcp {
+        ticket: u64,
+        session: u32,
+        body: String,
+    },
+    /// Something in one of this connection's terminals asked to open a URL
+    /// (the `$BROWSER` shim). The URL is as it was given — a `localhost` one
+    /// names this machine.
+    OpenUrl { session: u32, url: String },
 }
 
 /// The version two windows agree on, if they overlap.

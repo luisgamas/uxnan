@@ -965,3 +965,204 @@ async fn a_transcript_on_the_host_is_read_there_and_only_an_agents_own() {
         "a file outside the agent's own transcripts is never read"
     );
 }
+
+/// The daemon's endpoint (`http://127.0.0.1:<port>`) and token, from the file
+/// it writes for the reporters.
+fn endpoint_of(daemon: &Daemon) -> (String, String) {
+    let text =
+        std::fs::read_to_string(daemon.home.path().join("run").join("endpoint.env")).unwrap();
+    let field = |key: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}=")))
+            .unwrap()
+            .to_string()
+    };
+    let hook = field("UXNAN_HOOK_URL");
+    (
+        hook.trim_end_matches("/hook").to_string(),
+        field("UXNAN_HOOK_TOKEN"),
+    )
+}
+
+/// A bare HTTP/1.1 POST, as a CLI on the host makes one: `(status, body)`.
+async fn post(base: &str, path: &str, headers: &[(&str, &str)], body: &str) -> (u16, String) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let addr = base.trim_start_matches("http://");
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let mut request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    for (k, v) in headers {
+        request.push_str(&format!("{k}: {v}\r\n"));
+    }
+    request.push_str("\r\n");
+    request.push_str(body);
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).await.unwrap();
+    let status = raw.split(' ').nth(1).unwrap().parse().unwrap();
+    let body = raw
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+#[tokio::test]
+async fn an_mcp_call_from_a_terminal_is_answered_by_the_app_watching_it() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let session = open_shell(&mut client, "tab-mcp").await;
+    let (base, token) = endpoint_of(&daemon);
+    let bearer = format!("Bearer {token}");
+    let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+
+    // What Claude does with its launch config: POST the call with the bearer
+    // token and the terminal's id.
+    let calling = tokio::spawn({
+        let base = base.clone();
+        let bearer = bearer.clone();
+        async move {
+            post(
+                &base,
+                "/mcp",
+                &[("Authorization", &bearer), ("X-Uxnan-Agent-Id", "tab-mcp")],
+                call,
+            )
+            .await
+        }
+    });
+    // The app is told, answers with its own server's reply…
+    let (ticket, body) = loop {
+        if let ServerMessage::Event(Event::Mcp {
+            ticket,
+            session: s,
+            body,
+        }) = client.control().await
+        {
+            assert_eq!(s, session);
+            break (ticket, body);
+        }
+    };
+    assert_eq!(body, call);
+    write_frame(
+        &mut client.stream,
+        &Frame::control(&ClientMessage::McpAnswer {
+            ticket,
+            status: 200,
+            body: r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#.into(),
+        }),
+    )
+    .await
+    .unwrap();
+    // …and that reply is the call's answer.
+    let (status, answer) = calling.await.unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(answer, r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#);
+
+    // The token is required, and a terminal this daemon does not have is not
+    // a terminal anyone can answer for.
+    let (status, _) = post(
+        &base,
+        "/mcp",
+        &[
+            ("Authorization", "Bearer nope"),
+            ("X-Uxnan-Agent-Id", "tab-mcp"),
+        ],
+        call,
+    )
+    .await;
+    assert_eq!(status, 401);
+    let (status, _) = post(
+        &base,
+        "/mcp",
+        &[("Authorization", &bearer), ("X-Uxnan-Agent-Id", "tab-gone")],
+        call,
+    )
+    .await;
+    assert_eq!(status, 404);
+
+    // The app goes before answering: the call is told so, not left hanging.
+    let calling = tokio::spawn({
+        let base = base.clone();
+        let bearer = bearer.clone();
+        async move {
+            post(
+                &base,
+                "/mcp",
+                &[("Authorization", &bearer), ("X-Uxnan-Agent-Id", "tab-mcp")],
+                call,
+            )
+            .await
+        }
+    });
+    loop {
+        if let ServerMessage::Event(Event::Mcp { .. }) = client.control().await {
+            break;
+        }
+    }
+    drop(client);
+    let (status, _) = calling.await.unwrap();
+    assert_eq!(status, 502);
+}
+
+#[tokio::test]
+async fn a_url_a_terminal_opens_reaches_the_app_watching_it() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let session = open_shell(&mut client, "tab-url").await;
+    let (base, token) = endpoint_of(&daemon);
+    // What the `$BROWSER` shim sends.
+    let (status, _) = post(
+        &base,
+        "/browser",
+        &[("X-Uxnan-Token", &token), ("X-Uxnan-Agent-Id", "tab-url")],
+        r#"{"url":"http://localhost:5173/"}"#,
+    )
+    .await;
+    assert_eq!(status, 204);
+    let url = loop {
+        if let ServerMessage::Event(Event::OpenUrl { session: s, url }) = client.control().await {
+            assert_eq!(s, session);
+            break url;
+        }
+    };
+    assert_eq!(url, "http://localhost:5173/");
+}
+
+#[tokio::test]
+async fn the_agent_tools_name_this_daemons_endpoint_and_this_machines_files() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let (base, token) = endpoint_of(&daemon);
+    let tools = client.call(Call::AgentTools).await;
+    let Outcome::Ok {
+        reply:
+            Reply::AgentTools {
+                mcp_url,
+                browser_url,
+                token: given,
+                browser_shim,
+                claude_config,
+                ..
+            },
+    } = tools
+    else {
+        panic!("no tools: {tools:?}");
+    };
+    assert_eq!(mcp_url, format!("{base}/mcp"));
+    assert_eq!(browser_url, format!("{base}/browser"));
+    assert_eq!(given, token);
+    let shim = browser_shim.expect("the shim is written to this machine's hooks folder");
+    assert!(
+        shim.starts_with(&daemon.user_home().display().to_string()),
+        "{shim}"
+    );
+    let config = std::fs::read_to_string(claude_config.expect("a Claude launch config")).unwrap();
+    assert!(config.contains(&mcp_url), "{config}");
+    assert!(
+        !config.contains(&token),
+        "the file names the token's variable, never the token"
+    );
+}

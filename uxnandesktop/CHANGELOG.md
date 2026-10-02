@@ -34,6 +34,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   turn that ended while the lid was closed. Proven with Claude Code on a real Linux host.
   Follows the hooks auto-install setting. The engine can also close an agent in
   one of its terminals, with the same code this machine uses.
+- **An agent on a host uses this app's tools.** The control surface's MCP tools
+  and the integrated browser reach it through the host engine — launched with
+  that host's own catalog (its engine's endpoint, a Claude config written there,
+  `--standalone` only for an OpenCode 2 there) and answered as the tab that shows
+  it. A `localhost` link it opens is brought here through a forward. Same
+  settings as a local terminal.
 - **Every installer carries the host engine for every platform it can run
   on** — Linux and macOS, x86-64 and ARM — whatever machine the app itself is
   on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is

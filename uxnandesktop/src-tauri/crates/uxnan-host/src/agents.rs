@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use uxnan_host_protocol::Reply;
 use uxnan_workspace_engine::agent_hooks::{self, Reach};
 
 /// How long the login shell gets to say what its `PATH` is.
@@ -30,6 +31,80 @@ pub fn wire() -> Result<Vec<String>, String> {
             .map(str::to_string)
             .collect(),
     )
+}
+
+/// What a launch here needs to reach the app's tools, through this daemon's
+/// endpoint: the scripts (the `$BROWSER` shim among them), Claude Code's launch
+/// config naming this endpoint, and the version of the OpenCode installed
+/// here — the facts the app builds this machine's launch catalog from.
+pub fn tools(endpoint: &crate::endpoint::Endpoint) -> Reply {
+    use uxnan_workspace_engine::mcp_launch;
+    let mcp_url = endpoint.mcp_url();
+    let browser_shim = agent_hooks::install_shared_scripts()
+        .ok()
+        .map(|install| install.browser_shim_bash)
+        .filter(|path| Path::new(path).is_file());
+    let claude_config = write_claude_config(&mcp_url);
+    let opencode_major = search_dirs()
+        .into_iter()
+        .map(|dir| dir.join("opencode"))
+        .find(|path| executable(path))
+        .and_then(|path| version_of(&path))
+        .as_deref()
+        .and_then(mcp_launch::parse_major_version);
+    Reply::AgentTools {
+        mcp_url,
+        browser_url: endpoint.browser_url(),
+        token: endpoint.token.clone(),
+        browser_shim,
+        claude_config,
+        opencode_major,
+    }
+}
+
+/// Claude Code's launch config for this endpoint, in this daemon's own run
+/// folder — named by the port, as the app names its own, so a later daemon's
+/// file never hands an agent an endpoint that has gone. The file holds no
+/// secret: it names the token's variable.
+fn write_claude_config(mcp_url: &str) -> Option<String> {
+    use uxnan_workspace_engine::mcp_launch;
+    let dir = crate::paths::run_dir().join("mcp");
+    crate::paths::ensure_private_dir(&dir).ok()?;
+    let path = dir.join(format!(
+        "claude-{}.json",
+        mcp_launch::endpoint_port(mcp_url)
+    ));
+    agent_hooks::write_json_atomic(&path, &mcp_launch::claude_config_json(mcp_url)).ok()?;
+    Some(path.to_string_lossy().into_owned())
+}
+
+/// What `program --version` prints, if it answers in time.
+fn version_of(program: &Path) -> Option<String> {
+    let mut child = Command::new(program)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) => return None,
+            Ok(None) if started.elapsed() < LOGIN_PATH_DEADLINE => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let mut out = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    Some(out)
 }
 
 /// The account's own shell, as a terminal here starts it.

@@ -35,7 +35,6 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import { openUrl } from '$lib/api';
 import { ensureMcpLaunch, launchExecutable, withMcpLaunch } from '$lib/mcpLaunch';
-import { sshHostId, type TargetId } from '$lib/target';
 import { runAgentLaunch } from '$lib/terminal/agentLaunch';
 import { agentMonitor } from '$lib/state/agentMonitor.svelte';
 import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
@@ -493,12 +492,8 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
     // why that ordering is the whole correctness argument, and what typed the
     // launch line into the running agent when it was not.
     void runAgentLaunch(inst, async () => {
-      await ensureMcpLaunch();
-      const command = withMcpLaunch(
-        runCommand,
-        inst.spec.shell,
-        sshHostId(inst.spec.target as TargetId | undefined) !== null,
-      );
+      await ensureMcpLaunch(inst.spec.target);
+      const command = withMcpLaunch(runCommand, inst.spec.shell, inst.spec.target);
       // Auto-run appends Enter; "type only" leaves the line for the user to run.
       await invoke('pty_write', {
         id: inst.id,

@@ -255,6 +255,29 @@ type OnChanged = Arc<std::sync::Mutex<Option<ChangedFn>>>;
 pub type HookFn = Box<dyn Fn(u32, Vec<(String, String)>, String) + Send + Sync>;
 type OnHook = Arc<std::sync::Mutex<Option<HookFn>>>;
 
+/// What hears an MCP call from one of this host's terminals:
+/// `(ticket, session, body)` — answered with [`HostEngine::answer_mcp`].
+pub type McpFn = Box<dyn Fn(u64, u32, String) + Send + Sync>;
+type OnMcp = Arc<std::sync::Mutex<Option<McpFn>>>;
+
+/// What hears a URL one of this host's terminals asked to open:
+/// `(session, url)`, the URL as it was given there.
+pub type UrlFn = Box<dyn Fn(u32, String) + Send + Sync>;
+type OnUrl = Arc<std::sync::Mutex<Option<UrlFn>>>;
+
+/// What a launch on the host needs to reach this app's tools through its
+/// engine (`AgentTools`): the facts this app builds that host's launch
+/// catalog from, with the same code it uses for its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostTools {
+    pub mcp_url: String,
+    pub browser_url: String,
+    pub token: String,
+    pub browser_shim: Option<String>,
+    pub claude_config: Option<String>,
+    pub opencode_major: Option<u32>,
+}
+
 /// A request waiting for its answer, and — for an `open` — the sink to install
 /// for the session it creates, *before* that session's first output is read.
 struct Pending {
@@ -273,6 +296,10 @@ pub struct HostEngine {
     lost: Arc<Notify>,
     on_changed: OnChanged,
     on_hook: OnHook,
+    on_mcp: OnMcp,
+    on_url: OnUrl,
+    /// The host's facts for its launches, asked once per connection.
+    tools: tokio::sync::OnceCell<Option<HostTools>>,
     /// Asks the reader and the writer to stop, which closes the channel. A
     /// `watch` rather than a notification: it holds the request, so a task that
     /// was busy when it came still sees it.
@@ -341,6 +368,8 @@ impl HostEngine {
         let sinks: Sinks = Arc::default();
         let on_changed: OnChanged = Arc::default();
         let on_hook: OnHook = Arc::default();
+        let on_mcp: OnMcp = Arc::default();
+        let on_url: OnUrl = Arc::default();
 
         // Writer: one owner of the channel's write half.
         let writer_alive = Arc::clone(&alive);
@@ -371,6 +400,8 @@ impl HostEngine {
         let reader_sinks = Arc::clone(&sinks);
         let reader_changed = Arc::clone(&on_changed);
         let reader_hook = Arc::clone(&on_hook);
+        let reader_mcp = Arc::clone(&on_mcp);
+        let reader_url = Arc::clone(&on_url);
         let pong = out.clone();
         let mut reader_shutdown = shutdown_rx.clone();
         let reader_heard = Arc::clone(&last_heard);
@@ -423,6 +454,20 @@ impl HostEngine {
                         })) => {
                             if let Some(report) = reader_hook.lock().unwrap().as_ref() {
                                 report(session, headers, body);
+                            }
+                        }
+                        Ok(ServerMessage::Event(Event::Mcp {
+                            ticket,
+                            session,
+                            body,
+                        })) => {
+                            if let Some(call) = reader_mcp.lock().unwrap().as_ref() {
+                                call(ticket, session, body);
+                            }
+                        }
+                        Ok(ServerMessage::Event(Event::OpenUrl { session, url })) => {
+                            if let Some(open) = reader_url.lock().unwrap().as_ref() {
+                                open(session, url);
                             }
                         }
                         Ok(ServerMessage::Event(Event::Exited { session, .. })) => {
@@ -498,6 +543,9 @@ impl HostEngine {
             lost,
             on_changed,
             on_hook,
+            on_mcp,
+            on_url,
+            tools: tokio::sync::OnceCell::new(),
             shutdown,
             generation: conn.generation(),
         }))
@@ -726,6 +774,61 @@ impl HostEngine {
             Ok(Reply::Transcript { prompt, summary }) => (prompt, summary),
             _ => (None, None),
         }
+    }
+
+    /// Where MCP calls from this host's terminals go.
+    pub fn set_on_mcp(&self, call: McpFn) {
+        *self.on_mcp.lock().unwrap() = Some(call);
+    }
+
+    /// Where URLs this host's terminals ask to open go.
+    pub fn set_on_url(&self, open: UrlFn) {
+        *self.on_url.lock().unwrap() = Some(open);
+    }
+
+    /// Answer an MCP call this engine relayed, with what this app's own MCP
+    /// server answered.
+    pub async fn answer_mcp(&self, ticket: u64, status: u16, body: String) {
+        let _ = self
+            .out
+            .send(Frame::control(&ClientMessage::McpAnswer {
+                ticket,
+                status,
+                body,
+            }))
+            .await;
+    }
+
+    /// The host's facts for reaching this app's tools from a launch there —
+    /// asked once per connection; `None` from an engine too old to relay them
+    /// or one that could not say.
+    pub async fn agent_tools(&self) -> Option<HostTools> {
+        if self.welcome.protocol < 7 {
+            return None;
+        }
+        self.tools
+            .get_or_init(|| async {
+                match self.request(Call::AgentTools, None).await {
+                    Ok(Reply::AgentTools {
+                        mcp_url,
+                        browser_url,
+                        token,
+                        browser_shim,
+                        claude_config,
+                        opencode_major,
+                    }) => Some(HostTools {
+                        mcp_url,
+                        browser_url,
+                        token,
+                        browser_shim,
+                        claude_config,
+                        opencode_major,
+                    }),
+                    _ => None,
+                }
+            })
+            .await
+            .clone()
     }
 
     /// Where the agents' reports from this host's terminals go.

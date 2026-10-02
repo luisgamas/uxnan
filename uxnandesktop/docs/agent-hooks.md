@@ -359,9 +359,9 @@ about the reporters changes; only where they post:
 The completion preview comes from the agent's transcript **on the host**: the
 app asks that host's engine, which reads it with the same reader and the same
 rule as here (a `.jsonl` inside that agent's own transcript folder, nothing
-else); this machine never opens a file by a path a host's report names. What a
-host's report does not do yet: open the integrated browser, or reach the
-browser MCP.
+else); this machine never opens a file by a path a host's report names. The
+integrated browser and the browser MCP reach a host's agents the same way, through
+the engine ([browser](./browser.md)).
 
 ### OpenCode 1 and OpenCode 2
 

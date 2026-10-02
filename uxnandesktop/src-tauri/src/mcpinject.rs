@@ -516,5 +516,4 @@ mod tests {
         .unwrap();
         assert!(droid.get("mcpServers").is_none()); // emptied parent pruned
     }
-
 }

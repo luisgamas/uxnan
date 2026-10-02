@@ -18,7 +18,7 @@
 //! daemon's memory.
 //!
 //! **An agent's report goes to its own terminal's viewers.** Every terminal is
-//! started with the daemon's hook coordinates (`hooks`) and the id its client
+//! started with the daemon's hook coordinates (`endpoint`) and the id its client
 //! gave it (`UXNAN_AGENT_ID`); a report naming that id is sent to whoever is
 //! watching that terminal — never to another client's — and held, bounded,
 //! while nobody is, so a laptop that slept still hears how the turn ended.
@@ -37,6 +37,7 @@ use uxnan_host_protocol::{
 use uxnan_workspace_engine::pty::{PtyManager, PtySpec};
 use uxnan_workspace_engine::screen::Screen;
 
+use crate::endpoint::{Answer, Incoming, Route};
 use crate::{log, paths};
 
 /// Frames queued for one connection before it counts as unable to keep up. A
@@ -53,6 +54,11 @@ const SWEEP: Duration = Duration::from_secs(15);
 /// The largest piece a screen snapshot is sent in. With its history a snapshot
 /// can outgrow a frame; the viewer applies the pieces in order.
 const SNAPSHOT_PIECE: usize = 64 * 1024;
+
+/// How long an MCP call from a terminal here waits for the app's answer. A
+/// tool can take a while (waiting on a page, on an agent); past this the
+/// caller is told the app did not answer.
+const MCP_WAIT: Duration = Duration::from_secs(300);
 
 /// Reports held for a terminal nobody is watching. The newest matter — they
 /// are the agent's state now — so the oldest go first.
@@ -104,8 +110,12 @@ pub struct Daemon {
     clients: AtomicUsize,
     last_busy: Mutex<Instant>,
     epoch: String,
-    /// Where this daemon's terminals report, once its listener is up.
-    hooks: OnceLock<crate::hooks::Endpoint>,
+    /// Where this daemon's terminals reach the app, once its listener is up.
+    hooks: OnceLock<crate::endpoint::Endpoint>,
+    /// MCP calls waiting for the app's answer: ticket → the connection it was
+    /// sent to, and where the answer goes.
+    mcp_waiting: Mutex<HashMap<u64, (u64, tokio::sync::oneshot::Sender<Answer>)>>,
+    next_ticket: AtomicU64,
 }
 
 impl Daemon {
@@ -123,6 +133,8 @@ impl Daemon {
             last_busy: Mutex::new(Instant::now()),
             epoch: format!("{nanos:x}-{:x}", std::process::id()),
             hooks: OnceLock::new(),
+            mcp_waiting: Mutex::new(HashMap::new()),
+            next_ticket: AtomicU64::new(1),
         }
     }
 
@@ -305,17 +317,107 @@ impl Daemon {
         true
     }
 
-    /// Route an agent's report to the terminal it came from. A report naming
-    /// no terminal of this daemon is dropped: nobody here could show it.
-    pub fn report(&self, report: crate::hooks::Report) {
-        let Some(agent_id) = report.agent_id() else {
-            return;
-        };
+    /// Answer a request from a terminal here (`endpoint`): a report goes to
+    /// the terminal's viewers, a URL to one of them, an MCP call to one of them
+    /// and back. A request naming no terminal of this daemon is refused: nobody
+    /// here could take it.
+    pub async fn answer(&self, incoming: Incoming) -> Answer {
+        match incoming.route {
+            Route::Hook => {
+                self.report(incoming);
+                Answer::empty(204)
+            }
+            Route::Browser => self.open_url(incoming),
+            Route::Mcp => self.relay_mcp(incoming).await,
+        }
+    }
+
+    /// The terminal a request names, and its shared state.
+    fn session_of(&self, incoming: &Incoming) -> Option<(u32, Arc<Mutex<Shared>>)> {
+        let agent_id = incoming.agent_id()?;
         let sessions = self.sessions.lock().unwrap();
-        let Some((&session, s)) = sessions
+        sessions
             .iter()
             .find(|(_, s)| s.agent_id.as_deref() == Some(agent_id.as_str()))
+            .map(|(&session, s)| (session, Arc::clone(&s.shared)))
+    }
+
+    /// One connection watching `shared`, if any.
+    fn a_viewer_of(shared: &Mutex<Shared>) -> Option<(u64, Viewer)> {
+        let shared = shared.lock().unwrap();
+        shared.viewers.iter().next().map(|(id, v)| (*id, v.clone()))
+    }
+
+    fn open_url(&self, incoming: Incoming) -> Answer {
+        let Some((session, shared)) = self.session_of(&incoming) else {
+            return Answer::empty(404);
+        };
+        let Some(url) = serde_json::from_str::<serde_json::Value>(&incoming.body)
+            .ok()
+            .and_then(|v| v.get("url")?.as_str().map(str::to_string))
+            .filter(|u| !u.trim().is_empty())
         else {
+            return Answer::empty(400);
+        };
+        // A URL is worth opening only while someone is looking; one asked for
+        // while the lid was closed would open at a random moment later.
+        let Some((_, viewer)) = Self::a_viewer_of(&shared) else {
+            return Answer::empty(503);
+        };
+        viewer.send(Frame::control(&ServerMessage::Event(Event::OpenUrl {
+            session,
+            url,
+        })));
+        Answer::empty(204)
+    }
+
+    async fn relay_mcp(&self, incoming: Incoming) -> Answer {
+        let Some((session, shared)) = self.session_of(&incoming) else {
+            return Answer::empty(404);
+        };
+        let Some((viewer_id, viewer)) = Self::a_viewer_of(&shared) else {
+            return Answer::empty(503);
+        };
+        let ticket = self.next_ticket.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.mcp_waiting
+            .lock()
+            .unwrap()
+            .insert(ticket, (viewer_id, tx));
+        viewer.send(Frame::control(&ServerMessage::Event(Event::Mcp {
+            ticket,
+            session,
+            body: incoming.body,
+        })));
+        let answered = tokio::time::timeout(MCP_WAIT, rx).await;
+        self.mcp_waiting.lock().unwrap().remove(&ticket);
+        match answered {
+            Ok(Ok(answer)) => answer,
+            // The connection went before answering.
+            Ok(Err(_)) => Answer::empty(502),
+            Err(_) => Answer::empty(504),
+        }
+    }
+
+    /// The app's answer to an MCP call it was sent.
+    fn mcp_answered(&self, ticket: u64, status: u16, body: String) {
+        if let Some((_, tx)) = self.mcp_waiting.lock().unwrap().remove(&ticket) {
+            let _ = tx.send(Answer { status, body });
+        }
+    }
+
+    /// A connection that ends leaves no call waiting on it.
+    fn forget_mcp_of(&self, viewer_id: u64) {
+        self.mcp_waiting
+            .lock()
+            .unwrap()
+            .retain(|_, (viewer, _)| *viewer != viewer_id);
+    }
+
+    /// Route an agent's report to the terminal it came from. A report naming
+    /// no terminal of this daemon is dropped: nobody here could show it.
+    pub fn report(&self, report: Incoming) {
+        let Some((session, shared)) = self.session_of(&report) else {
             return;
         };
         let frame = Frame::control(&ServerMessage::Event(Event::Hook {
@@ -323,7 +425,7 @@ impl Daemon {
             headers: report.headers,
             body: report.body,
         }));
-        let mut shared = s.shared.lock().unwrap();
+        let mut shared = shared.lock().unwrap();
         if shared.viewers.is_empty() {
             if shared.held.len() == HELD_REPORTS {
                 shared.held.pop_front();
@@ -409,7 +511,8 @@ impl Daemon {
             | Call::Unwatch
             | Call::WireHooks
             | Call::StopAgent { .. }
-            | Call::TranscriptPreview { .. } => Outcome::Error {
+            | Call::TranscriptPreview { .. }
+            | Call::AgentTools => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -509,7 +612,11 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
     // Before any terminal opens, so every one is started with it. Without it
     // the terminals still work; their agents just cannot say what they do.
     let routed = Arc::clone(&daemon);
-    match crate::hooks::start(move |report| routed.report(report)).await {
+    let handler: crate::endpoint::Handler = Arc::new(move |incoming| {
+        let daemon = Arc::clone(&routed);
+        Box::pin(async move { daemon.answer(incoming).await })
+    });
+    match crate::endpoint::start(handler).await {
         Ok(endpoint) => {
             let _ = daemon.hooks.set(endpoint);
         }
@@ -707,6 +814,26 @@ where
                                 };
                                 viewer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                             }
+                            Ok(ClientMessage::McpAnswer { ticket, status, body }) => {
+                                daemon.mcp_answered(ticket, status, body);
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::AgentTools }) => {
+                                let answer = viewer.clone();
+                                let endpoint = daemon.hooks.get().cloned();
+                                tokio::spawn(async move {
+                                    let outcome = match endpoint {
+                                        None => Outcome::Error {
+                                            code: ErrorCode::Invalid,
+                                            message: "this daemon's endpoint is not listening".to_string(),
+                                        },
+                                        Some(endpoint) => match tokio::task::spawn_blocking(move || crate::agents::tools(&endpoint)).await {
+                                            Ok(reply) => Outcome::Ok { reply },
+                                            Err(e) => Outcome::Error { code: ErrorCode::Invalid, message: e.to_string() },
+                                        },
+                                    };
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
                             Ok(ClientMessage::Request { id, call: Call::WireHooks }) => {
                                 let answer = viewer.clone();
                                 tokio::spawn(async move {
@@ -792,6 +919,7 @@ where
             }
         }
         drop(watch);
+        daemon.forget_mcp_of(viewer_id);
         daemon.detach_everywhere(viewer_id);
         daemon.clients.fetch_sub(1, Ordering::SeqCst);
         daemon.touch();

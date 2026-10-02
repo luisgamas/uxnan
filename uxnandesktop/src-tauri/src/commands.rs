@@ -527,6 +527,13 @@ pub async fn pty_create(
         // the session instead, as it always was.
         match engine_for(&app, &state, &host_id, &conn, shell).await {
             Ok(engine) => {
+                // The tab's id, then — when this app's settings offer them
+                // here — the coordinates of its tools as reached on the host,
+                // through its engine. The hook coordinates are the engine's
+                // own (it adds them); nothing else of this machine's
+                // environment means anything there.
+                let mut env = vec![("UXNAN_AGENT_ID".to_string(), id.clone())];
+                env.extend(host_tool_env(&state, &engine, launching.as_deref()).await);
                 let exit_app = app.clone();
                 let exit_id = id.clone();
                 return state
@@ -538,15 +545,7 @@ pub async fn pty_create(
                             id: id.clone(),
                             sid,
                             cwd,
-                            // Only the tab's id: the hook coordinates are the
-                            // host engine's own (it adds them), and nothing
-                            // else of this machine's environment means
-                            // anything there.
-                            // FOR-DEV: the integrated browser and its MCP for
-                            // these terminals — their endpoints are this
-                            // machine's loopback (`FOR-DEV.md` → Remote hosts
-                            // → the host engine, item 3).
-                            env: vec![("UXNAN_AGENT_ID".to_string(), id.clone())],
+                            env,
                             cols,
                             rows,
                         },
@@ -781,7 +780,52 @@ pub struct McpInfo {
 /// app's own local loopback secret, surfaced only so the user can copy a
 /// ready-to-paste config for an agent the ADE doesn't auto-configure.
 #[tauri::command]
-pub async fn mcp_info(app: AppHandle, state: State<'_, AppState>) -> Result<McpInfo, CommandError> {
+pub async fn mcp_info(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    // The machine a launch is for. Absent or `local` is this one; for an
+    // `ssh:<hostId>` target the catalog is that host's — its engine's
+    // endpoint, the Claude config it wrote there, its OpenCode's version —
+    // built by the same code. A host whose engine cannot relay them gets the
+    // catalog with nothing to add, so a launch there is typed as it is.
+    target: Option<String>,
+) -> Result<McpInfo, CommandError> {
+    let host = target
+        .as_deref()
+        .filter(|t| !t.is_empty() && *t != "local")
+        .and_then(|t| TargetId::parse(t).ok())
+        .and_then(|t| t.ssh_host_id().map(str::to_string));
+    if let Some(host) = host {
+        let tools = match session_for(&state, &host).await {
+            Some(conn) => match state.ssh_engines.current(&host, conn.generation()).await {
+                Some(engine) => engine.agent_tools().await,
+                None => None,
+            },
+            None => None,
+        };
+        let (endpoint, claude_config, opencode_major) = match &tools {
+            Some(t) => (
+                Some(t.mcp_url.clone()),
+                t.claude_config.clone(),
+                t.opencode_major,
+            ),
+            None => (None, None, None),
+        };
+        return Ok(McpInfo {
+            endpoint: endpoint.clone(),
+            // The host's token stays with the host's terminals.
+            token: None,
+            token_env: crate::mcpinject::TOKEN_ENV.to_string(),
+            server_name: crate::mcpinject::SERVER_NAME.to_string(),
+            agent_id_header: crate::mcpinject::AGENT_ID_HEADER.to_string(),
+            agent_id_env: crate::mcpinject::AGENT_ID_ENV.to_string(),
+            agents: crate::mcpinject::agent_infos(
+                endpoint.as_deref(),
+                claude_config.as_deref(),
+                opencode_major,
+            ),
+        });
+    }
     let hook = state.hook.read().await.clone();
     let (endpoint, token) = match hook {
         Some(h) => (Some(crate::mcpinject::mcp_endpoint(&h.url)), Some(h.token)),
@@ -847,6 +891,165 @@ fn remote_terminal_output<R: tauri::Runtime>(
             );
         }
     }
+}
+
+/// The variables a terminal on a host gets for this app's tools, under the
+/// same settings a terminal here does (`pty_create` below): the integrated
+/// browser's route and `$BROWSER` shim, and the control surface's MCP server
+/// with the env-based registrations — every one of them as reached on the
+/// host, through its engine (`HostEngine::agent_tools`).
+pub(crate) async fn host_tool_env(
+    state: &AppState,
+    engine: &ssh::engine::HostEngine,
+    launching: Option<&str>,
+) -> Vec<(String, String)> {
+    let Some(tools) = engine.agent_tools().await else {
+        return Vec::new();
+    };
+    let (browser_enabled, allow_agents, mcp_enabled, mcp_disabled) = {
+        let data = state.data.read().await;
+        let b = &data.settings.browser;
+        (
+            b.enabled,
+            b.allow_agents,
+            b.mcp_enabled,
+            b.mcp_disabled_agents.clone(),
+        )
+    };
+    let mut env = Vec::new();
+    if browser_enabled && allow_agents {
+        env.push(("UXNAN_BROWSER_URL".to_string(), tools.browser_url.clone()));
+        env.push(("UXNAN_BROWSER_TOKEN".to_string(), tools.token.clone()));
+        if let Some(shim) = &tools.browser_shim {
+            env.push(("BROWSER".to_string(), shim.clone()));
+        }
+    }
+    if mcp_enabled {
+        env.push(("UXNAN_MCP_URL".to_string(), tools.mcp_url.clone()));
+        env.push((crate::mcpinject::TOKEN_ENV.to_string(), tools.token.clone()));
+        let disabled: std::collections::HashSet<&str> =
+            mcp_disabled.iter().map(String::as_str).collect();
+        env.extend(crate::mcpinject::launch_env_all(
+            &tools.mcp_url,
+            &disabled,
+            launching.filter(|exe| !exe.is_empty()),
+            tools.opencode_major,
+        ));
+    }
+    env
+}
+
+/// What a host's terminals ask of this app's tools — an MCP call, a URL to
+/// open — answered by the same code that answers a terminal here, as the tab
+/// that shows the terminal. Each call runs on its own: a tool can take a while,
+/// and the others need not wait for it.
+pub(crate) fn serve_host_tools<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host_id: &str,
+    engine: &std::sync::Arc<ssh::engine::HostEngine>,
+) {
+    let calls = std::sync::Arc::downgrade(engine);
+    let (call_app, call_host, call_epoch) =
+        (app.clone(), host_id.to_string(), engine.epoch().to_string());
+    engine.set_on_mcp(Box::new(move |ticket, session, body| {
+        let (app, host, epoch, engine) = (
+            call_app.clone(),
+            call_host.clone(),
+            call_epoch.clone(),
+            calls.clone(),
+        );
+        tauri::async_runtime::spawn(async move {
+            let caller = crate::control::Caller::Launch {
+                agent_id: host_tab(&app, &host, &epoch, session).await,
+            };
+            let response =
+                crate::control::mcp::handle(&app, caller, body.into_bytes().into()).await;
+            let status = response.status().as_u16();
+            let body = axum::body::to_bytes(response.into_body(), 32 * 1024 * 1024)
+                .await
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default();
+            if let Some(engine) = engine.upgrade() {
+                engine.answer_mcp(ticket, status, body).await;
+            }
+        });
+    }));
+    let (url_app, url_host, url_epoch) =
+        (app.clone(), host_id.to_string(), engine.epoch().to_string());
+    engine.set_on_url(Box::new(move |session, url| {
+        let (app, host, epoch) = (url_app.clone(), url_host.clone(), url_epoch.clone());
+        tauri::async_runtime::spawn(async move {
+            let agent_id = host_tab(&app, &host, &epoch, session).await;
+            let caller = crate::control::Caller::Launch {
+                agent_id: agent_id.clone(),
+            };
+            let workspace = match agent_id {
+                Some(_) => crate::control::services::browser::workspace_of(&app, &caller)
+                    .await
+                    .ok(),
+                None => None,
+            };
+            let url = reached_from_here(&app, &host, url).await;
+            let _ = crate::browser::route_url(&app, url, workspace).await;
+        });
+    }));
+}
+
+/// The tab that shows `session` of the engine `epoch` on `host`, waiting a
+/// moment for one being registered (a call can follow the screen that
+/// reattaches its terminal).
+async fn host_tab<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host: &str,
+    epoch: &str,
+    session: u32,
+) -> Option<String> {
+    let state = app.state::<AppState>();
+    for _ in 0..20 {
+        if let Some(tab) = state.engine_terminals.tab_for(host, epoch, session).await {
+            return Some(tab);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    None
+}
+
+/// A URL a terminal on `host` asked to open, as this machine reaches it: one on
+/// the host's own loopback (`localhost:5173`, a dev server there) is brought
+/// here over the connection the host already has, as the ports indicator's
+/// "Open" does; any other is the same URL from here.
+async fn reached_from_here<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host: &str,
+    url: String,
+) -> String {
+    let Some((port, rest)) = host_loopback_port(&url) else {
+        return url;
+    };
+    let state = app.state::<AppState>();
+    let Some(conn) = session_for(&state, host).await else {
+        return url;
+    };
+    match state.ssh_forwards.open(host, &conn, port, &[]).await {
+        Ok(forward) => format!("http://127.0.0.1:{}{rest}", forward.local_port),
+        Err(_) => url,
+    }
+}
+
+/// `(port, everything after it)` when `url` is plain HTTP on the loopback of
+/// the machine it was made on.
+fn host_loopback_port(url: &str) -> Option<(u16, &str)> {
+    let rest = url.strip_prefix("http://")?;
+    let (authority, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, ""),
+    };
+    let (name, port) = authority.rsplit_once(':')?;
+    let loopback = matches!(name, "localhost" | "127.0.0.1" | "0.0.0.0" | "[::1]");
+    if !loopback {
+        return None;
+    }
+    Some((port.parse().ok()?, path))
 }
 
 /// A host's agent reports, fed — one at a time, in order — to the same reader
@@ -960,6 +1163,7 @@ async fn engine_for<R: tauri::Runtime>(
             );
         }));
         forward_host_reports(app, host_id, &engine);
+        serve_host_tools(app, host_id, &engine);
         if state.data.read().await.settings.auto_install_hooks {
             let wiring = std::sync::Arc::clone(&engine);
             let host = host_id.to_string();
@@ -5546,6 +5750,28 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 
 #[cfg(test)]
 mod tests {
+    use super::host_loopback_port;
+
+    #[test]
+    fn a_url_on_the_hosts_own_loopback_is_the_one_brought_here() {
+        assert_eq!(
+            host_loopback_port("http://localhost:5173/"),
+            Some((5173, "/"))
+        );
+        assert_eq!(
+            host_loopback_port("http://127.0.0.1:8069/web?db=x"),
+            Some((8069, "/web?db=x"))
+        );
+        assert_eq!(host_loopback_port("http://0.0.0.0:3000"), Some((3000, "")));
+        assert_eq!(
+            host_loopback_port("http://[::1]:4000/a"),
+            Some((4000, "/a"))
+        );
+        // Anything else is the same URL from here.
+        assert_eq!(host_loopback_port("https://localhost:5173/"), None);
+        assert_eq!(host_loopback_port("http://example.com:8080/"), None);
+        assert_eq!(host_loopback_port("http://localhost/"), None);
+    }
     use super::{
         bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
         issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,

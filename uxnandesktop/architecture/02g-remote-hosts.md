@@ -1669,7 +1669,8 @@ terminal y solo a el, con el mismo `agentstop` que el desktop, que como
 `procscan` vive ahora en el motor); 6 = `TranscriptPreview` (la vista previa
 de un turno terminado, leida en el host por el mismo lector que el desktop,
 `workspace_engine::transcript`, con la misma regla: solo un `.jsonl` dentro de
-la carpeta de transcripts de ese agente). Imprime
+la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
+(`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1780,12 +1781,30 @@ vivo contra un host Linux: un reporte cruza un reinicio de la app hasta la
 pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
 (`UserPromptSubmit`, `Stop`, `SessionEnd`) llegaron a esta maquina.
 
+**Herramientas de los agentes del host** (protocolo 7). El receptor del motor
+atiende ademas `POST /browser` (el shim de `$BROWSER`; responde 204 y viaja como
+`Event::OpenUrl` a una conexion que mira esa terminal — sin nadie mirando, no se
+abre despues) y `POST /mcp` (con `Authorization: Bearer` o `X-Uxnan-Token`; viaja
+como `Event::Mcp` con un ticket, el desktop responde con `ClientMessage::McpAnswer`
+lo que respondio su propio `control::mcp::handle` como `Caller::Launch` de la
+pestana, y la peticion espera hasta 300 s; si esa conexion se va, se le responde
+502 en vez de dejarla colgada). El MCP del desktop es JSON peticion/respuesta, sin
+SSE, asi que un ticket por llamada basta. `AgentTools` da los *hechos* del host —
+su endpoint, el token, el shim, el archivo de Claude que el motor escribio en
+`~/.uxnan/host/run/mcp/claude-<port>.json`, la version de OpenCode instalada alli—
+y el desktop construye el catalogo de lanzamiento de ese host con el **mismo**
+codigo que el suyo (`workspace_engine::mcp_launch`, movido desde `mcpinject`):
+`mcp_info(target)` para el frontend y las variables de la terminal en
+`pty_create`, bajo los mismos ajustes que una terminal local. Un `localhost:<p>`
+que el host pide abrir se trae aqui por el mismo reenvio que "Abrir" del indicador
+de puertos. Probado en vivo: el Claude del host llamo a `uxnan_status` por el
+motor e imprimio la pestana con la que se le respondio.
+
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
 empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
 pasar la sesion de un agente del host a un chat (necesita el bridge del host,
-F8; el motor ya cierra el agente) y el
-navegador/MCP para las terminales del motor; ficheros, git y busqueda servidos
-por el motor.
+F8; el motor ya cierra el agente); las filas del host en Ajustes → Hooks; y
+ficheros, git y busqueda servidos por el motor.
 
 ## 6. Que funciona y que no en un contexto remoto
 

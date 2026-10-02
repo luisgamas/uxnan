@@ -379,6 +379,10 @@ laptop lid, a Wi-Fi handover or an app restart.
   report to the tab it came from — the same cards, checks and notifications as
   a local agent, also after the lid was closed. See
   [agent hooks → Agents on an SSH host](./agent-hooks.md#agents-on-an-ssh-host).
+- **Agents there use this app's tools.** The control surface's MCP tools and
+  the integrated browser reach a host's agents through the engine, as the tab
+  that shows them — a `localhost` link there opens here through a forward. See
+  [browser](./browser.md).
 - **A silent link is noticed in seconds.** The app checks on the engine every
   10 seconds; if nothing has come back for 30, the link is treated as gone — the
   tabs say so and the host is reconnected — instead of waiting the two minutes
