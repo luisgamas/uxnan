@@ -407,8 +407,19 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), Error> {
     }
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, content)?;
+    keep_mode(path, &tmp);
     std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+/// Give the replacement the permissions of the file it replaces. A write
+/// here is a new file renamed over the old one, and a new file gets the
+/// process's umask: a private `0600` config would come out world-readable, a
+/// shared `0664` one private. The person set those modes, not us.
+fn keep_mode(original: &Path, replacement: &Path) {
+    if let Ok(meta) = std::fs::metadata(original) {
+        let _ = std::fs::set_permissions(replacement, meta.permissions());
+    }
 }
 
 /// Atomic JSON write (sibling temp + rename, single rolling `.bak`).
@@ -422,6 +433,7 @@ pub fn write_json_atomic(path: &Path, text: &str) -> Result<(), Error> {
     }
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, text)?;
+    keep_mode(path, &tmp);
     if path.exists() {
         let _ = std::fs::copy(path, path.with_extension("json.bak"));
     }
@@ -438,6 +450,7 @@ pub fn write_text_atomic(path: &Path, text: &str) -> Result<(), Error> {
     }
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, text)?;
+    keep_mode(path, &tmp);
     if path.exists() {
         let _ = std::fs::copy(path, path.with_extension("bak"));
     }
@@ -2862,6 +2875,27 @@ pub fn install_all(install: &HookInstall, installed: Installed, reach: Reach) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewritten_config_keeps_the_mode_the_person_gave_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        for (name, mode) in [("private.json", 0o600), ("shared.json", 0o664)] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, "{}").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            write_json_atomic(&path, "{\"a\":1}").unwrap();
+            let after = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(after, mode, "{name}");
+            let toml = dir.path().join(name.replace(".json", ".toml"));
+            std::fs::write(&toml, "").unwrap();
+            std::fs::set_permissions(&toml, std::fs::Permissions::from_mode(mode)).unwrap();
+            write_text_atomic(&toml, "a = 1\n").unwrap();
+            let after = std::fs::metadata(&toml).unwrap().permissions().mode() & 0o777;
+            assert_eq!(after, mode, "{name} as text");
+        }
+    }
 
     #[test]
     fn every_table_agent_renders_a_config_naming_itself() {

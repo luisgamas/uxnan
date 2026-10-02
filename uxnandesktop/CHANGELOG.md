@@ -71,6 +71,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **The handshake asks for the key types already on file first**, so a host
   with a recorded key is always checked against it instead of passing as new by
   presenting another key type.
+- **Wiring an agent's hooks keeps its config file's permissions.** The file
+  was rewritten as a new one, so a private config (`0600`) came out readable by
+  the machine's other accounts, and a shared one private.
 - **The file tree's watcher reports only its own folder.** On macOS the system
   also hands over the creation of the watched folder and of the folder above
   it, which reached the tree as changes it does not show. The tree here and a
