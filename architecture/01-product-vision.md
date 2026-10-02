@@ -30,7 +30,7 @@
 
 - **Multi-agent and multi-provider:** the active set is OpenAI Codex CLI, OpenCode, Claude Code, pi, Antigravity, Zero and Grok, with an extensible adapter boundary for future compatible agents.
 - **Sin lock-in de proveedor:** el modelo de abstracción del bridge normaliza las diferencias de protocolo entre agentes.
-- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y self-hosted** — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía el **bridge** directamente (FCM HTTP v1) sobre cualquier transporte.
+- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y self-hosted** — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía solo el **bridge**, directo a FCM (FCM HTTP v1), sobre cualquier transporte; el relay nunca ve el token push ni el texto de una notificación.
 - **E2EE real:** ni el relay (cuando se usa) ni el bridge ven el contenido en texto claro. La clave de sesión se deriva de un handshake X25519 + HKDF firmado con Ed25519; el QR codifica la identidad del bridge y opcionalmente sus direcciones directas (`hosts: string[]`) además de una URL de relay.
 - **Multi-proyecto:** el usuario puede tener N proyectos abiertos en la PC y navegar entre ellos desde la app.
 - **Reconexión confiable:** buffer de outbound messages con replay por sequence number; la reconexión no pierde estado conversacional.
@@ -94,8 +94,8 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 │  │ HTTP/WS  │  │ WebSocket   │  │ Session                  │         │
 │  │ Server   │  │ Relay       │  │ Management               │         │
 │  └──────────┘  └──────┬──────┘  └──────────────────────────┘         │
-│   (push endpoints opcionales: /push/register, /push/notify — solo     │
-│    como fallback si el bridge no tiene credencial FCM local)            │
+│   (sin push: el relay no recibe tokens push ni textos de              │
+│    notificaciones — el push lo envía solo el bridge, directo a FCM)     │
 └─────────────────────────┼────────────────────────────────────────────┘
                           │ WebSocket (E2EE opaque) — solo si el QR del bridge anuncia `relay`
                           ▼
@@ -107,7 +107,7 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 │  └──────────┘  └────────────┘  └─────┬──────┘  └────────────────┘   │
 │  ┌─────────────┐  ┌─────────────────┘                                  │
 │  │ Push Svc    │  ← bridge-direct FCM (lazy firebase-admin)            │
-│  │ (FCM HTTPv1)│  → opcional POST /push/notify al relay (fallback)     │
+│  │ (FCM HTTPv1)│  → único emisor de push; el token solo va a FCM       │
 │  └─────────────┘                                                       │
 │                                      │                               │
 │          ┌─────────┬─────────┬───────┼───────┬─────────┐            │
@@ -135,7 +135,7 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 |---|---|---|
 | **App móvil Uxnan** | Flutter / Dart | Cliente móvil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Plano de control local en la PC; corre agentes y expone la API JSON-RPC al móvil |
-| **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted) Relay de envelopes E2EE opacos como fallback off-LAN; push enviado por el bridge directamente |
+| **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted, sin estado) Relay de envelopes E2EE opacos como fallback off-LAN; sin push — el push lo envía solo el bridge, directo a FCM |
 | **Agent Adapters** | Node.js | Active adapters for Codex, OpenCode, Claude Code, pi, Antigravity, Zero and Grok |
 
 ### 3.3 Topologías de conexión
@@ -345,12 +345,14 @@ Si el agente solicita aprobación:
 
 ### 5.5 Flujo de notificación push
 
-> **Dirección (2026-06-12):** el push se envía **directamente desde el
-> bridge** sobre cualquier transporte (LAN, Tailscale, o relay) usando
-> FCM HTTP v1 (lazy `firebase-admin` con un service account local). El
-> relay conserva `POST /push/notify` como **fallback** opcional para
-> setups con relay hospedado. Ver `02a-system-architecture.md` §5.10
-> y `bridge/FOR-DEV.md` → *Direct FCM from the bridge*.
+> **Dirección:** el push se envía **solo desde el bridge**, directo a FCM,
+> sobre cualquier transporte (LAN, Tailscale, o relay) usando FCM HTTP v1
+> (lazy `firebase-admin` con un service account local). El relay no tiene
+> push: nunca recibe el token push del teléfono ni el título/cuerpo de una
+> notificación. Sin service account el push en background queda apagado
+> (`notifications/register` → `registered: false`); las notificaciones
+> locales en foreground siguen funcionando. Ver `02a-system-architecture.md`
+> §5.10.2 y `bridge/FOR-DEV.md` → *Direct FCM push from the bridge*.
 
 ```
 [PC] Agente completa un turno largo
@@ -360,8 +362,7 @@ Si el agente solicita aprobación:
   { notification: { title: "Tarea completada", body: "..." },
     data: { threadId, turnId, ... },
     android: { priority: "high" }, apns: { headers: { "apns-priority": "10" } } }
-   (fallback) [Bridge → Relay] POST /push/notify (solo si no hay credencial
-   FCM local o relayEnabled = true)
+   (sin service account: no hay push en background; nada se envía al relay)
 
 [Móvil] Recibe push (background o foreground)
 [App] HandleIncomingPush:

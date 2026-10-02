@@ -1,10 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.7
+> **Version:** 1.5.8
 > **Fecha:** 2026-10-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.8):** background push is delivered **only by the
+> bridge, straight to FCM** (§5.10.2). The relay push fallback is gone: the
+> relay has no `/push/*` endpoints, no token store and no state on disk, so it
+> never sees a phone's push token or a notification's title and body. Without a
+> Firebase service account on the PC, background push is off
+> (`notifications/register` → `registered: false`) and the phone's foreground
+> notifications keep working. The phone no longer reserves a
+> `notificationSecret` secure-storage key (§5.3.3).
 
 > **Executive summary (1.5.7):** Claude Code's background work is waited for
 > across **every** wake-up, not just the first: the bridge keeps the CLI's input
@@ -173,7 +182,7 @@
 |---|---|---|
 | **App movil Uxnan** | Flutter / Dart | Cliente movil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Agente de control local en la PC |
-| **Uxnan Relay** | Node.js HTTP/WS | Relay de transporte E2EE + push |
+| **Uxnan Relay** | Node.js HTTP/WS | Relay de transporte E2EE (opcional, sin estado, sin push) |
 | **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, etc.) |
 
 ---
@@ -332,7 +341,7 @@ interface IAgentAdapter {
   resolveProject(cwd: string): Promise<Project>;
 
   // Notificaciones (gestiona el bridge, no el adaptador)
-  registerPushToken(token: string, secret: string): Promise<void>;
+  registerPushToken(token: string, platform: 'ios' | 'android'): Promise<void>;
   notifyCompletion(threadId: string, turnId: string): Promise<void>;
 }
 
@@ -926,7 +935,6 @@ class SecureStore {
   static const phonePrivateKey = 'uxnan.phone.private_key';
   static const phonePublicKey = 'uxnan.phone.public_key';
   static const sessionDerivedKey = 'uxnan.session.derived_key';
-  static const notificationSecret = 'uxnan.push.notification_secret';
 }
 ```
 
@@ -1939,8 +1947,9 @@ bridge/
 > Nota histórica: el draft original listaba módulos `.js` sueltos (p.ej.
 > `secure-transport.js`, `agent-transport.js`, `voice-handler.js`,
 > `push-notification-completion-dedupe.js`). No existen como tales: la función de
-> voz nunca se implementó (no está en el registry), el dedupe de push vive en
-> `relay/src/push.ts`, y el transporte está en `src/transport/`.
+> voz nunca se implementó (no está en el registry), no hay un dedupe de push
+> aparte (el bridge envía un solo push por turn-end, directo a FCM), y el
+> transporte está en `src/transport/`.
 
 #### 5.8.3 Estado persistido del bridge
 
@@ -3526,17 +3535,17 @@ class RequestCorrelator {
 
 ### 5.10 Relay y notificaciones push
 
-> **Cambio de dirección (2026-06-12):** el relay es ahora **opcional y
-> self-hosted**. La ruta primaria del producto es LAN-direct / Tailscale-direct
-> (ver §2). Las notificaciones push se entregan **directamente desde el bridge**
-> sobre cualquier transporte (LAN, Tailscale, o relay) — no requieren relay.
-> El relay conserva los endpoints `/push/*` como fallback opcional para setups
-> con relay hospedado. Ver `relay/FOR-DEV.md` y `bridge/FOR-DEV.md` →
-> *Direct FCM from the bridge*.
+> **Dirección:** el relay es **opcional y self-hosted**. La ruta primaria del
+> producto es LAN-direct / Tailscale-direct (ver §2). Las notificaciones push
+> las entrega **solo el bridge, directo a FCM**, sobre cualquier transporte
+> (LAN, Tailscale, o relay). El relay **no tiene push**: el fallback
+> `/push/register` + `/push/notify` se eliminó porque le mostraba al relay el
+> token push del telefono y el titulo/cuerpo de cada notificacion en claro. Ver
+> `relay/FOR-DEV.md` y `bridge/FOR-DEV.md` → *Direct FCM push from the bridge*.
 
 El relay, cuando se despliega, es un servidor Node.js independiente del
-bridge. Su unico rol es retransmitir envelopes E2EE opacos y (opcionalmente)
-gestionar push notifications.
+bridge. Su unico rol es retransmitir envelopes E2EE opacos. No tiene estado
+en disco: no escribe ningun fichero.
 
 #### 5.10.1 Arquitectura del relay
 
@@ -3544,8 +3553,7 @@ gestionar push notifications.
 Relay Server (opcional / self-hosted)
 ├── HTTP Server (http nativo)
 │   ├── GET  /health                        → health check
-│   ├── POST /push/register                 → registra token push (fallback)
-│   └── POST /push/notify                   → envia notificacion (fallback)
+│   └── cualquier otra peticion HTTP        → 426 Upgrade Required
 ├── WebSocket Server (noServer mode)
 │   ├── Upgrade HTTP → WS con rate limiting por IP
 │   │   ├── Rate limits: HTTP 120/min, upgrade 60/min
@@ -3559,14 +3567,8 @@ Relay Server (opcional / self-hosted)
 │       │   Headers: x-role, x-session-id
 │       └── Rol "iphone" (app movil)
 │           Headers: x-role, x-session-id
-├── Push Service (fallback; ruta primaria es bridge-direct)
-│   ├── Registro de device token por sesion (persistido a relay-state.json)
-│   ├── Envio via FCM HTTP v1 (Android directo + iOS via APNs-uploaded-to-FCM)
-│   ├── Deduplicacion por (sessionId,turnId) + TTL 7d, cap 10k
-│   └── Persistencia atomic temp+rename; restaurado al arranque via load()
-└── FCM Client (firebase-admin, optionalDependency)
-    Carga perezosa cuando UXNAN_FCM_SERVICE_ACCOUNT esta definido.
-    (No existe emisor APNs-directo: la decision es FCM-for-both.)
+└── Sin push y sin estado en disco: ni tokens, ni secretos, ni credencial
+    Firebase. El push lo entrega el bridge (§5.10.2).
 ```
 
 **Routing de sesiones y reconexion.** Cada `sessionId` empareja un socket `mac`
@@ -3596,47 +3598,35 @@ suficiente. Sin el, un relay que rebota empuja al bridge a un bucle de reconexio
 sin pausa. La supersession descrita arriba cierra un socket que normalmente vivio
 mucho mas de 3 s, asi que el teardown sigue re-armando de inmediato.
 
-#### 5.10.2 Flujo de push notification (RUTA PRIMARIA: bridge-direct)
+#### 5.10.2 Flujo de push notification (solo bridge → FCM)
 
 ```
-1. Agente completa un turno en la PC
-2. Bridge detecta el evento de completado (AgentManager.onTurnEnd)
-3. Bridge consulta el PushService para resolver el device token FCM real
-   del telefono (persistido en ~/.uxnan/push-state.json, por sessionId)
-4. Bridge → Firebase (FCM HTTP v1) DIRECTO usando el service account local
+1. El telefono registra su token FCM/APNs con el bridge por la sesion E2EE
+   (`notifications/register` { pushToken, platform, preferences? }). El bridge
+   lo guarda en ~/.uxnan/push-state.json (por sessionId) y no lo envia a
+   ningun otro sitio que no sea FCM.
+2. Agente completa un turno en la PC
+3. Bridge detecta el evento de completado (AgentManager.onTurnEnd)
+4. PushService resuelve el token y la plataforma de cada telefono registrado
+5. Bridge → Firebase (FCM HTTP v1) DIRECTO usando el service account local
    Body: { notification: { title, body }, data: { threadId, turnId, ... },
            android: { priority: 'high' }, apns: { headers: { 'apns-priority': '10' } } }
-5. App movil recibe push → navega al thread correspondiente
-6. Foreground suppression: la UI suprime la notificacion si la conversacion
+6. App movil recibe push → navega al thread correspondiente
+7. Foreground suppression: la UI suprime la notificacion si la conversacion
    esta en pantalla (`foregroundThreadProvider`)
 
-Nota: este flujo no requiere relay. El service account FCM vive en
-`~/.uxnan/firebase-service-account.json` (FOR-HUMAN) en la PC; el bridge
-lazy-loads `firebase-admin`. `UXNAN_FCM_SERVICE_ACCOUNT` puede override el path.
+Nota: es la unica ruta de push, y funciona sobre cualquier transporte. El
+service account FCM vive en `~/.uxnan/firebase-service-account.json`
+(FOR-HUMAN) en la PC; `UXNAN_FCM_SERVICE_ACCOUNT` puede override el path; el
+bridge lazy-loads `firebase-admin`. Sin service account (o si `firebase-admin`
+no inicializa) no hay push en background: `notifications/register` responde
+`registered: false` y el bridge registra
+`push: no Firebase service account at <path> — background push disabled`. Las
+notificaciones locales en foreground del telefono siguen funcionando. El relay
+no participa: nunca recibe el token ni el texto de la notificacion.
 ```
 
-#### 5.10.3 Flujo de push notification (FALLBACK: via relay, opcional)
-
-```
-1. Agente completa un turno en la PC
-2. Bridge detecta el evento de completado
-3. Bridge verifica push-notification-tracker: notificar?
-4. Bridge verifica push-notification-completion-dedupe: ya enviado?
-5. Bridge → Relay: POST /push/notify
-   Body: { sessionId, notificationSecret, threadId, turnId, title, body }
-6. Relay valida notificationSecret contra sesion autenticada del mac
-7. Relay construye payload APNs/FCM:
-   { aps: { alert: { title, body }, sound: "default" },
-     data: { threadId, turnId } }
-8. Relay envia a APNs (iOS) o FCM (Android)
-9. App movil recibe push → navega al thread correspondiente
-```
-
-Este path se usa solo cuando (a) el bridge no tiene credencial FCM local, o
-(b) `relayEnabled` es true. La deduplicacion por `(sessionId, turnId)` evita
-doble entrega si ambos paths estan activos.
-
-#### 5.10.4 Push en Android y iOS (plataformas)
+#### 5.10.3 Push en Android y iOS (plataformas)
 
 ```dart
 // lib/infrastructure/platform/push_notification_adapter.dart
@@ -3664,29 +3654,6 @@ class PushNotificationAdapter {
     });
     // Background manejado por FirebaseMessaging.onBackgroundMessage (top-level function)
   }
-}
-```
-
-#### 5.10.5 Deduplicacion de notificaciones (solo en el path via relay)
-
-```javascript
-// relay/src/push.ts (PushRegistry)
-// Evita duplicados cuando el relay reconecta o reemite eventos.
-// NOTA: en la ruta primaria (bridge-direct) la deduplicacion ocurre a nivel
-// del bridge (un solo push por turn-end), por lo que este codigo solo aplica
-// al fallback via relay.
-
-const MAX_DEDUPE_KEYS = 10_000;
-const DEDUPE_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 7 dias
-
-function isDuplicate(sessionId, turnId) {
-  const key = `${sessionId}:${turnId}`;
-  if (deliveredDedupeKeys.has(key)) return true;
-  deliveredDedupeKeys.add(key);
-  // IMPLEMENTADO: la ventana de dedupe + el registro de tokens se persisten de
-  // forma atomica (temp+rename) a ~/.uxnan/relay-state.json y se recargan al
-  // arranque via PushRegistry.load(). TTL 7d + cap 10k aplicados en memoria.
-  return false;
 }
 ```
 

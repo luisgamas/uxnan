@@ -1,8 +1,13 @@
 # Uxnan — Guia de Implementacion
 
-> **Version:** 1.0.2
-> **Fecha:** 2026-08-02
+> **Version:** 1.0.3
+> **Fecha:** 2026-10-02
 > **Estado:** En desarrollo
+> **Executive summary (1.0.3):** the push sequence (Appendix B) now shows the
+> only path that exists: the phone registers its token with the bridge over the
+> E2EE session and the bridge sends straight to FCM. The relay has no push and
+> never sees the token, so the handshake diagram no longer shows an
+> `x-notification-secret` header.
 > **Executive summary (1.0.2):** the platform setup now matches the implemented
 > `_uxnan._tcp` DNS-SD discovery path, including Android's multicast permission
 > and iOS Bonjour declaration. Discovery only fills a host and never authorizes
@@ -3464,7 +3469,6 @@ dart run import_sorter:main
      |                       |    x-role: mac            |
      |                       |    x-session-id: UUID     |
      |                       |    x-mac-device-id: ...   |
-     |                       |    x-notification-secret  |
      |                       |                          |
      | <- relay connected ---|                          |
      |                       |                          |
@@ -3503,35 +3507,32 @@ dart run import_sorter:main
 ### Apendice B — Sequence diagram: notificacion push completa
 
 ```
- Bridge Daemon           Relay Server         APNs/FCM         iPhone App
-     |                       |                   |                 |
-     |  turn completed       |                   |                 |
-     |  (agente termina)     |                   |                 |
-     |                       |                   |                 |
-     |  check push-tracker   |                   |                 |
-     |  check dedupe keys    |                   |                 |
-     |  -> not duplicate     |                   |                 |
-     |                       |                   |                 |
-     |-- POST /push/notify ->|                   |                 |
-     |  {sessionId,          |                   |                 |
-     |   notificationSecret, |                   |                 |
-     |   threadId, turnId,   |                   |                 |
-     |   title, body}        |                   |                 |
-     |                       |                   |                 |
-     |                  valida secret            |                 |
-     |                  no duplicado             |                 |
-     |                  busca token push         |                 |
-     |                       |                   |                 |
-     |                       |-- push payload -->|                 |
-     |                       |  iOS: APNs HTTP/2 |                 |
-     |                       |  Android: FCM     |                 |
-     |                       |                   |                 |
-     |                       |                   |-- push -------->|
-     |                       |                   |                 |
-     |                       |                   |          handle push
-     |                       |                   |          navega a thread
-     |                       |                   |          conecta si offline
-     |                       |                   |                 |
+ iPhone App              Bridge Daemon (PC)        FCM (APNs via FCM)
+     |                          |                          |
+     |-- [E2EE] notifications/  |                          |
+     |   register {pushToken,   |                          |
+     |   platform, preferences} |                          |
+     |                          |  guarda token en         |
+     |                          |  push-state.json         |
+     |<- [E2EE] {registered} ---|  (false sin service      |
+     |                          |   account Firebase)      |
+     |                          |                          |
+     |                          |  turn completed          |
+     |                          |  (agente termina)        |
+     |                          |  check preferencias      |
+     |                          |                          |
+     |                          |-- FCM HTTP v1 ---------->|
+     |                          |  {token, title, body,    |
+     |                          |   data: threadId,turnId} |
+     |                          |                          |
+     |<----------------------------------------- push -----|
+     |                          |                          |
+  handle push                   |                          |
+  navega a thread               |                          |
+  conecta si offline            |                          |
+     |                          |                          |
+
+El relay no participa: nunca ve el token push ni el texto de la notificacion.
 ```
 
 ### Apendice C — Formato del envelope E2EE

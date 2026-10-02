@@ -26,9 +26,6 @@ abstract class SecureStore {
 
   /// Storage key for the phone's stable device id.
   static const String phoneDeviceId = 'uxnan.phone.device_id';
-
-  /// Storage key for the push notification secret.
-  static const String notificationSecret = 'uxnan.push.notification_secret';
 }
 
 /// [SecureStore] backed by `flutter_secure_storage`.

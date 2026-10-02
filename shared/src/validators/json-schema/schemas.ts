@@ -77,18 +77,3 @@ export const pairingPayloadSchema: SchemaObject = {
   },
   additionalProperties: false,
 };
-
-export const pushPayloadSchema: SchemaObject = {
-  $id: 'uxnan:push-payload',
-  type: 'object',
-  required: ['sessionId', 'notificationSecret', 'threadId', 'turnId', 'title', 'body'],
-  properties: {
-    sessionId: { type: 'string', minLength: 1 },
-    notificationSecret: { type: 'string', minLength: 1 },
-    threadId: { type: 'string', minLength: 1 },
-    turnId: { type: 'string', minLength: 1 },
-    title: { type: 'string' },
-    body: { type: 'string' },
-  },
-  additionalProperties: false,
-};

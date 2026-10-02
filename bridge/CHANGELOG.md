@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+
+- **The phone's push token no longer reaches the relay.** A bridge without a
+  Firebase service account — or with the relay enabled — sent the token to the
+  relay (`POST /push/register`, at the default relay URL `wss://relay.uxnan.io`
+  even when the relay was off) and asked it to deliver each notification
+  (`POST /push/notify`), so the relay saw the token and every notification's
+  title and body in plaintext. The bridge now sends the token nowhere but FCM.
+
+### Removed
+
+- **The relay push fallback.** Background push is delivered only by the bridge,
+  straight to FCM (`createBridgePushSender` → `PushService`), on any transport.
+  Without a Firebase service account (`UXNAN_FCM_SERVICE_ACCOUNT` or
+  `~/.uxnan/firebase-service-account.json`) background push is off:
+  `notifications/register` answers `registered: false`, the log says
+  `push: no Firebase service account at <path> — background push disabled`, and
+  the phone's foreground notifications keep working. `PushService` no longer
+  takes `relayUrl` / `fetchFn`, registrations no longer keep a
+  `notificationSecret`, and `push-state.json` entries without a push token are
+  dropped when the bridge loads them.
+
 ## [0.0.43-alpha.20261002] - 20261002
 ### Fixed
 

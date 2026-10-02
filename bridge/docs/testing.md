@@ -162,6 +162,7 @@ from the chosen ref instead of a published one. The scripts are in
 
 The push path is implemented but gated on Firebase/APNs creds. Test the logic
 without devices: bridge `test/push/push-service.test.ts` (register + turn-end notify
-+ gating); relay side + live smoke in
-[`../../relay/docs/testing.md`](../../relay/docs/testing.md). Real delivery needs the
-user's Firebase project — setup in `relay/FOR-HUMAN.md` and `uxnanmobile/FOR-HUMAN.md`.
++ gating, with a fake FCM sender). The relay carries no push, so there is no relay
+side to test. Real delivery needs the user's Firebase project — setup in
+[`push-notifications.md`](./push-notifications.md), `bridge/FOR-HUMAN.md` and
+`uxnanmobile/FOR-HUMAN.md`.

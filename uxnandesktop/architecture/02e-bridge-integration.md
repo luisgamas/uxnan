@@ -1,8 +1,13 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.3.0
-> **Fecha:** 2026-09-26
+> **Version:** 1.3.1
+> **Fecha:** 2026-10-02
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.3.1):** el push en background lo envia solo el bridge,
+> directo a FCM; el relay no tiene push ni estado en disco. Se
+> retiraron de `shared/` los contratos de push del relay (`validatePushPayload`
+> y su schema); queda solo `PushPlatform`.
 
 > **Resumen ejecutivo (1.3.0):** el bridge se actualiza a si mismo (`02a`
 > §5.8.18) y el desktop se lo pide: `bridge/update` desde una fila de la barra
@@ -140,8 +145,7 @@ El bridge mantiene todo su estado en `~/.uxnan/`:
 ├── secure-device-state.json        # Identidad Ed25519 del bridge
 ├── trusted-phones.json             # Telefonos de confianza registrados
 ├── managed-worktrees.json          # Worktrees administrados
-├── push-state.json                 # Estado de push notifications
-├── push-dedupe-keys.json           # Claves de deduplicacion
+├── push-state.json                 # Registros de push (token FCM por telefono; solo se envia a FCM)
 └── logs/
     └── bridge-YYYY-MM-DD.log
 ```
@@ -495,7 +499,7 @@ shared/
 │   │   ├── agent-capabilities.ts       # AgentCapabilities
 │   │   └── agent-config.ts             # AgentConfig por proyecto
 │   ├── notifications/
-│   │   └── push-payload.ts             # Formato de push notifications
+│   │   └── push-payload.ts             # PushPlatform (`notifications/register`)
 │   ├── models/
 │   │   ├── thread.ts                   # Thread, Turn, Message
 │   │   ├── project.ts                  # Project
@@ -507,8 +511,7 @@ shared/
 │       │   ├── jsonrpc-request.schema.json
 │       │   ├── jsonrpc-response.schema.json
 │       │   ├── e2ee-envelope.schema.json
-│       │   ├── pairing-payload.schema.json
-│       │   └── push-payload.schema.json
+│       │   └── pairing-payload.schema.json
 │       └── validate.ts                 # Funciones de validacion en runtime
 └── dist/                               # Compilado, consumido por bridge y relay
 ```
@@ -518,13 +521,13 @@ shared/
 | Componente | Como consume `shared/` |
 |---|---|
 | **Bridge** (Node.js) | Importa directamente como dependencia npm local. Usa tipos TypeScript y validadores JSON Schema en runtime. |
-| **Relay** (Node.js) | Importa directamente como dependencia npm local. Valida envelopes E2EE y payloads de push. |
+| **Relay** (Node.js) | Dependencia npm local. Reenvia los envelopes E2EE opacos sin abrirlos ni validarlos, y no tiene push (el bridge lo envia directo a FCM), asi que hoy no usa ningun validador de `shared/`. |
 | **Mobile** (Flutter/Dart) | No importa directamente. Las definiciones Dart en `lib/domain/entities/` son el equivalente manual en Dart de los tipos de `shared/`. Se mantienen sincronizadas manualmente. |
 | **Desktop** (Rust/Tauri) | No importa directamente los tipos TypeScript. El backend Rust define sus propios structs equivalentes (con Serde) para deserializar los mensajes del bridge. El frontend Svelte puede importar los tipos TypeScript para type-safety. |
 
 ### 4.3 Validacion en runtime
 
-El directorio `shared/src/validators/` exporta funciones de validacion que el bridge y el relay usan para verificar la integridad de los mensajes:
+El directorio `shared/src/validators/` exporta funciones de validacion que el bridge usa para verificar la integridad de los mensajes:
 
 ```typescript
 // shared/src/validators/validate.ts
@@ -535,8 +538,7 @@ const ajv = new Ajv();
 export function validateJsonRpcRequest(data: unknown): ValidationResult { ... }
 export function validateJsonRpcResponse(data: unknown): ValidationResult { ... }
 export function validateE2EEnvelope(data: unknown): ValidationResult { ... }
-export function validatePairingPayload(data: unknown): ValidationResult { ... }
-export function validatePushPayload(data: unknown): ValidationResult { ... }
+export function validatePairingPayloadSchema(data: unknown): ValidationResult { ... }
 ```
 
 Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: ValidationError[] }`. Los schemas JSON se compilan una sola vez al importar el modulo.

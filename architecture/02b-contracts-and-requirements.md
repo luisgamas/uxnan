@@ -1,6 +1,14 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.6 | **Fecha:** 2026-10-01 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.7 | **Fecha:** 2026-10-02 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.1.7):** the relay push contracts are gone —
+> `PushNotifyRequest`, `PushRegisterRequest`, `PushRegisterResult`,
+> `validatePushPayload` / `pushPayloadSchema` — together with the relay's
+> `/push/*` endpoints and the phone's `notificationSecret`. Background push is
+> sent only by the bridge, straight to FCM; the push token never reaches the
+> relay. `notifications/register` is unchanged (`PushPlatform` stays in
+> `shared/`).
 >
 > **Executive summary (1.1.6):** `queue/sendNow` while a turn runs now stops
 > that turn and runs the chosen message next, on every agent (it used to be
@@ -636,7 +644,7 @@ interface PairingPayload {
 **LAN discovery is intentionally outside `PairingPayload` and JSON-RPC.** The
 bridge advertises `_uxnan._tcp.local` over link-local mDNS with PTR/SRV/TXT/A
 records. TXT may contain only `v`, `id`, `port` and `addr`; it MUST NOT contain
-the pairing code, identity private key, notification secret or any credential.
+the pairing code, identity private key, push token or any credential.
 The records are unauthenticated and MUST be treated as host suggestions. The
 client MUST require an explicit selection, send the pairing code to only that
 selected/typed host, validate the returned `PairingPayload`, and complete the
@@ -1052,7 +1060,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 ### 3.7 Privacidad
 
 - Ningun dato del usuario (codigo, conversaciones, proyectos) pasa por servidores de Uxnan.
-- El relay solo ve sessionId, tamano de mensaje, timestamps y tokens push cifrados.
+- El relay solo ve sessionId, tamano de mensaje y timestamps; nunca ve tokens push ni el texto de una notificacion (el push lo envia el bridge directo a FCM).
 - Declaracion de privacidad en la app explica el flujo de datos.
 - No hay analytics, telemetria ni tracking de comportamiento por defecto.
 
@@ -1201,7 +1209,6 @@ cambia, por lo que interopera byte a byte con el bridge.
 | `phoneDeviceId` | `flutter_secure_storage` |
 | `derivedKey` (sesion actual) | Solo en memoria (`SecureSession`), se deriva en cada handshake |
 | `macIdentityPublicKey` (por device) | SQLite cifrado (drift) + `flutter_secure_storage` como backup |
-| `notificationSecret` | `flutter_secure_storage` |
 | Claves privadas SSH | `flutter_secure_storage` |
 
 ### 5.3 Threat model
@@ -1214,7 +1221,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | Replay de mensajes | `seq` monotonico por lado (mensajes con seq <= lastApplied son rechazados) **y** `sessionId`/`seq`/direccion ligados como AAD de AES-GCM: alterar `seq` rompe el tag en vez de pasar un chequeo no autenticado. `lastApplied` solo avanza tras un descifrado exitoso |
 | Reflexion de un frame a su propio emisor | La AAD liga un byte de direccion (`0x01` telefono->bridge, `0x02` bridge->telefono); la clave de sesion es compartida por ambos sentidos, asi que sin esto un envelope capturado podia reinyectarse como trafico entrante legitimo |
 | Version de protocolo incompatible | `SECURE_PROTOCOL_VERSION` se valida en `clientHello`/`serverHello` y ambos lados rechazan el desajuste; sin eso el gap se manifestaba como "conectado pero nada funciona" (cada frame falla su tag en silencio) |
-| Token push exfiltrado | `notificationSecret` validado en cada push; el relay no asocia token con contenido |
+| Token push exfiltrado | El token se queda en el bridge (`~/.uxnan/push-state.json`) y solo se envia a FCM; el relay no tiene push y nunca lo recibe |
 | App comprometida extrae claves | Las claves estan en Keychain/Keystore — no accesibles por codigo fuera de la app |
 | Clock manipulation | Tolerancia explicita de 60/90 segundos; expiracion de QR en Unix ms |
 
@@ -1235,7 +1242,6 @@ Nivel 2: flutter_secure_storage (Keychain / Keystore — durabilidad maxima)
 ├── PhoneIdentityPrivateKey
 ├── PhoneIdentityPublicKey
 ├── PhoneDeviceId
-├── NotificationSecret
 ├── TrustedDevice.macIdentityPublicKey (por device)
 └── SshPrivateKeys
 

@@ -525,7 +525,7 @@ has bitten us, and where it lives:
 #### Cross-monorepo functionality (read this twice)
 
 Many features span monorepos — a bridge method the phone renders, an E2EE step
-both sides implement, push in the bridge with a relay fallback. When you change
+both sides implement, push sent by the bridge and shown by the phone. When you change
 one side of a shared feature:
 
 - update **`shared/`** (the contract source of truth) **and** the cross-component

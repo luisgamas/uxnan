@@ -9,16 +9,16 @@
 A small, stateless WebSocket relay that forwards **opaque E2EE envelopes** between
 the [Uxnan](../README.md) mobile app and the [bridge](../bridge/README.md) when
 the two aren't on the same network. It only ever sees encrypted frames — never
-plaintext, keys, code, or diffs. The envelope-forwarding path is stateless; the
-**optional** push fallback persists a small token/dedupe file
-(`~/.uxnan/relay-state.json`). Only the phone uses it: Uxnan Desktop talks to
-the bridge on the same machine over the bridge's local control channel.
+plaintext, keys, code, or diffs — and it writes nothing to disk. Only the phone
+uses it: Uxnan Desktop talks to the bridge on the same machine over the bridge's
+local control channel.
 
 > **Status:** alpha-functional — and **optional / self-hosted**. The product is
 > bridge-first (LAN-direct and Tailscale-direct need zero hosting and zero
 > credentials); the relay is just the hosted off-LAN fallback for people who want
-> to run their own. Push notifications are sent **by the bridge directly** now —
-> the relay's `/push/*` endpoints stay only as a fallback. What's built and
+> to run their own. The relay carries **no push traffic**: background push is
+> sent by the bridge straight to FCM, so the phone's push token never reaches the
+> relay. What's built and
 > what's left is in [`FOR-DEV.md`](FOR-DEV.md); history in
 > [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -82,8 +82,8 @@ forwards every frame from one to the other unchanged. `GET /health` returns
 See [`docs/`](docs/): [deployment & hosting](docs/deploy.md) (LAN-only vs
 Cloudflare Tunnel / Fly.io / Workers) · [testing](docs/testing.md).
 
-Push notifications are **bridge-first** now (the relay is only an optional
-delivery fallback) — see
+Push notifications are delivered by the bridge alone, straight to FCM — the
+relay has no push endpoints. See
 [`bridge/docs/push-notifications.md`](../bridge/docs/push-notifications.md).
 
 ## Develop
@@ -93,7 +93,8 @@ delivery fallback) — see
 npm run build && npm test
 ```
 
-Requires Node ≥ 18. ESM-only. The relay consumes
-[`@uxnan/shared`](../shared/README.md) for the JSON-RPC envelope types; the
-bridge-side `relay-e2e.test.ts` exercises the full end-to-end (relay + bridge + a
-fake phone over a real WebSocket).
+Requires Node ≥ 18. ESM-only. The relay depends on
+[`@uxnan/shared`](../shared/README.md) but never opens a frame, so it validates
+nothing against it; the bridge-side
+`relay-e2e.test.ts` exercises the full end-to-end (relay + bridge + a fake phone
+over a real WebSocket).

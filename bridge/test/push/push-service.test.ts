@@ -14,18 +14,13 @@ import {
 import type { PushPlatform } from '@uxnan/shared';
 import { rmrf } from '../helpers/fs.js';
 
-interface Call {
-  url: string;
-  body: Record<string, unknown>;
-}
-
 interface SentPush {
   token: string;
   platform: PushPlatform;
   payload: PushPayload;
 }
 
-/** A fake direct-FCM sender that records every delivery. */
+/** A fake FCM sender that records every delivery. */
 function fakeSender(sent: SentPush[]): PushSender {
   return {
     send(token, platform, payload) {
@@ -35,40 +30,15 @@ function fakeSender(sent: SentPush[]): PushSender {
   };
 }
 
-function fakeFetch(calls: Call[], registerSecret = 'sec-1') {
-  return (url: string, init: { body: string }) => {
-    const body = JSON.parse(init.body) as Record<string, unknown>;
-    calls.push({ url, body });
-    if (url.endsWith('/push/register')) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ registered: true, notificationSecret: registerSecret }),
-      });
-    }
-    return Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({ delivered: true }),
-    });
-  };
-}
-
 interface ServiceOpts {
   state?: DaemonState;
   sender?: PushSender;
-  relayEnabled?: boolean;
 }
 
-function service(calls: Call[], opts: ServiceOpts = {}) {
-  const config = opts.relayEnabled
-    ? { ...DEFAULT_DAEMON_CONFIG, relayEnabled: true }
-    : DEFAULT_DAEMON_CONFIG;
+function service(opts: ServiceOpts = {}) {
   return new PushService({
-    relayUrl: 'wss://relay.example/ws',
-    config,
+    config: DEFAULT_DAEMON_CONFIG,
     logger: createLogger('test', 'error'),
-    fetchFn: fakeFetch(calls) as never,
     ...(opts.state ? { state: opts.state } : {}),
     ...(opts.sender ? { pushSender: opts.sender } : {}),
   });
@@ -90,74 +60,124 @@ function reg(
   });
 }
 
-test('register forwards the token to the relay over http(s)', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
-  const res = await reg(svc, 'ses_1', 'tok', 'android');
+/** onTurnEnd is fire-and-forget; let its microtasks flush. */
+const flush = () => new Promise((r) => setTimeout(r, 10));
+
+/**
+ * Run `body` with `globalThis.fetch` replaced by a recorder, so a test can prove
+ * the push service never sends the phone's token anywhere but the FCM sender.
+ */
+async function withFetchSpy(body: (urls: string[]) => Promise<void>): Promise<void> {
+  const original = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = ((input: unknown) => {
+    urls.push(String(input));
+    return Promise.reject(new Error('unexpected network call'));
+  }) as typeof fetch;
+  try {
+    await body(urls);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('register stores the token and reports delivery when an FCM sender exists', async () => {
+  const svc = service({ sender: fakeSender([]) });
+  const res = await reg(svc, 'ses_1', 'fcm-tok', 'android');
   assert.equal(res.registered, true);
-  assert.equal(calls[0]?.url, 'https://relay.example/push/register');
-  assert.deepEqual(calls[0]?.body, { sessionId: 'ses_1', pushToken: 'tok', platform: 'android' });
+  assert.equal(svc.directPushAvailable, true);
 });
 
-test('onTurnEnd pushes a completed notification once registered', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
-  await reg(svc, 'ses_1', 'tok', 'android');
+test('register without an FCM sender reports no delivery path', async () => {
+  const svc = service();
+  const res = await reg(svc, 'ses_1', 'fcm-tok', 'android');
+  assert.equal(res.registered, false);
+  assert.equal(svc.directPushAvailable, false);
+});
+
+test('the phone token never leaves the bridge: no network call on register or turn end', async () => {
+  await withFetchSpy(async (urls) => {
+    // With no FCM credential (the case that used to fall back to a relay) …
+    const bare = service();
+    await reg(bare, 'ses_1', 'fcm-tok', 'android');
+    bare.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+    // … and with one, where delivery goes through the injected sender only.
+    const withSender = service({ sender: fakeSender([]) });
+    await reg(withSender, 'ses_2', 'fcm-tok-2', 'ios');
+    withSender.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+    await flush();
+    assert.deepEqual(urls, []);
+  });
+});
+
+test('onTurnEnd delivers a completed notification via FCM', async () => {
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
+  await reg(svc, 'ses_1', 'fcm-tok', 'android');
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'all done' });
-  // onTurnEnd is fire-and-forget; let the microtask flush.
-  await new Promise((r) => setTimeout(r, 10));
+  await flush();
 
-  const notify = calls.find((c) => c.url.endsWith('/push/notify'));
-  assert.ok(notify, 'expected a /push/notify call');
-  assert.equal(notify?.body['sessionId'], 'ses_1');
-  assert.equal(notify?.body['notificationSecret'], 'sec-1');
-  assert.equal(notify?.body['title'], 'Turn completed');
-  assert.equal(notify?.body['body'], 'all done');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.token, 'fcm-tok');
+  assert.equal(sent[0]?.platform, 'android');
+  assert.equal(sent[0]?.payload.title, 'Turn completed');
+  assert.equal(sent[0]?.payload.body, 'all done');
+  assert.deepEqual(sent[0]?.payload.data, { threadId: 'th', turnId: 'tn' });
+});
+
+test('onTurnEnd delivers an error notification via FCM', async () => {
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
+  await reg(svc, 'ses_1', 'fcm-tok', 'ios');
+
+  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'error', text: 'boom' });
+  await flush();
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.payload.title, 'Turn failed');
+  assert.equal(sent[0]?.payload.body, 'boom');
 });
 
 test('onTurnEnd does nothing without a registration', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'x' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(calls.length, 0);
+  await flush();
+  assert.equal(sent.length, 0);
 });
 
 test('onTurnEnd pushes to every registered session (multi-device)', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
   await reg(svc, 'ses_1', 'tok-1', 'android');
   await reg(svc, 'ses_2', 'tok-2', 'ios');
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-  await new Promise((r) => setTimeout(r, 10));
+  await flush();
 
-  const notified = calls
-    .filter((c) => c.url.endsWith('/push/notify'))
-    .map((c) => c.body['sessionId']);
-  assert.deepEqual(notified.sort(), ['ses_1', 'ses_2']);
+  assert.deepEqual(sent.map((s) => s.token).sort(), ['tok-1', 'tok-2']);
 });
 
 test('unregister(sessionId) removes only that session', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
   await reg(svc, 'ses_1', 'tok-1', 'android');
   await reg(svc, 'ses_2', 'tok-2', 'ios');
 
   svc.unregister('ses_2');
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-  await new Promise((r) => setTimeout(r, 10));
+  await flush();
 
-  const notified = calls
-    .filter((c) => c.url.endsWith('/push/notify'))
-    .map((c) => c.body['sessionId']);
-  assert.deepEqual(notified, ['ses_1']);
+  assert.deepEqual(
+    sent.map((s) => s.token),
+    ['tok-1'],
+  );
 });
 
 test('unregisterDevice prunes every registration owned by a removed device', async () => {
-  const calls: Call[] = [];
-  const svc = service(calls);
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
   // Two sessions for the same phone (device-a) + one for another phone (device-b).
   await reg(svc, 'ses_1', 'tok-1', 'android', 'device-a');
   await reg(svc, 'ses_2', 'tok-2', 'android', 'device-a');
@@ -167,87 +187,30 @@ test('unregisterDevice prunes every registration owned by a removed device', asy
   assert.equal(removed, 2);
 
   svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-  await new Promise((r) => setTimeout(r, 10));
-  const notified = calls
-    .filter((c) => c.url.endsWith('/push/notify'))
-    .map((c) => c.body['sessionId']);
-  assert.deepEqual(notified, ['ses_3'], 'only the other device still receives push');
+  await flush();
+  assert.deepEqual(
+    sent.map((s) => s.token),
+    ['tok-3'],
+    'only the other device still receives push',
+  );
 });
 
-test('registrations persist across a restart via push-state.json', async () => {
+test('a registration survives a restart and pushes via FCM after reload', async () => {
   const baseDir = join(tmpdir(), `uxnan-push-${randomUUID()}`);
   const state = new DaemonState(baseDir);
   try {
-    const calls1: Call[] = [];
-    const svc1 = service(calls1, { state });
-    await reg(svc1, 'ses_1', 'tok-1', 'android');
+    const svc1 = service({ state, sender: fakeSender([]) });
+    await reg(svc1, 'ses_1', 'fcm-tok', 'ios');
 
     // A fresh service (simulating a bridge restart) loads the persisted state and
     // can push WITHOUT the phone re-registering.
-    const calls2: Call[] = [];
-    const svc2 = service(calls2, { state });
-    await svc2.load();
-    svc2.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-    await new Promise((r) => setTimeout(r, 10));
-
-    const notify = calls2.find((c) => c.url.endsWith('/push/notify'));
-    assert.ok(notify, 'expected a /push/notify after reload');
-    assert.equal(notify?.body['sessionId'], 'ses_1');
-    assert.equal(notify?.body['notificationSecret'], 'sec-1');
-    assert.equal(
-      calls2.some((c) => c.url.endsWith('/push/register')),
-      false,
-    );
-  } finally {
-    await rmrf(baseDir);
-  }
-});
-
-// --- Direct FCM path (PRIMARY) -------------------------------------------------
-
-test('direct sender: register does NOT touch the relay (relay off, default)', async () => {
-  const calls: Call[] = [];
-  const sent: SentPush[] = [];
-  const svc = service(calls, { sender: fakeSender(sent) });
-  const res = await reg(svc, 'ses_1', 'fcm-tok', 'android');
-  assert.equal(res.registered, true);
-  // No /push/register — direct FCM is the path, relay is disabled by default.
-  assert.equal(calls.length, 0);
-  assert.equal(svc.directPushAvailable, true);
-});
-
-test('direct sender: onTurnEnd delivers via FCM, not the relay', async () => {
-  const calls: Call[] = [];
-  const sent: SentPush[] = [];
-  const svc = service(calls, { sender: fakeSender(sent) });
-  await reg(svc, 'ses_1', 'fcm-tok', 'android');
-
-  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'all done' });
-  await new Promise((r) => setTimeout(r, 10));
-
-  assert.equal(calls.length, 0, 'must not call the relay when delivering directly');
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0]?.token, 'fcm-tok');
-  assert.equal(sent[0]?.platform, 'android');
-  assert.equal(sent[0]?.payload.title, 'Turn completed');
-  assert.equal(sent[0]?.payload.body, 'all done');
-  assert.deepEqual(sent[0]?.payload.data, { threadId: 'th', turnId: 'tn' });
-});
-
-test('direct sender: registration survives a restart and pushes via FCM after reload', async () => {
-  const baseDir = join(tmpdir(), `uxnan-push-${randomUUID()}`);
-  const state = new DaemonState(baseDir);
-  try {
-    const svc1 = service([], { state, sender: fakeSender([]) });
-    await reg(svc1, 'ses_1', 'fcm-tok', 'ios');
-
     const sent: SentPush[] = [];
-    const svc2 = service([], { state, sender: fakeSender(sent) });
+    const svc2 = service({ state, sender: fakeSender(sent) });
     await svc2.load();
     svc2.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-    await new Promise((r) => setTimeout(r, 10));
+    await flush();
 
-    assert.equal(sent.length, 1, 'expected a direct FCM delivery after reload');
+    assert.equal(sent.length, 1, 'expected an FCM delivery after reload');
     assert.equal(sent[0]?.token, 'fcm-tok');
     assert.equal(sent[0]?.platform, 'ios');
   } finally {
@@ -255,23 +218,28 @@ test('direct sender: registration survives a restart and pushes via FCM after re
   }
 });
 
-test('direct sender + relay enabled: registers with relay too, but notifies via FCM', async () => {
-  const calls: Call[] = [];
-  const sent: SentPush[] = [];
-  const svc = service(calls, { sender: fakeSender(sent), relayEnabled: true });
-  await reg(svc, 'ses_1', 'fcm-tok', 'android');
-  // Relay registration still happens (fallback secret kept) when relay is enabled.
-  assert.ok(
-    calls.some((c) => c.url.endsWith('/push/register')),
-    'expected a relay register when relayEnabled',
-  );
-
-  svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
-  await new Promise((r) => setTimeout(r, 10));
-  // Delivery is direct; the relay /push/notify must NOT be used.
-  assert.equal(
-    calls.some((c) => c.url.endsWith('/push/notify')),
-    false,
-  );
-  assert.equal(sent.length, 1);
+test('load drops persisted entries without a device token', async () => {
+  const baseDir = join(tmpdir(), `uxnan-push-${randomUUID()}`);
+  const state = new DaemonState(baseDir);
+  try {
+    // The shape a bridge wrote while it still registered phones with a relay.
+    await state.writeJson('push-state.json', {
+      version: 1,
+      registrations: [
+        {
+          sessionId: 'ses_old',
+          notificationSecret: 'sec',
+          preferences: { turnCompleted: true, turnError: true },
+        },
+      ],
+    });
+    const sent: SentPush[] = [];
+    const svc = service({ state, sender: fakeSender(sent) });
+    await svc.load();
+    svc.onTurnEnd({ threadId: 'th', turnId: 'tn', status: 'completed', text: 'done' });
+    await flush();
+    assert.equal(sent.length, 0);
+  } finally {
+    await rmrf(baseDir);
+  }
 });

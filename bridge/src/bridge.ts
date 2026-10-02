@@ -333,12 +333,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   ];
   const browse = new BrowseService(browseRootsFor(settings.get().home));
   settings.onChange(({ settings: next }) => browse.setRoots(browseRootsFor(next.home)));
-  // Direct FCM is the PRIMARY push path: when a Firebase service account is present
-  // the bridge delivers straight to FCM on any transport (LAN/Tailscale/relay). With
-  // no credential this is null and the bridge uses the relay fallback (FOR-DEV).
+  // The bridge alone delivers background push, straight to FCM, on any transport
+  // (LAN/Tailscale/relay). Without a Firebase service account this is null and
+  // background push is off.
   const pushSender = await createBridgePushSender(logger);
   const pushService = new PushService({
-    relayUrl: config.relayUrl,
     config,
     logger,
     state,

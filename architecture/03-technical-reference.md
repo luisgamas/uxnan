@@ -1,10 +1,15 @@
 # Uxnan — Guia de Referencia Tecnica
 
-> **Version:** 1.0.1
-> **Fecha:** 2026-07-21
+> **Version:** 1.0.2
+> **Fecha:** 2026-10-02
 > **Estado:** Documento activo — se actualiza con cada cambio arquitectonico relevante
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.0.2):** the relay's environment is just
+> `RELAY_PORT`: it has no push and no state on disk, so it reads no Firebase
+> credential. Background push is the bridge's alone, straight to FCM, and the
+> `notificationSecret` glossary entry is gone.
 
 > **Executive summary (1.0.1):** platform discovery references now match the
 > implemented `_uxnan._tcp` service. Android uses NsdManager with a multicast
@@ -279,7 +284,7 @@ perf(ui): virtualize timeline list for 100+ messages
 ci: add iOS release build to GitHub Actions
 build: configure drift code generation in build.yaml
 feat(bridge): add pi-agent adapter
-fix(relay): prevent duplicate push on rapid reconnect
+fix(relay): close the paired socket when a peer is superseded
 ```
 
 #### Breaking changes
@@ -987,20 +992,19 @@ El bridge lee estas variables del entorno del proceso. La app movil **nunca** la
 
 | Variable | Descripcion | Ejemplo |
 |---|---|---|
-| `PORT` | Puerto HTTP/WS del relay | `8787` |
-| `UXNAN_FCM_SERVICE_ACCOUNT` | Ruta al service account de Firebase (opcional; si esta, activa el sender FCM del relay). **Equivalente para el bridge:** `~/.uxnan/firebase-service-account.json` | `/secrets/firebase-sa.json` |
-| `RELAY_LOG` | Nivel de log (`debug` / `info` / `warn` / `error`) | `info` |
+| `RELAY_PORT` | Puerto HTTP/WS del relay (tambien como argumento posicional) | `8787` |
 
-> **APNs** ya no se usa directamente desde el relay: la ruta recomendada
-> es **FCM-for-both** (iOS via FCM gateway). Por eso las variables APNs
-> (`APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_PRIVATE_KEY_PATH` /
-> `APNS_ENVIRONMENT` / `APNS_TOPIC`) **se eliminaron** del relay. Si
-> el Firebase project no tiene un APNs `.p8` key uploaded, el relay
-> solo entrega a Android.
+> El relay **no tiene push ni estado en disco**: no lee credenciales de
+> Firebase/APNs ni escribe ningun fichero. El push lo envia solo el bridge,
+> directo a FCM, con su service account en
+> `~/.uxnan/firebase-service-account.json` (override:
+> `UXNAN_FCM_SERVICE_ACCOUNT` en el entorno del **bridge**). La ruta es
+> **FCM-for-both** (iOS via el gateway de FCM con la APNs `.p8` subida a
+> Firebase).
 >
-> **Multi-sesion / auth-on-forwarding / dedupe-persistence** del relay
-> siguen siendo **opcionales** (solo importan para un relay publico/
-> compartido; ver `relay/FOR-DEV.md`).
+> **Multi-sesion / auth-on-forwarding** del relay siguen siendo
+> **opcionales** (solo importan para un relay publico/compartido; ver
+> `relay/FOR-DEV.md`).
 
 ### 3.6 Secuencia de DI wiring en el primer arranque
 
@@ -1311,7 +1315,6 @@ enum AgentId {
 | **keyEpoch** | Contador de renegociaciones de clave; incrementa si se derivan nuevas claves |
 | **local-first** | Arquitectura donde el estado primario vive en el dispositivo del usuario, no en un servidor central |
 | **MCP** | Model Context Protocol — protocolo estandar para conectar agentes LLM con herramientas externas |
-| **notificationSecret** | Secreto compartido para autorizar `POST /push/notify` al relay (fallback de push) |
 | **outbound buffer** | Buffer circular del bridge (max 500 msgs / 10 MB) para reenvio al reconectar |
 | **pairing** | Proceso de vincular criptograficamente el telefono con un bridge especifico en una PC (QR o codigo manual) |
 | **PairingPayload** | Estructura v2 transportada en el QR (Base64(utf8(JSON))) o devuelta por `GET /pair/resolve?code=`. Campos: `v:2`, `relay?` (opcional), `hosts?: string[]` (LAN + Tailscale), `sessionId`, `macDeviceId`, `macIdentityPublicKey`, `expiresAt`, `displayName` |

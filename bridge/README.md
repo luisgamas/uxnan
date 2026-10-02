@@ -241,9 +241,10 @@ Task-focused guides live in [`docs/`](docs/):
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
   Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to every connected client (phones and desktops).
-- **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
-  directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay
-  `/push/notify` as a fallback.
+- **Push.** `PushService` (persisted by secure-session `sessionId` in
+  `push-state.json`) delivers FCM HTTP v1 directly via `createBridgePushSender`
+  (lazy `firebase-admin`) — the only push path: the token goes nowhere but FCM,
+  and without a Firebase service account background push is off.
 
 The cross-component specification is `architecture/02a-system-architecture.md`
 §5.8 and

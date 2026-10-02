@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Removed
+- **Push, entirely.** The `POST /push/register` and `POST /push/notify`
+  endpoints, `PushRegistry` and the FCM sender (`relay/src/push.ts`), the
+  token/dedupe state file `~/.uxnan/relay-state.json` and its
+  `UXNAN_RELAY_STATE` override, the relay's `UXNAN_FCM_SERVICE_ACCOUNT`, and the
+  optional `firebase-admin` dependency. They let the relay see the phone's push
+  token and every notification's title and body in plaintext; background push
+  is now sent only by the bridge, straight to FCM. The relay is stateless —
+  it writes nothing to disk — and only forwards sealed envelopes; `GET /health`
+  and WebSocket forwarding are unchanged. The suite drops from 30 to 16 tests
+  (`push.test.ts` and `push-persistence.test.ts` deleted).
+
 ## [0.0.2-alpha.20260720] - 2026-07-20
 
 ### Security

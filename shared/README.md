@@ -64,7 +64,7 @@ flowchart TB
 | Agent sessions | `agent/sessions` · `holds` · `hold` · `release` · `requestHandoff` · `handoffAnswer` (`AgentSessionSummary`, `AgentSessionHold`, hand-off outcomes), `stream/agent/held` / `handoffRequested`, `SessionHeld` (`-32010`), `ONE_SHOT_PROMPT_OPENERS` / `isOneShotPrompt` (`src/models/agent-session.ts`, `src/agents/one-shot.ts`, architecture/02a §5.8.19) |
 | Agents | `IAgentAdapter` (with `respondApproval`, `listModels`, `nativeSessionId`, `adoptNativeSession`, `listNativeSessions` → `NativeSessionInfo`, `SendTurnOptions { threadId, turnId, text, service?, effort?, options?, attachments?, cwd?, accessMode? }`), `AgentModel` (incl. `version?`, `isDefault?`, `options?`, `contextWindow?`, `isLatestAlias?`), `AgentCapabilities` (incl. `images`, `approvals`, `reportsContextUsage`, `reportsCompaction`), `AgentDescriptor.deprecated`, `AgentConfig` (cwd, agentId, model, plus optional `binaryPath`/`extraArgs`) |
 | Version | `compareVersions` / `isNewerVersion` — dependency-free SemVer precedence (used by the bridge's npm update check) |
-| Validation | Ajv validators for requests, responses, envelopes, pairing payload, push payloads |
+| Validation | Ajv validators for requests, responses, envelopes, pairing payload |
 
 ## Usage
 

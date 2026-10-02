@@ -3,31 +3,23 @@
  * from the bridge*).
  *
  * The phone registers its FCM/APNs token over the live session
- * (`notifications/register`). The bridge keeps the real token and, when a turn
- * ends with push enabled, delivers a background notification via two paths, in
- * priority order:
+ * (`notifications/register`). The bridge keeps the token and, when a turn ends
+ * with push enabled, delivers a background notification **itself**, straight to
+ * FCM through {@link PushSender}. That works on any transport (LAN, Tailscale or
+ * the relay), and the token never leaves this machine except toward FCM: the
+ * relay carries no push traffic.
  *
- *   1. **Direct FCM (PRIMARY)** — when a Firebase service account is present the
- *      bridge sends straight to FCM via {@link PushSender}. Works on ANY transport
- *      (direct LAN, Tailscale, or relay) — no hosted relay required.
- *   2. **Relay fallback** — with no local credential (or the relay explicitly
- *      enabled), the bridge forwards the token to the relay (`POST /push/register`),
- *      keeps the returned `notificationSecret`, and asks the relay to deliver
- *      (`POST /push/notify`). For setups that keep the credential on a hosted relay.
- *
- * Everything here is GATED: with neither a direct FCM sender nor a reachable relay,
- * background push is a silent no-op (foreground local notifications still work).
- * Without a registered token the bridge simply skips pushing. Direct delivery needs
- * the user's Firebase service account (bridge/FOR-HUMAN.md); the relay path needs it
- * on the relay (relay/FOR-HUMAN.md) — plus a real device to validate either.
+ * Everything here is GATED: without a Firebase service account
+ * (bridge/FOR-HUMAN.md) background push is a silent no-op (foreground local
+ * notifications still work), and without a registered token the bridge simply
+ * skips pushing. Validating delivery needs a real device.
  *
  * Persistence: registrations are keyed by `sessionId` and persisted to
  * `~/.uxnan/push-state.json` (atomic write), so background push survives a
  * bridge restart WITHOUT waiting for the phone to reconnect and re-register. The
- * persisted entry carries the device token + platform (for the direct path) and,
- * when used, the relay `notificationSecret` (for the fallback). Multiple
- * registrations are kept, so several paired phones each receive background push;
- * a turn-end pushes to all of them.
+ * persisted entry carries the device token + platform. Multiple registrations are
+ * kept, so several paired phones each receive background push; a turn-end pushes
+ * to all of them.
  *
  * Note: `register`/`updatePreferences`/`unregister` act on the *active* session
  * (the one whose request is being served). With the MVP default
@@ -53,27 +45,20 @@ export interface TurnEndInfo {
   text?: string;
 }
 
-type FetchFn = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
-) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
-
 interface Registration {
   sessionId: string;
   /** Trusted-device id that owns this registration (for prune-on-untrust). */
   deviceId?: string;
-  /** FCM/APNs device token — used by the direct bridge→FCM path. */
-  pushToken?: string;
-  /** Device platform, for the direct path's per-platform delivery config. */
-  platform?: PushPlatform;
-  /** Relay notify secret — present only when the relay-fallback path is used. */
-  notificationSecret?: string;
+  /** FCM/APNs device token. */
+  pushToken: string;
+  /** Device platform, for FCM's per-platform delivery config. */
+  platform: PushPlatform;
   preferences: NotificationPreferences;
 }
 
 /** Parameters for {@link PushService.register} — identifies the requesting phone. */
 export interface RegisterPushParams {
-  /** Relay session id of the phone making the request (its registration key). */
+  /** Secure-session id of the phone making the request (its registration key). */
   sessionId: string;
   /** Trusted-device id of that phone, when known (enables prune-on-untrust). */
   deviceId?: string;
@@ -91,36 +76,30 @@ interface PersistedPushState {
 const DEFAULT_PREFERENCES: NotificationPreferences = { turnCompleted: true, turnError: true };
 
 export interface PushServiceOptions {
-  relayUrl: string;
   config: DaemonConfig;
   logger: Logger;
-  fetchFn?: FetchFn;
   /** Daemon state for persisting registrations; omitted in unit tests (no-op). */
   state?: DaemonState;
   /**
-   * Direct FCM sender (PRIMARY push path). Present when a Firebase service account
-   * is configured (see {@link createBridgePushSender}); `undefined` → the bridge
-   * uses the relay fallback only. Injected by tests with a fake sender.
+   * FCM sender. Present when a Firebase service account is configured (see
+   * {@link createBridgePushSender}); `undefined` → no background push. Injected by
+   * tests with a fake sender.
    */
   pushSender?: PushSender;
 }
 
 export class PushService {
-  readonly #httpBase: string;
   readonly #config: DaemonConfig;
   readonly #logger: Logger;
-  readonly #fetch: FetchFn;
   readonly #state: DaemonState | undefined;
   readonly #pushSender: PushSender | undefined;
   #activeSessionId: string | undefined;
-  /** Registrations keyed by relay `sessionId` (one per paired phone). */
+  /** Registrations keyed by secure-session `sessionId` (one per paired phone). */
   readonly #registrations = new Map<string, Registration>();
 
   constructor(options: PushServiceOptions) {
-    this.#httpBase = toHttpBase(options.relayUrl);
     this.#config = options.config;
     this.#logger = options.logger;
-    this.#fetch = options.fetchFn ?? (globalThis.fetch as unknown as FetchFn);
     this.#state = options.state;
     this.#pushSender = options.pushSender;
   }
@@ -167,64 +146,29 @@ export class PushService {
   }
 
   /**
-   * Handle `notifications/register` for a SPECIFIC phone session. Always stores the
-   * real device token locally (the direct FCM path needs it); additionally registers
-   * with the relay when the relay is enabled OR there is no direct sender, keeping
-   * the returned secret for the fallback path. Keyed by `sessionId`, so several
-   * concurrent phones each get their own registration. `registered` is true when at
-   * least one delivery path exists.
+   * Handle `notifications/register` for a SPECIFIC phone session. Stores the
+   * device token locally — it is never sent anywhere but FCM. Keyed by
+   * `sessionId`, so several concurrent phones each get their own registration.
+   * `registered` is true when the bridge can actually deliver (an FCM sender is
+   * configured).
    */
   async register(params: RegisterPushParams): Promise<RegisterNotificationsResult> {
     const { sessionId, deviceId, pushToken, platform, preferences } = params;
-    const reg: Registration = {
+    this.#registrations.set(sessionId, {
       sessionId,
       ...(deviceId !== undefined ? { deviceId } : {}),
       pushToken,
       platform,
       preferences: preferences ?? DEFAULT_PREFERENCES,
-    };
-    // Register with the relay only when it's the wanted/only path: the user enabled
-    // it, or there is no direct FCM sender to deliver. Best-effort — a relay that is
-    // down does not fail registration when direct FCM can still deliver.
-    if (this.#config.relayEnabled || !this.#pushSender) {
-      const secret = await this.#registerWithRelay(sessionId, pushToken, platform);
-      if (secret) reg.notificationSecret = secret;
-    }
-    this.#registrations.set(sessionId, reg);
+    });
     await this.#persist();
 
-    const direct = this.#pushSender !== undefined;
-    const viaRelay = reg.notificationSecret !== undefined;
-    if (direct || viaRelay) {
-      this.#logger.info(`push token registered (${direct ? 'direct FCM' : 'relay'})`);
+    if (this.#pushSender) {
+      this.#logger.info('push token registered (direct FCM)');
       return { registered: true };
     }
-    this.#logger.warn('push token stored but no delivery path (no FCM creds, relay unavailable)');
+    this.#logger.warn('push token stored but no delivery path (no FCM credential)');
     return { registered: false };
-  }
-
-  /** Forward a token to the relay; returns the notify secret, or undefined on failure. */
-  async #registerWithRelay(
-    sessionId: string,
-    pushToken: string,
-    platform: PushPlatform,
-  ): Promise<string | undefined> {
-    try {
-      const res = await this.#fetch(`${this.#httpBase}/push/register`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId, pushToken, platform }),
-      });
-      if (!res.ok) {
-        this.#logger.warn(`push register rejected by relay (${res.status})`);
-        return undefined;
-      }
-      const data = (await res.json()) as { notificationSecret?: string };
-      return data.notificationSecret ?? undefined;
-    } catch (err) {
-      this.#logger.warn(`push relay register failed: ${errorMessage(err)}`);
-      return undefined;
-    }
   }
 
   /** Update a specific session's notification preferences. */
@@ -291,35 +235,13 @@ export class PushService {
     title: string,
     body: string,
   ): Promise<void> {
+    if (!this.#pushSender) return;
     const data = { threadId: info.threadId, turnId: info.turnId };
-    // PRIMARY: deliver straight to FCM when a sender + token are available. Works
-    // on any transport; on failure we log rather than retry via the relay (the
-    // direct path has no dedupe, so a fallback could double-deliver).
-    if (this.#pushSender && reg.pushToken && reg.platform) {
-      try {
-        await this.#pushSender.send(reg.pushToken, reg.platform, { title, body, data });
-      } catch (err) {
-        this.#logger.warn(`direct push delivery failed: ${errorMessage(err)}`);
-      }
-      return;
+    try {
+      await this.#pushSender.send(reg.pushToken, reg.platform, { title, body, data });
+    } catch (err) {
+      this.#logger.warn(`push delivery failed: ${errorMessage(err)}`);
     }
-    // FALLBACK: ask the relay to deliver (it holds the token + dedupes by turn).
-    if (reg.notificationSecret) {
-      const res = await this.#fetch(`${this.#httpBase}/push/notify`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: reg.sessionId,
-          notificationSecret: reg.notificationSecret,
-          ...data,
-          title,
-          body,
-        }),
-      });
-      if (!res.ok) this.#logger.warn(`push notify rejected by relay (${res.status})`);
-      return;
-    }
-    this.#logger.warn(`push skipped for ${reg.sessionId}: no delivery path`);
   }
 
   /** Atomically persist the current registrations (best-effort). */
@@ -340,13 +262,10 @@ export class PushService {
 function isRegistration(value: unknown): value is Registration {
   if (!value || typeof value !== 'object') return false;
   const reg = value as Record<string, unknown>;
-  // A usable registration needs at least one delivery path: a device token (direct
-  // FCM) or a relay secret (fallback). Older persisted entries had only the secret.
-  const hasPath =
-    typeof reg['pushToken'] === 'string' || typeof reg['notificationSecret'] === 'string';
   return (
     typeof reg['sessionId'] === 'string' &&
-    hasPath &&
+    typeof reg['pushToken'] === 'string' &&
+    (reg['platform'] === 'ios' || reg['platform'] === 'android') &&
     typeof reg['preferences'] === 'object' &&
     reg['preferences'] !== null
   );
@@ -364,18 +283,6 @@ function truncate(text: string | undefined, max = 120): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
-}
-
-/** Convert a relay ws(s):// URL into its http(s):// origin for the REST endpoints. */
-function toHttpBase(relayUrl: string): string {
-  try {
-    const url = new URL(relayUrl);
-    const protocol =
-      url.protocol === 'wss:' ? 'https:' : url.protocol === 'ws:' ? 'http:' : url.protocol;
-    return `${protocol}//${url.host}`;
-  } catch {
-    return relayUrl.replace(/^ws/, 'http').replace(/\/$/, '');
-  }
 }
 
 function errorMessage(err: unknown): string {

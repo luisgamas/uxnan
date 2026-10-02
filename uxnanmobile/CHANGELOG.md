@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **An unused secure-storage key.** `SecureStoreKeys.notificationSecret`
+  (`uxnan.push.notification_secret`) was never written: the push secret belonged
+  to a relay push path that no longer exists. Background push is delivered by
+  the bridge alone, straight to FCM, so the app's push token never reaches the
+  relay.
+
 ## [0.0.36-alpha.20261002+20261003] - 20261002
 ### Changed
 

@@ -11,12 +11,11 @@ commit. Push is **code-complete and gated**: everything builds and runs without
 any Firebase config — notifications simply stay off until the credentials below
 exist.
 
-> **Bridge-first (2026-06-12).** The relay is **optional/self-hosted**, so
-> background push is sent **directly by the bridge** via FCM on whatever
-> transport the phone paired on (direct LAN / Tailscale / relay alike). The
-> bridge owns the Firebase service account. A **self-hosted relay** can still
-> hold the credential and deliver instead — that's the optional fallback,
-> documented alongside the bridge-direct path below.
+> **The bridge is the only push sender.** Background push is sent **directly by
+> the bridge** via FCM on whatever transport the phone paired on (direct LAN /
+> Tailscale / relay alike). The bridge owns the Firebase service account, and the
+> phone's push token goes nowhere but FCM: the relay carries no push traffic and
+> never sees the token or a notification's text.
 
 ---
 
@@ -39,7 +38,7 @@ Two independent surfaces, both already wired in the app:
 
 ## 2. The delivery flow
 
-Default — **the bridge delivers directly** (no relay):
+**The bridge delivers directly** — there is no other path:
 
 ```text
 agent turn ends ─► bridge (PushService.onTurnEnd)
@@ -49,22 +48,13 @@ agent turn ends ─► bridge (PushService.onTurnEnd)
                    Firebase Cloud Messaging ─► phone (background) ─► tap opens thread
 ```
 
-Optional fallback — **a self-hosted relay delivers** (only when the bridge holds
-no FCM credential and `relayEnabled: true`):
-
-```text
-agent turn ends ─► bridge ──POST /push/notify──► relay (PushRegistry → FCM sender)
-                                                   │  FCM HTTP v1 (service account on the relay)
-                                                   ▼
-                                                 Firebase Cloud Messaging ─► phone
-```
-
 - The phone registers its FCM token over the live E2EE session
-  (`notifications/register`) with the **bridge**, which keeps it for delivery.
+  (`notifications/register`) with the **bridge**, which keeps it (in
+  `~/.uxnan/push-state.json`) and sends it nowhere but FCM.
 - The bridge loads its service account at startup
   (`createBridgePushSender`): present → it delivers directly; absent → it logs
-  `direct FCM disabled (relay fallback only)` and, if `relayEnabled` and the
-  relay holds the credential, forwards delivery to the relay.
+  `background push disabled`, `notifications/register` answers
+  `registered: false`, and only the app's foreground (local) notifications work.
 
 ### Do I need the relay?
 
@@ -75,9 +65,9 @@ notifications:
 | Notification | Needs the relay? | Why |
 |---|---|---|
 | **Local** (app open/foreground) | **No** | The app raises them itself from the live E2EE session's `stream/turn/*` events — they ride the same direct (LAN/Tailscale) or relayed channel the app is already on. No FCM at all. |
-| **Push / FCM** (app backgrounded or closed) | **No, by default** | When the bridge holds the Firebase service account (the **default** with `~/.uxnan/firebase-service-account.json` in place) it delivers directly via FCM on any transport. A self-hosted relay with the credential is only needed if you'd rather keep the key off the bridge. |
+| **Push / FCM** (app backgrounded or closed) | **No** | The bridge holds the Firebase service account (`~/.uxnan/firebase-service-account.json` by default) and delivers directly via FCM on any transport. The relay has no part in push. |
 
-So with the **default bridge-direct setup you get push on every transport** —
+So with the bridge's service account in place **you get push on every transport** —
 local notifications while the app is open, background FCM push anywhere. The two
 are complementary: local covers "app open", FCM covers "app backgrounded/closed"
 (when the OS suspends the socket and live events stop arriving).
@@ -158,8 +148,7 @@ The bridge sends via the Firebase Admin SDK, which needs a **service-account key
     to your shell profile.
 
 `firebase-admin` is already a bridge `optionalDependency`, resolved from the
-workspace root `node_modules` — no separate install needed. (A self-hosted relay
-reads the **same** env var / path if you choose the relay-delivery fallback.)
+workspace root `node_modules` — no separate install needed.
 
 ### 4.4 iOS only — APNs (needs Apple Developer + macOS)
 
@@ -237,7 +226,7 @@ admin.messaging(app).send({ topic: "uxnan-validation",
 
 You can also confirm the **bridge** loads the FCM sender by starting it with the
 credential in place: it delivers directly. With no credential it logs
-`push: no Firebase service account at <path> — direct FCM disabled (relay fallback only)`.
+`push: no Firebase service account at <path> — background push disabled`.
 
 ### 5.2 Real device (Android)
 
@@ -248,16 +237,17 @@ credential in place: it delivers directly. With no credential it logs
    "Turn completed" notification appears.
 4. **Push:** background the app (home button), trigger another turn from the
    running agent; the bridge → FCM delivers a push. Tapping it opens the thread.
-   (Requires the bridge running with a valid service account, or a self-hosted
-   relay holding the credential.)
+   (Requires the bridge running with a valid service account.)
 
 ### 5.3 Troubleshooting
 
-- Bridge logs `direct FCM disabled (relay fallback only)` → no service account at
+- Bridge logs `background push disabled` → no service account at
   `~/.uxnan/firebase-service-account.json` and `UXNAN_FCM_SERVICE_ACCOUNT` is
-  unset/wrong (reopen the terminal after `setx`), or the JSON path is wrong.
-- `notify` returns `unauthorized` (relay fallback path) → the phone never completed
-  `notifications/register` (no token yet, or push disabled in config).
+  unset/wrong (reopen the terminal after `setx`), or the JSON path is wrong; or
+  `firebase-admin` failed to initialize with it (the log names the error).
+- Push never arrives though the bridge has the credential → the phone never
+  completed `notifications/register` (no token yet, or push disabled in config);
+  the bridge logs `push token registered (direct FCM)` when it did.
 - No Android notification at all → `google-services.json` missing/mismatched
   package name, or the OS notification permission was denied.
 

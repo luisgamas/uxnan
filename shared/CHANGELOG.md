@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Removed
+
+- **The relay push contracts:** `PushNotifyRequest`, `PushRegisterRequest`,
+  `PushRegisterResult`, `validatePushPayload` and `pushPayloadSchema`. The relay
+  no longer carries push — the bridge delivers background push straight to FCM —
+  so nothing sends or validates them. `PushPlatform` stays, for
+  `notifications/register`.
+
 ## [0.0.28-alpha.20260930] - 20260930
 ### Added
 

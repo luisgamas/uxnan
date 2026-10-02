@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateE2EEnvelope, validateJsonRpcRequest, validatePushPayload } from '../src/index.js';
+import { validateE2EEnvelope, validateJsonRpcRequest } from '../src/index.js';
 
 test('validateJsonRpcRequest accepts a valid request', () => {
   const result = validateJsonRpcRequest({
@@ -43,17 +43,6 @@ test('validateE2EEnvelope rejects a negative seq', () => {
     nonce: 'ab',
     ciphertext: 'cc',
     tag: 'dd',
-  });
-  assert.ok(!result.valid);
-});
-
-test('validatePushPayload requires the notification secret', () => {
-  const result = validatePushPayload({
-    sessionId: 's',
-    threadId: 't',
-    turnId: 'u',
-    title: 'done',
-    body: 'ok',
   });
   assert.ok(!result.valid);
 });

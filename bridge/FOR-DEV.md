@@ -14,8 +14,8 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1000, shared 43, relay
-30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
+standalone). It builds clean and the suite is green (bridge 1014, shared 42, relay
+16). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
 release follow-ups are the post-publish *Packaging* hardening items and real-device
@@ -207,7 +207,8 @@ push validation (FOR-HUMAN).
   suffix, and two projects sharing a folder name get separate groups (one pinned
   digest, identical on both sides). Advertised as `features.managedWorktrees`;
   the ones the bridge placed are recorded in `managed-worktrees.json`.
-- **Direct FCM push from the bridge** — primary path, persisted across restarts,
+- **Direct FCM push from the bridge** — the only push path (the token goes
+  nowhere but FCM; the relay carries no push), persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
   (no creds = silent no-op; foreground local notifications still work).
 - **Sanitized per-agent `auth/status`** — never tokens; login detected by
