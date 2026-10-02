@@ -30,6 +30,23 @@ test('start/list/read threads', async () => {
   await rmrf(baseDir);
 });
 
+test('a turn read right after a write was asked for sees that write', async () => {
+  // The manager announces a hand-off before its write lands, and a client
+  // re-reads the turn the moment it hears of it: it must get the new copy.
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const first = await store.startTurn(thread.id, 'first', 2);
+  const second = await store.queueTurn(thread.id, 'second', 3);
+  void store.handOffTurn(thread.id, first.turnId, second.turnId, 4);
+  const read = await store.getTurn(first.turnId);
+  assert.equal(read.status, 'completed');
+  assert.equal(read.completedAt, 4);
+  assert.equal(read.continuedIn, second.turnId);
+  const page = await store.listTurns(thread.id, undefined, 10, true);
+  assert.equal(page.turns.find((t) => t.id === first.turnId)?.continuedIn, second.turnId);
+  await rmrf(baseDir);
+});
+
 test('turn lifecycle: start, delta, complete', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);

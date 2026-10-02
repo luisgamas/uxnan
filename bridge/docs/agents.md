@@ -70,39 +70,49 @@ they work. It runs on its own once the current turn completes, through the
 identical code path a normal turn takes, which means **queueing behaves the same
 for all seven active agents** regardless of how their CLI is driven.
 
-### …and when it goes at the agent's next pause
+### …and when it goes at the end of the agent's step
 
 Waiting for the whole turn is not what the CLIs do. They take what you type at
 the next tool boundary, *inside* the running turn — which is what lets you
 correct an agent's course without stopping it — and they show it waiting until
 then. The bridge does the same wherever the agent's CLI actually allows it:
 
-- the follow-up **always waits in the queue first**, where it can still be
-  edited or cancelled;
-- the **first** queued message goes to the agent at its **next pause** — while
-  the agent is inside a step (a command, a tool, a subagent reported
-  `running`), which it reads when that step ends (`#deliverAtPause`,
-  `agent-manager.ts`). Until the agent takes it, it stays in the queue marked
-  `deliveringTurnId` and can no longer be taken back (`turn/cancel` refuses);
+- the follow-up **always waits in the queue first**, where it can be edited,
+  cancelled or sent now — the first one too — however long the agent's current
+  step takes, even if it hangs;
+- the **first** queued message goes to the agent when the step it is in (a
+  command, a tool, a subagent reported `running`) **ends** and none is left
+  running (`#deliverAtPause`, `agent-manager.ts`). From that hand-over until
+  the agent takes it, it stays in the queue marked `deliveringTurnId` and can
+  no longer be taken back (`turn/cancel` refuses);
 - it is placed in the conversation when the agent **reads** it — Claude Code
-  echoes it (`--replay-user-messages`), and the others accept it at once but
-  read it when the step ends, so the manager waits for the run's running steps
-  to settle (`#stepsSettled`) before placing it. The turn that was answering
-  ends there, with what the agent had said, and the follow-up's turn carries
-  the rest of the same agent run — so what the agent says after reading the
-  message shows under it, on every client, exactly like a queue that drained
-  early (`turn/completed`, then `turn/started`);
-- one at a time, in order, one per pause; a message that meets no pause before
-  the turn ends (the agent was only writing) runs as the next turn.
+  echoes it (`--replay-user-messages`; written as a step ends, it may read it
+  there or at its next pause), and the others accept it at once. The turn that
+  was answering ends there, with what the agent had said, and the follow-up's
+  turn carries the rest of the same agent run — so what the agent says after
+  reading the message shows under it, on every client, exactly like a queue
+  that drained early (`turn/completed`, then `turn/started`);
+- one at a time, in order, one per step end; a message that meets no step end
+  before the turn ends (the agent was only writing) runs as the next turn.
 
-`queue/sendNow` no longer hands a message into a running turn — the next pause
-does that — it still starts a paused queue's message at once. The adapter keeps
-naming the run by the id it started with; the manager maps it to the turn now
-showing its output. It never happens while the queue is **paused** (the user
-stopped the agent, or it broke), while the agent waits on an approval or a
-question, or for another agent than the one running. **Every refusal leaves the
-message in the queue**, so it is never lost — at worst it waits for the turn to
-end.
+**`queue/sendNow` forces it, on every agent.** While a turn runs it **stops**
+that turn and the chosen message runs as soon as the stop lands, first in line
+(`#sendNextAfterStop`; that stop does not pause the queue, even when the agent
+reports it as an error). It is the one thing that reaches an agent stuck in a
+step: no agent reads a message before its step ends. What the agent had done
+stays in the stopped turn; the rest of the queue keeps its order. With nothing
+running (a paused queue) it runs the message at once. So that the forced
+message starts on a clean session, **OpenCode does not report a stop until its
+server closed the stopped run** (`idle` on 1.x, `interrupted` or a failure on
+2.x; 5 s at most) and drops whatever that run still sends — found live, where
+the cut-short tool and the run's end landed on the next turn and aborted it.
+
+The adapter keeps naming the run by the id it started with; the manager maps it
+to the turn now showing its output. Automatic delivery never happens while the
+queue is **paused** (the user stopped the agent, or it broke), while the agent
+waits on an approval or a question, or for another agent than the one running.
+**Every refusal leaves the message in the queue**, so it is never lost — at
+worst it waits for the turn to end.
 
 Which agents can, and why — verified against the real CLIs:
 
@@ -144,13 +154,12 @@ verified live on 2026-09-28):
   releases a hand-over waiting for steps), so a message accepted just as the
   run finished is answered in its turn and never sent twice.
 
-Verified live on 2026-09-29 with every wired agent, through the real manager
-and adapters (a task of two `sleep` commands, a follow-up sent while the first
-ran): Claude Code 2.1.284, Codex 0.157.1, OpenCode 2.0.19 and pi 0.85.1 took it
-at the end of the first command — queued, then delivering from the moment the
-command started, placed the moment it ended, answered in the same run —;
-Antigravity, Grok and Zero kept it queued until the turn ended and ran it
-next.
+Verified live on 2026-10-01 with every wired agent, through the real manager
+and adapters: a follow-up sent during a 20 s command stayed an ordinary queued
+message until the command ended — then Claude Code, Codex, OpenCode and pi took
+it and answered it in the same run, and Antigravity, Grok and Zero ran it next;
+and *send now* during a `sleep 300` stopped the turn and the message was
+answered at once, on all seven.
 
 The turn a hand-off ended names the next one (`Turn.continuedIn`, and
 `continuedIn` on its `stream/turn/completed`), so clients show its reply as the

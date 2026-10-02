@@ -106,8 +106,12 @@ class FakeServer implements IOpenCodeServer {
     this.commandRuns.push({ sessionId, run });
     return Promise.resolve();
   }
+  /** What the server says after an interrupt, as OpenCode 1 does (its run's end). */
+  afterInterrupt: (sessionId: string) => void = (sessionId) =>
+    this.emit('session.idle', { sessionID: sessionId });
   interrupt(sessionId: string): Promise<void> {
     this.aborted.push(sessionId);
+    setImmediate(() => this.afterInterrupt(sessionId));
     return Promise.resolve();
   }
   replyPermission(_sessionId: string, id: string, reply: PermissionReply): Promise<void> {
@@ -939,6 +943,40 @@ test('OpenCodeAdapter cancelTurn aborts the session and emits turn_aborted', asy
 
   assert.deepEqual(server.aborted, ['ses_1']);
   assert.ok(events.some((e) => e.type === 'turn_aborted'));
+});
+
+test('a stop waits for the stopped run to end, so the next turn starts clean', async () => {
+  // Found live (OpenCode 2.0.19): a stop answered at once, the next message
+  // started on the same session, and the stopped run's last events — the tool
+  // it cut short, its own end — arrived after it and landed on that new turn,
+  // aborting it too.
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  const events: AgentStreamEvent[] = [];
+  adapter.onEvent((e) => events.push(e));
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run sleep 300' });
+  server.afterInterrupt = (sessionId) => {
+    // The server takes a moment to wind the run down.
+    setTimeout(() => {
+      server.emit('message.part.updated', {
+        part: {
+          id: 'b1',
+          sessionID: sessionId,
+          type: 'tool',
+          tool: 'bash',
+          state: { status: 'error', input: { command: 'sleep 300' }, error: 'aborted' },
+        },
+      });
+      server.emit('session.idle', { sessionID: sessionId });
+    }, 30);
+  };
+  await adapter.cancelTurn('t1', 'u1');
+  // The message sent now starts at once on the same session.
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'say BANANA' });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const ofU2 = events.filter((e) => e.turnId === 'u2').map((e) => e.type);
+  assert.deepEqual(ofU2, ['turn_started'], 'nothing of the stopped run reached the new turn');
+  assert.ok(events.some((e) => e.turnId === 'u1' && e.type === 'turn_aborted'));
 });
 
 // --- mid-turn delivery (steering) -----------------------------------------
