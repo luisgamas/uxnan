@@ -17,12 +17,14 @@ on:
       - ".github/workflows/ci-desktop.yml"
       - ".github/workflows/verify-desktop.yml"
       - ".github/workflows/release-desktop.yml"
+      - ".github/workflows/build-host-engine.yml"
   pull_request:
     paths:
       - "uxnandesktop/**"
       - ".github/workflows/ci-desktop.yml"
       - ".github/workflows/verify-desktop.yml"
       - ".github/workflows/release-desktop.yml"
+      - ".github/workflows/build-host-engine.yml"
   # On demand, for a branch that has no pull request yet: a multi-phase branch
   # is verified on the platform matrix per phase, not only once it is proposed
   # for merge (`gh workflow run ci-desktop.yml --ref <branch>`).
@@ -114,32 +116,14 @@ jobs:
         working-directory: uxnandesktop
         run: npm run ssh:host:down || true
 
-  # The installers, built the way the release builds them and then USED: the
-  # verify legs above compile and test, but never bundle, so a change to the
-  # bundling toolchain (the Tauri CLI, `tauri.conf.json`, the AppImage script)
-  # would otherwise meet its first installer on a release tag. Per platform:
-  #   Linux   — every package; the AppImage checked and launched the way the
-  #             AppImage catalog tests it (`scripts/linux-appimage.sh`), on the
-  #             release's own runner image.
-  #   Windows — NSIS installed, the app opened, then the installer run AGAIN
-  #             over the open app, which is what the in-app updater does; the
-  #             MSI installed with its sidecar.
-  #   macOS   — the ad-hoc signature, the DMG, the updater archive, a launch.
-  # Every leg signs the updater artifacts with a throwaway key, so the `.sig`
-  # path runs too. Costs a full bundle per OS, so it runs only when something
-  # that shapes an installer changed — or on demand.
-  bundle:
-    name: installers (${{ matrix.os }})
+  # Whether this change shapes an installer — asked once, for the two jobs
+  # that only run then: the host engines and the installers that carry them.
+  shape:
+    name: does this change shape an installer?
     if: ${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/')) }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-latest, macos-14]
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.touched.outputs.run }}
     steps:
       # Full history, for the same reason as `linux-ssh-host` above: a gate
       # that cannot see the base must run, not skip.
@@ -156,18 +140,56 @@ jobs:
           if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # The bundle configuration, the packaging script, the two workflows
-          # that bundle — or a new Tauri CLI, which IS the bundler.
+          # The bundle configuration, the packaging script, the workflows that
+          # bundle, the host engine every installer carries and its build — or
+          # a new Tauri CLI, which IS the bundler.
           if git diff --name-only "$base" '${{ github.sha }}' \
-               | grep -Eq '^(uxnandesktop/src-tauri/(tauri(\.[a-z]+)?\.conf\.json|linux/)|uxnandesktop/scripts/linux-appimage\.sh|\.github/workflows/(release|ci)-desktop\.yml)' \
+               | grep -Eq '^(uxnandesktop/src-tauri/(tauri(\.[a-z]+)?\.conf\.json|linux/|crates/(uxnan-host|host-protocol|workspace-engine)/)|uxnandesktop/scripts/(linux-appimage\.sh|build-host-engine\.mjs)|\.github/workflows/(release|ci)-desktop\.yml|\.github/workflows/build-host-engine\.yml)' \
              || git diff "$base" '${{ github.sha }}' -- uxnandesktop/package.json uxnandesktop/package-lock.json \
                | grep -Eq '^[-+].*@tauri-apps/cli'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
+
+  # The engines every installer carries for a remote host, built by the same
+  # workflow the release uses — so its first run is here, not on a tag.
+  host-engine:
+    needs: shape
+    if: needs.shape.outputs.run == 'true'
+    uses: ./.github/workflows/build-host-engine.yml
+
+  # The installers, built the way the release builds them and then USED: the
+  # verify legs above compile and test, but never bundle, so a change to the
+  # bundling toolchain (the Tauri CLI, `tauri.conf.json`, the AppImage script)
+  # would otherwise meet its first installer on a release tag. Per platform:
+  #   Linux   — every package; the AppImage checked and launched the way the
+  #             AppImage catalog tests it (`scripts/linux-appimage.sh`), on the
+  #             release's own runner image.
+  #   Windows — NSIS installed, the app opened, then the installer run AGAIN
+  #             over the open app, which is what the in-app updater does; the
+  #             MSI installed with its sidecar.
+  #   macOS   — the ad-hoc signature, the DMG, the updater archive, a launch.
+  # Every leg signs the updater artifacts with a throwaway key, so the `.sig`
+  # path runs too. Costs a full bundle per OS, so it runs only when something
+  # that shapes an installer changed — or on demand.
+  bundle:
+    name: installers (${{ matrix.os }})
+    needs: [shape, host-engine]
+    if: needs.shape.outputs.run == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-14]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
       - name: System dependencies (the release leg's list)
-        if: runner.os == 'Linux' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -176,29 +198,24 @@ jobs:
             libxdo-dev libssl-dev build-essential curl wget file \
             firejail xvfb x11-utils desktop-file-utils appstream imagemagick icewm
       - uses: actions/setup-node@v4
-        if: steps.touched.outputs.run == 'true'
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: uxnandesktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.touched.outputs.run == 'true'
       - uses: Swatinem/rust-cache@v2
-        if: steps.touched.outputs.run == 'true'
         with:
           workspaces: uxnandesktop/src-tauri
           key: ${{ matrix.os }}-bundle
       - name: Prepare the AppImage tooling
-        if: runner.os == 'Linux' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'Linux'
         run: bash uxnandesktop/scripts/linux-appimage.sh prepare
       - name: Install frontend deps
-        if: steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop
         run: npm ci --no-audit --no-fund
       # Never the release key: a key made for this run, and its public half
       # swapped into the config for this build only, so every `.sig` verifies.
       - name: A throwaway updater key
-        if: steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop
         run: |
           npx tauri signer generate --ci -w "$RUNNER_TEMP/updater.key"
@@ -209,12 +226,21 @@ jobs:
             echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/updater.key"
             echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="
           } >> "$GITHUB_ENV"
+      - name: Collect the host engines
+        uses: actions/download-artifact@v4
+        with:
+          pattern: host-engine-*
+          path: uxnandesktop/src-tauri/host-engine
+          merge-multiple: true
+      - name: Every host engine is there
+        working-directory: uxnandesktop
+        run: |
+          chmod +x src-tauri/host-engine/*/uxnan-host
+          node scripts/build-host-engine.mjs --require
       - name: Build the installers
-        if: steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop
         run: npm run tauri -- build --config "$RUNNER_TEMP/updater-key.conf.json"
       - name: Every updater artifact is signed
-        if: steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop/src-tauri/target/release/bundle
         run: |
           find . -name '*.sig' | sort
@@ -232,15 +258,17 @@ jobs:
           done
 
       - name: Check the AppImage
-        if: runner.os == 'Linux' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'Linux'
         env:
           APPIMAGE_SCREENSHOT: ${{ github.workspace }}/appimage-window.png
         run: |
           dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -q 'usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml' \
             || { echo "::error::the .deb carries no AppStream metadata"; exit 1; }
+          engines=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -c 'host-engine/[^/]*/uxnan-host$' || true)
+          [ "$engines" = 4 ] || { echo "::error::the .deb carries $engines host engines, not 4"; exit 1; }
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
       - name: Keep the window it showed
-        if: always() && runner.os == 'Linux' && steps.touched.outputs.run == 'true'
+        if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: appimage-window
@@ -252,7 +280,7 @@ jobs:
       # through the Windows Restart Manager instead of killing by process
       # name, so this runs exactly that: install, open, install again.
       - name: Install, open, and install again over the open app (NSIS)
-        if: runner.os == 'Windows' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $setup = Get-ChildItem uxnandesktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' | Select-Object -First 1
@@ -262,6 +290,8 @@ jobs:
           foreach ($f in 'uxnan-desktop.exe', 'uxnan-cli.exe') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "NSIS did not install $f into $dir" }
           }
+          $engines = @(Get-ChildItem -Recurse (Join-Path $dir 'host-engine') -Filter 'uxnan-host' -ErrorAction SilentlyContinue).Count
+          if ($engines -ne 4) { Get-ChildItem -Recurse $dir | Select-Object -First 60; throw "NSIS installed $engines host engines, not 4" }
           $app = Start-Process (Join-Path $dir 'uxnan-desktop.exe') -PassThru
           Start-Sleep -Seconds 20
           if ($app.HasExited) { throw "the installed app exited on its own (code $($app.ExitCode))" }
@@ -274,7 +304,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "NSIS uninstall exited $($p.ExitCode)" }
           "NSIS: install, reinstall over the open app and uninstall all passed"
       - name: Install and remove the MSI
-        if: runner.os == 'Windows' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $msi = Get-ChildItem uxnandesktop/src-tauri/target/release/bundle/msi -Filter '*.msi' | Select-Object -First 1
@@ -295,12 +325,14 @@ jobs:
           "MSI: install with the sidecar and uninstall passed"
 
       - name: Check the app, the DMG and a launch (macOS)
-        if: runner.os == 'macOS' && steps.touched.outputs.run == 'true'
+        if: runner.os == 'macOS'
         working-directory: uxnandesktop/src-tauri/target/release/bundle
         run: |
           app="macos/Uxnan Desktop.app"
           [ -x "$app/Contents/MacOS/uxnan-desktop" ] || { echo "::error::no app binary"; exit 1; }
           [ -x "$app/Contents/MacOS/uxnan-cli" ] || { echo "::error::no uxnan-cli sidecar in the app"; exit 1; }
+          engines=$(find "$app/Contents/Resources/host-engine" -name uxnan-host -type f -perm -u+x | wc -l | tr -d ' ')
+          [ "$engines" = 4 ] || { echo "::error::the app carries $engines runnable host engines, not 4"; exit 1; }
           # Ad-hoc signed (`signingIdentity: "-"`): valid, just not by a Developer ID.
           codesign --verify --deep --strict --verbose=2 "$app"
           dmg=$(find dmg -name '*.dmg' -print -quit)

@@ -68,67 +68,9 @@ jobs:
   # (`uxnandesktop/scripts/build-host-engine.mjs`, `docs/build.md`).
   host-engine:
     needs: [verify]
-    strategy:
-      fail-fast: true # an installer without one of them must not be built
-      matrix:
-        include:
-          # Static musl builds, cross-compiled through zig for both arches.
-          - os: ubuntu-latest
-            name: linux
-            targets: 'x86_64-unknown-linux-musl aarch64-unknown-linux-musl'
-          - os: macos-14
-            name: macos
-            targets: 'aarch64-apple-darwin x86_64-apple-darwin'
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Resolve the version from the tag
-        id: meta
-        shell: bash
-        run: node uxnandesktop/scripts/desktop-release-tag.mjs "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-
-      # The app accepts an engine on a host only when its version is the app's
-      # own (`ssh/engine.rs` → `runs_here`), so the engine is built with the same
-      # version the installers get.
-      - name: Sync the version into the workspace
-        shell: bash
-        working-directory: uxnandesktop
-        run: |
-          V="${{ steps.meta.outputs.version }}"
-          BASE="${V%%-*}"
-          perl -0pi -e 's/^version = "[^"]*"/version = "'"$BASE"'"/m' src-tauri/Cargo.toml
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.targets }}
-
-      - name: Set up zig
-        if: runner.os == 'Linux'
-        uses: mlugg/setup-zig@v2
-
-      - name: Install cargo-zigbuild
-        if: runner.os == 'Linux'
-        run: cargo install cargo-zigbuild --locked
-
-      - name: Build the host engines
-        working-directory: uxnandesktop
-        run: node scripts/build-host-engine.mjs --build
-
-      - name: Hand them to the installer legs
-        uses: actions/upload-artifact@v4
-        with:
-          name: host-engine-${{ matrix.name }}
-          path: uxnandesktop/src-tauri/host-engine/
-          if-no-files-found: error
+    uses: ./.github/workflows/build-host-engine.yml
+    with:
+      release-tag: ${{ github.ref_name }}
 
   build:
     needs: [verify, platform-gate, host-engine]

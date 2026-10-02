@@ -78,11 +78,16 @@ four are there. The sidecar overlay runs it with neither flag before `tauri dev`
 and `tauri build`, so a local build bundles whatever is present — and a host
 whose platform has none keeps its terminals on plain SSH channels.
 
-**In the release** no single runner can build all four, so `release-desktop.yml`
-builds them in a `host-engine` job (Linux on Ubuntu with zig, the Apple pair on
-`macos-14`), each with the release's version synced into the workspace — the app
-accepts an engine on a host only when its version is the app's own — and every
-installer leg downloads them and runs `--require` before packaging.
+**In CI and in the release** no single runner can build all four, so one
+reusable workflow, `build-host-engine.yml`, builds them (Linux on Ubuntu with
+zig, the Apple pair on `macos-14`) and each installer leg downloads them and
+runs `--require` before packaging. The release calls it with its tag, so the
+engines carry the release's version — the app accepts an engine on a host only
+when its version is the app's own. CI calls it whenever a change shapes an
+installer (the engine's crates and its build script included), and its
+installer legs then check that the four are inside the `.deb`, the `.app` and
+the NSIS install — so the pipeline meets its first real run on a pull request,
+not on a tag.
 
 The app looks for them in its resource folder first (`ssh/engine.rs` →
 `local_binary`), then in `$UXNAN_HOST_BINARIES/<triple>/`, and in a debug build
