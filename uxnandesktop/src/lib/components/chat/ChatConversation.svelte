@@ -236,10 +236,12 @@
   /** The agent takes a message while it works (`capabilities.steering`). */
   const steers = $derived(chat.agent(thread?.agentId)?.capabilities?.steering === true);
 
-  /** A queued message can be sent now only with nothing running (a paused
-   *  queue): while the agent works, one that takes input mid-turn gets the
-   *  first queued message at its next pause, and any other when it finishes. */
-  const canSendNow = $derived(!conversation.running);
+  /** Send now on a queued message: with nothing running it runs next at once;
+   *  while the agent works it stops the agent first — what reaches one stuck
+   *  in a step — so its label says so. */
+  const sendNowLabel = $derived(
+    conversation.running ? i18n.t("chat.sendQueuedNowStopping") : i18n.t("chat.sendQueuedNow"),
+  );
 
   /** While the agent works, a message sent now waits in the queue and reaches
    *  an agent that takes input mid-turn at its next pause. */
@@ -562,17 +564,15 @@
                       ? i18n.t("chat.queuedNext")
                       : i18n.t("chat.queuedPosition", { n: qi + 1 })}
                   </span>
-                  {#if canSendNow}
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={i18n.t("chat.sendQueuedNow")}
-                      title={i18n.t("chat.sendQueuedNow")}
-                      onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
-                    >
-                      <Icon icon={ArrowUp02Icon} class={icon.status} />
-                    </Button>
-                  {/if}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={sendNowLabel}
+                    title={sendNowLabel}
+                    onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                  >
+                    <Icon icon={ArrowUp02Icon} class={icon.status} />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon-xs"

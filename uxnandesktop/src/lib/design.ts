@@ -366,6 +366,20 @@ export const pane = {
 } as const;
 
 /** Chat tab roles (a conversation the Uxnan bridge drives). */
+/**
+ * An agent's (or a step's) state hue — one per state, shared by every place
+ * that shows it: the sidebar and project cards (`AgentStatusIndicator`) and
+ * the chat's live rows. Applied to a wrapper so `currentColor` reaches the
+ * Comet Trail too.
+ */
+export const stateHue = {
+  working: "text-emerald-500",
+  blocked: "text-amber-500",
+  waiting: "text-orange-500",
+  done: "text-sky-500",
+  idle: "text-muted-foreground/50",
+} as const;
+
 export const chat = {
   /** The reading column every chat surface centers on. */
   column: "mx-auto w-full max-w-3xl px-5",
@@ -390,8 +404,6 @@ export const chat = {
     "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
   /** The rows of an open work group, hung off a quiet rule under its header. */
   activityList: "ml-3 flex flex-col border-l border-border/60 pl-1.5",
-  /** A step still running: a small pulsing dot where the state goes. */
-  runningDot: "size-1.5 shrink-0 animate-pulse rounded-full bg-sky-500",
   /** An interactive card inside a turn (an approval, a question, a plan). */
   card: "rounded-lg border border-border/60 bg-card p-3 shadow-xs",
   /** Captured output under an expanded activity line. */

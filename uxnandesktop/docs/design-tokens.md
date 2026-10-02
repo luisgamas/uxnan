@@ -297,7 +297,8 @@ asserts both.
 | `chat.fold` / `chat.foldRule` | A settled turn's "Worked for 1m 3s ›": quiet text with no fill, then a hairline to the column's edge. |
 | `chat.activity` | One compact row of the agent's work — a command, an edit, a tool call — and the header of a work group or a folded turn. |
 | `chat.activityList` | An open work group's rows, hung off a quiet rule. |
-| `chat.runningDot` | A step (or a turn) still running: a small pulsing dot. |
+| `stateHue` | One hue per agent state (`working` emerald, `waiting`, `blocked`, `done`, `idle`), shared by `AgentStatusIndicator` and the chat's live mark (`ChatWorkingGlyph`: the Comet Trail in `stateHue.working`). |
+| `text-shimmer` (utility, `app.css`) | Live text — the agent working, a step running: a soft band of light sweeps across the words in their own colour; off under reduced motion. |
 | `chat.card` | A card inside the chat: an approval or a question (in the dock), a plan, the files a turn changed, the queue. |
 | `chat.output` | Captured output under an expanded activity line. |
 | `chat.pill` | A quiet control in the composer's toolbar (agent, model, run options, access mode): ghost until hovered. |

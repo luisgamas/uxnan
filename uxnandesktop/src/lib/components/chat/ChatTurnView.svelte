@@ -48,6 +48,7 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, focus, icon, row, text } from "$lib/design";
+  import ChatWorkingGlyph from "./ChatWorkingGlyph.svelte";
 
   let {
     turn,
@@ -204,8 +205,8 @@
         {@render thinking()}
         {@render timeline(items, true)}
         <div class={cn(text.meta, "flex items-center gap-2 px-2 py-1")}>
-          <span class={chat.runningDot}></span>
-          <span class="tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</span>
+          <ChatWorkingGlyph />
+          <span class="text-shimmer tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</span>
         </div>
       {:else if continued}
         {@render thinking()}

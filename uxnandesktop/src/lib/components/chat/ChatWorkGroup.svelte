@@ -14,6 +14,7 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon } from "$lib/design";
+  import ChatWorkingGlyph from "./ChatWorkingGlyph.svelte";
 
   let { blocks, live = false }: { blocks: Record<string, unknown>[]; live?: boolean } = $props();
 
@@ -43,7 +44,7 @@
       <Icon icon={Layers01Icon} class={cn(icon.decorative, "shrink-0 opacity-70")} />
       <span class="min-w-0 flex-1 truncate">{parts.join(" · ")}</span>
       {#if inFlight}
-        <span class={chat.runningDot} role="status" aria-label={i18n.t("chat.working")}></span>
+        <ChatWorkingGlyph />
       {:else if summary.failed > 0}
         <span class="shrink-0 text-destructive">
           {i18n.plural(summary.failed, "chat.workFailedOne", "chat.workFailed")}
