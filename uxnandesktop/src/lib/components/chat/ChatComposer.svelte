@@ -52,6 +52,8 @@
   } from "$lib/bridge/imageAttachment";
   import { mentionEntries, mentionFor } from "$lib/bridge/mentions";
   import { fileDropTarget } from "$lib/fileDrop";
+  import { fsIsDir } from "$lib/api";
+  import { quoteDropPath } from "$lib/terminal/terminalDrop";
   import { clipSpan, fitPanel, type PanelFit } from "$lib/floatingFit";
   import {
     MAX_FILES,
@@ -63,7 +65,7 @@
     type ReadFile,
   } from "$lib/bridge/fileAttachment";
   import { bridge } from "$lib/bridge/client.svelte";
-  import { toast, toastError } from "$lib/toast";
+  import { errorMessage, toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -327,17 +329,23 @@
 
   /** Attach files by path: an image goes as an image (scaled, a thumbnail)
    *  when the agent takes images; everything else — and an image for an agent
-   *  that takes none — goes as a file, which every agent opens with its tools. */
+   *  that takes none — goes as a file, which every agent opens with its tools.
+   *  Each path stands on its own: one that cannot be read (too large, gone, a
+   *  folder) is named in a toast, and every other one is still attached. */
   async function attachPaths(paths: string[]) {
     const readyImages: ComposerImage[] = [];
     const readyFiles: ComposerFile[] = [];
     for (const path of paths) {
-      const name = path.split(/[\\/]/).pop() ?? "file";
-      if (acceptsImages && isImageName(name)) {
-        const dataUrl = await invoke<string>("fs_read_data_url", { path });
-        readyImages.push(await imageFromDataUrl(dataUrl, name));
-      } else {
-        readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
+      const name = path.split(/[\\/]/).pop() || "file";
+      try {
+        if (acceptsImages && isImageName(name)) {
+          const dataUrl = await invoke<string>("fs_read_data_url", { path });
+          readyImages.push(await imageFromDataUrl(dataUrl, name));
+        } else {
+          readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
+        }
+      } catch (err) {
+        toast.error(i18n.t("chat.attachFailed", { name, reason: errorMessage(err) }));
       }
     }
     await addImages(readyImages);
@@ -383,27 +391,32 @@
     });
   }
 
-  /** Paths dropped on the composer — from the OS or the file tree. An image is
-   *  attached as one (the agent sees it); any other file of the project is
-   *  mentioned, `@path`, exactly as picking it from `@` writes it (the agent
-   *  opens it itself, nothing is copied); anything else is attached like "+". */
+  /** What a dropped path becomes in the message. */
+  type DroppedAs = { text: string } | { attach: string };
+
+  /** A path dropped on the composer, sorted: an image is attached as one when
+   *  the agent takes images (the agent sees it); anything else of the project,
+   *  file or folder, is mentioned, `@path`, exactly as picking it from `@`
+   *  writes it (the agent opens it itself, nothing is copied); a folder from
+   *  elsewhere — or the project's own — is written as its path, quoted when it
+   *  has spaces, as a terminal gets it; any other file is attached like "+". */
+  async function droppedAs(path: string): Promise<DroppedAs> {
+    if (acceptsImages && isImageName(path.split(/[\\/]/).pop() ?? "")) return { attach: path };
+    const mention = mentionRoot ? mentionFor(mentionRoot, path) : null;
+    if (mention) return { text: mention };
+    // A path that cannot be asked about is tried as a file, which names it.
+    const folder = await fsIsDir(path).catch(() => false);
+    return folder ? { text: quoteDropPath(path) } : { attach: path };
+  }
+
+  /** Paths dropped on the composer — from the OS or the file tree. */
   async function takeDroppedPaths(paths: string[]) {
     if (disabled) return;
-    const mentions: string[] = [];
-    const attach: string[] = [];
-    for (const path of paths) {
-      const image = acceptsImages && isImageName(path.split(/[\\/]/).pop() ?? "");
-      const mention = !image && mentionRoot ? mentionFor(mentionRoot, path) : null;
-      if (mention) mentions.push(mention);
-      else attach.push(path);
-    }
-    if (mentions.length > 0) insertAtCaret(mentions.join(" "));
-    try {
-      await attachPaths(attach);
-      ref?.focus();
-    } catch (err) {
-      toastError(err);
-    }
+    const sorted = await Promise.all(paths.map(droppedAs));
+    const texts = sorted.flatMap((d) => ("text" in d ? [d.text] : []));
+    if (texts.length > 0) insertAtCaret(texts.join(" "));
+    await attachPaths(sorted.flatMap((d) => ("attach" in d ? [d.attach] : [])));
+    ref?.focus();
   }
 
   /** Files are being dragged over the composer (`$lib/fileDrop` says so). */

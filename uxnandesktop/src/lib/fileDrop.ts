@@ -14,6 +14,7 @@
 //     to land on a target.
 
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { currentOS, type OS } from "$lib/platform";
 import { terminals } from "$lib/state/terminals.svelte";
 import { terminalPtyAt, writePathsToTerminal } from "$lib/terminal/terminalDrop";
 
@@ -81,16 +82,34 @@ export function dropPathsAt(paths: string[], x: number, y: number, source: DropS
   return true;
 }
 
+/**
+ * The position of an OS drag-drop event in CSS px, where the window is
+ * hit-tested. The event types it as physical pixels, but what the webview
+ * actually sends (wry 0.55, behind tauri 2.11 — re-check this when either is
+ * upgraded) differs per platform: macOS reports the point in the view's own
+ * coordinates (points, already CSS px) and Linux in the widget's (also CSS
+ * px); only Windows maps the screen point to the client area in physical
+ * pixels. Dividing everywhere halved the point on a Retina Mac, so drops
+ * from the file manager never landed on the composer.
+ */
+export function dropPointToCss(
+  p: { x: number; y: number },
+  os: OS = currentOS(),
+  dpr: number = window.devicePixelRatio || 1,
+): { x: number; y: number } {
+  return os === "windows" ? { x: p.x / dpr, y: p.y / dpr } : { x: p.x, y: p.y };
+}
+
 /** Listen for files dropped from the OS onto this window; returns the
- *  unlisten. Positions arrive in physical pixels and are hit-tested in CSS px. */
+ *  unlisten. Positions are brought to CSS px (`dropPointToCss`) and hit-tested
+ *  there. */
 export async function listenForOsDrops(): Promise<() => void> {
   return getCurrentWebview().onDragDropEvent(({ payload }) => {
-    const dpr = window.devicePixelRatio || 1;
     if (payload.type === "leave") {
       hoverPathsAt(null);
       return;
     }
-    const point = { x: payload.position.x / dpr, y: payload.position.y / dpr };
+    const point = dropPointToCss(payload.position);
     if (payload.type === "drop") dropPathsAt(payload.paths, point.x, point.y, "os");
     else hoverPathsAt(point);
   });

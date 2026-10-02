@@ -317,6 +317,16 @@ pub async fn list_dir(path: &str) -> Result<Vec<FsEntry>, AppError> {
     Ok(entries)
 }
 
+/// Whether `path` is a folder (symlinks followed). `false` for a file, and for
+/// anything missing or unreadable — the chat composer asks it of a dropped
+/// path to tell a folder (written as its path) from a file (attached).
+pub async fn is_dir(path: &str) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .map(|meta| meta.is_dir())
+        .unwrap_or(false)
+}
+
 /// Read a single file for the editor. Refuses (via flags, not an error) to load
 /// a file larger than [`MAX_EDIT_BYTES`] or one that isn't valid UTF-8 text, so
 /// the editor can show an honest notice instead of garbage.
@@ -990,6 +1000,16 @@ mod tests {
         std::fs::write(&big, vec![0u8; (MAX_ATTACHMENT_BYTES + 1) as usize]).unwrap();
         assert!(read_attachment(big.to_str().unwrap()).await.is_err());
         assert!(read_attachment(dir.path().to_str().unwrap()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn is_dir_tells_a_folder_from_a_file_or_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notes.txt");
+        std::fs::write(&file, b"hi").unwrap();
+        assert!(is_dir(dir.path().to_str().unwrap()).await);
+        assert!(!is_dir(file.to_str().unwrap()).await);
+        assert!(!is_dir(dir.path().join("missing").to_str().unwrap()).await);
     }
     use super::*;
 
