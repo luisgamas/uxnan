@@ -92,6 +92,20 @@ impl EngineTerminals {
         self.tabs.lock().await.contains_key(id)
     }
 
+    /// Close the agent a tab's terminal runs, on its host.
+    pub async fn stop_agent(
+        &self,
+        engine: Option<&HostEngine>,
+        id: &str,
+        commands: Vec<String>,
+    ) -> Result<uxnan_workspace_engine::agentstop::StopOutcome, AppError> {
+        let session = self.attached_session(id).await?;
+        match engine {
+            Some(engine) => engine.stop_agent(session, commands).await,
+            None => Err(AppError::NotConnected("this terminal's host".to_string())),
+        }
+    }
+
     /// The tab whose terminal is `session` of the daemon `epoch` on `host_id`.
     /// A tab's id changes when the app restarts while its terminal on the host
     /// does not, so this — not the id the terminal was started with — is what

@@ -420,7 +420,7 @@ uxnandesktop/
 │       │                  # window bridge and the discovery file
 │       ├── hooks.rs       # what a hook report means (Layer 1 agent monitoring)
 │       ├── agent_hooks.rs # the engine's hook installer, re-exported (+ profile repointing)
-│       ├── procscan.rs    # foreground-job agent detection (Layer 3)
+│       ├── procscan.rs    # foreground-job agent detection (Layer 3), the engine's, re-exported
 │       ├── launchenv.rs   # per-terminal identity: scrubbed from this process + every child
 │       ├── power.rs       # keep-awake (Win; macOS/Linux experimental)
 │       ├── browse.rs      # in-app directory picker

@@ -859,3 +859,55 @@ async fn a_viewer_that_starts_empty_gets_the_history_above_the_screen() {
         "the history is not printed twice"
     );
 }
+
+#[tokio::test]
+async fn closing_a_terminals_agent_leaves_its_shell_running() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let opened = client
+        .call(Call::Open {
+            cols: 100,
+            rows: 30,
+            cwd: None,
+            command: Some(vec!["bash".into(), "--norc".into()]),
+            env: vec![],
+            label: "tab-stop".into(),
+        })
+        .await;
+    let Outcome::Ok {
+        reply: Reply::Opened { session, .. },
+    } = opened
+    else {
+        panic!("open failed: {opened:?}");
+    };
+    // A stand-in agent, named like one, as the terminal's foreground job.
+    client.type_in(session, "(exec -a claude sleep 30)\n").await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let commands = vec!["claude".to_string()];
+    let stopped = client
+        .call(Call::StopAgent {
+            session,
+            commands: commands.clone(),
+        })
+        .await;
+    assert_eq!(
+        stopped,
+        Outcome::Ok {
+            reply: Reply::AgentStopped {
+                outcome: uxnan_host_protocol::AgentStop::Exited
+            }
+        }
+    );
+    // The shell is still there, taking the next command.
+    client.type_in(session, "echo ALIVE_$((3+3))\n").await;
+    client.until_output(session, "ALIVE_6").await;
+    let again = client.call(Call::StopAgent { session, commands }).await;
+    assert_eq!(
+        again,
+        Outcome::Ok {
+            reply: Reply::AgentStopped {
+                outcome: uxnan_host_protocol::AgentStop::NotRunning
+            }
+        }
+    );
+}

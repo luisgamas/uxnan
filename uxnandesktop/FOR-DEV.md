@@ -30,8 +30,8 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,076 Rust tests (913 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 63
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 18 in `uxnan-host` (14 against the daemon itself) + 45
+`docs/chat.md`). 1,077 Rust tests (899 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 77
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 19 in `uxnan-host` (15 against the daemon itself) + 45
 integration), of which 58 are ignored probes that need something real to talk to
 (50 live SSH probes — 38 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -1118,10 +1118,11 @@ already written for the day phase 2 below lands — nothing to relax then.
          budget, the day this lands.
       3. **What an agent on a host still lacks.** Its state is precise (the
          engine wires the reporters there and forwards each report — `02g`
-         §5.16), but: stopping it when its session is handed to a chat
-         (`commands.rs` → `pty_stop_agent` finds only this machine's terminals
-         and `agentstop.rs` signals a local process; the engine needs a call for
-         the agent in a session);
+         §5.16) and the engine can close it (`StopAgent`, the same `agentstop`
+         run there), but: handing its session to a chat needs a chat for that
+         host — its sessions are on the host, out of this machine's bridge's
+         sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
+         own bridge, plan phase F8;
          the completion preview read from its transcript (it is on the host —
          `hooks.rs` reads only this machine's; the engine would read it there);
          and `UXNAN_BROWSER_*` / the browser MCP in engine terminals (their
@@ -1731,7 +1732,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,076 Rust + 1,754 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,077 Rust + 1,754 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

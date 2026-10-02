@@ -31,7 +31,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   travels over the engine's channel to the tab it came from: the working /
   waiting / done cards, the checks and the notifications, also for a turn that
   ended while the lid was closed. Proven with Claude Code on a real Linux host.
-  Follows the hooks auto-install setting.
+  Follows the hooks auto-install setting. The engine can also close an agent in
+  one of its terminals, with the same code this machine uses.
 - **Every installer carries the host engine for every platform it can run
   on** — Linux and macOS, x86-64 and ARM — whatever machine the app itself is
   on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is

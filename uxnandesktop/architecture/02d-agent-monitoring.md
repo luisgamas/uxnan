@@ -570,7 +570,7 @@ daemon `bridge`) puede a su vez lanzar un CLI de agente como **ayudante de fondo
 (el bridge mantiene un `zero acp` de larga vida), y atribuir ese ayudante a la
 pestana la etiquetaria con un nombre/logo/estado que nunca lanzo.
 
-Dos reglas gobiernan `procscan.rs` (`detect_agent`):
+Dos reglas gobiernan `procscan.rs` (`detect_agent`; vive en `crates/workspace-engine`, para que el motor de un host lea su tabla de procesos igual):
 
 - **Descender solo a traves de shells.** Desde el shell se mira su trabajo en primer
   plano. Se ve **a traves** de shells anidados (un shim `.cmd`/`.ps1`/shell que corre

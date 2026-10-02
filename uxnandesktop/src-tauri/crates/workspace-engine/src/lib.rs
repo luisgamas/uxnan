@@ -12,8 +12,10 @@
 //! the desktop, the daemon — wires the sinks to its own transport.
 
 pub mod agent_hooks;
+pub mod agentstop;
 pub mod codex_trust;
 pub mod error;
+pub mod procscan;
 pub mod pty;
 pub mod screen;
 pub mod watch;

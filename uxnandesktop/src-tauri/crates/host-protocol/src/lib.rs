@@ -27,7 +27,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 3: agent hooks (`WireHooks`, `Reply::HooksWired`, `Event::Hook`).
 /// - 4: `Attach { history }` — the lines above the screen, for a viewer that
 ///   starts empty.
-pub const PROTOCOL: u32 = 4;
+/// - 5: `StopAgent` — close the agent a terminal runs, and only it.
+pub const PROTOCOL: u32 = 5;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -261,6 +262,14 @@ pub enum Call {
     /// machine shows signs of — the same installer the desktop runs on its
     /// own. Idempotent; the reports then arrive as [`Event::Hook`].
     WireHooks,
+    /// Close the agent running in a terminal — one of `commands`, the agent
+    /// CLIs the client knows — and only it: the shell, and the terminal, stay.
+    /// Answered once it is gone (it is asked to end, then its tree is ended if
+    /// it does not in a few seconds).
+    StopAgent {
+        session: u32,
+        commands: Vec<String>,
+    },
 }
 
 /// How a call ended.
@@ -300,7 +309,22 @@ pub enum Reply {
     HooksWired {
         agents: Vec<String>,
     },
+    AgentStopped {
+        outcome: AgentStop,
+    },
     Done,
+}
+
+/// How closing a terminal's agent went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentStop {
+    /// No agent was running there.
+    NotRunning,
+    /// It exited when asked.
+    Exited,
+    /// It did not, and its process tree was ended.
+    Killed,
 }
 
 /// One terminal the daemon holds.

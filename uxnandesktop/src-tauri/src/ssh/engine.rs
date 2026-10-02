@@ -679,6 +679,35 @@ impl HostEngine {
         *self.on_changed.lock().unwrap() = Some(report);
     }
 
+    /// Close the agent running in `session` — one of `commands` — and only it,
+    /// with the engine's own `agentstop` run there. Answers once it is gone.
+    pub async fn stop_agent(
+        &self,
+        session: u32,
+        commands: Vec<String>,
+    ) -> Result<uxnan_workspace_engine::agentstop::StopOutcome, AppError> {
+        use uxnan_host_protocol::AgentStop;
+        use uxnan_workspace_engine::agentstop::StopOutcome;
+        if self.welcome.protocol < 5 {
+            return Err(AppError::Invalid(
+                "the host engine running there is too old to close an agent".to_string(),
+            ));
+        }
+        match self
+            .request(Call::StopAgent { session, commands }, None)
+            .await?
+        {
+            Reply::AgentStopped { outcome } => Ok(match outcome {
+                AgentStop::NotRunning => StopOutcome::NotRunning,
+                AgentStop::Exited => StopOutcome::Exited,
+                AgentStop::Killed => StopOutcome::Killed,
+            }),
+            other => Err(AppError::Invalid(format!(
+                "unexpected answer to closing an agent: {other:?}"
+            ))),
+        }
+    }
+
     /// Where the agents' reports from this host's terminals go.
     pub fn set_on_hook(&self, report: HookFn) {
         *self.on_hook.lock().unwrap() = Some(report);

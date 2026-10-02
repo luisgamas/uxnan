@@ -31,8 +31,8 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, Notify};
 use uxnan_host_protocol::{
-    negotiate, read_frame, write_frame, Call, ClientMessage, ErrorCode, Event, Frame, Outcome,
-    Reply, ServerMessage, SessionInfo, Welcome, PROTOCOL,
+    negotiate, read_frame, write_frame, AgentStop, Call, ClientMessage, ErrorCode, Event, Frame,
+    Outcome, Reply, ServerMessage, SessionInfo, Welcome, PROTOCOL,
 };
 use uxnan_workspace_engine::pty::{PtyManager, PtySpec};
 use uxnan_workspace_engine::screen::Screen;
@@ -405,10 +405,12 @@ impl Daemon {
             }
             // Handled where the connection lives: a watch is per connection,
             // and wiring blocks on files and a login shell.
-            Call::Watch { .. } | Call::Unwatch | Call::WireHooks => Outcome::Error {
-                code: ErrorCode::Invalid,
-                message: "handled by the connection".to_string(),
-            },
+            Call::Watch { .. } | Call::Unwatch | Call::WireHooks | Call::StopAgent { .. } => {
+                Outcome::Error {
+                    code: ErrorCode::Invalid,
+                    message: "handled by the connection".to_string(),
+                }
+            }
             Call::List => {
                 let sessions = self.sessions.lock().unwrap();
                 let mut list: Vec<SessionInfo> = sessions
@@ -534,6 +536,29 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
                 }
             }
         }
+    }
+}
+
+/// Close the agent in terminal `session` (whose shell is `shell`) with the
+/// engine's own `agentstop`, the code the desktop runs on its own terminals.
+async fn stop_agent_in(session: u32, shell: u32, commands: Vec<String>) -> Outcome {
+    use uxnan_workspace_engine::agentstop::{stop_agent, StopOutcome, EXIT_GRACE};
+    match tokio::task::spawn_blocking(move || stop_agent(shell, &commands, EXIT_GRACE)).await {
+        Ok(done) => {
+            let outcome = match done {
+                StopOutcome::NotRunning => AgentStop::NotRunning,
+                StopOutcome::Exited => AgentStop::Exited,
+                StopOutcome::Killed => AgentStop::Killed,
+            };
+            log::line(&format!("terminal {session}: agent stop {outcome:?}"));
+            Outcome::Ok {
+                reply: Reply::AgentStopped { outcome },
+            }
+        }
+        Err(e) => Outcome::Error {
+            code: ErrorCode::Invalid,
+            message: e.to_string(),
+        },
     }
 }
 
@@ -690,6 +715,20 @@ where
                                         }
                                         Ok(Err(e)) => Outcome::Error { code: ErrorCode::Invalid, message: e },
                                         Err(e) => Outcome::Error { code: ErrorCode::Invalid, message: e.to_string() },
+                                    };
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::StopAgent { session, commands } }) => {
+                                let answer = viewer.clone();
+                                let shell = daemon.engine.pid_of(&session.to_string());
+                                tokio::spawn(async move {
+                                    let outcome = match shell {
+                                        None => Outcome::Error {
+                                            code: ErrorCode::NotFound,
+                                            message: format!("no running terminal {session} in this daemon"),
+                                        },
+                                        Some(pid) => stop_agent_in(session, pid, commands).await,
                                     };
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });

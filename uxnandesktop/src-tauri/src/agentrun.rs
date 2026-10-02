@@ -112,55 +112,9 @@ fn was_cancelled(job: &str) -> bool {
         .is_some_and(|entry| entry.cancelled)
 }
 
-/// End `pid` and every process descended from it, deepest first.
-///
-/// One implementation for every platform, over the process table this app
-/// already samples (`sysinfo`): a snapshot is taken, the descendants of `pid`
-/// are walked from it, and each is asked to end — children before their parent,
-/// so a parent cannot spawn more while its children are being ended. Killing
-/// only the process we hold is what left an agent's tools (a `git`, a language
-/// server, another agent) running after a cancel.
-///
-/// Best-effort by nature: a process may exit between the snapshot and the kill,
-/// and one that ignores termination outlives it. Both are fine here — the
-/// caller's own child is always ended, so the run always finishes.
-pub fn kill_tree(pid: u32) {
-    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-
-    let mut sys = System::new();
-    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
-    // parent → children, from the one snapshot: the walk must not race the
-    // table it walks.
-    let mut children: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
-    for (child, proc) in sys.processes() {
-        if let Some(parent) = proc.parent() {
-            children
-                .entry(parent.as_u32())
-                .or_default()
-                .push(child.as_u32());
-        }
-    }
-    // Depth-first, collecting before killing, so the order is deepest-first.
-    let mut order = Vec::new();
-    let mut stack = vec![pid];
-    while let Some(current) = stack.pop() {
-        order.push(current);
-        if let Some(kids) = children.get(&current) {
-            stack.extend(kids.iter().copied());
-        }
-        // A tree deeper or wider than this is a runaway of its own; stop
-        // walking rather than spin forever on a cycle a borrowed table could
-        // (in principle) show.
-        if order.len() > 4096 {
-            break;
-        }
-    }
-    for victim in order.into_iter().rev() {
-        if let Some(proc) = sys.process(Pid::from_u32(victim)) {
-            proc.kill();
-        }
-    }
-}
+/// Ends a process and everything it started — the workspace engine's, so a
+/// host's engine ends a tree the same way (`uxnan_workspace_engine::procscan`).
+pub use uxnan_workspace_engine::procscan::kill_tree;
 
 /// The captured result of a headless run — the raw output plus the **verified**
 /// process exit code (the run engine's completion signal).

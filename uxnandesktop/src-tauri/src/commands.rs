@@ -1248,15 +1248,22 @@ pub async fn pty_stop_agent(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<crate::agentstop::StopOutcome, CommandError> {
-    // FOR-DEV: a terminal on a host's engine is not in `state.pty`; stopping
-    // its agent needs an engine call (`FOR-DEV.md` → Remote hosts → the host
-    // engine, item 3).
+    let commands = state.agent_commands.read().await.clone();
+    // A terminal on a host: its engine closes the agent there, with the same
+    // code this machine runs below.
+    if state.engine_terminals.owns(&id).await {
+        let engine = engine_of_tab(&state, &id).await;
+        return state
+            .engine_terminals
+            .stop_agent(engine.as_deref(), &id, commands)
+            .await
+            .map_err(CommandError::from);
+    }
     let Some(shell_pid) = state.pty.pid_of(&id) else {
         return Err(CommandError::from(AppError::NotFound(format!(
             "terminal {id}"
         ))));
     };
-    let commands = state.agent_commands.read().await.clone();
     tokio::task::spawn_blocking(move || {
         crate::agentstop::stop_agent(shell_pid, &commands, crate::agentstop::EXIT_GRACE)
     })
