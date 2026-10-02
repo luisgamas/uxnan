@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.42-alpha.20261002] - 20261002
 ### Changed
 
 - **Every queued message stays yours until the agent takes it.** The first
