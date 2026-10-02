@@ -474,8 +474,8 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
             </div>
 
             <div className="mt-3 flex items-center gap-2 text-[10.5px] text-dim">
-              <span className="size-[5px] rounded-full bg-brand-lit" style={{ animation: "ux-pulse 2.4s ease-out infinite" }} />
-              Working for 41s
+              <Comet />
+              <span className="ux-shimmer">Working for 41s</span>
             </div>
           </div>
 

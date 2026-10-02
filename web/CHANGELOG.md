@@ -4,6 +4,11 @@ All notable changes to the marketing site are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Changed
+
+- **The desktop mockup's chat shows "working" as the app now does**: the Comet
+  Trail and a soft sweep of light over *Working for 41s*, instead of a pulsing
+  dot.
 
 ### Changed
 
