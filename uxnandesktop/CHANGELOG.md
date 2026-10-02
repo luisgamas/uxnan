@@ -14,7 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   The tab says the connection was lost, and when the host is back the terminal
   is repainted exactly and carries on — nothing is typed into it again. A
   restarted app finds each tab's terminal by its persistent id. All of a host's
-  terminals share one SSH channel. For builds that carry the engine for that
+  terminals share one SSH channel, and a link that goes silent is noticed in
+  about 30 seconds — the tabs say so and the host is reconnected — instead of
+  the two minutes the SSH keepalive takes. For builds that carry the engine for that
   host's platform: development builds today, release builds once the release
   pipeline ships it; Windows hosts keep their channel terminals for now.
 

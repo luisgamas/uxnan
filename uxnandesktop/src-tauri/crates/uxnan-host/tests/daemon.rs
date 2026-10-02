@@ -399,3 +399,22 @@ async fn attach_starts_a_daemon_and_joins_stdio_to_it() {
     }
     panic!("the detached daemon never wound down");
 }
+
+#[tokio::test]
+async fn a_daemon_never_removes_a_socket_that_is_not_its_own() {
+    // The case: this daemon's socket was replaced (it was frozen, judged dead,
+    // and another daemon took the path). When it finally winds down, the
+    // socket at that path belongs to someone else and must stay.
+    let mut daemon = Daemon::start(1);
+    let socket = daemon.socket();
+    drop(connect(&socket).await);
+    std::fs::remove_file(&socket).unwrap();
+    std::fs::write(&socket, b"another daemon's").unwrap();
+    for _ in 0..80 {
+        if let Ok(Some(_)) = daemon.child.try_wait() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(socket.exists(), "the other daemon's socket was removed");
+}

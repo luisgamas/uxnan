@@ -415,6 +415,46 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS; freezes its own daemon for ~40 s"]
+        async fn a_daemon_that_stops_answering_is_given_up_on() {
+            // A half-open link, made on purpose: our own daemon on the host is
+            // frozen (SIGSTOP — that one process, nothing else), so TCP and SSH
+            // stay up while nothing answers. The heartbeat must notice.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let pid = engine.daemon_pid();
+            let side = connect(&alias).await;
+            side.exec(&format!("kill -STOP {pid}")).await.unwrap();
+            let gave_up = tokio::time::timeout(std::time::Duration::from_secs(50), engine.lost())
+                .await
+                .is_ok();
+            side.exec(&format!("kill -CONT {pid}")).await.unwrap();
+            assert!(gave_up, "the frozen daemon was not noticed");
+            assert!(!engine.is_alive());
+            println!("live: {alias} frozen daemon noticed by the heartbeat");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS; idles 45 s on purpose"]
+        async fn an_idle_engine_stays_up_on_its_heartbeat() {
+            // The heartbeat gives up on a link silent for 30 s. A healthy link
+            // with nothing to say must never look like that — this is the test
+            // that every idle terminal is not cut off half a minute in.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            tokio::time::sleep(std::time::Duration::from_secs(45)).await;
+            assert!(engine.is_alive(), "an idle engine was given up on");
+            assert!(engine.list().await.is_ok(), "and it still answers");
+            println!("live: {alias} engine idle for 45 s, still up");
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

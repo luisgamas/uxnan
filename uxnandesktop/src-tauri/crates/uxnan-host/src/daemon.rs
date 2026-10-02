@@ -394,6 +394,7 @@ pub fn detach_from_session() {
 pub async fn serve(idle: Duration) -> std::io::Result<()> {
     paths::ensure_private_dir(&paths::run_dir())?;
     let listener = bind().await?;
+    let ours = socket_identity();
     let daemon = Arc::new(Daemon::new());
     log::line(&format!(
         "daemon {} started (protocol {PROTOCOL}, epoch {})",
@@ -413,12 +414,32 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
             _ = ticks.tick() => {
                 if !sweeper.sweep(idle) {
                     log::line("nothing left to do; exiting");
-                    let _ = std::fs::remove_file(paths::socket());
+                    // Only our own socket. A daemon that was frozen long enough
+                    // to be replaced must not, on waking, take away the socket
+                    // of the one that replaced it.
+                    if socket_identity().is_some() && socket_identity() == ours {
+                        let _ = std::fs::remove_file(paths::socket());
+                    }
                     return Ok(());
                 }
             }
         }
     }
+}
+
+/// Which file is at the socket's path (device and inode), to tell our socket
+/// from one another daemon put there.
+#[cfg(unix)]
+fn socket_identity() -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(paths::socket())
+        .ok()
+        .map(|m| (m.dev(), m.ino()))
+}
+
+#[cfg(not(unix))]
+fn socket_identity() -> Option<(u64, u64)> {
+    None
 }
 
 #[cfg(unix)]

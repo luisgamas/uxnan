@@ -626,16 +626,18 @@ impl RemoteFiles {
     /// else's business).
     ///
     /// Written to a scratch name first and renamed into place, so a reader never
-    /// meets half a binary — and a stale copy at the final name (an earlier
-    /// upload that did not run there) is removed first, because an SFTP rename
-    /// cannot replace an existing path. Two installs racing each other write
-    /// the same bytes to two scratch names; whichever rename lands last leaves
-    /// the same file.
+    /// meets half a binary. An SFTP rename cannot replace an existing path, so
+    /// what happens when the final name is taken is the caller's to say:
+    /// `replace` removes a copy known to be broken; otherwise a file that
+    /// appeared meanwhile is another install of the same build that got there
+    /// first, and it is kept — removing it would pull the binary out from under
+    /// that install while it checks it.
     pub async fn install_executable(
         &self,
         dir: &str,
         name: &str,
         bytes: &[u8],
+        replace: bool,
     ) -> Result<String, SftpFailure> {
         use russh_sftp::protocol::FileAttributes;
         let dir = normalize(dir);
@@ -645,9 +647,15 @@ impl RemoteFiles {
             built.push('/');
             built.push_str(segment);
             if !self.exists(&built).await? {
-                self.session.create_dir(built.clone()).await.map_err(|e| {
-                    self.failed(&format!("could not create {built} on that host"), e)
-                })?;
+                // Another install may create it between the look and the
+                // make; a folder that exists afterwards is all that matters.
+                if let Err(e) = self.session.create_dir(built.clone()).await {
+                    if !self.exists(&built).await? {
+                        return Err(
+                            self.failed(&format!("could not create {built} on that host"), e)
+                        );
+                    }
+                }
                 let _ = self
                     .session
                     .set_metadata(
@@ -661,7 +669,14 @@ impl RemoteFiles {
             }
         }
         let target = join(&dir, name);
-        let scratch = format!("{target}.partial-{}", std::process::id());
+        // Unique per upload, not per process: two installs from one app (two
+        // hosts' first terminals at once) must not share a scratch file.
+        static UPLOADS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let scratch = format!(
+            "{target}.partial-{}-{}",
+            std::process::id(),
+            UPLOADS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        );
         {
             use russh_sftp::protocol::OpenFlags;
             use tokio::io::AsyncWriteExt;
@@ -696,15 +711,24 @@ impl RemoteFiles {
             .await
             .map_err(|e| self.failed(&format!("could not make {scratch} executable"), e))?;
         if self.exists(&target).await? {
+            if !replace {
+                let _ = self.session.remove_file(scratch.clone()).await;
+                return Ok(target);
+            }
             self.session
                 .remove_file(target.clone())
                 .await
                 .map_err(|e| self.failed(&format!("could not replace {target} on that host"), e))?;
         }
-        self.session
-            .rename(scratch.clone(), target.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not move {scratch} into place"), e))?;
+        if let Err(e) = self.session.rename(scratch.clone(), target.clone()).await {
+            // Lost a race to a concurrent install of the same build: theirs is
+            // in place, ours is surplus.
+            if !replace && self.exists(&target).await? {
+                let _ = self.session.remove_file(scratch.clone()).await;
+                return Ok(target);
+            }
+            return Err(self.failed(&format!("could not move {scratch} into place"), e));
+        }
         Ok(target)
     }
 

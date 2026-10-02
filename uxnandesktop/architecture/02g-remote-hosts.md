@@ -1626,11 +1626,14 @@ Tres crates, una sola implementacion por capa:
 
 **Despliegue** (`src-tauri/src/ssh/engine.rs`). `uname -sm` decide la build
 (Linux x86_64/aarch64 musl estatico, macOS arm64/x86_64); se sube por el SFTP que
-el host ya tiene a `~/.uxnan/host/versions/<version>/` (carpetas `0700`, nombre
-temporal y renombrado, porque un rename SFTP no reemplaza), y el propio binario
-prueba que corre ahi (`version`, con su ventana de protocolo). Nada se descarga
-ni se compila en el host. Cada version de la app tiene su carpeta, asi que una
-actualizacion nunca reemplaza el programa del que arranco un daemon vivo.
+el host ya tiene a `~/.uxnan/host/versions/<version>-<hash>/` (carpetas `0700`,
+nombre temporal unico y renombrado, porque un rename SFTP no reemplaza; dos
+instalaciones simultaneas de la misma build no se pisan: gana la primera y la
+segunda conserva la suya), y el propio binario prueba que corre ahi (`version`,
+con su ventana de protocolo). Nada se descarga ni se compila en el host. La
+carpeta se nombra por version **y contenido**, asi que otra build nunca reutiliza
+en silencio lo que ya hubiera, y una actualizacion nunca reemplaza el programa
+del que arranco un daemon vivo.
 
 **Conexion.** Un canal `exec` de `uxnan-host attach`, que une su stdin/stdout al
 socket del daemon (`~/.uxnan/host/run/engine-v<protocolo>.sock`, en carpeta
@@ -1638,6 +1641,14 @@ socket del daemon (`~/.uxnan/host/run/engine-v<protocolo>.sock`, en carpeta
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
+
+**Latido.** El desktop pregunta cada 10 s y da el enlace por perdido tras 30 s
+sin oir nada (cualquier trama cuenta como señal de vida). Entonces cierra el canal
+y cuelga la conexion SSH de esa generacion, para que el vigilante de sesion vea
+el fin y la escalera de reconexion traiga el host —y sus terminales— de vuelta,
+en vez de esperar los ~2 min del keepalive SSH en un enlace medio abierto.
+Cerrar o desconectar el host cierra el canal del motor de forma explicita: un
+canal abierto mantiene viva la conexion debajo.
 
 **Lo que garantiza el daemon** (`crates/uxnan-host/src/daemon.rs`):
 
@@ -1652,7 +1663,9 @@ asi que dejan de contar una a una contra el `MaxSessions` del host.
   conexion; el cliente vuelve y recibe un snapshot nuevo.
 - Una terminal terminada sigue **adjuntable** un rato (su ultima pantalla).
 - Un socket rancio se **prueba** antes de reemplazarlo: nunca se borra uno con un
-  daemon vivo detras.
+  daemon vivo detras; y al salir, un daemon solo borra el socket si sigue siendo
+  el suyo (mismo inodo) — uno congelado y reemplazado no le quita el socket al
+  que lo reemplazo.
 - Sin nada que hacer —ni clientes ni terminales vivas— sale solo a los 30 min.
 - Su log registra solo ciclo de vida; jamas lo que una terminal mostro o recibio.
 

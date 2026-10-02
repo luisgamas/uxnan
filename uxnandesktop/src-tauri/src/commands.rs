@@ -845,7 +845,7 @@ fn remote_terminal_output<R: tauri::Runtime>(
 /// not running yet. One started now is watched, so its terminals are told —
 /// and kept — when the connection under it goes away.
 async fn engine_for<R: tauri::Runtime>(
-    _app: &AppHandle<R>,
+    app: &AppHandle<R>,
     state: &AppState,
     host_id: &str,
     conn: &std::sync::Arc<ssh::conn::Connection>,
@@ -863,9 +863,28 @@ async fn engine_for<R: tauri::Runtime>(
         let terminals = std::sync::Arc::clone(&state.engine_terminals);
         let watched = std::sync::Arc::clone(&engine);
         let host = host_id.to_string();
+        let app = app.clone();
         tauri::async_runtime::spawn(async move {
             watched.lost().await;
             terminals.detach_host(&host, watched.epoch()).await;
+            // The engine went quiet while the connection under it still looks
+            // up — a half-open link. Hang that connection up, so the session
+            // watcher sees it end and the reconnect ladder brings the host (and
+            // these terminals) back, instead of waiting minutes for the SSH
+            // keepalive to reach the same verdict.
+            let state = app.state::<AppState>();
+            if let Some(conn) = session_for(&state, &host).await {
+                if conn.generation() == watched.generation() && !conn.handle().is_closed() {
+                    let _ = conn
+                        .handle()
+                        .disconnect(
+                            russh::Disconnect::ByApplication,
+                            "the link stopped answering",
+                            "",
+                        )
+                        .await;
+                }
+            }
         });
     }
     Ok(engine)

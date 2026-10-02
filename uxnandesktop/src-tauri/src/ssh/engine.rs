@@ -6,9 +6,9 @@
 //! machine, uploads it over the SFTP session the host already has, and asks it
 //! to prove it runs (`uxnan-host version`). Nothing is downloaded on the host,
 //! nothing is compiled there, nothing needs to be installed there first. A
-//! version that is already in place is reused; each app version gets its own
-//! directory (`~/.uxnan/host/versions/<version>/`), so an update never replaces
-//! the binary a running daemon was started from.
+//! build that is already in place is reused; each build gets its own directory
+//! (`~/.uxnan/host/versions/<version>-<hash>/`), so an update never replaces the
+//! binary a running daemon was started from.
 //!
 //! **Talking to it.** One SSH channel: an `exec` of `uxnan-host attach`, whose
 //! stdin/stdout the daemon speaks frames on (`uxnan-host-protocol`). Every
@@ -46,6 +46,23 @@ const MAX_PREAMBLE: usize = 64 * 1024;
 
 /// How long one call waits for its answer.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How often the daemon is asked whether it is still there, and how long a
+/// silence counts as a link that is gone.
+///
+/// The SSH keepalive notices a dead link too, but only after ~two minutes
+/// (`conn.rs`). A half-open link — a Wi-Fi that dropped without a word, a
+/// laptop that slept — looks alive to TCP all that time, and a terminal that
+/// silently swallows keystrokes for two minutes is worse than one that says it
+/// is reconnecting. The daemon answers a ping at once, so 30 s of silence is not
+/// a slow host; it is no host.
+const PING_EVERY: Duration = Duration::from_secs(10);
+const SILENCE_IS_GONE: Duration = Duration::from_secs(30);
+
+/// Whether a link that last said something `since` ago is gone.
+fn link_is_gone(since: Duration) -> bool {
+    since >= SILENCE_IS_GONE
+}
 
 /// The build of `uxnan-host` a host needs, from what `uname -sm` printed.
 pub fn triple_for(uname: &str) -> Option<&'static str> {
@@ -108,7 +125,7 @@ fn binary_cache_dir() -> Option<PathBuf> {
     )
 }
 
-/// Make sure this version's daemon is on the host and runs there; answer the
+/// Make sure this build's daemon is on the host and runs there; answer the
 /// path to it.
 pub async fn ensure_installed(
     conn: &Connection,
@@ -129,17 +146,6 @@ pub async fn ensure_installed(
             failure(e)
         ))
     })?;
-    let dir = format!(
-        "{}/{HOST_DIR}/{}",
-        home.trim_end_matches('/'),
-        env!("CARGO_PKG_VERSION")
-    );
-    let path = format!("{dir}/uxnan-host");
-
-    if runs_here(conn, &path).await {
-        return Ok(path);
-    }
-
     let uname = conn.exec("uname -sm").await?;
     let triple = triple_for(uname.stdout.trim()).ok_or_else(|| {
         AppError::Invalid(format!(
@@ -149,8 +155,24 @@ pub async fn ensure_installed(
     })?;
     let local = local_binary(triple)?;
     let bytes = tokio::fs::read(&local).await?;
+    // The folder is named by the version **and** the bytes, so a different
+    // build — a development build of the same version, a rebuilt release — is
+    // a different folder, never a silent reuse of whatever is already there.
+    let dir = format!(
+        "{}/{HOST_DIR}/{}",
+        home.trim_end_matches('/'),
+        install_dir_name(&bytes)
+    );
+    let path = format!("{dir}/uxnan-host");
+
+    if runs_here(conn, &path).await {
+        return Ok(path);
+    }
+    // A file there that does not run is a broken copy (an upload cut short):
+    // that one is replaced. Otherwise a racing install of the same build wins.
+    let broken = files.exists(&path).await.unwrap_or(false);
     files
-        .install_executable(&dir, "uxnan-host", &bytes)
+        .install_executable(&dir, "uxnan-host", &bytes, broken)
         .await
         .map_err(|e| {
             AppError::Invalid(format!(
@@ -172,6 +194,17 @@ pub async fn ensure_installed(
         ),
     );
     Ok(path)
+}
+
+/// `<version>-<first 12 hex of the binary's SHA-256>`.
+fn install_dir_name(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    format!(
+        "{}-{}",
+        env!("CARGO_PKG_VERSION"),
+        hex::encode(&digest[..6])
+    )
 }
 
 fn failure(e: super::sftp::SftpFailure) -> String {
@@ -286,6 +319,10 @@ impl HostEngine {
         let alive = Arc::new(AtomicBool::new(true));
         let lost = Arc::new(Notify::new());
         let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        // When anything last arrived from the daemon, as milliseconds since
+        // `started`: every frame is proof of life, not only a pong.
+        let started = std::time::Instant::now();
+        let last_heard = Arc::new(AtomicU64::new(0));
         let pending: Arc<std::sync::Mutex<HashMap<u64, Pending>>> = Arc::default();
         let sinks: Sinks = Arc::default();
 
@@ -317,7 +354,8 @@ impl HostEngine {
         let reader_pending = Arc::clone(&pending);
         let reader_sinks = Arc::clone(&sinks);
         let pong = out.clone();
-        let mut reader_shutdown = shutdown_rx;
+        let mut reader_shutdown = shutdown_rx.clone();
+        let reader_heard = Arc::clone(&last_heard);
         tokio::spawn(async move {
             loop {
                 let frame = tokio::select! {
@@ -327,6 +365,7 @@ impl HostEngine {
                     },
                     _ = reader_shutdown.changed() => break,
                 };
+                reader_heard.store(started.elapsed().as_millis() as u64, Ordering::SeqCst);
                 match frame {
                     Frame::Data { session, bytes } => {
                         if let Some(sink) = reader_sinks.lock().unwrap().get(&session) {
@@ -373,6 +412,37 @@ impl HostEngine {
             reader_lost.notify_waiters();
         });
 
+        // Heartbeat: ask, and give up on a link that stopped answering.
+        let beat_out = out.clone();
+        let beat_alive = Arc::clone(&alive);
+        let beat_shutdown = shutdown.clone();
+        let mut beat_stop = shutdown_rx;
+        tokio::spawn(async move {
+            let mut n: u64 = 0;
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(PING_EVERY) => {}
+                    _ = beat_stop.changed() => return,
+                }
+                if !beat_alive.load(Ordering::SeqCst) {
+                    return;
+                }
+                let heard = Duration::from_millis(last_heard.load(Ordering::SeqCst));
+                if link_is_gone(started.elapsed().saturating_sub(heard)) {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Info,
+                        "ssh-engine",
+                        "the host engine stopped answering; treating the link as gone",
+                    );
+                    beat_alive.store(false, Ordering::SeqCst);
+                    let _ = beat_shutdown.send(true);
+                    return;
+                }
+                n += 1;
+                let _ = beat_out.try_send(Frame::Ping(n));
+            }
+        });
+
         crate::diagnostics::log(
             crate::diagnostics::Level::Info,
             "ssh-engine",
@@ -396,6 +466,11 @@ impl HostEngine {
 
     pub fn epoch(&self) -> &str {
         &self.welcome.epoch
+    }
+
+    /// The daemon's process id on the host.
+    pub fn daemon_pid(&self) -> u32 {
+        self.welcome.pid
     }
 
     pub fn generation(&self) -> u64 {
@@ -656,6 +731,31 @@ impl Engines {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_is_gone_after_a_silence_no_live_daemon_keeps() {
+        // The daemon answers a ping at once and pings come every 10 s, so even
+        // a slow host is heard several times inside the window.
+        assert!(!link_is_gone(Duration::from_secs(0)));
+        assert!(!link_is_gone(PING_EVERY * 2));
+        assert!(link_is_gone(SILENCE_IS_GONE));
+        assert!(
+            SILENCE_IS_GONE >= PING_EVERY * 3,
+            "three missed answers, not one"
+        );
+    }
+
+    #[test]
+    fn a_different_build_gets_a_different_folder() {
+        let a = install_dir_name(b"one build");
+        assert_ne!(a, install_dir_name(b"another build"));
+        assert_eq!(
+            a,
+            install_dir_name(b"one build"),
+            "and the same build, the same folder"
+        );
+        assert!(a.starts_with(&format!("{}-", env!("CARGO_PKG_VERSION"))));
+    }
 
     #[test]
     fn a_host_is_matched_to_the_build_it_needs() {

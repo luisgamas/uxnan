@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,048 Rust tests (950 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
-in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 6 against the `uxnan-host` daemon + 45
-integration), of which 53 are ignored probes that need something real to talk to
-(45 live SSH probes — 33 against a real `sshd` and 12 against a **Linux host in a
+`docs/chat.md`). 1,053 Rust tests (954 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
+in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 7 against the `uxnan-host` daemon + 45
+integration), of which 55 are ignored probes that need something real to talk to
+(47 live SSH probes — 35 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests) + 1,745 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -1121,7 +1121,12 @@ already written for the day phase 2 below lands — nothing to relax then.
          stopping an agent on the host), then files, git and search served by
          the engine (removing `ssh/git.rs`, `ssh/search.rs`, the remote half of
          `fsRouter.ts` / `gitRouter.ts`).
-      4. **Scrollback across an app restart:** a reattached tab gets the screen,
+      4. **Old builds on a host are never cleaned up.** Each build installs
+         into its own `~/.uxnan/host/versions/<version>-<hash>/` (1.3 MB);
+         nothing removes the ones no daemon runs from. Remove the others after
+         a successful install, keeping any a live daemon was started from
+         (`ssh/engine.rs` → `ensure_installed`).
+      5. **Scrollback across an app restart:** a reattached tab gets the screen,
          not what scrolled above it (`crates/workspace-engine/src/screen.rs`).
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.

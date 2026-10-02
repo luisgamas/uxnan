@@ -361,14 +361,20 @@ laptop lid, a Wi-Fi handover or an app restart.
 
 - **Nothing to install by hand.** The first terminal on a host uploads the
   engine over the SFTP session the host already has, into
-  `~/.uxnan/host/versions/<app version>/` (a folder only your account can read),
+  `~/.uxnan/host/versions/` (a folder only your account can read),
   and asks it to prove it runs there. It is one static binary — no Node, no
   compiler, nothing downloaded on the host itself — so a server without Internet
-  access works too. Each app version gets its own folder, so an update never
-  replaces the program a running engine was started from.
+  access works too. Each build gets its own folder
+  (`~/.uxnan/host/versions/<version>-<hash>/`), so an update never replaces the
+  program a running engine was started from.
 - **One channel for all of them.** Every terminal on the host travels over one
   SSH channel, so they no longer count one by one against the host's
   `MaxSessions`.
+- **A silent link is noticed in seconds.** The app checks on the engine every
+  10 seconds; if nothing has come back for 30, the link is treated as gone — the
+  tabs say so and the host is reconnected — instead of waiting the two minutes
+  the SSH keepalive takes to reach the same verdict on a Wi-Fi that dropped
+  without a word.
 - **The screen comes back, not the bytes.** The engine keeps what each terminal
   shows; a returning tab is repainted from that — a full-screen agent included —
   and live output resumes after it. What scrolled above the screen before an app
