@@ -215,9 +215,17 @@ connected to live bridge data, validated on-device against a real bridge.
   (up) shortcuts pair with it.
 - **Structured agent turns** — assistant replies without a bubble, consecutive
   text merged, borderless tonal **Work log (N)** / **Thinking** process
-  disclosures (collapsed by default and exclusively expanded per turn),
+  disclosures (collapsed by default and exclusively expanded per turn; an
+  open work log lists each step on one line, a command's output opening on
+  its own row),
   durable native response boundaries that keep every progress/final message,
-  a localized **N previous messages** disclosure for settled earlier replies,
+  a settled answer's earlier replies folded behind one quiet line that says
+  how long the turn worked (**Worked for 5m 52s**, from `Turn.completedAt −
+  createdAt`, stored as `messages_table.turn_duration_ms`, schema v11) or,
+  without a duration, **N previous messages** — opened, they lay out through
+  the same segment builder as the answer (prose + collapsed work-log groups),
+  context compaction as a quiet divider line (**Context compacted**) whose tap
+  unfolds the reason and token counts,
   collapsible **Changed files (N) · +a −d** with per-file diffs, **Copy
   response**, **Last edits** strip above the composer; **Thinking** remains
   settings-gated. Long user text defaults to a ten-line expandable preview and

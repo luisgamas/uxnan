@@ -463,7 +463,11 @@ and composed in `application_providers.dart`. The important ones:
    `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch
    from visible source syntax when a turn completes. During streaming every
    assistant response stays visible; after completion, earlier progress
-   responses fold under the localized **N previous messages** disclosure.
+   responses fold under one quiet line — **Worked for 5m 52s** when the turn's
+   duration is known (`Turn.completedAt − createdAt` from `turn/list` /
+   `turn/read`, kept on the assistant message as `Message.turnDuration`), else
+   **N previous messages** — and open through the same segment builder as the
+   answer (`_responseSegments`: prose + collapsed work-log groups).
 8. Assistant prose sends explicit Markdown links, detected bare local paths and
    inline-code paths through one callback. `FileBrowserManager` asks the bridge
    to resolve the citation on the PC, then opens `FileViewerScreen` with the

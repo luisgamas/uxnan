@@ -5558,6 +5558,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 previous message} other{{count} previous messages}}'**
   String conversationPreviousMessages(int count);
 
+  /// Label of a settled turn's fold of earlier responses when the turn's duration is known, e.g. 'Worked for 5m 52s'.
+  ///
+  /// In en, this message translates to:
+  /// **'Worked for {time}'**
+  String conversationWorkedFor(String time);
+
   /// Shown when the license registry failed to load.
   ///
   /// In en, this message translates to:

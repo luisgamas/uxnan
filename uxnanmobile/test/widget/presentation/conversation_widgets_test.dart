@@ -89,28 +89,40 @@ void main() {
     expect(find.byType(HighlightView), findsOneWidget);
   });
 
-  testWidgets('context compaction renders as a localized timeline marker',
+  testWidgets(
+      'context compaction is a quiet line whose tap reveals reason and tokens',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     const content = CompactionContent(
       reason: ContextCompactionReason.threshold,
       tokensBefore: 120000,
       tokensAfter: 42000,
     );
+    const reason =
+        "Earlier context was summarized after reaching the agent's limit.";
+    const tokens = 'Context reduced from 120K to about 42K tokens.';
 
     await tester.pumpWidget(_wrap(const MessageContentView(content: content)));
 
+    // At rest: the title alone, between two hairlines — no card.
     expect(find.text('Context compacted'), findsOneWidget);
+    expect(find.textContaining('summarized'), findsNothing);
+    expect(find.textContaining('120K'), findsNothing);
+    expect(find.byType(Divider), findsNWidgets(2));
+    // Nothing is lost for a screen reader, folded or not.
     expect(
-      find.text(
-        "Earlier context was summarized after reaching the agent's limit.",
-      ),
+      find.bySemanticsLabel('Context compacted. $reason. $tokens'),
       findsOneWidget,
     );
-    expect(
-      find.text('Context reduced from 120K to about 42K tokens.'),
-      findsOneWidget,
-    );
-    expect(findUxIcon(UxIcons.compress), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('compaction-marker')));
+    await tester.pumpAndSettle();
+    expect(find.text('$reason $tokens'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('compaction-marker')));
+    await tester.pumpAndSettle();
+    expect(find.text('$reason $tokens'), findsNothing);
+    semantics.dispose();
   });
 
   testWidgets('waiting assistant turn shows the responding label and loader',
@@ -834,9 +846,18 @@ void main() {
     expect(find.text('All tests passed'), findsNothing);
     expect(find.text('lib/a.dart'), findsNothing);
 
+    // Opening the log lists each command on one line; its output opens on
+    // a tap of that row, like a changed file opens its diff.
     await tester.tap(find.text('Work log'));
     await tester.pumpAndSettle();
+    expect(find.text(r'$ flutter test'), findsOneWidget);
+    expect(find.text('All tests passed'), findsNothing);
+    await tester.tap(find.text(r'$ flutter test'));
+    await tester.pumpAndSettle();
     expect(find.text('All tests passed'), findsOneWidget);
+    await tester.tap(find.text(r'$ flutter test'));
+    await tester.pumpAndSettle();
+    expect(find.text('All tests passed'), findsNothing);
 
     // Expanding changed files reveals the file row.
     await tester.tap(find.text('Changed files'));
@@ -916,6 +937,113 @@ void main() {
     expect(find.textContaining('First progress update.'), findsOneWidget);
     expect(find.textContaining('Second progress update.'), findsOneWidget);
     expect(find.textContaining('Final answer.'), findsOneWidget);
+  });
+
+  /// A settled answer whose two earlier responses each ran a command.
+  Message previousResponsesWithWork({Duration? turnDuration}) => Message(
+        id: 'm-work',
+        threadId: 'th1',
+        turnId: 't1',
+        role: MessageRole.assistant,
+        contents: const [
+          TextContent('Checking the analyzer.'),
+          CommandExecutionContent(
+            command: 'dart analyze',
+            status: CommandStatus.completed,
+            output: 'No issues found',
+          ),
+          AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.commentary,
+            itemId: 'one',
+          ),
+          TextContent('Running the tests.'),
+          CommandExecutionContent(
+            command: 'flutter test',
+            status: CommandStatus.completed,
+            output: 'All tests passed',
+          ),
+          AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.commentary,
+            itemId: 'two',
+          ),
+          TextContent('Final answer.'),
+          AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.finalAnswer,
+            itemId: 'three',
+          ),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+        turnDuration: turnDuration,
+      );
+
+  testWidgets('earlier responses open as the answer reads: collapsed work logs',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: previousResponsesWithWork())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('previous-responses-toggle')));
+    await tester.pumpAndSettle();
+
+    // Prose plus one collapsed work-log group per response — never the
+    // full-size command card, whose bare command and output would show.
+    expect(find.text('Checking the analyzer.'), findsOneWidget);
+    expect(find.text('Running the tests.'), findsOneWidget);
+    expect(find.text('Work log'), findsNWidgets(2));
+    expect(find.text(r'$ dart analyze'), findsOneWidget);
+    expect(find.text('dart analyze'), findsNothing);
+    expect(find.text('No issues found'), findsNothing);
+    expect(find.text('All tests passed'), findsNothing);
+
+    // Each group opens and closes on its own, and a command's output opens
+    // from its own row.
+    await tester.tap(find.text('Work log').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(r'$ dart analyze').last);
+    await tester.pumpAndSettle();
+    expect(find.text('No issues found'), findsOneWidget);
+    expect(find.text('All tests passed'), findsNothing);
+
+    await tester.tap(find.text('Work log').last);
+    await tester.pumpAndSettle();
+    expect(find.text('No issues found'), findsNothing);
+    await tester.tap(find.text(r'$ flutter test').last);
+    await tester.pumpAndSettle();
+    expect(find.text('All tests passed'), findsOneWidget);
+
+    await tester.tap(find.text('Work log').last);
+    await tester.pumpAndSettle();
+    expect(find.text('All tests passed'), findsNothing);
+  });
+
+  testWidgets('the fold says how long the turn worked when that is known',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        MessageBubble(
+          message: previousResponsesWithWork(
+            turnDuration: const Duration(minutes: 5, seconds: 52),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Worked for 5m 52s'), findsOneWidget);
+    expect(find.text('2 previous messages'), findsNothing);
+  });
+
+  testWidgets('without a known duration the fold counts the responses',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: previousResponsesWithWork())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 previous messages'), findsOneWidget);
+    expect(find.textContaining('Worked for'), findsNothing);
   });
 
   testWidgets('a reply a later message cut keeps every response in view',
@@ -1023,6 +1151,8 @@ void main() {
     await tester.tap(find.text('Work log'));
     await tester.pumpAndSettle();
     expect(find.text('private reasoning detail'), findsNothing);
+    await tester.tap(find.text(r'$ dart analyze'));
+    await tester.pumpAndSettle();
     expect(find.text('No issues found'), findsOneWidget);
   });
 

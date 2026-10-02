@@ -3149,6 +3149,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String conversationWorkedFor(String time) {
+    return 'Worked for $time';
+  }
+
+  @override
   String get licensesError => 'Couldn\'t load the licenses.';
 
   @override

@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **An answer's earlier messages fold behind how long the agent worked.** When
+  a finished answer came in several messages, the earlier ones fold behind one
+  quiet line that says *Worked for 5m 52s* — the way the desktop says it — or,
+  when the PC did not say when the turn ended, how many messages it holds.
+  Opened, they read exactly like the answer: the text, and each run of
+  commands as one collapsed *Work log* you can open and close on its own,
+  instead of a full card for every command.
+- **A work log lists each step on one line.** Opened, a *Work log* shows every
+  command and tool call as one row instead of every command's output at once;
+  a command that printed something opens on a tap to show just its output, the
+  way a changed file opens its diff — and the way the desktop lists them.
+- **"Context compacted" is a quiet divider line.** Where the agent summarized
+  earlier context, the conversation shows one muted line instead of a boxed
+  card. Tap it to see why it happened and how far the context shrank; screen
+  readers hear all of it either way.
 
 ## [0.0.35-alpha.20261002+20261002] - 20261002
 ### Changed
