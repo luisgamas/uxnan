@@ -868,6 +868,18 @@ fn forward_host_reports<R: tauri::Runtime>(
     let app = app.clone();
     let host = host_id.to_string();
     let epoch = engine.epoch().to_string();
+    // Weak: the engine holds this task's sender, and the task must end with
+    // the engine rather than keep it alive.
+    let transcripts = std::sync::Arc::downgrade(engine);
+    let ask: crate::hooks::TranscriptAsk = std::sync::Arc::new(move |kind, path| {
+        let engine = transcripts.upgrade();
+        Box::pin(async move {
+            match engine {
+                Some(engine) => engine.transcript_preview(kind, path).await,
+                None => (None, None),
+            }
+        })
+    });
     tauri::async_runtime::spawn(async move {
         while let Some((session, headers, body)) = rx.recv().await {
             let state = app.state::<AppState>();
@@ -905,7 +917,7 @@ fn forward_host_reports<R: tauri::Runtime>(
                 &app,
                 map,
                 body.into_bytes().into(),
-                crate::hooks::ReportOrigin::Host,
+                crate::hooks::ReportOrigin::Host(std::sync::Arc::clone(&ask)),
             )
             .await;
         }

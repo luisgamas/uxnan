@@ -29,8 +29,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   to a host wires the agents it has with the same reporters this machine uses —
   only those it has, keeping everything else in their configs — and each report
   travels over the engine's channel to the tab it came from: the working /
-  waiting / done cards, the checks and the notifications, also for a turn that
-  ended while the lid was closed. Proven with Claude Code on a real Linux host.
+  waiting / done cards, the checks and the notifications — with the finished
+  turn's prompt and reply, read from the transcript on the host — also for a
+  turn that ended while the lid was closed. Proven with Claude Code on a real Linux host.
   Follows the hooks auto-install setting. The engine can also close an agent in
   one of its terminals, with the same code this machine uses.
 - **Every installer carries the host engine for every platform it can run

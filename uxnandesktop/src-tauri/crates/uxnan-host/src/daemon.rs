@@ -405,12 +405,14 @@ impl Daemon {
             }
             // Handled where the connection lives: a watch is per connection,
             // and wiring blocks on files and a login shell.
-            Call::Watch { .. } | Call::Unwatch | Call::WireHooks | Call::StopAgent { .. } => {
-                Outcome::Error {
-                    code: ErrorCode::Invalid,
-                    message: "handled by the connection".to_string(),
-                }
-            }
+            Call::Watch { .. }
+            | Call::Unwatch
+            | Call::WireHooks
+            | Call::StopAgent { .. }
+            | Call::TranscriptPreview { .. } => Outcome::Error {
+                code: ErrorCode::Invalid,
+                message: "handled by the connection".to_string(),
+            },
             Call::List => {
                 let sessions = self.sessions.lock().unwrap();
                 let mut list: Vec<SessionInfo> = sessions
@@ -731,6 +733,20 @@ where
                                         Some(pid) => stop_agent_in(session, pid, commands).await,
                                     };
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::TranscriptPreview { agent_type, path } }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let read = tokio::task::spawn_blocking(move || {
+                                        uxnan_workspace_engine::transcript::preview(&agent_type, &path)
+                                    })
+                                    .await
+                                    .unwrap_or((None, None));
+                                    answer.send(Frame::control(&ServerMessage::Response {
+                                        id,
+                                        outcome: Outcome::Ok { reply: Reply::Transcript { prompt: read.0, summary: read.1 } },
+                                    }));
                                 });
                             }
                             Ok(ClientMessage::Request { id, call: Call::Unwatch }) => {

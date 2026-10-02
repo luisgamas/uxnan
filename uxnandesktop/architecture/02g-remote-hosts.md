@@ -1666,7 +1666,10 @@ con un error y la conexion sigue: colgar dejaria sin terminales por una funcion
 que ninguna usa. Versiones: 1 = terminales; 2 = vigilar carpetas; 3 = hooks de
 agentes; 4 = `Attach { history }`; 5 = `StopAgent` (cerrar el agente de una
 terminal y solo a el, con el mismo `agentstop` que el desktop, que como
-`procscan` vive ahora en el motor). Imprime
+`procscan` vive ahora en el motor); 6 = `TranscriptPreview` (la vista previa
+de un turno terminado, leida en el host por el mismo lector que el desktop,
+`workspace_engine::transcript`, con la misma regla: solo un `.jsonl` dentro de
+la carpeta de transcripts de ese agente). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1767,7 +1770,8 @@ loopback del host, y el reporte viaja por el canal que ya existe.
   tiene otro id y el agente conserva el viejo. Reescribe `x-uxnan-agent-id` al
   de la pestana y llama al mismo `hooks::handle_report` con
   `ReportOrigin::Host`, que no lee en esta maquina ninguna ruta que el reporte
-  nombre (el transcript esta en el host).
+  nombre: la vista previa de un turno terminado se le pide al motor del host
+  (`TranscriptPreview`), que lee el transcript alli.
 
 Probado contra el binario real (un reporte del script real llega solo a su
 terminal, espera mientras nadie mira y llega tras la pantalla; el cableado
@@ -1779,7 +1783,7 @@ pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
 empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
 pasar la sesion de un agente del host a un chat (necesita el bridge del host,
-F8; el motor ya cierra el agente), la vista previa del transcript y el
+F8; el motor ya cierra el agente) y el
 navegador/MCP para las terminales del motor; ficheros, git y busqueda servidos
 por el motor.
 
@@ -1813,7 +1817,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
-| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan pasar su sesion a un chat (bridge del host), la vista previa del transcript y Windows |
+| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan pasar su sesion a un chat (bridge del host) y Windows |
 | 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador; faltan Windows y los recursos remotos |

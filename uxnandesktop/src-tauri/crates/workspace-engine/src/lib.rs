@@ -18,6 +18,7 @@ pub mod error;
 pub mod procscan;
 pub mod pty;
 pub mod screen;
+pub mod transcript;
 pub mod watch;
 
 pub use error::Error;

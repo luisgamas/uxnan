@@ -911,3 +911,57 @@ async fn closing_a_terminals_agent_leaves_its_shell_running() {
         }
     );
 }
+
+#[tokio::test]
+async fn a_transcript_on_the_host_is_read_there_and_only_an_agents_own() {
+    let daemon = Daemon::start(600);
+    let home = daemon.user_home();
+    let dir = home.join(".claude").join("projects").join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let transcript = dir.join("s.jsonl");
+    std::fs::write(
+        &transcript,
+        concat!(
+            r#"{"message":{"role":"user","content":"what is this repo"}}"#,
+            "\n",
+            r#"{"message":{"role":"assistant","content":[{"type":"text","text":"A desktop app."}]}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let elsewhere = home.join("notes.jsonl");
+    std::fs::copy(&transcript, &elsewhere).unwrap();
+
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let read = client
+        .call(Call::TranscriptPreview {
+            agent_type: "claude".into(),
+            path: transcript.display().to_string(),
+        })
+        .await;
+    assert_eq!(
+        read,
+        Outcome::Ok {
+            reply: Reply::Transcript {
+                prompt: Some("what is this repo".into()),
+                summary: Some("A desktop app.".into()),
+            }
+        }
+    );
+    let refused = client
+        .call(Call::TranscriptPreview {
+            agent_type: "claude".into(),
+            path: elsewhere.display().to_string(),
+        })
+        .await;
+    assert_eq!(
+        refused,
+        Outcome::Ok {
+            reply: Reply::Transcript {
+                prompt: None,
+                summary: None
+            }
+        },
+        "a file outside the agent's own transcripts is never read"
+    );
+}

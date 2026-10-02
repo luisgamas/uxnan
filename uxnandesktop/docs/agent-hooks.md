@@ -356,10 +356,12 @@ about the reporters changes; only where they post:
   the tab comes back. A tab renamed by an app restart still gets them: they are
   matched by terminal, not by the id the agent was started with.
 
-What a host's report does not do yet: read the session transcript for the
-completion preview (it is on the host — only this machine's transcripts are
-read, so a Claude turn there shows Claude's own summary and the others a bare
-status), open the integrated browser, or reach the browser MCP.
+The completion preview comes from the agent's transcript **on the host**: the
+app asks that host's engine, which reads it with the same reader and the same
+rule as here (a `.jsonl` inside that agent's own transcript folder, nothing
+else); this machine never opens a file by a path a host's report names. What a
+host's report does not do yet: open the integrated browser, or reach the
+browser MCP.
 
 ### OpenCode 1 and OpenCode 2
 

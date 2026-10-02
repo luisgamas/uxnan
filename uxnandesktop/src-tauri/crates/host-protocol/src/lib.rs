@@ -28,7 +28,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 4: `Attach { history }` — the lines above the screen, for a viewer that
 ///   starts empty.
 /// - 5: `StopAgent` — close the agent a terminal runs, and only it.
-pub const PROTOCOL: u32 = 5;
+/// - 6: `TranscriptPreview` — the last turn of a transcript on this machine.
+pub const PROTOCOL: u32 = 6;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -270,6 +271,14 @@ pub enum Call {
         session: u32,
         commands: Vec<String>,
     },
+    /// The last turn's prompt and reply from the transcript an agent's report
+    /// named — read here, where the file is, and only if it is a transcript of
+    /// that agent's own.
+    #[serde(rename_all = "camelCase")]
+    TranscriptPreview {
+        agent_type: String,
+        path: String,
+    },
 }
 
 /// How a call ended.
@@ -311,6 +320,10 @@ pub enum Reply {
     },
     AgentStopped {
         outcome: AgentStop,
+    },
+    Transcript {
+        prompt: Option<String>,
+        summary: Option<String>,
     },
     Done,
 }

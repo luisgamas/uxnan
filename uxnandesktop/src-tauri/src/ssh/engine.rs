@@ -708,6 +708,26 @@ impl HostEngine {
         }
     }
 
+    /// The last turn's `(prompt, reply)` from a transcript on the host, read
+    /// there by the engine's own reader. `(None, None)` from an engine too old
+    /// to read one, or when it is not that agent's transcript.
+    pub async fn transcript_preview(
+        &self,
+        agent_type: String,
+        path: String,
+    ) -> (Option<String>, Option<String>) {
+        if self.welcome.protocol < 6 {
+            return (None, None);
+        }
+        match self
+            .request(Call::TranscriptPreview { agent_type, path }, None)
+            .await
+        {
+            Ok(Reply::Transcript { prompt, summary }) => (prompt, summary),
+            _ => (None, None),
+        }
+    }
+
     /// Where the agents' reports from this host's terminals go.
     pub fn set_on_hook(&self, report: HookFn) {
         *self.on_hook.lock().unwrap() = Some(report);
