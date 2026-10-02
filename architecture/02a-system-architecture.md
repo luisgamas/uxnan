@@ -1,10 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.6
-> **Fecha:** 2026-10-01
+> **Version:** 1.5.7
+> **Fecha:** 2026-10-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.7):** Claude Code's background work is waited for
+> across **every** wake-up, not just the first: the bridge keeps the CLI's input
+> open from one wake-up to the next, so a wake-up that starts more background
+> work ("CI is green; now I wait for the release") is waited for too, and the
+> turn completes when Claude ends one with nothing left running (§5.8.14).
+> OpenCode 2 comes back too — its shell tool can move a command to the
+> background and the server wakes the model when it ends — and its turn is now
+> held the same way, so that report lands in the conversation. Every other
+> wired agent was re-measured: none comes back on its own. Internal to the
+> bridge: no contract changes.
 
 > **Executive summary (1.5.6):** every queued message — the first one too —
 > stays editable, cancellable and sendable now until the agent is handed it,
@@ -2749,8 +2760,14 @@ controla el bridge: **mientras la entrada sigue abierta espera lo que tarde el
 trabajo** (un `sleep 240` dejado corriendo tras el turno se espero completo), y
 **una vez cerrada** le da al trabajo **~4–6 s** y luego lo **detiene**
 (`status:"stopped"`), saliendo con ese trabajo sin terminar. El bridge mantiene
-la entrada abierta mientras haya una tarea viva y la cierra cuando termina la
-ultima, asi que el trabajo tiene su tiempo.
+la entrada abierta mientras haya una tarea viva **y de un despertar al
+siguiente**: el despertar puede lanzar mas trabajo ("el CI paso; ahora espero el
+release"), y la CLI solo lo espera si su entrada sigue abierta. Cerrarla al
+terminar la ultima tarea, como se hacia, cortaba todo despertar despues del
+primero (medido: la segunda espera quedaba `stopped`). La entrada se cierra al
+completarse el turno, o si no aparece ningun despertar en 30 s
+(`WAKE_GRACE_MS`; medido, el `init` del despertar llega ~0.2 s despues del
+`task_notification`).
 
 **Una espera larga NO es este caso.** Lo anterior aplica solo a trabajo
 que queda corriendo *despues* de que el modelo termina su turno. El caso comun —
@@ -2770,12 +2787,23 @@ cambia):
 1. **Un `result` con trabajo vivo no cierra el turno.** `claude-adapter.ts`
    sigue las tareas vivas (lineas `system` con `subtype:"task_started"` /
    `"task_notification"`; por eso `system` dejo de mapearse a un solo tipo) y
-   retiene la finalizacion hasta que la CLI produzca su turno de seguimiento o
-   salga. Tampoco lo cierra mientras quede un mensaje escrito que la CLI aun no
+   retiene la finalizacion hasta que un turno de seguimiento termine sin
+   trabajo vivo — tantos despertares como hagan falta — o la CLI salga. Tampoco lo cierra mientras quede un mensaje escrito que la CLI aun no
    leyo: cada mensaje lleva un `uuid` y la CLI lo devuelve al leerlo
    (`--replay-user-messages`); un `result` sin mensajes pendientes es el unico
-   que termina el turno. Se emite **un solo** `turn_completed`, con **ambas** respuestas: el
+   que termina el turno. Se emite **un solo** `turn_completed`, con **todas** las respuestas: el
    `result` de la CLI solo lleva el texto del ultimo turno.
+1b. **OpenCode 2 tambien vuelve, y se retiene igual.** Su herramienta de shell
+   acepta `background: true`, le dice al modelo que *sera notificado*, y cuando
+   el shell sale el servidor encola una nota `synthetic` y vuelve a correr el
+   modelo en la misma sesion (medido en 2.0.19). `opencode-adapter.ts` sigue los
+   shells del turno (`session.tool.progress` con `metadata.shellID`;
+   `shell.exited` / `shell.deleted` los cierran) y no completa en
+   `session.execution.succeeded` mientras quede uno vivo: el despertar se separa
+   con un limite de respuesta y su propio `execution.succeeded` decide de nuevo;
+   sin despertar en 30 s tras el ultimo shell, el turno se completa con lo que
+   tiene. Los demas agentes conectados no vuelven solos (re-medido el
+   2026-10-02; tabla en `bridge/docs/agents.md`).
 2. **El trabajo que la CLI mata se informa**, con un bloque `warning`
    (`SystemContent kind:'warning'`, forma que el telefono ya renderiza), en vez
    de presentar un turno limpio sobre trabajo perdido.

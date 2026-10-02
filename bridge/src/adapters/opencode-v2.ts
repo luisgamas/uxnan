@@ -87,6 +87,11 @@ export class OpenCodeV2Translator {
   readonly #forms = new Map<string, FormField[]>();
   /** Sessions whose automatic compaction just found nothing to compact. */
   readonly #autoCompactionEmpty = new Set<string>();
+  /**
+   * Background shell id → the session whose tool started it. `shell.exited`
+   * names only the shell, so its session is remembered from the tool call.
+   */
+  readonly #shellSessions = new Map<string, string>();
 
   /** The fields of a form announced earlier (undefined once answered or unknown). */
   formFields(formId: string): FormField[] | undefined {
@@ -132,6 +137,26 @@ export class OpenCodeV2Translator {
       case 'session.tool.success':
       case 'session.tool.failed':
         return this.#toolEnded(type === 'session.tool.failed', sessionId, d);
+      case 'session.tool.progress': {
+        // The shell tool reports the shell it runs a command in. Measured on
+        // 2.0.19: a command moved to the background (`background: true`)
+        // reports it here, returns at once, and when the shell exits the
+        // server queues a `synthetic` note for the model and runs it — a new
+        // execution on the same session, with no prompt from anyone.
+        const metadata = isRecord(d['metadata']) ? d['metadata'] : {};
+        const shellId = str(metadata['shellID']);
+        if (!sessionId || !shellId || this.#shellSessions.has(shellId)) return [];
+        this.#shellSessions.set(shellId, sessionId);
+        return [{ kind: 'shell_started', sessionId, shellId }];
+      }
+      case 'shell.exited':
+      case 'shell.deleted': {
+        const shellId = str(d['id']);
+        const owner = this.#shellSessions.get(shellId);
+        if (!owner) return [];
+        this.#shellSessions.delete(shellId);
+        return [{ kind: 'shell_ended', sessionId: owner, shellId }];
+      }
       case 'session.step.ended': {
         const tokens = openCodeUsageTokens(d['tokens']);
         return sessionId && tokens !== undefined ? [{ kind: 'usage', sessionId, tokens }] : [];

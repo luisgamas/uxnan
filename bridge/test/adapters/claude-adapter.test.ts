@@ -1017,33 +1017,80 @@ test('a turn is not completed while a background task the model started is still
   assert.equal(warnings(events).length, 0, 'nothing was interrupted, so nothing is reported');
 });
 
-test('background work the CLI stops as it comes down is reported instead of passing as a clean turn', async () => {
+test('a wake-up that leaves more background work keeps the turn, and the input, open for it', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collectRun(adapter);
+  let completions = 0;
+  adapter.onEvent((event) => {
+    if (event.type === 'turn_completed') completions += 1;
+  });
 
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'start something long' });
-  last().feed([
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'wait for CI, then cut the release',
+  });
+  last().feedOpen([
     '{"type":"system","subtype":"init","session_id":"s"}',
-    '{"type":"system","subtype":"task_started","task_id":"a","session_id":"s"}',
-    '{"type":"result","subtype":"success","is_error":false,"result":"Running in the background.","session_id":"s"}',
-    // The first task finishes: the input closes, and the wake-up turn starts
-    // another one the CLI no longer waits for.
-    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"a","session_id":"s"}',
-    '{"type":"system","subtype":"task_started","task_id":"b","session_id":"s"}',
-    '{"type":"result","subtype":"success","is_error":false,"result":"Started the next step.","session_id":"s"}',
-    '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"b","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"ci","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Waiting for CI. "}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Waiting for CI. ","session_id":"s"}',
+    // CI finishes: the CLI wakes the model, which starts the next wait.
+    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"ci","session_id":"s"}',
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"release","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"CI is green; cutting the release. "}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"CI is green; cutting the release. ","session_id":"s"}',
+  ]);
+  await new Promise((r) => setTimeout(r, 20));
+  // The run that lost work: the input closed when CI finished, so the CLI
+  // stopped the release wait ~5 s later and the model never came back.
+  assert.equal(last().stdinEnded, false, 'the CLI must still be able to wait for the release');
+  assert.equal(completions, 0, 'the turn is still held for the release');
+
+  last().feed([
+    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"release","session_id":"s"}',
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Released."}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Released.","session_id":"s"}',
   ]);
 
   const events = await done;
-  assert.equal(last().stdinEnded, true);
-  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
-  const found = warnings(events);
-  assert.equal(found.length, 1, 'the user is told the background work did not finish');
-  assert.match(
-    (found[0]?.data as { content: { text: string } }).content.text,
-    /left a background task/i,
-  );
+  assert.equal(last().stdinEnded, true, 'the input closes once the turn completes');
+  const completed = events.filter((e) => e.type === 'turn_completed');
+  assert.equal(completed.length, 1);
+  const text = (completed[0]?.data as { text: string }).text;
+  assert.match(text, /Waiting for CI\./);
+  assert.match(text, /cutting the release\./);
+  assert.match(text, /Released\./);
+  assert.equal(warnings(events).length, 0, 'every wait ran to the end');
+});
+
+test('a held turn whose CLI does not wake closes its input after the grace period', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn, wakeGraceMs: 30 });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'start it' });
+  last().feedOpen([
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"a","session_id":"s"}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Started it.","session_id":"s"}',
+    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"a","session_id":"s"}',
+    // …and no wake-up follows.
+  ]);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(last().stdinEnded, false, 'a wake-up is still possible');
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(last().stdinEnded, true, 'without one, the input closes so the run can end');
+
+  last().feed([]); // the CLI exits
+  const events = await done;
+  const completed = events.filter((e) => e.type === 'turn_completed');
+  assert.equal(completed.length, 1);
+  assert.equal((completed[0]?.data as { text: string }).text, 'Started it.');
+  assert.equal(warnings(events).length, 0);
 });
 
 test('a background task that failed, or that the model stopped, is not reported as interrupted', async () => {

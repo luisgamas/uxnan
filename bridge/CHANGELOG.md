@@ -4,6 +4,23 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Claude Code comes back as many times as its work needs.** When Claude left
+  work running in the background and ended its turn, the bridge waited and
+  Claude reported back — but only once: if that report started another wait
+  ("CI is green; now I wait for the release"), the bridge had already told
+  Claude no more input was coming, so the second wait was stopped seconds
+  later and Claude never returned. The bridge now keeps the turn open from one
+  wake-up to the next, until Claude ends a turn with nothing left running.
+  Verified on the real CLI with two waits in a row.
+- **OpenCode 2 reports the work it left running, in the same turn.** When
+  OpenCode moved a command to the background and ended its step, the turn
+  closed on its "I'll let you know", and the report OpenCode wrote when the
+  command finished never reached the conversation. The turn now stays open
+  until that report arrives — through as many background commands as it
+  starts. Every other wired agent was re-checked: none of them comes back on
+  its own (`docs/agents.md` → *When a turn ends*).
 
 ## [0.0.42-alpha.20261002] - 20261002
 ### Changed

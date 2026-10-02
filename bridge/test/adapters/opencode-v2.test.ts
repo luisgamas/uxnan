@@ -37,6 +37,35 @@ test('V2 translator: text and reasoning stream as deltas, the ended text adds on
   assert.deepEqual(t.translate('session.reasoning.ended', { ...base, text: 'think' }), []);
 });
 
+test('V2 translator: a command moved to the background is tracked until its shell ends', () => {
+  const t = new OpenCodeV2Translator();
+  // Shapes measured on 2.0.19: the shell tool reports its shell as progress,
+  // and `shell.exited` names only the shell.
+  assert.deepEqual(
+    t.translate('session.tool.progress', {
+      sessionID: S,
+      assistantMessageID: 'msg_1',
+      id: 'call_1',
+      metadata: { shellID: 'sh_1' },
+    }),
+    [{ kind: 'shell_started', sessionId: S, shellId: 'sh_1' }],
+  );
+  assert.deepEqual(
+    t.translate('session.tool.progress', {
+      sessionID: S,
+      id: 'call_1',
+      metadata: { shellID: 'sh_1' },
+    }),
+    [],
+    'a shell is announced once',
+  );
+  assert.deepEqual(t.translate('shell.exited', { id: 'sh_1', exit: 0, status: 'exited' }), [
+    { kind: 'shell_ended', sessionId: S, shellId: 'sh_1' },
+  ]);
+  assert.deepEqual(t.translate('shell.exited', { id: 'sh_1', exit: 0 }), [], 'and ended once');
+  assert.deepEqual(t.translate('shell.deleted', { id: 'sh_other' }), [], 'nobody we know of');
+});
+
 test('V2 translator: a tool is announced when called, and reports its output once it ends', () => {
   const t = new OpenCodeV2Translator();
   const id = 'call_1';
