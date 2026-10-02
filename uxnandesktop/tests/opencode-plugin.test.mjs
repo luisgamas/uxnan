@@ -1,7 +1,7 @@
 /**
  * The OpenCode status plugin speaks both of OpenCode's plugin APIs.
  *
- * `static/hooks/uxnan-opencode-status-plugin.js` is installed into OpenCode's,
+ * `src-tauri/crates/workspace-engine/hooks/uxnan-opencode-status-plugin.js` is installed into OpenCode's,
  * MiMo Code's and Kilo Code's plugin directories and runs inside their server.
  * OpenCode 2 replaced the plugin API and the event vocabulary at once, so the
  * file carries a V1 factory (`server`) and a V2 `setup` behind one default
@@ -26,7 +26,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PLUGIN = path.resolve(HERE, "..", "static", "hooks", "uxnan-opencode-status-plugin.js");
+const PLUGIN = path.resolve(
+  HERE,
+  "..",
+  "src-tauri",
+  "crates",
+  "workspace-engine",
+  "hooks",
+  "uxnan-opencode-status-plugin.js",
+);
 
 let mod;
 let posts;

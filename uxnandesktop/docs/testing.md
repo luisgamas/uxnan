@@ -79,8 +79,8 @@ holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
 [`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,060 backend tests**
-in total — 953 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 17 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 9 in
+in total — 911 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 59 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 9 in
 `uxnan-host` (all against the real daemon over its socket), and 45 integration tests in
 `tests/` — 1,004 of which run everywhere; the other 56 are ignored probes that need something real to talk to
 (48 live SSH probes — 36 against a real `sshd`, one of which idles for five

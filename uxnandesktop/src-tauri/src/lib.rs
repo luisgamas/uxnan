@@ -17,7 +17,7 @@ mod bridgeclient;
 mod browse;
 mod browser;
 pub mod budget;
-mod codex_trust;
+use uxnan_workspace_engine::codex_trust;
 mod commands;
 mod convtitle;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
@@ -347,7 +347,11 @@ pub fn run() {
                     // work out of the box. Idempotent; a failure for one agent does
                     // not abort the others. Skipped when the user opted out.
                     if auto_install_hooks {
-                        crate::agent_hooks::install_all(&install);
+                        crate::agent_hooks::install_all(
+                            &install,
+                            &crate::agentcli::command_installed,
+                            crate::agent_hooks::Reach::EveryKnownAgent,
+                        );
                     }
                     let slot = hook_install_slot;
                     tauri::async_runtime::spawn(async move {

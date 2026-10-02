@@ -398,7 +398,7 @@ uxnandesktop/
 │   ├── crates/
 │   │   ├── control-protocol/  # the control catalog, envelope, discovery, selectors (no Tauri)
 │   │   ├── uxnan-cli/         # the console client, built with the app
-│   │   ├── workspace-engine/  # terminals and their screen model — this machine's and a host's (no Tauri)
+│   │   ├── workspace-engine/  # terminals, their screen model, folder watching and the agents' hook installer — this machine's and a host's (no Tauri)
 │   │   ├── host-protocol/     # the frames and calls between the app and a host's daemon
 │   │   └── uxnan-host/        # the daemon on a remote host: owns its terminals across disconnects
 │   └── src/
@@ -419,7 +419,7 @@ uxnandesktop/
 │       │                  # MCP, JSON-RPC routes), catalog dispatch, services, the
 │       │                  # window bridge and the discovery file
 │       ├── hooks.rs       # what a hook report means (Layer 1 agent monitoring)
-│       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
+│       ├── agent_hooks.rs # the engine's hook installer, re-exported (+ profile repointing)
 │       ├── procscan.rs    # foreground-job agent detection (Layer 3)
 │       ├── launchenv.rs   # per-terminal identity: scrubbed from this process + every child
 │       ├── power.rs       # keep-awake (Win; macOS/Linux experimental)

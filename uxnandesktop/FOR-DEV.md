@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,060 Rust tests (953 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 17
+`docs/chat.md`). 1,060 Rust tests (911 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 59
 in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 9 in `uxnan-host` (all against the daemon itself) + 45
 integration), of which 56 are ignored probes that need something real to talk to
 (48 live SSH probes — 36 against a real `sshd` and 12 against a **Linux host in a
@@ -813,7 +813,7 @@ measured on change) + the right-side panel + status-bar toggle;
 `open_url`/`open_external` routing (shared `browser::route_url`) + the
 `browser:open-url` listener (with the target workspace); **agent
 auto-interception** (`UXNAN_BROWSER_*` env + `$BROWSER` shim
-`static/hooks/uxnan-browser.{sh,cmd}`, which names its terminal, + the hook-server
+`src-tauri/crates/workspace-engine/hooks/uxnan-browser.{sh,cmd}`, which names its terminal, + the hook-server
 `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-clickable
 terminal links** (`@xterm/addon-web-links`).
 

@@ -9,6 +9,11 @@ pub enum Error {
     /// No such terminal (or other engine object) — it ended, or never existed.
     NotFound(String),
     Io(std::io::Error),
+    /// Something the caller asked for cannot be done as asked (an agent's
+    /// config that does not parse, a path that cannot be resolved).
+    Invalid(String),
+    /// A JSON document the engine reads or writes is malformed.
+    Json(serde_json::Error),
 }
 
 impl fmt::Display for Error {
@@ -17,6 +22,8 @@ impl fmt::Display for Error {
             Error::Pty(m) => write!(f, "pty error: {m}"),
             Error::NotFound(m) => write!(f, "not found: {m}"),
             Error::Io(e) => write!(f, "{e}"),
+            Error::Invalid(m) => write!(f, "{m}"),
+            Error::Json(e) => write!(f, "{e}"),
         }
     }
 }
@@ -26,5 +33,11 @@ impl std::error::Error for Error {}
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error::Io(e)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Json(e)
     }
 }

@@ -255,7 +255,7 @@ touches the machine's installed app. A relative path is ignored, since it would
 resolve against whatever the working directory happened to be.
 
 The reporters (one per agent, plus the generic wrapper) — full table in
-[`static/hooks/README.md`](../static/hooks/README.md):
+[`src-tauri/crates/workspace-engine/hooks/README.md`](../src-tauri/crates/workspace-engine/hooks/README.md):
 
 | File | Agent(s) | What it's for |
 |---|---|---|
@@ -895,6 +895,6 @@ generated on every launch.
 - **Spec:** [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md)
   §1 (the three monitoring layers), §2 (notifications), §3 (multi-agent
   orchestration).
-- **Reference implementations:** `static/hooks/` — bundled into the binary
+- **Reference implementations:** `src-tauri/crates/workspace-engine/hooks/` — bundled into the binary
   at compile time and written to `~/.uxnan/hooks/` on every startup (unless a
   newer build already owns that directory).

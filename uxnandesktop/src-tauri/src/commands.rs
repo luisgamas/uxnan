@@ -4744,7 +4744,9 @@ pub async fn get_hook_install(
 /// wiring a new agent never means touching the frontend's list.
 #[tauri::command]
 pub async fn list_agent_hooks() -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
-    Ok(agent_hooks::read_all_agent_status())
+    Ok(agent_hooks::read_all_agent_status(
+        &crate::agentcli::command_installed,
+    ))
 }
 
 /// Install (or refresh) one agent's managed reporter, merging it into that
@@ -4789,7 +4791,11 @@ pub async fn install_all_hooks(state: State<'_, AppState>) -> Result<(), Command
     let install = state.hook_install.read().await.clone().ok_or_else(|| {
         CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
     })?;
-    agent_hooks::install_all(&install);
+    agent_hooks::install_all(
+        &install,
+        &crate::agentcli::command_installed,
+        agent_hooks::Reach::EveryKnownAgent,
+    );
     Ok(())
 }
 
