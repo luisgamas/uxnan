@@ -15,6 +15,7 @@ pub mod agent_hooks;
 pub mod agentstop;
 pub mod codex_trust;
 pub mod error;
+pub mod mcp_launch;
 pub mod procscan;
 pub mod pty;
 pub mod screen;

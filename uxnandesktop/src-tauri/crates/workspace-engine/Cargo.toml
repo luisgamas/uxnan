@@ -8,6 +8,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# The control surface's header and variable names an agent identifies itself
+# with (`mcp_launch`).
+uxnan-control-protocol = { path = "../control-protocol" }
 # Pseudoterminals: ConPTY on Windows, openpty elsewhere. The same crate and
 # version the app has always used for its terminals.
 portable-pty = "0.9"

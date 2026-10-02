@@ -6817,6 +6817,7 @@ dependencies = [
  "tempfile",
  "toml_edit 0.22.27",
  "uuid",
+ "uxnan-control-protocol",
  "vt100",
  "windows-sys 0.59.0",
 ]

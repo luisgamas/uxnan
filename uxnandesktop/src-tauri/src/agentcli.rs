@@ -338,19 +338,7 @@ fn exe_runnable(path: &std::path::Path) -> bool {
     }
 }
 
-/// The major version a CLI's `--version` output names, reading the first token
-/// shaped like `X.Y…` (a leading `v` allowed): OpenCode 1 prints `1.18.32`,
-/// OpenCode 2 prints `opencode v2.0.16`. `None` when nothing version-shaped is
-/// printed — a bare number is not taken for one.
-pub fn parse_major_version(output: &str) -> Option<u32> {
-    output.split_whitespace().find_map(|token| {
-        let token = token.trim_start_matches(['v', 'V']);
-        let mut parts = token.split('.');
-        let major = parts.next()?.parse::<u32>().ok()?;
-        parts.next()?.chars().next().filter(char::is_ascii_digit)?;
-        Some(major)
-    })
-}
+pub use uxnan_workspace_engine::mcp_launch::parse_major_version;
 
 /// The `opencode` a terminal runs when one types it: the first on `PATH`, the
 /// way the terminal finds it — not [`resolve`]'s headless pick, which on Windows
@@ -1213,18 +1201,6 @@ Available models:
         // Live-discovered agents have no static list.
         assert!(static_models("opencode").is_empty());
         assert!(static_models("codex").is_empty());
-    }
-
-    #[test]
-    fn reads_the_major_version_either_opencode_prints() {
-        // Both spellings captured from the real CLIs.
-        assert_eq!(parse_major_version("1.18.32\n"), Some(1));
-        assert_eq!(parse_major_version("opencode v2.0.16\n"), Some(2));
-        assert_eq!(parse_major_version("V10.0.0-beta.3"), Some(10));
-        // A bare number, prose or nothing is no version.
-        assert_eq!(parse_major_version("2"), None);
-        assert_eq!(parse_major_version("version unknown"), None);
-        assert_eq!(parse_major_version(""), None);
     }
 
     #[test]
