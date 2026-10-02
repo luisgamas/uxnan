@@ -4,6 +4,7 @@ import {
   formatMoney,
   formatReset,
   formatResetAbsolute,
+  formatTokenCount,
   meterFill,
   statusMeta,
 } from "./usageFormat";
@@ -105,5 +106,13 @@ describe("statusMeta", () => {
       expect(m.tone).toBe(tone);
       expect(m.labelKey.startsWith("providers.status")).toBe(true);
     }
+  });
+});
+
+describe("formatTokenCount", () => {
+  it("reads a token count compactly, in the given locale", () => {
+    expect(formatTokenCount(950, "en")).toBe("950");
+    expect(formatTokenCount(12_400, "en")).toBe("12.4K");
+    expect(formatTokenCount(1_250_000, "en")).toBe("1.3M");
   });
 });

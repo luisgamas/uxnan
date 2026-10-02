@@ -13,6 +13,7 @@
   import { formatReset } from "$lib/usageFormat";
   import type { UsageWindow } from "$lib/types";
   import type { WindowPace } from "$lib/usagePace";
+  import { formatTokenCount } from "$lib/usageFormat";
 
   let {
     tokens,
@@ -49,8 +50,7 @@
   const tone = $derived(
     percent >= 90 ? "text-destructive" : percent >= 75 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
   );
-  const compact = (n: number) =>
-    new Intl.NumberFormat(i18n.locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  const compact = (n: number) => formatTokenCount(n, i18n.locale);
 </script>
 
 <TooltipSimple

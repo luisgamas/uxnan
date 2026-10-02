@@ -379,3 +379,30 @@ describe("ChatBridgeGate", () => {
     bridge.applyStatus({ state: "off" });
   });
 });
+
+describe("ChatBlock compaction marker", () => {
+  it("is one quiet line that still says why and by how much", () => {
+    const c = chat.conversation("t-compact");
+    const { screen } = mountWithProviders(ChatBlock, {
+      props: {
+        block: { type: "compaction", reason: "threshold", tokensBefore: 182_000, tokensAfter: 24_500 },
+        threadId: "t-compact",
+        conversation: c,
+      },
+    });
+    const line = screen.getByText("Context compacted");
+    expect(line.getAttribute("aria-label")).toBe(
+      "Context compacted. Earlier context was summarized after reaching the agent's limit. Context reduced from 182K to about 24.5K tokens.",
+    );
+  });
+
+  it("says why even when the agent reported no token counts", () => {
+    const c = chat.conversation("t-compact-2");
+    const { screen } = mountWithProviders(ChatBlock, {
+      props: { block: { type: "compaction" }, threadId: "t-compact-2", conversation: c },
+    });
+    expect(screen.getByText("Context compacted").getAttribute("aria-label")).toBe(
+      "Context compacted. Earlier messages were summarized to free context.",
+    );
+  });
+});

@@ -4,6 +4,11 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The *Context compacted* line says why.** Hovering it tells why the agent
+  compacted and by how much (*Context reduced from 182K to about 24.5K
+  tokens*), in the same words as the phone; the line itself stays quiet.
 
 ## [0.0.71] - 20261002
 ### Changed

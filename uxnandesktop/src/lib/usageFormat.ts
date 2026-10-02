@@ -9,6 +9,13 @@ import type { MessageKey } from "./i18n/locales/en";
 import type { AccountType, UsageStatus } from "./types";
 import type { StatusTone } from "./components/StatusDot.svelte";
 
+/** A token count, compact for reading (`12.4K`, `1.2M`), in [locale]. One
+ *  formatter for every place the chat shows tokens: the context ring and the
+ *  compaction marker. */
+export function formatTokenCount(n: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
 /** A compact, unit-based countdown to `epochMs` (e.g. `2h 30m`, `3d`, `5m`),
  *  or null when the reset is unknown or already past. */
 export function formatReset(epochMs?: number): string | null {
