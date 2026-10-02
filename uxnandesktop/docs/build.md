@@ -55,6 +55,39 @@ under `tauri dev` — where `control::cli` looks for it.
 `release-desktop.yml` names that same script (`tauriScript: npm run tauri`),
 so the released installers carry the sidecar.
 
+### The host engines (`uxnan-host`)
+
+Every installer carries the [host engine](./remote-hosts.md#terminals-that-outlive-the-connection-the-host-engine)
+for **every** platform the app can put it on — a Windows laptop drives a Linux
+server — as resources under `host-engine/<triple>/uxnan-host`. They are static
+and small (~1.5–1.9 MB each, ~7 MB the four), which is why they are bundled
+rather than downloaded: nothing to fetch, nothing to verify twice, and it works
+with no Internet on either side.
+
+| Triple | Built on | How |
+|---|---|---|
+| `x86_64-unknown-linux-musl` | Linux (or a Mac) | `cargo zigbuild`, static |
+| `aarch64-unknown-linux-musl` | Linux (or a Mac) | `cargo zigbuild`, static |
+| `aarch64-apple-darwin` | macOS | `cargo build`, ad-hoc signed by the linker |
+| `x86_64-apple-darwin` | macOS | `cargo build --target`, cross-compiled |
+
+`scripts/build-host-engine.mjs` does the work: with `--build` it builds the ones
+the machine can (zig and `cargo-zigbuild` for Linux, a Mac for the Apple pair)
+into `src-tauri/host-engine/` (git-ignored); with `--require` it fails unless all
+four are there. The sidecar overlay runs it with neither flag before `tauri dev`
+and `tauri build`, so a local build bundles whatever is present — and a host
+whose platform has none keeps its terminals on plain SSH channels.
+
+**In the release** no single runner can build all four, so `release-desktop.yml`
+builds them in a `host-engine` job (Linux on Ubuntu with zig, the Apple pair on
+`macos-14`), each with the release's version synced into the workspace — the app
+accepts an engine on a host only when its version is the app's own — and every
+installer leg downloads them and runs `--require` before packaging.
+
+The app looks for them in its resource folder first (`ssh/engine.rs` →
+`local_binary`), then in `$UXNAN_HOST_BINARIES/<triple>/`, and in a debug build
+in `src-tauri/host-engine/` and cargo's `target/<triple>/release/`.
+
 ### The frontend's build target
 
 `vite.config.js` compiles the frontend to `BUILD_TARGET` from

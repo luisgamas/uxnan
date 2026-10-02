@@ -77,52 +77,54 @@ pub fn triple_for(uname: &str) -> Option<&'static str> {
     }
 }
 
+/// Where the installer put the host engines (`<resources>/host-engine/`), set
+/// once at startup (`set_bundled_dir`).
+static BUNDLED_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Record where the app's bundled host engines are. Called once, from the
+/// app's setup, with its resource folder.
+pub fn set_bundled_dir(dir: PathBuf) {
+    let _ = BUNDLED_DIR.set(dir);
+}
+
 /// Where this app keeps the `uxnan-host` build for `triple`.
 ///
-/// In order: `UXNAN_HOST_BINARIES/<triple>/uxnan-host` (a developer pointing at
-/// their own builds), the copy the app downloaded for this version earlier,
-/// and — in a debug build only — the workspace's own cross-compiled output.
+/// In order: the build the installer carries (`scripts/build-host-engine.mjs`
+/// bundles one per platform into every installer), `UXNAN_HOST_BINARIES/
+/// <triple>/uxnan-host` (a developer pointing at their own builds), and — in a
+/// debug build only — the workspace's own outputs (`host-engine/`, where the
+/// script leaves them, and cargo's `target/<triple>/release/`).
 pub fn local_binary(triple: &str) -> Result<PathBuf, AppError> {
-    let name = "uxnan-host";
+    let name = if triple.contains("windows") {
+        "uxnan-host.exe"
+    } else {
+        "uxnan-host"
+    };
     let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = BUNDLED_DIR.get() {
+        candidates.push(dir.join(triple).join(name));
+    }
     if let Some(dir) = std::env::var_os("UXNAN_HOST_BINARIES") {
         candidates.push(PathBuf::from(dir).join(triple).join(name));
     }
-    if let Some(cache) = binary_cache_dir() {
-        candidates.push(cache.join(triple).join(name));
-    }
     #[cfg(debug_assertions)]
-    candidates.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target")
-            .join(triple)
-            .join("release")
-            .join(name),
-    );
-    candidates
-        .into_iter()
-        .find(|p| p.is_file())
-        // FOR-DEV: fetch the build for `triple` from this version's release
-        // (checked against the updater's signing key) into
-        // `binary_cache_dir()`, here. Needs the release pipeline to publish
-        // the host binaries first — see `FOR-DEV.md` → *Remote hosts*.
-        .ok_or_else(|| {
-            AppError::Invalid(format!(
-                "this build of Uxnan has no host engine for {triple} — terminals on this host \
-                 cannot outlive a disconnection yet"
-            ))
-        })
-}
-
-/// The per-version cache of downloaded host binaries.
-fn binary_cache_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(
-        PathBuf::from(home)
-            .join(".uxnan")
-            .join("host-binaries")
-            .join(env!("CARGO_PKG_VERSION")),
-    )
+    {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        candidates.push(manifest.join("host-engine").join(triple).join(name));
+        candidates.push(
+            manifest
+                .join("target")
+                .join(triple)
+                .join("release")
+                .join(name),
+        );
+    }
+    candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
+        AppError::Invalid(format!(
+            "this build of Uxnan carries no host engine for {triple} — terminals on this host \
+             cannot outlive a disconnection"
+        ))
+    })
 }
 
 /// Make sure this build's daemon is on the host and runs there; answer the

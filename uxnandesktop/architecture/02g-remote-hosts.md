@@ -974,7 +974,7 @@ posterior a una recarga llevaria una expectativa que no emitio nadie.
 | Previsualizar una imagen o un PDF | **Funciona** (arriba): se lee por SFTP de la maquina del fichero, con el mismo tope y el mismo criterio de tipo que en local |
 | Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
 | Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
-| Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
+| Refresco automatico | **Si con el motor del host** (§5.16); sin el (Windows), el boton de refrescar es la recarga |
 | Guardar un fichero | **Funciona** — en el sitio y con fencing (arriba) |
 | Renombrar / borrar / crear desde el arbol | **Hecho** en §5.10d |
 
@@ -1615,8 +1615,9 @@ sobre una conexion que ya no existe las aceptaria hacia la nada.
 Tres crates, una sola implementacion por capa:
 
 - `crates/workspace-engine` — el gestor de PTY que el desktop ya usaba en local
-  (movido, no copiado: `crate::pty` lo reexporta) y un **modelo de pantalla**
-  (`vt100`). El motor es el mismo en las dos maquinas.
+  (movido, no copiado: `crate::pty` lo reexporta), un **modelo de pantalla**
+  (`vt100`) y el **vigilante de carpetas** (`watch`), que usan tanto el arbol
+  local (`fswatch.rs`) como el daemon. El motor es el mismo en las dos maquinas.
 - `crates/host-protocol` — tramas con longitud (control JSON, bytes de terminal
   en crudo, ping/pong) sobre **un** flujo de bytes, y un saludo que se encuentra
   en una **ventana** de versiones (`PROTOCOL_MIN..=PROTOCOL`), no en una version
@@ -1634,6 +1635,17 @@ con su ventana de protocolo). Nada se descarga ni se compila en el host. La
 carpeta se nombra por version **y contenido**, asi que otra build nunca reutiliza
 en silencio lo que ya hubiera, y una actualizacion nunca reemplaza el programa
 del que arranco un daemon vivo.
+
+**Distribucion: empaquetados, no descargados.** Cada instalador lleva las cuatro
+builds (Linux x86_64/aarch64 musl, macOS arm64/x86_64; ~1.5–1.9 MB cada una) como
+recursos `host-engine/<triple>/uxnan-host`: una laptop Windows maneja un servidor
+Linux, asi que la plataforma del host no es la de la app. Nada que bajar ni que
+verificar dos veces, y funciona sin Internet en ninguno de los dos lados. La
+release las compila en un job propio (`release-desktop.yml` → `host-engine`: Linux
+con zig en Ubuntu, el par Apple en `macos-14`) con la version de la release, y cada
+instalador falla si falta alguna (`scripts/build-host-engine.mjs --require`). La app
+las busca en su carpeta de recursos, luego en `$UXNAN_HOST_BINARIES` y, en debug,
+en `src-tauri/host-engine/` y `target/<triple>/release/`.
 
 **Conexion.** Un canal `exec` de `uxnan-host attach`, que une su stdin/stdout al
 socket del daemon (`~/.uxnan/host/run/engine.sock`, en carpeta `0700`) y lo
@@ -1697,8 +1709,10 @@ instalar por SFTP, abrir, perder la conexion y encontrar la terminal desde una
 sesion nueva.
 
 **Vigilar la carpeta del proyecto** (protocolo 2). `fs_set_watch` recibe el
-target; para un host, el motor vigila la carpeta **alli** (`notify`, el mismo
-debounce de 300 ms que la vigilancia local, `.git` fuera de las rutas) y el
+target; para un host, el motor vigila la carpeta **alli** con el mismo vigilante
+que la local (`workspace_engine::watch`: `notify`, debounce de 300 ms, `.git`
+fuera de las rutas y nada fuera de la carpeta —macOS entrega del historial la
+creacion de la propia carpeta y de su padre—) y el
 desktop emite el mismo `fs:changed`, con `target` (la misma ruta puede existir en
 las dos maquinas) y `git` cuando cambio algo bajo `.git` (un commit o un stage en
 una terminal, que el arbol ignora y el panel de Cambios no). El arbol y las
@@ -1706,8 +1720,8 @@ pestanas recargan lo que muestran; Cambios espera a que la rafaga se calme
 (800 ms) y lee el host una vez. La vigilancia se vuelve a armar cuando el host
 vuelve.
 
-**Pendiente** (`FOR-DEV.md` → *Remote hosts*): que la release distribuya los
-binarios del host; hosts Windows en el daemon (hasta entonces, §5.7); hooks y
+**Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
+empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7); hooks y
 `UXNAN_*` en las terminales del motor (fase 2); ficheros, git y busqueda servidos
 por el motor; limpiar builds viejas del host; y el historial por encima de la
 pantalla tras reiniciar la app.
@@ -1745,7 +1759,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
-| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); faltan la distribucion de sus binarios, Windows y los recursos remotos |
+| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador; faltan Windows y los recursos remotos |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
 
 ## 8. Fuera de alcance (con motivo)

@@ -105,6 +105,11 @@ pub fn run() {
         // window config provides the first-run defaults.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // The host engines the installer carries, one per platform, for the
+            // app to put on a remote host (`ssh::engine`).
+            if let Ok(resources) = app.path().resource_dir() {
+                ssh::engine::set_bundled_dir(resources.join("host-engine"));
+            }
             // The native half of the keyboard layer (`keyboard.rs`). On macOS
             // the app builds its own menu bar — the default one binds Close
             // Window to ⌘W and quits without the app's shutdown (`menu.rs`);

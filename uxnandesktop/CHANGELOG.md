@@ -21,9 +21,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project folder is watched on that machine: the file tree, the open tabs and
   Changes follow an agent working in it or a commit made in a terminal there,
   with nothing polled. An updated app keeps talking to the engine that holds
-  the host's terminals, whichever build it is, so an update never strands them. For builds that carry the engine for that
-  host's platform: development builds today, release builds once the release
-  pipeline ships it; Windows hosts keep their channel terminals for now.
+  the host's terminals, whichever build it is, so an update never strands them.
+  Windows hosts keep their channel terminals for now.
+- **Every installer carries the host engine for every platform it can run
+  on** — Linux and macOS, x86-64 and ARM — whatever machine the app itself is
+  on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is
+  downloaded, on either side: a host with no Internet access works the same.
+  The four builds are about 7 MB together.
 
 - **Hosts behind a bastion connect.** `ProxyJump` — one bastion or a chain, and
   bastions with a `ProxyJump` of their own — is followed inside the app, each hop

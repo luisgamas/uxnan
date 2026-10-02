@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,057 Rust tests (955 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
-in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 10 in `uxnan-host` (9 against the daemon itself) + 45
+`docs/chat.md`). 1,060 Rust tests (953 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 17
+in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 9 in `uxnan-host` (all against the daemon itself) + 45
 integration), of which 56 are ignored probes that need something real to talk to
 (48 live SSH probes — 36 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,747 frontend Vitest tests across two
+GitHub tests) + 1,754 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1107,12 +1107,11 @@ already written for the day phase 2 below lands — nothing to relax then.
       connection and an app restart (found again by the tab's `sid`), with one
       SSH channel for all of them (`ssh/engine.rs`, `ssh/terminals.rs`; proven
       against a real Linux host). Owed, in order:
-      1. **The release pipeline building the host binaries** (Linux x86_64 /
-         aarch64 musl, macOS arm64 / x86_64) and the app getting them —
-         `ssh/engine.rs` → `local_binary`, which today finds only a developer's
-         builds (`docs/development.md` → *The host engine*). Measured at 1.3 MB
-         each, bundling all four as resources costs ~5.5 MB; downloading on
-         demand needs the release signing in front of it. Decide, then build.
+      1. **The first release run of the host engines.** Every installer now
+         bundles all four (`scripts/build-host-engine.mjs`, `docs/build.md` →
+         *The host engines*); the `host-engine` job in `release-desktop.yml`
+         that builds them has never run on GitHub yet. Verify the four land in
+         each installer of the next release.
       2. **Windows hosts:** the daemon has no named-pipe listener
          (`crates/uxnan-host/src/daemon.rs` → `bind`). Until it has, their
          terminals stay on `ssh/pty.rs` — which is deleted, with the channel
@@ -1727,7 +1726,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,003 Rust + 1,735 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,060 Rust + 1,754 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
