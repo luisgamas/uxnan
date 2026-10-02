@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.35-alpha.20261002+20261002] - 20261002
 ### Changed
 
 - **Every queued message can be changed until it reaches the agent — the next
