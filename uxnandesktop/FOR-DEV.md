@@ -30,7 +30,8 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,030 Rust tests (953 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+`docs/chat.md`). 1,044 Rust tests (946 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
+in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 6 against the `uxnan-host` daemon + 45
 integration), of which 51 are ignored probes that need something real to talk to
 (43 live SSH probes — 31 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -1100,6 +1101,19 @@ terminal's project is local, so its scope names no host. The scope rule is
 already written for the day phase 2 below lands — nothing to relax then.
 
 ### Backend (Rust)
+- [ ] **The host daemon is built and proven, not yet wired into the app.**
+      `crates/uxnan-host` owns a host's terminals outside any SSH session:
+      opened through `uxnan-host attach` (which starts it detached), they keep
+      running and keep their screen (`crates/workspace-engine` → `screen`), and
+      a client that comes back is repainted exactly before live output resumes;
+      it exits on its own after 30 idle minutes (`crates/uxnan-host/tests/`,
+      and a full drop-and-return cycle run against a real Linux host over SSH).
+      What is left, in order: the desktop's client and installer
+      (`src-tauri/src/ssh/engine.rs` — upload the binary for the host's
+      platform over SFTP, check `uxnan-host version`, `exec` `attach`), remote
+      terminals moved onto it (replacing `ssh/pty.rs` and the channel budget),
+      the release pipeline building the host binaries, and **Windows hosts**,
+      which the daemon refuses today (no named-pipe listener yet).
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
       1. *Builds and packages on all three platforms, with no extra toolchain for

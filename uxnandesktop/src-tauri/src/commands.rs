@@ -718,6 +718,7 @@ pub async fn pty_create(
                 env,
                 cols,
                 rows,
+                login: false,
             },
             on_output,
             on_exit,

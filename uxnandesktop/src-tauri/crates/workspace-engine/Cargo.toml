@@ -1,0 +1,20 @@
+[package]
+name = "uxnan-workspace-engine"
+description = "The workspace engine behind Uxnan Desktop — terminals and the screen they show — used in process on this machine and by the host daemon on a remote one."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Pseudoterminals: ConPTY on Windows, openpty elsewhere. The same crate and
+# version the app has always used for its terminals.
+portable-pty = "0.9"
+# The screen a terminal shows, kept so a client that reconnects is repainted
+# exactly — a full-screen agent UI included — instead of replaying raw bytes
+# from the middle of an escape sequence. Pure Rust, MIT, three small
+# dependencies (vte, unicode-width, itoa).
+vt100 = "0.16"
+
+[dev-dependencies]

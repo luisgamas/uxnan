@@ -78,10 +78,11 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,030 backend tests**
-in total — 953 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli` and 45 integration tests in `tests/` — 979 of which run
-everywhere; the other 51 are ignored probes that need something real to talk to
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,044 backend tests**
+in total — 946 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 11 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 6
+against the real `uxnan-host` daemon over its socket, and 45 integration tests in
+`tests/` — 993 of which run everywhere; the other 51 are ignored probes that need something real to talk to
 (43 live SSH probes — 31 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent

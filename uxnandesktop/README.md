@@ -394,7 +394,10 @@ uxnandesktop/
 ├── src-tauri/             # Rust backend (a Cargo workspace)
 │   ├── crates/
 │   │   ├── control-protocol/  # the control catalog, envelope, discovery, selectors (no Tauri)
-│   │   └── uxnan-cli/         # the console client, built with the app
+│   │   ├── uxnan-cli/         # the console client, built with the app
+│   │   ├── workspace-engine/  # terminals and their screen model — this machine's and a host's (no Tauri)
+│   │   ├── host-protocol/     # the frames and calls between the app and a host's daemon
+│   │   └── uxnan-host/        # the daemon on a remote host: owns its terminals across disconnects
 │   └── src/
 │       ├── lib.rs         # Tauri builder, state wiring, command registration
 │       ├── main.rs        # entrypoint

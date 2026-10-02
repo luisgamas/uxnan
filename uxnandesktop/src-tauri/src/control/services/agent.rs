@@ -348,6 +348,7 @@ mod tests {
                     env: Vec::new(),
                     cols: 80,
                     rows: 24,
+                    login: false,
                 },
                 |_| {},
                 || {},

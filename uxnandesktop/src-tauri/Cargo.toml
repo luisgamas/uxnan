@@ -4,7 +4,13 @@
 # `cargo test --workspace`. The members take the app's version from here so a
 # release bumps all three in the one place the release tooling already edits.
 [workspace]
-members = ["crates/control-protocol", "crates/uxnan-cli"]
+members = [
+    "crates/control-protocol",
+    "crates/uxnan-cli",
+    "crates/workspace-engine",
+    "crates/host-protocol",
+    "crates/uxnan-host",
+]
 resolver = "2"
 
 [workspace.package]
@@ -89,7 +95,9 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros", "net", "io-util"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
-portable-pty = "0.9"
+# The workspace engine — terminals today — shared with the host daemon, so a
+# remote host runs the same code as this machine (`crates/workspace-engine`).
+uxnan-workspace-engine = { path = "crates/workspace-engine" }
 sysinfo = "0.33"
 # libgit2 bindings for high-frequency status/diff (the 3 s watcher + the review
 # panel), avoiding a subprocess per poll. Worktree mgmt / push / pull stay on the
