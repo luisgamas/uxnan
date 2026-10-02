@@ -290,9 +290,18 @@ mod tests {
 
     #[test]
     fn an_agent_is_found_only_as_an_executable_file() {
+        // Named as each platform names a command: bare on Unix, with an
+        // extension `PATHEXT` lists on Windows.
+        let named = |base: &str| {
+            if cfg!(windows) {
+                format!("{base}.cmd")
+            } else {
+                base.to_string()
+            }
+        };
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().to_path_buf();
-        std::fs::write(bin.join("claude"), "#!/bin/sh\n").unwrap();
+        std::fs::write(bin.join(named("claude")), "#!/bin/sh\n").unwrap();
         std::fs::write(bin.join("notes"), "").unwrap();
         #[cfg(unix)]
         {
@@ -300,15 +309,12 @@ mod tests {
             std::fs::set_permissions(bin.join("claude"), std::fs::Permissions::from_mode(0o755))
                 .unwrap();
         }
-        std::fs::create_dir(bin.join("codex")).unwrap();
+        std::fs::create_dir(bin.join(named("codex"))).unwrap();
         let dirs = vec![PathBuf::from("/nonexistent"), bin];
         assert!(on_path(&dirs, "claude"));
         assert!(!on_path(&dirs, "codex"), "a folder is not an executable");
-        #[cfg(unix)]
-        assert!(
-            !on_path(&dirs, "notes"),
-            "a file without the exec bit is not"
-        );
+        // Unix: no exec bit; Windows: no extension a command is found by.
+        assert!(!on_path(&dirs, "notes"));
         assert!(!on_path(&dirs, "grok"));
     }
 }

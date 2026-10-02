@@ -81,6 +81,9 @@ jobs:
 
       - name: Build the host engines
         working-directory: uxnandesktop
+        # bash on every runner: under PowerShell (the Windows default)
+        # `$TARGETS` is a PowerShell variable, not the environment's.
+        shell: bash
         env:
           TARGETS: ${{ matrix.targets }}
         run: node scripts/build-host-engine.mjs --build --targets "$TARGETS"

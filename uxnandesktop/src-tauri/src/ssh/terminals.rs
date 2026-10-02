@@ -450,6 +450,35 @@ mod tests {
             .into_bytes()
         }
 
+        /// Answer what a terminal asks of the terminal showing it, as xterm.js
+        /// does in the app: Windows' ConPTY asks where the cursor is
+        /// (`ESC[6n`) before it draws anything, and waits for the answer.
+        async fn answer_cursor_query(
+            terminals: &EngineTerminals,
+            engine: &HostEngine,
+            id: &str,
+            seen: &Arc<StdMutex<String>>,
+        ) {
+            for _ in 0..40 {
+                if seen.lock().unwrap().contains("\x1b[6n") {
+                    terminals
+                        .write(Some(engine), id, b"\x1b[1;1R".to_vec())
+                        .await
+                        .unwrap();
+                    return;
+                }
+                if !seen.lock().unwrap().is_empty() {
+                    // Something else first: a terminal that asks nothing.
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    if !seen.lock().unwrap().contains("\x1b[6n") {
+                        return;
+                    }
+                    continue;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        }
+
         async fn until(seen: &Arc<StdMutex<String>>, needle: &str) {
             for _ in 0..200 {
                 if seen.lock().unwrap().contains(needle) {
@@ -575,6 +604,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            answer_cursor_query(&terminals, &first, "tab-drop", &seen).await;
             terminals
                 .write(Some(&first), "tab-drop", print_line(shell, "BEFORE", 2))
                 .await
@@ -650,6 +680,7 @@ mod tests {
                 .create("live", &first, spec("tab-hook-1"), output, || {})
                 .await
                 .unwrap();
+            answer_cursor_query(&first_run, &first, "tab-hook-1", &seen).await;
             first_run
                 .write(Some(&first), "tab-hook-1", print_line(shell, "READY", 6))
                 .await
@@ -949,6 +980,7 @@ mod tests {
                 .await
                 .unwrap();
             assert!(fresh);
+            answer_cursor_query(&terminals, &first, "tab-1", &seen).await;
             terminals
                 .write(Some(&first), "tab-1", print_line(shell, "SURVIVES", 42))
                 .await
