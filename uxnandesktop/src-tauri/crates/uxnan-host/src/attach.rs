@@ -1,48 +1,51 @@
 //! `uxnan-host attach`: the desktop's way in.
 //!
 //! The desktop runs this over an SSH `exec` channel. It joins that channel's
-//! stdin/stdout to the daemon's socket byte for byte — the frames are the
-//! daemon's business, not this process's — starting the daemon first when none
-//! is running. It prints [`READY_LINE`] once joined, because a login shell may
-//! have printed anything before it: a banner, a profile's echo, a warning.
+//! stdin/stdout to the daemon's local channel byte for byte — the frames are
+//! the daemon's business, not this process's — starting the daemon first when
+//! none is running. It prints [`READY_LINE`] once joined, because a login shell
+//! may have printed anything before it: a banner, a profile's echo, a warning.
 //!
-//! The daemon it starts is detached (`serve --detached`): when this channel
-//! ends, this process ends, and the daemon with its terminals does not.
+//! The daemon it starts is detached: when this channel ends, this process
+//! ends, and the daemon with its terminals does not. On Unix that is
+//! `serve --detached` leaving the session (`setsid`); on Windows the daemon is
+//! created out of the SSH session's job — Win32-OpenSSH ends every process in
+//! a session's job when the session closes, unless it was created to break
+//! away from it.
+//!
+//! The daemon's channel is a Unix socket in a folder only the user can open,
+//! or on Windows a named pipe whose access list names the user alone.
 
-#[cfg(unix)]
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-#[cfg(unix)]
-use uxnan_host_protocol::PROTOCOL;
-#[allow(unused_imports)] // named in the module docs on every platform
-use uxnan_host_protocol::READY_LINE;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use uxnan_host_protocol::{PROTOCOL, READY_LINE};
 
-#[cfg(unix)]
 use crate::paths;
 
 /// How long to wait for a daemon this call started to begin listening.
-#[cfg(unix)]
 const START_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
-#[cfg(unix)]
 pub async fn attach() -> std::io::Result<()> {
     // This build is in use for as long as the connection lasts.
     let _in_use = crate::versions::hold();
-    let path = paths::socket();
-    let stream = match tokio::net::UnixStream::connect(&path).await {
+    let stream = match connect().await {
         Ok(stream) => stream,
         Err(_) => {
             start_daemon()?;
-            wait_for(&path).await?
+            wait_for().await?
         }
     };
+    join(stream).await
+}
 
+/// Print the ready line, then copy both ways until either side ends.
+async fn join<S: AsyncRead + AsyncWrite>(stream: S) -> std::io::Result<()> {
     let mut stdout = tokio::io::stdout();
     stdout
         .write_all(format!("{READY_LINE} {PROTOCOL}\n").as_bytes())
         .await?;
     stdout.flush().await?;
 
-    let (mut from_daemon, mut to_daemon) = stream.into_split();
+    let (mut from_daemon, mut to_daemon) = tokio::io::split(stream);
     let mut stdin = tokio::io::stdin();
     let upstream = async {
         let mut buf = vec![0u8; 64 * 1024];
@@ -75,12 +78,33 @@ pub async fn attach() -> std::io::Result<()> {
     }
 }
 
-#[cfg(not(unix))]
-pub async fn attach() -> std::io::Result<()> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "this build of uxnan-host does not serve Windows hosts yet",
-    ))
+/// Wait for a daemon this call started to begin listening.
+async fn wait_for() -> std::io::Result<Channel> {
+    let deadline = tokio::time::Instant::now() + START_WAIT;
+    loop {
+        match connect().await {
+            Ok(stream) => return Ok(stream),
+            Err(e) if tokio::time::Instant::now() >= deadline => {
+                return Err(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "the daemon did not start listening within {}s (see {})",
+                        START_WAIT.as_secs(),
+                        paths::log().display()
+                    ),
+                ))
+            }
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(50)).await,
+        }
+    }
+}
+
+#[cfg(unix)]
+type Channel = tokio::net::UnixStream;
+
+#[cfg(unix)]
+async fn connect() -> std::io::Result<Channel> {
+    tokio::net::UnixStream::connect(paths::socket()).await
 }
 
 #[cfg(unix)]
@@ -98,23 +122,54 @@ fn start_daemon() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
-async fn wait_for(path: &std::path::Path) -> std::io::Result<tokio::net::UnixStream> {
-    let deadline = tokio::time::Instant::now() + START_WAIT;
+#[cfg(windows)]
+type Channel = tokio::net::windows::named_pipe::NamedPipeClient;
+
+#[cfg(windows)]
+async fn connect() -> std::io::Result<Channel> {
+    use tokio::net::windows::named_pipe::ClientOptions;
+    use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
+    let name = paths::pipe_name();
     loop {
-        match tokio::net::UnixStream::connect(path).await {
-            Ok(stream) => return Ok(stream),
-            Err(e) if tokio::time::Instant::now() >= deadline => {
-                return Err(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "the daemon did not start listening within {}s (see {})",
-                        START_WAIT.as_secs(),
-                        paths::log().display()
-                    ),
-                ))
+        match ClientOptions::new().open(&name) {
+            Ok(client) => return Ok(client),
+            // Every instance is serving someone this instant; the daemon
+            // makes a new one as it accepts.
+            Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
-            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(50)).await,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn start_daemon() -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use windows_sys::Win32::System::Threading::{
+        CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS,
+    };
+    paths::ensure_private_dir(&paths::home())?;
+    paths::ensure_private_dir(&paths::run_dir())?;
+    let exe = std::env::current_exe()?;
+    let spawn = |flags: u32| {
+        Command::new(&exe)
+            .args(["serve", "--detached"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(flags)
+            .spawn()
+    };
+    let detached = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+    match spawn(detached | CREATE_BREAKAWAY_FROM_JOB) {
+        Ok(_) => Ok(()),
+        // A job that does not allow breaking away: the daemon still starts,
+        // and lives as long as this session — the log says so.
+        Err(_) => {
+            crate::log::line("could not leave the SSH session's job; this daemon ends with it");
+            spawn(detached).map(|_| ())
         }
     }
 }

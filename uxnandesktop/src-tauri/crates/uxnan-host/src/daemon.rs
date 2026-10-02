@@ -717,21 +717,98 @@ async fn bind() -> std::io::Result<tokio::net::UnixListener> {
     }
 }
 
-#[cfg(not(unix))]
-async fn bind() -> std::io::Result<NeverListener> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "this build of uxnan-host does not serve Windows hosts yet",
-    ))
+/// On Windows the daemon's channel is a named pipe whose access list names the
+/// user alone (the one the app's discovery file gets), refusing remote
+/// clients. The first instance is created with `FIRST_PIPE_INSTANCE`, so a
+/// second daemon finds the name taken instead of serving beside the first;
+/// each accepted client is handed its instance and a new one is made for the
+/// next. A pipe disappears with its process, so there is never a stale one.
+#[cfg(windows)]
+async fn bind() -> std::io::Result<PipeListener> {
+    PipeListener::new()
 }
 
-#[cfg(not(unix))]
-struct NeverListener;
+#[cfg(windows)]
+struct PipeListener {
+    name: String,
+    next: tokio::sync::Mutex<tokio::net::windows::named_pipe::NamedPipeServer>,
+    /// The descriptor every instance is created with, and the list it names.
+    descriptor: Box<windows_sys::Win32::Security::SECURITY_DESCRIPTOR>,
+    _dacl: uxnan_control_protocol::private::UserOnlyDacl,
+}
 
-#[cfg(not(unix))]
-impl NeverListener {
-    async fn accept(&self) -> std::io::Result<(tokio::io::DuplexStream, ())> {
-        std::future::pending().await
+#[cfg(windows)]
+impl PipeListener {
+    fn new() -> std::io::Result<Self> {
+        use windows_sys::Win32::Security::{
+            InitializeSecurityDescriptor, SetSecurityDescriptorDacl, PSECURITY_DESCRIPTOR,
+        };
+        const SECURITY_DESCRIPTOR_REVISION: u32 = 1;
+        let dacl = uxnan_control_protocol::private::UserOnlyDacl::new()?;
+        // SAFETY: a zeroed descriptor initialised in place, then given the
+        // list this value keeps alive alongside it.
+        let mut descriptor: Box<windows_sys::Win32::Security::SECURITY_DESCRIPTOR> =
+            Box::new(unsafe { std::mem::zeroed() });
+        let pointer = &mut *descriptor as *mut _ as PSECURITY_DESCRIPTOR;
+        unsafe {
+            if InitializeSecurityDescriptor(pointer, SECURITY_DESCRIPTOR_REVISION) == 0
+                || SetSecurityDescriptorDacl(pointer, 1, dacl.as_ptr(), 0) == 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        let name = paths::pipe_name();
+        let first = Self::instance(&name, pointer, true).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    "a daemon is already serving this pipe",
+                )
+            } else {
+                e
+            }
+        })?;
+        Ok(Self {
+            name,
+            next: tokio::sync::Mutex::new(first),
+            descriptor,
+            _dacl: dacl,
+        })
+    }
+
+    /// `descriptor` is only read by the call (the pipe keeps its own copy).
+    fn instance(
+        name: &str,
+        descriptor: *mut std::ffi::c_void,
+        first: bool,
+    ) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+        use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor,
+            bInheritHandle: 0,
+        };
+        // SAFETY: the attributes and the descriptor they point to outlive the
+        // call; the pipe keeps its own copy of the security it was given.
+        unsafe {
+            tokio::net::windows::named_pipe::ServerOptions::new()
+                .first_pipe_instance(first)
+                .reject_remote_clients(true)
+                .create_with_security_attributes_raw(
+                    name,
+                    &mut attributes as *mut _ as *mut std::ffi::c_void,
+                )
+        }
+    }
+
+    async fn accept(
+        &self,
+    ) -> std::io::Result<(tokio::net::windows::named_pipe::NamedPipeServer, ())> {
+        let mut next = self.next.lock().await;
+        next.connect().await?;
+        let descriptor = &*self.descriptor as *const _ as *mut std::ffi::c_void;
+        let fresh = Self::instance(&self.name, descriptor, false)?;
+        Ok((std::mem::replace(&mut *next, fresh), ()))
     }
 }
 

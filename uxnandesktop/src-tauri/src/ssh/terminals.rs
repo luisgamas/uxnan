@@ -420,7 +420,7 @@ mod tests {
             let path = crate::ssh::engine::ensure_installed(conn, shell, &files)
                 .await
                 .unwrap();
-            HostEngine::start(conn, &path).await.unwrap()
+            HostEngine::start(conn, shell, &path).await.unwrap()
         }
 
         fn collector() -> (
@@ -432,6 +432,22 @@ mod tests {
             (seen, move |b: &[u8]| {
                 sink.lock().unwrap().push_str(&String::from_utf8_lossy(b))
             })
+        }
+
+        /// A line that prints `<label>_<n>` in a shell of this family, typed so
+        /// that the line itself never contains it — waiting for the marker waits
+        /// for the output, not for the echo of what was typed. Each family's
+        /// own way to compute it, and its own Enter.
+        fn print_line(shell: crate::ssh::shellkind::ShellKind, label: &str, n: u32) -> Vec<u8> {
+            use crate::ssh::shellkind::ShellKind;
+            match shell {
+                ShellKind::Posix => format!("echo {label}_$(({n}+0))\n"),
+                // A caret escapes the next character, and disappears.
+                ShellKind::Cmd => format!("echo {label}_^{n}\r"),
+                ShellKind::PowerShell => format!("echo \"{label}_$({n}+0)\"\r"),
+                ShellKind::Unknown => panic!("the host's shell could not be named"),
+            }
+            .into_bytes()
         }
 
         async fn until(seen: &Arc<StdMutex<String>>, needle: &str) {
@@ -537,6 +553,7 @@ mod tests {
             };
             let terminals = EngineTerminals::default();
             let conn = connect(&alias).await;
+            let shell = crate::ssh::shellkind::classify(&conn).await;
             let first = engine(&conn).await;
             let exited = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let exit_flag = Arc::clone(&exited);
@@ -559,7 +576,7 @@ mod tests {
                 .await
                 .unwrap();
             terminals
-                .write(Some(&first), "tab-drop", b"echo BEFORE_$((1+1))\n".to_vec())
+                .write(Some(&first), "tab-drop", print_line(shell, "BEFORE", 2))
                 .await
                 .unwrap();
             until(&seen, "BEFORE_2").await;
@@ -593,7 +610,7 @@ mod tests {
             until(&seen, "BEFORE_2").await;
             assert!(!terminals.waiting_on("live").await);
             terminals
-                .write(Some(&second), "tab-drop", b"echo AFTER_$((2+2))\n".to_vec())
+                .write(Some(&second), "tab-drop", print_line(shell, "AFTER", 4))
                 .await
                 .unwrap();
             until(&seen, "AFTER_4").await;
@@ -626,6 +643,7 @@ mod tests {
             };
             let first_run = EngineTerminals::default();
             let conn = connect(&alias).await;
+            let shell = crate::ssh::shellkind::classify(&conn).await;
             let first = engine(&conn).await;
             let (seen, output) = collector();
             first_run
@@ -633,11 +651,7 @@ mod tests {
                 .await
                 .unwrap();
             first_run
-                .write(
-                    Some(&first),
-                    "tab-hook-1",
-                    b"echo READY_$((3+3))\n".to_vec(),
-                )
+                .write(Some(&first), "tab-hook-1", print_line(shell, "READY", 6))
                 .await
                 .unwrap();
             until(&seen, "READY_6").await;
@@ -660,11 +674,20 @@ mod tests {
                 .await
                 .unwrap();
             assert!(!fresh, "the terminal is found again by its sid");
-            let report = concat!(
-                "printf '%s' '{\"hook_event_name\":\"Stop\"}' | curl -fsS -X POST \"$UXNAN_HOOK_URL\" ",
-                "-H \"X-Uxnan-Token: $UXNAN_HOOK_TOKEN\" -H \"X-Uxnan-Agent-Id: $UXNAN_AGENT_ID\" ",
-                "-H 'X-Uxnan-Agent-Type: claude' --data-binary @-\n"
-            );
+            // What a reporter does, in that shell's own words (`curl` ships
+            // with Windows too).
+            let report = match shell {
+                crate::ssh::shellkind::ShellKind::Cmd => concat!(
+                    "curl -fsS -X POST \"%UXNAN_HOOK_URL%\" -H \"X-Uxnan-Token: %UXNAN_HOOK_TOKEN%\" ",
+                    "-H \"X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%\" -H \"X-Uxnan-Agent-Type: claude\" ",
+                    "-d \"{\\\"hook_event_name\\\":\\\"Stop\\\"}\"\r"
+                ),
+                _ => concat!(
+                    "printf '%s' '{\"hook_event_name\":\"Stop\"}' | curl -fsS -X POST \"$UXNAN_HOOK_URL\" ",
+                    "-H \"X-Uxnan-Token: $UXNAN_HOOK_TOKEN\" -H \"X-Uxnan-Agent-Id: $UXNAN_AGENT_ID\" ",
+                    "-H 'X-Uxnan-Agent-Type: claude' --data-binary @-\n"
+                ),
+            };
             second_run
                 .write(Some(&second), "tab-hook-2", report.as_bytes().to_vec())
                 .await
@@ -905,6 +928,7 @@ mod tests {
             // First app session: open the tab's terminal.
             let terminals = EngineTerminals::default();
             let conn = connect(&alias).await;
+            let shell = crate::ssh::shellkind::classify(&conn).await;
             let first = engine(&conn).await;
             let (seen, output) = collector();
             let fresh = terminals
@@ -926,7 +950,7 @@ mod tests {
                 .unwrap();
             assert!(fresh);
             terminals
-                .write(Some(&first), "tab-1", b"echo SURVIVES_$((6*7))\n".to_vec())
+                .write(Some(&first), "tab-1", print_line(shell, "SURVIVES", 42))
                 .await
                 .unwrap();
             until(&seen, "SURVIVES_42").await;

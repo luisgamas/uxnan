@@ -150,11 +150,26 @@ fn new_token() -> std::io::Result<String> {
 fn write_endpoint_file(url: &str, token: &str) -> Option<PathBuf> {
     let dir = paths::run_dir();
     paths::ensure_private_dir(&dir).ok()?;
-    let path = dir.join(uxnan_workspace_engine::agent_hooks::ENDPOINT_FILENAMES[0]);
+    // The format each platform's reporters read: sourced by `sh` on Unix,
+    // `call`ed by the `.cmd` reporters on Windows.
+    let (name, prefix, eol) = if cfg!(windows) {
+        (
+            uxnan_workspace_engine::agent_hooks::ENDPOINT_FILENAMES[1],
+            "set ",
+            "\r\n",
+        )
+    } else {
+        (
+            uxnan_workspace_engine::agent_hooks::ENDPOINT_FILENAMES[0],
+            "",
+            "\n",
+        )
+    };
+    let path = dir.join(name);
     let tmp = dir.join(format!(".endpoint-{}.tmp", std::process::id()));
     std::fs::write(
         &tmp,
-        format!("UXNAN_HOOK_URL={url}\nUXNAN_HOOK_TOKEN={token}\n"),
+        format!("{prefix}UXNAN_HOOK_URL={url}{eol}{prefix}UXNAN_HOOK_TOKEN={token}{eol}"),
     )
     .ok()?;
     #[cfg(unix)]

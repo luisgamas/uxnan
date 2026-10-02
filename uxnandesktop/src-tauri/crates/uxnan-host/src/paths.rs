@@ -34,6 +34,22 @@ pub fn socket() -> PathBuf {
     run_dir().join("engine.sock")
 }
 
+/// On Windows the daemon's channel is a named pipe rather than a socket file:
+/// one per account and engine home (a test's private home never meets the
+/// real daemon), whatever the version — for the same reason there is one
+/// socket.
+#[cfg(windows)]
+pub fn pipe_name() -> String {
+    // FNV-1a over the home folder: stable, short, and no crate for it.
+    let key = home().to_string_lossy().to_lowercase();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in key.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!(r"\\.\pipe\uxnan-host-{hash:016x}")
+}
+
 pub fn log() -> PathBuf {
     home().join("host.log")
 }

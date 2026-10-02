@@ -24,6 +24,12 @@ pub fn check(path: &Path) -> Result<(), String> {
     imp::check(path)
 }
 
+/// The access list [`restrict`] gives a file — one entry, the current user —
+/// for anything else that must be the owner's alone (a host engine's named
+/// pipe), so "private" means one thing however it is applied.
+#[cfg(windows)]
+pub use imp::UserOnlyDacl;
+
 #[cfg(unix)]
 mod imp {
     use std::io;
@@ -120,40 +126,67 @@ mod imp {
         Ok(buf)
     }
 
-    pub fn restrict(path: &Path) -> io::Result<()> {
-        let user = current_user()?;
-        let access = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: GENERIC_ALL,
-            grfAccessMode: SET_ACCESS,
-            grfInheritance: NO_INHERITANCE,
-            Trustee: TRUSTEE_W {
-                pMultipleTrustee: ptr::null_mut(),
-                MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
-                TrusteeForm: TRUSTEE_IS_SID,
-                TrusteeType: TRUSTEE_IS_USER,
-                ptstrName: sid_of(&user) as *mut u16,
-            },
-        };
-        let mut dacl: *mut ACL = ptr::null_mut();
-        let name = wide(path);
-        unsafe {
-            let rc = SetEntriesInAclW(1, &access, ptr::null(), &mut dacl);
+    /// A DACL with one entry: the current user, full access. Freed on drop.
+    pub struct UserOnlyDacl {
+        acl: *mut ACL,
+        /// The SID the entry names lives in this buffer.
+        _user: Vec<u8>,
+    }
+
+    // SAFETY: the ACL is a private allocation this value owns and frees once.
+    unsafe impl Send for UserOnlyDacl {}
+    unsafe impl Sync for UserOnlyDacl {}
+
+    impl UserOnlyDacl {
+        pub fn new() -> io::Result<Self> {
+            let user = current_user()?;
+            let access = EXPLICIT_ACCESS_W {
+                grfAccessPermissions: GENERIC_ALL,
+                grfAccessMode: SET_ACCESS,
+                grfInheritance: NO_INHERITANCE,
+                Trustee: TRUSTEE_W {
+                    pMultipleTrustee: ptr::null_mut(),
+                    MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+                    TrusteeForm: TRUSTEE_IS_SID,
+                    TrusteeType: TRUSTEE_IS_USER,
+                    ptstrName: sid_of(&user) as *mut u16,
+                },
+            };
+            let mut acl: *mut ACL = ptr::null_mut();
+            let rc = unsafe { SetEntriesInAclW(1, &access, ptr::null(), &mut acl) };
             if rc != ERROR_SUCCESS {
                 return Err(io::Error::from_raw_os_error(rc as i32));
             }
-            let rc = SetNamedSecurityInfoW(
+            Ok(Self { acl, _user: user })
+        }
+
+        pub fn as_ptr(&self) -> *mut ACL {
+            self.acl
+        }
+    }
+
+    impl Drop for UserOnlyDacl {
+        fn drop(&mut self) {
+            unsafe { LocalFree(self.acl as HLOCAL) };
+        }
+    }
+
+    pub fn restrict(path: &Path) -> io::Result<()> {
+        let dacl = UserOnlyDacl::new()?;
+        let name = wide(path);
+        let rc = unsafe {
+            SetNamedSecurityInfoW(
                 name.as_ptr(),
                 SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                dacl,
+                dacl.as_ptr(),
                 ptr::null(),
-            );
-            LocalFree(dacl as HLOCAL);
-            if rc != ERROR_SUCCESS {
-                return Err(io::Error::from_raw_os_error(rc as i32));
-            }
+            )
+        };
+        if rc != ERROR_SUCCESS {
+            return Err(io::Error::from_raw_os_error(rc as i32));
         }
         Ok(())
     }

@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 import { TARGETS, canBuild, executableName, missing, paths, selected } from "./build-host-engine.mjs";
 
 describe("build-host-engine", () => {
-  it("ships an engine for Linux on both architectures and macOS on both", () => {
+  it("ships an engine for Linux, macOS and Windows, each on both architectures", () => {
     expect(TARGETS.map((t) => t.triple).sort()).toEqual([
       "aarch64-apple-darwin",
+      "aarch64-pc-windows-msvc",
       "aarch64-unknown-linux-musl",
       "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-musl",
     ]);
   });
@@ -26,8 +28,10 @@ describe("build-host-engine", () => {
     mkdirSync(join(present, ".."), { recursive: true });
     writeFileSync(present, "binary");
     expect(missing(root).sort()).toEqual([
+      "aarch64-pc-windows-msvc",
       "aarch64-unknown-linux-musl",
       "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-musl",
     ]);
   });
@@ -40,7 +44,13 @@ describe("build-host-engine", () => {
     ]);
     expect(triples(["--build"], "linux")).toEqual(["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]);
     expect(triples(["--build"], "darwin")).toHaveLength(4);
-    expect(() => selected(["--targets", "x86_64-pc-windows-msvc"], "linux")).toThrow(/no engine/);
+    expect(triples(["--build"], "win32")).toEqual([
+      "aarch64-pc-windows-msvc",
+      "aarch64-unknown-linux-musl",
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-musl",
+    ]);
+    expect(() => selected(["--targets", "riscv64gc-unknown-linux-gnu"], "linux")).toThrow(/no engine/);
     expect(() => selected(["--targets"], "linux")).toThrow(/no engine/);
   });
 
@@ -50,5 +60,8 @@ describe("build-host-engine", () => {
     expect(canBuild(apple, "linux")).toBe(false);
     expect(canBuild(apple, "darwin")).toBe(true);
     expect(canBuild(linux, "linux")).toBe(true);
+    const windows = TARGETS.find((t) => t.triple === "x86_64-pc-windows-msvc");
+    expect(canBuild(windows, "darwin")).toBe(false);
+    expect(canBuild(windows, "win32")).toBe(true);
   });
 });

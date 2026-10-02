@@ -6790,8 +6790,10 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "uxnan-control-protocol",
  "uxnan-host-protocol",
  "uxnan-workspace-engine",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

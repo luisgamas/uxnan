@@ -64,6 +64,37 @@ fn link_is_gone(since: Duration) -> bool {
     since >= SILENCE_IS_GONE
 }
 
+/// The build of `uxnan-host` a Windows host needs, from its
+/// `PROCESSOR_ARCHITECTURE`.
+pub fn windows_triple(arch: &str) -> Option<&'static str> {
+    match arch.trim().to_ascii_uppercase().as_str() {
+        "AMD64" | "X86_64" => Some("x86_64-pc-windows-msvc"),
+        "ARM64" => Some("aarch64-pc-windows-msvc"),
+        _ => None,
+    }
+}
+
+/// The line that runs the program at `path` with `arg` in a shell of this
+/// family — the engine's own path is the one thing typed into a host's shell,
+/// so it is quoted for that shell and never assumed POSIX.
+pub fn run_line(shell: ShellKind, path: &str, arg: &str) -> Option<String> {
+    match shell {
+        ShellKind::Posix => Some(format!("{} {arg}", shellkind::quote_arg(shell, path))),
+        // Windows takes either slash, but cmd runs a quoted program path only
+        // when it is written its own way.
+        ShellKind::Cmd => Some(format!(
+            "{} {arg}",
+            shellkind::quote_arg(shell, &path.replace('/', "\\"))
+        )),
+        // A quoted path is a string to PowerShell; `&` runs it.
+        ShellKind::PowerShell => Some(format!(
+            "& {} {arg}",
+            shellkind::quote_arg(shell, &path.replace('/', "\\"))
+        )),
+        ShellKind::Unknown => None,
+    }
+}
+
 /// The build of `uxnan-host` a host needs, from what `uname -sm` printed.
 pub fn triple_for(uname: &str) -> Option<&'static str> {
     let mut words = uname.split_whitespace();
@@ -134,12 +165,10 @@ pub async fn ensure_installed(
     shell: ShellKind,
     files: &RemoteFiles,
 ) -> Result<String, AppError> {
-    if shell != ShellKind::Posix {
-        // FOR-DEV: Windows hosts — the daemon has no named-pipe listener yet
-        // (`crates/uxnan-host/src/daemon.rs` → `bind`), so their terminals stay
-        // on plain SSH channels (`ssh/pty.rs`) until it does.
+    // A shell nobody could name gets nothing typed into it.
+    if shell == ShellKind::Unknown {
         return Err(AppError::Invalid(
-            "the host engine does not run on Windows hosts yet".to_string(),
+            "could not tell which shell that host runs, so its engine is not started".to_string(),
         ));
     }
     let home = files.home().await.map_err(|e| {
@@ -148,11 +177,28 @@ pub async fn ensure_installed(
             failure(e)
         ))
     })?;
-    let uname = conn.exec("uname -sm").await?;
-    let triple = triple_for(uname.stdout.trim()).ok_or_else(|| {
+    // Which machine it is, asked the way that machine's shell can answer.
+    let (asked, triple) = match shell {
+        ShellKind::Posix => {
+            let uname = conn.exec("uname -sm").await?;
+            let said = uname.stdout.trim().to_string();
+            let triple = triple_for(&said);
+            (said, triple)
+        }
+        _ => {
+            let probe = if shell == ShellKind::Cmd {
+                "echo %PROCESSOR_ARCHITECTURE%"
+            } else {
+                "$env:PROCESSOR_ARCHITECTURE"
+            };
+            let said = conn.exec(probe).await?.stdout.trim().to_string();
+            let triple = windows_triple(&said);
+            (format!("Windows {said}"), triple)
+        }
+    };
+    let triple = triple.ok_or_else(|| {
         AppError::Invalid(format!(
-            "the host engine is not built for this host ({})",
-            uname.stdout.trim()
+            "the host engine is not built for this host ({asked})"
         ))
     })?;
     let local = local_binary(triple)?;
@@ -165,16 +211,21 @@ pub async fn ensure_installed(
         home.trim_end_matches('/'),
         install_dir_name(&bytes)
     );
-    let path = format!("{dir}/uxnan-host");
+    let name = if triple.contains("windows") {
+        "uxnan-host.exe"
+    } else {
+        "uxnan-host"
+    };
+    let path = format!("{dir}/{name}");
 
-    if runs_here(conn, &path).await {
+    if runs_here(conn, shell, &path).await {
         return Ok(path);
     }
     // A file there that does not run is a broken copy (an upload cut short):
     // that one is replaced. Otherwise a racing install of the same build wins.
     let broken = files.exists(&path).await.unwrap_or(false);
     files
-        .install_executable(&dir, "uxnan-host", &bytes, broken)
+        .install_executable(&dir, name, &bytes, broken)
         .await
         .map_err(|e| {
             AppError::Invalid(format!(
@@ -182,7 +233,7 @@ pub async fn ensure_installed(
                 failure(e)
             ))
         })?;
-    if !runs_here(conn, &path).await {
+    if !runs_here(conn, shell, &path).await {
         return Err(AppError::Invalid(format!(
             "the host engine was uploaded to {path} but does not run there"
         )));
@@ -218,8 +269,10 @@ fn failure(e: super::sftp::SftpFailure) -> String {
 
 /// Whether the binary at `path` runs on this host and speaks a protocol this
 /// app does.
-async fn runs_here(conn: &Connection, path: &str) -> bool {
-    let command = format!("{} version", shellkind::quote_arg(ShellKind::Posix, path));
+async fn runs_here(conn: &Connection, shell: ShellKind, path: &str) -> bool {
+    let Some(command) = run_line(shell, path, "version") else {
+        return false;
+    };
     let Ok(out) = conn.exec(&command).await else {
         return false;
     };
@@ -314,9 +367,15 @@ pub struct HostEngine {
 
 impl HostEngine {
     /// Join the daemon over a new channel on `conn`, starting it if needed.
-    pub async fn start(conn: &Connection, path: &str) -> Result<Arc<HostEngine>, AppError> {
+    pub async fn start(
+        conn: &Connection,
+        shell: ShellKind,
+        path: &str,
+    ) -> Result<Arc<HostEngine>, AppError> {
+        let command = run_line(shell, path, "attach").ok_or_else(|| {
+            AppError::Invalid("could not tell which shell that host runs".to_string())
+        })?;
         let (channel, lease) = conn.open_channel("the host engine", false).await?;
-        let command = format!("{} attach", shellkind::quote_arg(ShellKind::Posix, path));
         channel
             .exec(true, command)
             .await
@@ -1011,7 +1070,7 @@ impl Engines {
         }
         let files = files.await?;
         let path = ensure_installed(conn, shell, &files).await?;
-        let engine = HostEngine::start(conn, &path).await?;
+        let engine = HostEngine::start(conn, shell, &path).await?;
         self.engines
             .lock()
             .await
@@ -1065,6 +1124,32 @@ mod tests {
             "and the same build, the same folder"
         );
         assert!(a.starts_with(&format!("{}-", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn a_windows_host_is_matched_by_its_architecture() {
+        assert_eq!(windows_triple("AMD64\r\n"), Some("x86_64-pc-windows-msvc"));
+        assert_eq!(windows_triple("ARM64"), Some("aarch64-pc-windows-msvc"));
+        assert_eq!(windows_triple("x86"), None);
+    }
+
+    #[test]
+    fn the_engine_is_run_the_way_each_shell_runs_a_program() {
+        let unix = "/home/u/.uxnan/host/versions/v/uxnan-host";
+        assert_eq!(
+            run_line(ShellKind::Posix, unix, "attach").as_deref(),
+            Some("'/home/u/.uxnan/host/versions/v/uxnan-host' attach")
+        );
+        let win = "C:/Users/a b/.uxnan/host/versions/v/uxnan-host.exe";
+        assert_eq!(
+            run_line(ShellKind::Cmd, win, "version").as_deref(),
+            Some(r#""C:\Users\a b\.uxnan\host\versions\v\uxnan-host.exe" version"#)
+        );
+        assert_eq!(
+            run_line(ShellKind::PowerShell, win, "attach").as_deref(),
+            Some(r#"& "C:\Users\a b\.uxnan\host\versions\v\uxnan-host.exe" attach"#)
+        );
+        assert_eq!(run_line(ShellKind::Unknown, win, "attach"), None);
     }
 
     #[test]

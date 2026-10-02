@@ -42,13 +42,18 @@ pub fn tools(endpoint: &crate::endpoint::Endpoint) -> Reply {
     let mcp_url = endpoint.mcp_url();
     let browser_shim = agent_hooks::install_shared_scripts()
         .ok()
-        .map(|install| install.browser_shim_bash)
+        .map(|install| {
+            if cfg!(windows) {
+                install.browser_shim_cmd
+            } else {
+                install.browser_shim_bash
+            }
+        })
         .filter(|path| Path::new(path).is_file());
     let claude_config = write_claude_config(&mcp_url);
     let opencode_major = search_dirs()
         .into_iter()
-        .map(|dir| dir.join("opencode"))
-        .find(|path| executable(path))
+        .find_map(|dir| found_in(&dir, "opencode"))
         .and_then(|path| version_of(&path))
         .as_deref()
         .and_then(mcp_launch::parse_major_version);
@@ -135,6 +140,7 @@ pub fn config(agent: &str) -> Result<String, String> {
 }
 
 /// The account's own shell, as a terminal here starts it.
+#[cfg(unix)]
 fn account_shell() -> PathBuf {
     #[cfg(unix)]
     {
@@ -160,6 +166,7 @@ fn account_shell() -> PathBuf {
 /// The `PATH` a login shell here ends up with, or `None` when it does not say
 /// in time. Read from `env`'s output, which every shell family prints the same
 /// way (fish keeps `PATH` as a list, but exports it colon-joined).
+#[cfg(unix)]
 fn login_path() -> Option<String> {
     let mut child = Command::new(account_shell())
         .args(["-l", "-c", "env"])
@@ -194,6 +201,13 @@ fn login_path() -> Option<String> {
 /// Where to look for an agent: the login shell's `PATH`, this process's own,
 /// and the folders the agents' installers use when a profile does not add
 /// them to `PATH` for a non-interactive shell.
+/// Windows has no login shell to ask: a session's `PATH` is the account's own,
+/// from the registry, which this process already has.
+#[cfg(windows)]
+fn login_path() -> Option<String> {
+    None
+}
+
 fn search_dirs() -> Vec<PathBuf> {
     let home = agent_hooks::home_dir().unwrap_or_default();
     let mut dirs: Vec<PathBuf> = Vec::new();
@@ -220,15 +234,39 @@ fn search_dirs() -> Vec<PathBuf> {
     ] {
         add(home.join(rel));
     }
-    for abs in ["/usr/local/bin", "/opt/homebrew/bin"] {
-        add(PathBuf::from(abs));
+    if cfg!(windows) {
+        // npm's global shims, and the per-user installers' folders.
+        for var in ["APPDATA", "LOCALAPPDATA"] {
+            if let Some(base) = std::env::var_os(var) {
+                add(PathBuf::from(&base).join("npm"));
+            }
+        }
+    } else {
+        for abs in ["/usr/local/bin", "/opt/homebrew/bin"] {
+            add(PathBuf::from(abs));
+        }
     }
     dirs
 }
 
 /// Whether `name` is an executable file in one of `dirs`.
 fn on_path(dirs: &[PathBuf], name: &str) -> bool {
-    dirs.iter().any(|d| executable(&d.join(name)))
+    dirs.iter().any(|d| found_in(d, name).is_some())
+}
+
+/// `name` in `dir` as this platform runs it: the file itself on Unix; on
+/// Windows with one of the extensions a command is found by (`PATHEXT`).
+fn found_in(dir: &Path, name: &str) -> Option<PathBuf> {
+    if cfg!(windows) {
+        let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+        exts.split(';')
+            .filter(|e| !e.is_empty())
+            .map(|e| dir.join(format!("{name}{}", e.to_ascii_lowercase())))
+            .find(|p| executable(p))
+    } else {
+        let path = dir.join(name);
+        executable(&path).then_some(path)
+    }
 }
 
 fn executable(path: &Path) -> bool {

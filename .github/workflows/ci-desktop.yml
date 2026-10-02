@@ -61,7 +61,7 @@ jobs:
     # build, and paying for it on an unrelated UI change would teach people to
     # ignore it.
     if: >-
-      (github.event_name == 'push' || github.event_name == 'pull_request') &&
+      (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
       !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/'))
     steps:
       # Full history: the gate below compares against the base commit, and a
@@ -75,6 +75,9 @@ jobs:
       - name: Are the SSH layer or its fixture in this change?
         id: touched
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           base='${{ github.event.pull_request.base.sha || github.event.before }}'
           if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
@@ -115,6 +118,94 @@ jobs:
         if: always() && steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop
         run: npm run ssh:host:down || true
+
+  # The host engine on a Windows host: this runner turns on its own OpenSSH
+  # Server and is reached as a host, so the named pipe, the daemon leaving the
+  # SSH session's job, cmd as the default shell and the `.exe` install all run
+  # for real — the live terminal suite, against Windows.
+  windows-ssh-host:
+    name: live SSH against a Windows host
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
+      !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/'))
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Are the SSH layer or the host engine in this change?
+        id: touched
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$base" '${{ github.sha }}' \
+               | grep -Eq '^uxnandesktop/(src-tauri/src/ssh/|src-tauri/crates/(uxnan-host|host-protocol|workspace-engine|control-protocol)/|scripts/build-host-engine\.mjs)|^\.github/workflows/ci-desktop\.yml'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.touched.outputs.run == 'true'
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.touched.outputs.run == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.touched.outputs.run == 'true'
+        with:
+          workspaces: uxnandesktop/src-tauri
+          key: windows-ssh-host
+      - name: This runner's OpenSSH Server, with a key for itself
+        if: steps.touched.outputs.run == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
+            Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+          }
+          Start-Service sshd
+          $dir = Join-Path $env:USERPROFILE '.ssh'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $key = Join-Path $dir 'id_ed25519'
+          & "$env:WINDIR\System32\OpenSSH\ssh-keygen.exe" -q -t ed25519 -N '' -f $key
+          # The runner's account is an administrator: sshd reads its keys from
+          # the machine-wide file, which must be SYSTEM's and Administrators'
+          # alone or sshd ignores it.
+          $auth = 'C:\ProgramData\ssh\administrators_authorized_keys'
+          Copy-Item "$key.pub" $auth -Force
+          icacls $auth /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
+          @"
+          Host uxnan-win-self
+            HostName 127.0.0.1
+            User $env:USERNAME
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking accept-new
+          "@ | Set-Content -Encoding ascii (Join-Path $dir 'config')
+          & "$env:WINDIR\System32\OpenSSH\ssh.exe" -o BatchMode=yes uxnan-win-self "echo reached"
+      - name: The host engine for this machine
+        if: steps.touched.outputs.run == 'true'
+        working-directory: uxnandesktop
+        run: node scripts/build-host-engine.mjs --build --targets x86_64-pc-windows-msvc
+      - name: The live terminal suite, against this Windows host
+        if: steps.touched.outputs.run == 'true'
+        shell: pwsh
+        env:
+          UXNAN_SSH_TEST_ALIAS: uxnan-win-self
+        run: |
+          cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml --lib ssh::terminals::tests::live -- --ignored --nocapture --skip the_hosts_own --skip given_up_on --skip a_change_on_the_host
+      - name: What the engine logged, if it failed
+        if: failure() && steps.touched.outputs.run == 'true'
+        shell: pwsh
+        run: Get-Content (Join-Path $env:USERPROFILE '.uxnan\host\host.log') -ErrorAction SilentlyContinue
 
   # Whether this change shapes an installer — asked once, for the two jobs
   # that only run then: the host engines and the installers that carry them.
@@ -265,7 +356,7 @@ jobs:
           dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -q 'usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml' \
             || { echo "::error::the .deb carries no AppStream metadata"; exit 1; }
           engines=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -c 'host-engine/[^/]*/uxnan-host$' || true)
-          [ "$engines" = 4 ] || { echo "::error::the .deb carries $engines host engines, not 4"; exit 1; }
+          [ "$engines" = 6 ] || { echo "::error::the .deb carries $engines host engines, not 6"; exit 1; }
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
       - name: Keep the window it showed
         if: always() && runner.os == 'Linux'
@@ -291,7 +382,7 @@ jobs:
             if (-not (Test-Path (Join-Path $dir $f))) { throw "NSIS did not install $f into $dir" }
           }
           $engines = @(Get-ChildItem -Recurse (Join-Path $dir 'host-engine') -Filter 'uxnan-host' -ErrorAction SilentlyContinue).Count
-          if ($engines -ne 4) { Get-ChildItem -Recurse $dir | Select-Object -First 60; throw "NSIS installed $engines host engines, not 4" }
+          if ($engines -ne 6) { Get-ChildItem -Recurse $dir | Select-Object -First 60; throw "NSIS installed $engines host engines, not 6" }
           $app = Start-Process (Join-Path $dir 'uxnan-desktop.exe') -PassThru
           Start-Sleep -Seconds 20
           if ($app.HasExited) { throw "the installed app exited on its own (code $($app.ExitCode))" }
@@ -332,7 +423,7 @@ jobs:
           [ -x "$app/Contents/MacOS/uxnan-desktop" ] || { echo "::error::no app binary"; exit 1; }
           [ -x "$app/Contents/MacOS/uxnan-cli" ] || { echo "::error::no uxnan-cli sidecar in the app"; exit 1; }
           engines=$(find "$app/Contents/Resources/host-engine" -name uxnan-host -type f -perm -u+x | wc -l | tr -d ' ')
-          [ "$engines" = 4 ] || { echo "::error::the app carries $engines runnable host engines, not 4"; exit 1; }
+          [ "$engines" = 6 ] || { echo "::error::the app carries $engines runnable host engines, not 6"; exit 1; }
           # Ad-hoc signed (`signingIdentity: "-"`): valid, just not by a Developer ID.
           codesign --verify --deep --strict --verbose=2 "$app"
           dmg=$(find dmg -name '*.dmg' -print -quit)

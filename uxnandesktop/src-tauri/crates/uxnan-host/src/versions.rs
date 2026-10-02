@@ -103,8 +103,29 @@ fn lock(file: &File, exclusive: bool) -> bool {
     unsafe { libc::flock(file.as_raw_fd(), mode) == 0 }
 }
 
-#[cfg(not(unix))]
-fn lock(_file: &File, exclusive: bool) -> bool {
-    // No advisory locks here yet: nothing is ever judged unused.
-    !exclusive
+#[cfg(windows)]
+fn lock(file: &File, exclusive: bool) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+    };
+    let flags = if exclusive {
+        LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY
+    } else {
+        0
+    };
+    // SAFETY: a zeroed OVERLAPPED (offset 0) for a synchronous lock of the
+    // whole file, on a handle this function borrows for the call; the lock is
+    // released when the handle closes, however the process ends.
+    unsafe {
+        let mut overlapped = std::mem::zeroed();
+        LockFileEx(
+            file.as_raw_handle() as _,
+            flags,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        ) != 0
+    }
 }

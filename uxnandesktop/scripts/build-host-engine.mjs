@@ -6,8 +6,8 @@
 // The app uploads the build that matches a remote host's platform over SFTP
 // (`src-tauri/src/ssh/engine.rs`). So, unlike `uxnan-cli`, **every** installer
 // carries **every** host build — a Windows laptop can drive a Linux server.
-// They are static and small (~1.3 MB each), which is why they are bundled rather
-// than downloaded.
+// They are small (~1.5–2 MB each), which is why they are bundled rather than
+// downloaded.
 //
 //   node scripts/build-host-engine.mjs            # make sure the folder exists
 //   node scripts/build-host-engine.mjs --build    # build what this machine can
@@ -15,7 +15,8 @@
 //                                                 # build exactly these
 //   node scripts/build-host-engine.mjs --require  # fail unless all are present
 //
-// No build machine can produce all of them (the Apple ones need macOS), so the
+// No build machine can produce all of them (the Apple ones need macOS, the
+// Windows ones MSVC), so the
 // release builds them on their own runners and hands them to each installer
 // leg (`build-host-engine.yml`, each runner naming its own `--targets`); this script's `--require` is the
 // check that none is missing from what ships. A development build runs it with
@@ -36,6 +37,8 @@ export const TARGETS = [
   { triple: "aarch64-unknown-linux-musl", builder: "zigbuild" },
   { triple: "aarch64-apple-darwin", builder: "cargo", needs: "darwin" },
   { triple: "x86_64-apple-darwin", builder: "cargo", needs: "darwin" },
+  { triple: "x86_64-pc-windows-msvc", builder: "cargo", needs: "win32" },
+  { triple: "aarch64-pc-windows-msvc", builder: "cargo", needs: "win32" },
 ];
 
 export function executableName(triple) {
@@ -70,9 +73,11 @@ export function selected(argv, platform = process.platform, targets = TARGETS) {
   return targets.filter((t) => named.includes(t.triple));
 }
 
-/** Whether this machine can build `target`. */
+/** Whether this machine can build `target`: the Apple engines need a Mac,
+ *  the Windows ones a Windows machine (MSVC); the Linux ones build anywhere
+ *  zig does. */
 export function canBuild(target, platform = process.platform) {
-  return target.needs !== "darwin" || platform === "darwin";
+  return !target.needs || target.needs === platform;
 }
 
 function build(target) {
