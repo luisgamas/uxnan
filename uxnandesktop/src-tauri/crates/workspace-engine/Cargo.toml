@@ -30,6 +30,11 @@ toml_edit = "0.22"
 sha2 = "0.10"
 hex = "0.4"
 
+[target.'cfg(windows)'.dependencies]
+# The 8.3 short path the hook installer gives a reporter whose path has spaces
+# (`agent_hooks::short_path`). The same crate and version the app uses.
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
