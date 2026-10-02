@@ -48,4 +48,56 @@ void main() {
     await legacyRepo.saveMessage(before.single.copyWith(continuedIn: 't2'));
     expect((await legacyRepo.getMessages('th1')).single.continuedIn, 't2');
   });
+
+  test('a v10 database gains the turn duration column and keeps its messages',
+      () async {
+    // The messages table exactly as schema v10 created it, with one row.
+    final legacy = UxnanDatabase.forTesting(
+      NativeDatabase.memory(
+        setup: (raw) {
+          raw
+            ..execute(
+              'CREATE TABLE "messages_table" ("id" TEXT NOT NULL, '
+              '"thread_id" TEXT NOT NULL, "turn_id" TEXT NOT NULL, '
+              '"role" TEXT NOT NULL, "contents_json" TEXT NOT NULL, '
+              '"delivery_state" TEXT NOT NULL, "order_index" INTEGER NOT NULL, '
+              '"fingerprint" TEXT NULL, "created_at_ms" INTEGER NOT NULL, '
+              '"continued_in" TEXT NULL, '
+              'PRIMARY KEY ("id"))',
+            )
+            ..execute(
+              'INSERT INTO messages_table '
+              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                'old',
+                'th1',
+                't1',
+                'assistant',
+                '[{"type":"text","text":"done"}]',
+                'delivered',
+                1,
+                null,
+                1000,
+                't2',
+              ],
+            )
+            ..execute('PRAGMA user_version = 10');
+        },
+      ),
+    );
+    addTearDown(legacy.close);
+    final legacyRepo = DriftMessageRepository(legacy);
+
+    final before = await legacyRepo.getMessages('th1');
+    expect(before.single.continuedIn, 't2');
+    expect(before.single.turnDuration, isNull);
+
+    await legacyRepo.saveMessage(
+      before.single.copyWith(turnDuration: const Duration(seconds: 352)),
+    );
+    expect(
+      (await legacyRepo.getMessages('th1')).single.turnDuration,
+      const Duration(seconds: 352),
+    );
+  });
 }

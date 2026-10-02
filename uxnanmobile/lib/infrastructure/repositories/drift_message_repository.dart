@@ -89,6 +89,7 @@ class DriftMessageRepository implements IMessageRepository {
       fingerprint: Value(message.fingerprint),
       createdAtMs: Value(message.createdAt.millisecondsSinceEpoch),
       continuedIn: Value(message.continuedIn),
+      turnDurationMs: Value(message.turnDuration?.inMilliseconds),
     );
   }
 
@@ -116,6 +117,9 @@ class DriftMessageRepository implements IMessageRepository {
       fingerprint: row.fingerprint,
       createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAtMs),
       continuedIn: row.continuedIn,
+      turnDuration: row.turnDurationMs == null
+          ? null
+          : Duration(milliseconds: row.turnDurationMs!),
     );
   }
 }

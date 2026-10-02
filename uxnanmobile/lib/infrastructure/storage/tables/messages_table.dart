@@ -35,6 +35,10 @@ class MessagesTable extends Table {
   /// a message reached the agent while it was still answering this one.
   TextColumn get continuedIn => text().nullable()();
 
+  /// How long this message's turn worked, in milliseconds
+  /// (`Turn.completedAt - Turn.createdAt`), once the turn has ended.
+  IntColumn get turnDurationMs => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

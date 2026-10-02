@@ -17,6 +17,7 @@ class Message extends Equatable {
     required this.createdAt,
     this.fingerprint,
     this.continuedIn,
+    this.turnDuration,
   });
 
   /// Unique message id.
@@ -55,6 +56,13 @@ class Message extends Equatable {
   /// phone stores messages, not turns.
   final String? continuedIn;
 
+  /// How long this message's turn worked, from when it began to when it
+  /// ended (`Turn.completedAt - Turn.createdAt`, both from the bridge's
+  /// clock), or null while it runs, when it never ended, and from an older
+  /// snapshot. Carried by the turn's assistant message, for the same reason
+  /// as [continuedIn]: the phone stores messages, not turns.
+  final Duration? turnDuration;
+
   /// Concatenated plain-text projection of all content blocks.
   String get plainText => contents.map((c) => c.asPlainText).join('\n');
 
@@ -75,6 +83,7 @@ class Message extends Equatable {
     int? orderIndex,
     String? fingerprint,
     String? continuedIn,
+    Duration? turnDuration,
   }) {
     return Message(
       id: id,
@@ -87,6 +96,7 @@ class Message extends Equatable {
       createdAt: createdAt,
       fingerprint: fingerprint ?? this.fingerprint,
       continuedIn: continuedIn ?? this.continuedIn,
+      turnDuration: turnDuration ?? this.turnDuration,
     );
   }
 
@@ -102,5 +112,6 @@ class Message extends Equatable {
         fingerprint,
         createdAt,
         continuedIn,
+        turnDuration,
       ];
 }

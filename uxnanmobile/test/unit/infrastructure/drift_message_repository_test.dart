@@ -69,6 +69,20 @@ void main() {
       expect(messages.last.continuedIn, isNull);
     });
 
+    test("keeps how long a message's turn worked", () async {
+      await repo.saveMessages([
+        _msg('timed', order: 1)
+            .copyWith(turnDuration: const Duration(minutes: 5, seconds: 52)),
+        _msg('running', order: 2),
+      ]);
+      final messages = await repo.getMessages('th1');
+      expect(
+        messages.first.turnDuration,
+        const Duration(minutes: 5, seconds: 52),
+      );
+      expect(messages.last.turnDuration, isNull);
+    });
+
     test('returns messages ascending by order', () async {
       await repo.saveMessages([
         _msg('b', order: 2),

@@ -40,7 +40,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -120,6 +120,12 @@ class UxnanDatabase extends _$UxnanDatabase {
           // the agent mid-answer, so the timeline can say so.
           if (from < 10) {
             await m.addColumn(messagesTable, messagesTable.continuedIn);
+          }
+          // v11: a message remembers how long its turn worked
+          // (`Turn.completedAt - Turn.createdAt`, nullable), which the folded
+          // earlier responses of an answer are labelled with.
+          if (from < 11) {
+            await m.addColumn(messagesTable, messagesTable.turnDurationMs);
           }
         },
         beforeOpen: (details) async {
