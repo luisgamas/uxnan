@@ -76,7 +76,9 @@ jobs:
 
       - name: Build the host engines
         working-directory: uxnandesktop
-        run: node scripts/build-host-engine.mjs --build
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: node scripts/build-host-engine.mjs --build --targets "$TARGETS"
 
       - name: Hand them to the installer legs
         uses: actions/upload-artifact@v4

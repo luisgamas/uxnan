@@ -11,11 +11,13 @@
 //
 //   node scripts/build-host-engine.mjs            # make sure the folder exists
 //   node scripts/build-host-engine.mjs --build    # build what this machine can
+//   node scripts/build-host-engine.mjs --build --targets "<triple> <triple>"
+//                                                 # build exactly these
 //   node scripts/build-host-engine.mjs --require  # fail unless all are present
 //
 // No build machine can produce all of them (the Apple ones need macOS), so the
 // release builds them on their own runners and hands them to each installer
-// leg (`release-desktop.yml` → `host-engine`); this script's `--require` is the
+// leg (`build-host-engine.yml`, each runner naming its own `--targets`); this script's `--require` is the
 // check that none is missing from what ships. A development build runs it with
 // neither flag: whatever is there is bundled, and a host whose platform has no
 // build keeps its terminals on plain SSH channels.
@@ -54,6 +56,20 @@ export function missing(root = tauriDir, targets = TARGETS) {
   return targets.filter((t) => !existsSync(paths(t.triple, root).bundled)).map((t) => t.triple);
 }
 
+/** The targets `--targets` names (space- or comma-separated), or every one
+ *  this machine can build when it names none. An unknown triple is an error,
+ *  never a silent skip. */
+export function selected(argv, platform = process.platform, targets = TARGETS) {
+  const at = argv.indexOf("--targets");
+  if (at < 0) return targets.filter((t) => canBuild(t, platform));
+  const named = (argv[at + 1] ?? "").split(/[\s,]+/).filter(Boolean);
+  const unknown = named.filter((n) => !targets.some((t) => t.triple === n));
+  if (unknown.length > 0 || named.length === 0) {
+    throw new Error(`--targets names no engine this app ships: ${unknown.join(", ") || "(none)"}`);
+  }
+  return targets.filter((t) => named.includes(t.triple));
+}
+
 /** Whether this machine can build `target`. */
 export function canBuild(target, platform = process.platform) {
   return target.needs !== "darwin" || platform === "darwin";
@@ -83,10 +99,10 @@ function main(argv) {
   writeFileSync(join(dir, ".keep"), "");
 
   if (argv.includes("--build")) {
-    for (const target of TARGETS) {
+    for (const target of selected(argv)) {
       if (!canBuild(target)) {
-        console.log(`[host-engine] skipping ${target.triple}: needs a ${target.needs} machine`);
-        continue;
+        console.error(`[host-engine] ${target.triple} needs a ${target.needs} machine`);
+        process.exit(1);
       }
       if (!build(target)) {
         console.error(`[host-engine] ${target.triple} did not build`);
