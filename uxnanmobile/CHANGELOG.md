@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An approval or a question shows once, even when it arrives twice.** One
+  the PC stored before requests carried their own id is now recognized by its
+  approval or question id, so a second copy replaces the first card.
 
 ## [0.0.36-alpha.20261002+20261003] - 20261002
 ### Changed

@@ -4,6 +4,14 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An approval no longer shows up twice — or not at all on the desktop.**
+  The bridge stores an approval or a question before announcing it, so a
+  client that reloaded the turn in between received it twice; on the desktop
+  the duplicate emptied the card above the composer and left only a
+  "waiting for you" line. Every approval and question now carries its own id
+  as `blockId`, so the second copy replaces the first everywhere.
 
 ## [0.0.43-alpha.20261002] - 20261002
 ### Fixed

@@ -42,6 +42,9 @@ export interface QuestionRequestBlock {
   questionId: string;
   /** The questions to ask (usually one; an agent may batch a few). */
   questions: QuestionItem[];
+  /** The request's own id again (`questionId`), as the `LiveBlock` id: a
+   *  request delivered twice replaces the first copy in place. */
+  blockId?: string;
 }
 
 /**

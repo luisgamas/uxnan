@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An approval always shows its card above the composer.** When the same
+  approval reached the app twice — a reload of the turn racing the live
+  request — the duplicate broke the card above the composer, leaving only a
+  "Waiting for you" line in the conversation and nothing to answer it with.
+  A request is now one card whatever copies of it arrive.
 
 ## [0.0.72] - 20261002
 ### Changed
