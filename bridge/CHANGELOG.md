@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.43-alpha.20261002] - 20261002
 ### Fixed
 
 - **Claude Code comes back as many times as its work needs.** When Claude left
