@@ -97,12 +97,13 @@ class MessageBubble extends StatelessWidget {
 ///   timeline pins it below the conversation, in queue order, for as long as
 ///   it waits. It keeps the user's own tone and its whole text; only a dashed
 ///   outline says "not handed over yet". Its top-right corner carries **send
-///   now** (only when nothing runs — a held queue), **edit** and **cancel**,
-///   and a line under it says where it sits in line. When the queue reaches
+///   now** (which stops the running turn first, when one runs), **edit** and
+///   **cancel** — the first queued message too — and a line under it says
+///   where it sits in line. When the queue reaches
 ///   it the dashes and the actions fade and it drops into place where it was
 ///   delivered, so the queue is seen moving rather than just reported.
-/// - **delivering** — still queued, but an agent that takes messages while it
-///   works is taking it at its next pause (the bridge's `deliveringTurnId`).
+/// - **delivering** — still queued, but the step the agent was in ended and
+///   the bridge is handing it over (the bridge's `deliveringTurnId`).
 ///   It keeps the dashes and its place; the actions go (the bridge refuses
 ///   them now) and the line under it says it is reaching the agent.
 /// - **cancelled** — taken off the queue before the agent saw it. The bubble
@@ -191,9 +192,11 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     if (mounted) setState(() => _busy = false);
   }
 
-  /// **Send now** — with nothing running (a held queue), the message goes as
-  /// the next turn at once instead of waiting its turn. A refusal says why;
-  /// the message stays queued.
+  /// **Send now** — the message goes as the next turn instead of waiting its
+  /// turn. With nothing running (a held queue) it starts at once; while a turn
+  /// runs the bridge stops that turn first and runs this message as soon as
+  /// the stop lands, for every agent. A refusal says why; the message stays
+  /// queued.
   Future<void> _sendNow() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -210,12 +213,10 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     }
   }
 
-  /// Whether "send now" is offered: only while nothing runs. While a turn
-  /// runs the bridge refuses it for every agent — one that takes messages
-  /// mid-turn gets the first queued one at its next pause, any other when it
-  /// finishes.
-  bool _canSendNow(String threadId) =>
-      ref.watch(threadActivityForProvider(threadId)) != ThreadActivity.running;
+  /// Whether a turn runs on the thread, which decides what "send now" says:
+  /// while one runs it stops the agent first, so the action says that.
+  bool _turnRunning(String threadId) =>
+      ref.watch(threadActivityForProvider(threadId)) == ThreadActivity.running;
 
   /// **Cancel** — drops the message from the queue and leaves it in the
   /// timeline marked as cancelled. Nothing goes back to the composer: this is
@@ -259,17 +260,19 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
         // the bridge says the message left the queue, so it cannot get stuck.
         message.deliveryState == MessageDeliveryState.queued;
     final cancelled = message.deliveryState == MessageDeliveryState.cancelled;
-    // The running agent is taking this one at its next pause: it stays in the
-    // queue until the agent reads it, but it is no longer the user's to edit,
-    // cancel or send — the bridge refuses all three — so it shows no actions.
+    // The agent's step ended and the bridge is handing this one over: it stays
+    // in the queue until the agent reads it, but it is no longer the user's to
+    // edit, cancel or send — the bridge refuses all three — so it shows no
+    // actions. Every other queued message, the first included, keeps them.
     final delivering = queued &&
         message.turnId.isNotEmpty &&
         queue.isDelivering(message.turnId);
     final actionable = queued && !delivering;
-    // A queued message can go now only with nothing running (a held queue).
-    // Read only for an actionable one: every sent one would otherwise watch
-    // the thread's activity for nothing.
-    final canSendNow = actionable && _canSendNow(message.threadId);
+    // Send now is offered on every actionable message; while a turn runs it
+    // stops the agent first, and its label says so. Read only for an
+    // actionable one: every sent one would otherwise watch the thread's
+    // activity for nothing.
+    final sendNowStops = actionable && _turnRunning(message.threadId);
     final motion =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
     final images = _images;
@@ -352,9 +355,7 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                       UxnanSpacing.sm,
                       // Room for every corner action shown (send now, edit,
                       // cancel), so none of them ever sits on the text.
-                      actionable
-                          ? _queuedActionsWidth(canSendNow ? 3 : 2)
-                          : UxnanSpacing.md,
+                      actionable ? _queuedActionsWidth(3) : UxnanSpacing.md,
                       UxnanSpacing.sm,
                     ),
                     // Never shorter than the corner actions plus their inset
@@ -406,15 +407,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (canSendNow) ...[
-                              _QueuedActionButton(
-                                icon: UxIcons.arrowUpward,
-                                tooltip: l10n.queuedMessageSendNow,
-                                busy: _busy,
-                                onTap: _sendNow,
-                              ),
-                              const SizedBox(width: UxnanSpacing.xs),
-                            ],
+                            _QueuedActionButton(
+                              icon: UxIcons.arrowUpward,
+                              tooltip: sendNowStops
+                                  ? l10n.queuedSendNowStopping
+                                  : l10n.queuedMessageSendNow,
+                              busy: _busy,
+                              onTap: _sendNow,
+                            ),
+                            const SizedBox(width: UxnanSpacing.xs),
                             // Edit first (reading order): the recoverable
                             // action sits before the one that ends the
                             // message.
@@ -527,15 +528,15 @@ class _QueuedActionButton extends StatelessWidget {
   }
 }
 
-/// Says where a queued message sits in line — "next" when it runs as soon as
-/// the current turn ends, its position otherwise — or, while the running agent
-/// is taking it at its next pause, that it is reaching the agent.
+/// Says where a queued message sits in line — "next" when it is the first to
+/// go, its position otherwise — or, while the bridge hands it to the agent at
+/// the end of its step, that it is reaching the agent.
 class _QueuedMessageNote extends ConsumerWidget {
   const _QueuedMessageNote({required this.message, required this.delivering});
 
   final Message message;
 
-  /// Whether the running agent is taking this message at its next pause.
+  /// Whether the bridge is handing this message to the agent.
   final bool delivering;
 
   @override
@@ -572,8 +573,8 @@ class _QueuedMessageNote extends ConsumerWidget {
               color: colors.onSurfaceVariant,
             ),
           const SizedBox(width: UxnanSpacing.xs),
-          // Wraps rather than overflowing: the delivering line is long enough
-          // to meet the edge on a narrow phone or at a large text scale.
+          // Wraps rather than overflowing on a narrow phone or at a large
+          // text scale.
           Flexible(
             child: Text(
               label,

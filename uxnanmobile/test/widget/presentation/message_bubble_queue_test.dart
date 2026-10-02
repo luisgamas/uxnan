@@ -95,10 +95,11 @@ void main() {
     capabilities: AgentCapabilities(steering: true),
   );
 
-  /// [activity] decides whether "send now" shows: only with nothing running,
-  /// whatever the agent. [steering] puts the thread on an agent that takes
-  /// messages mid-turn. [delivering] marks the queued turn the running agent
-  /// is taking; its note animates, so the pump does not settle then.
+  /// [activity] decides what "send now" says: while a turn runs it stops the
+  /// agent first, whatever the agent. [steering] puts the thread on an agent
+  /// that takes messages mid-turn. [delivering] marks the queued turn the
+  /// bridge is handing to the agent; its note animates, so the pump does not
+  /// settle then.
   Future<void> pump(
     WidgetTester tester,
     Widget child, {
@@ -169,34 +170,38 @@ void main() {
     expect(text.right, lessThanOrEqualTo(first.left));
   });
 
-  testWidgets('with two corner actions the text takes the room back',
-      (tester) async {
-    await pump(tester, MessageBubble(message: _user(longText)));
-
-    expect(action('Send now'), findsNothing);
-    final text = tester.getRect(find.byType(MarkdownBody));
-    final first = tester.getRect(action('Edit this message'));
-    expect(text.right, lessThanOrEqualTo(first.left));
-    // Only the room two buttons need is reserved.
-    expect(first.left - text.right, lessThan(28));
-  });
-
-  testWidgets('send now is hidden while a turn runs, even for a steering agent',
-      (tester) async {
+  testWidgets(
+      'while a turn runs the first queued message offers send now, '
+      'edit and cancel', (tester) async {
     await pump(
       tester,
-      MessageBubble(message: _user('and the docs')),
+      Column(
+        children: [
+          MessageBubble(message: _user(longText)),
+          MessageBubble(message: _user('and this later', turnId: 'turn-q2')),
+        ],
+      ),
+      queued: const ['turn-q1', 'turn-q2'],
       steering: true,
     );
 
-    // The bridge refuses it for every agent while the agent works: one that
-    // takes messages mid-turn gets it at its next pause.
+    // Every queued message keeps all three, the first included; send now
+    // says it stops the agent.
+    expect(find.text('Next in the queue'), findsOneWidget);
+    expect(action('Stop the agent and send this now'), findsNWidgets(2));
     expect(action('Send now'), findsNothing);
-    expect(action('Edit this message'), findsOneWidget);
-    expect(action('Cancel this message'), findsOneWidget);
+    expect(action('Edit this message'), findsNWidgets(2));
+    expect(action('Cancel this message'), findsNWidgets(2));
+    final firstSendNow = action('Stop the agent and send this now').first;
+    expect(
+      tester.getRect(firstSendNow).bottom,
+      lessThan(tester.getRect(find.text('and this later')).top),
+    );
+    final text = tester.getRect(find.byType(MarkdownBody).first);
+    expect(text.right, lessThanOrEqualTo(tester.getRect(firstSendNow).left));
   });
 
-  testWidgets('send now is offered on a held queue with nothing running',
+  testWidgets('with nothing running send now has its plain label',
       (tester) async {
     await pump(
       tester,
@@ -206,6 +211,7 @@ void main() {
     );
 
     expect(action('Send now'), findsOneWidget);
+    expect(action('Stop the agent and send this now'), findsNothing);
   });
 
   testWidgets('the message reaching the agent keeps its place, not its actions',
@@ -225,16 +231,16 @@ void main() {
 
     // The delivering one says it is reaching the agent — no position.
     expect(find.byKey(const ValueKey('queued-delivering-note')), findsOne);
-    expect(
-      find.text('Reaching the agent, at the end of its current step'),
-      findsOneWidget,
-    );
+    expect(find.text('Reaching the agent'), findsOneWidget);
     expect(find.text('Next in the queue'), findsNothing);
-    // Only the second bubble keeps edit and cancel (and no send now while
-    // the turn runs): the first one's have faded and take no taps.
+    // Only the second bubble keeps its actions: the first one's have faded
+    // and take no taps.
     expect(action('Edit this message').hitTestable(), findsOneWidget);
     expect(action('Cancel this message').hitTestable(), findsOneWidget);
-    expect(action('Send now').hitTestable(), findsNothing);
+    expect(
+      action('Stop the agent and send this now').hitTestable(),
+      findsOneWidget,
+    );
     expect(
       tester.getRect(action('Edit this message').hitTestable()).top,
       greaterThan(tester.getRect(find.text('take this now')).bottom),

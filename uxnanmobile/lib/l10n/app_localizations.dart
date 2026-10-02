@@ -1808,10 +1808,10 @@ abstract class AppLocalizations {
   /// **'{position} in the queue'**
   String queuedMessagePosition(int position);
 
-  /// Label under the queued user message the running agent is taking at its next pause; it can no longer be edited nor cancelled.
+  /// Label under the queued user message being handed to the agent now that its current step ended; it can no longer be edited, cancelled nor sent now.
   ///
   /// In en, this message translates to:
-  /// **'Reaching the agent, at the end of its current step'**
+  /// **'Reaching the agent'**
   String get queuedDelivering;
 
   /// Tooltip on the X in a queued bubble's corner: drops the message from the queue and leaves it marked as cancelled in the timeline.
@@ -5828,11 +5828,17 @@ abstract class AppLocalizations {
   /// **'Previous question'**
   String get questionBack;
 
-  /// Queued message: send it now instead of waiting.
+  /// Queued message, with nothing running: send it now instead of waiting.
   ///
   /// In en, this message translates to:
   /// **'Send now'**
   String get queuedMessageSendNow;
+
+  /// Queued message, while the agent works: stop the running turn and send this message as the next one.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the agent and send this now'**
+  String get queuedSendNowStopping;
 
   /// Composer + menu: attach any file.
   ///

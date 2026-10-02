@@ -7,6 +7,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -35,8 +36,8 @@ void main() {
   /// When true the fake bridge rejects `turn/cancel`.
   late bool rejectCancel;
 
-  /// When true the fake bridge refuses `queue/sendNow`, as it does for every
-  /// agent while a turn runs.
+  /// When true the fake bridge refuses `queue/sendNow`, as it does for the
+  /// message it is already handing to the agent.
   late bool refuseSendNow;
 
   /// The params of the last request of each method.
@@ -64,7 +65,7 @@ void main() {
             id: '1',
             error: const RpcError(
               code: -32005,
-              message: 'the agent takes it at its next pause',
+              message: 'the agent is already taking this message',
             ),
           );
         }
@@ -259,8 +260,26 @@ void main() {
     refuseSendNow = true;
     expect(
       await manager.sendQueuedNow('th1', 'turn-a'),
-      'the agent takes it at its next pause',
+      'the agent is already taking this message',
     );
+  });
+
+  test('send now while a turn runs goes to the bridge, which stops it',
+      () async {
+    await manager.selectThread('th1');
+    events.add(const TurnStartedEvent(turnId: 'turn-run', threadId: 'th1'));
+    await _settle();
+    expect((await manager.activityStream.first)['th1'], ThreadActivity.running);
+
+    // No client-side idle check: the bridge stops the running turn and runs
+    // this message next.
+    final refused = await manager.sendQueuedNow('th1', 'turn-b');
+    expect(refused, isNull);
+    expect(
+      sentParams['queue/sendNow'],
+      {'threadId': 'th1', 'turnId': 'turn-b'},
+    );
+    expect(sentMethods, isNot(contains('turn/cancel')));
   });
 
   test('the queued turn being handed to the agent is kept with the queue',

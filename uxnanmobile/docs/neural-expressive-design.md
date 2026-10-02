@@ -714,14 +714,16 @@ outline** in `primary`, drawn by `NeDashedBorder` as the bubble's own shape
 border so the dashes trace exactly the shape being filled. A muted line beneath
 says where it sits in line (*Next in the queue*, *2 in the queue*).
 
-Every message sent while the agent works waits here, whatever the agent. On an
-agent that takes messages mid-turn, the **first** one reaches it at its next
-pause — when the step it is in ends. While that happens the bubble is
+Every message sent while the agent works waits here, whatever the agent, and
+every one of them — the **first** included — stays editable and cancellable
+until the bridge hands it over. On an agent that takes messages mid-turn, the
+first one is handed over only when the step the agent is in **ends**, however
+long that step takes. Only during that short hand-off is the bubble
 **delivering**: it keeps its dashes and its place at the bottom, but loses its
 corner actions (the bridge refuses to edit, cancel or send it now), and the
-line beneath it becomes *Reaching the agent, at the end of its current step*,
-led by a 13 dp `PolygonLoader` instead of the clock. The line wraps rather than
-overflowing on a narrow phone.
+line beneath it becomes *Reaching the agent*, led by a 13 dp `PolygonLoader`
+instead of the clock. The line wraps rather than overflowing on a narrow
+phone.
 
 When the queue reaches it, the outline goes transparent over 220 ms and the
 bubble drops into place at the point it was **delivered** — it never changes
@@ -730,19 +732,22 @@ out, so no toast is needed. A **cancelled** message returns to the normal
 bubble with a `UxnanColors.warning` note beneath it: it was never sent, but it
 stays part of the record.
 
-**The corner actions.** A queued bubble carries up to three 28 dp circular
-actions inside its top-right corner, in reading order: **send now** (only when
-nothing is running — a held queue), **edit**, then **cancel** — the recoverable
-actions before the
-one that ends the message. They share one shape so they read as a control
-group, and the bubble reserves horizontal padding for **exactly the buttons
-shown** (`_queuedActionsWidth(count)`), so the text never runs under them. They
-fade out with the queued state rather than vanishing the instant the message is
-delivered, or the agent starts taking it.
+**The corner actions.** Every queued bubble that is not delivering — the
+first one included — carries three 28 dp circular actions inside its top-right
+corner, in reading order: **send now**, **edit**, then **cancel** — the
+recoverable actions before the one that ends the message. They share one shape
+so they read as a control group, and the bubble reserves horizontal padding for
+the three buttons (`_queuedActionsWidth(3)`), so the text never runs under
+them. They fade out with the queued state rather than vanishing the instant the
+message is delivered, or the bridge starts handing it over.
 
-They do different things on purpose. **Send now** asks the bridge to start
-the message as the next turn at once; the bridge refuses it while a turn runs
-(the message reaches the agent at its next pause or when the turn ends), and a
+They do different things on purpose. **Send now** asks the bridge
+(`queue/sendNow`) to run the message as the next turn, on every agent. With
+nothing running (a held queue) it starts at once; while a turn runs the bridge
+**stops** that turn first and runs this message as soon as the stop lands —
+the rest of the queue keeps its order — so its tooltip and accessible label
+say so: *Stop the agent and send this now* (*Send now* with nothing running).
+The phone does not check that the turn is idle; the bridge decides, and a
 refusal is said in a snackbar and the message stays queued.
 **Edit** withdraws the message and hands it to the composer — its text **and**
 its images and files — removing the bubble entirely: it is about to be

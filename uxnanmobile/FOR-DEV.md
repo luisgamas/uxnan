@@ -167,19 +167,21 @@ connected to live bridge data, validated on-device against a real bridge.
   a time, and the composer's own Send/Stop button and Enter-inserts-a-newline
   behaviour are unchanged. A waiting message is **pinned to the bottom** of the
   timeline (below the streaming reply) as an ordinary user bubble wearing a
-  **dashed outline** (`NeDashedBorder`), with **send now** (only when nothing
-  runs — a held queue) + **edit** + **cancel** in its corner — the text is padded for
-  exactly the buttons shown — and a line under it saying where it sits in
+  **dashed outline** (`NeDashedBorder`), with **send now** + **edit** +
+  **cancel** in its corner on every queued message the bridge is not handing
+  over — the first one included; the text is padded for the three buttons —
+  and a line under it saying where it sits in
   line: it keeps the user's own tone and its whole message, and only that edge
   says "not sent yet". On delivery the dashes dissolve in place, so the bubble
   never changes colour — it just stops being provisional. Every message sent
   while a turn runs waits in the queue; on agents whose CLI has an input
-  channel mid-turn (Claude Code, OpenCode, Codex, pi) the first one reaches the
-  agent **at its next pause**, without waiting for the turn to end. While it
-  does, the bridge marks it `deliveringTurnId` (`stream/queue/updated`,
-  `queue/*`; `queueDeliveringTurnId` on `turn/list`): the bubble keeps its
-  dashes and place, drops its actions and reads **"Reaching the agent, at the
-  end of its current step"**, and the composer's hint above the pill says the
+  channel mid-turn (Claude Code, OpenCode, Codex, pi) the first one is handed
+  to the agent **when the step it is in ends**, without waiting for the turn to
+  end — until then it stays editable and cancellable. During the hand-off the
+  bridge marks it `deliveringTurnId` (`stream/queue/updated`, `queue/*`;
+  `queueDeliveringTurnId` on `turn/list`): the bubble keeps its dashes and
+  place, drops its actions and reads **"Reaching the agent"**, and the
+  composer's hint above the pill says the
   message *reaches it at its next pause* (on other agents, *goes out when it
   finishes*). When the agent takes it, the bridge ends the running turn there
   with `turn/completed { continuedIn }` and starts this one (`turn/started`),
@@ -191,7 +193,9 @@ connected to live bridge data, validated on-device against a real bridge.
   **Edit** withdraws it to the composer — text, images and files (an
   attachment held only by reference is fetched first; if it cannot be, the
   message stays queued) — leaving no trace; **cancel** leaves the bubble
-  marked. A refused edit or cancel says so in a snackbar. Editing over a busy composer saves that text as a draft, behind
+  marked; **send now** runs it next on every agent — while a turn runs the
+  bridge stops that turn first, and the action's label says so (*Stop the agent
+  and send this now*). A refused edit, cancel or send now says so in a snackbar. Editing over a busy composer saves that text as a draft, behind
   a **Drafts** pill beside the queue button that opens the shared
   `ComposerPaletteCard` (two lines each, restore/delete/clear-all) and restores
   **only into an empty composer**. A banner
