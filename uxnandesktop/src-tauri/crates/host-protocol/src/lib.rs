@@ -32,7 +32,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 7: agent tools — `AgentTools`, and the control surface's MCP server and
 ///   the integrated browser reached from a terminal here (`Event::Mcp`,
 ///   `ClientMessage::McpAnswer`, `Event::OpenUrl`).
-pub const PROTOCOL: u32 = 7;
+/// - 8: the agents' hooks one by one — `HooksStatus`, `SetHook`, `HookConfig`.
+pub const PROTOCOL: u32 = 8;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -294,6 +295,18 @@ pub enum Call {
     /// the version of OpenCode installed here. The client builds the launch
     /// catalog from these with the same code it uses for its own machine.
     AgentTools,
+    /// Every agent's hook state on this machine, in the workspace engine's
+    /// `agent_hooks::HookAgentEntry` shape.
+    HooksStatus,
+    /// Install (`on`) or remove one agent's reporter on this machine.
+    SetHook {
+        agent: String,
+        on: bool,
+    },
+    /// Exactly what the installer writes for one agent on this machine.
+    HookConfig {
+        agent: String,
+    },
 }
 
 /// How a call ended.
@@ -335,6 +348,17 @@ pub enum Reply {
     },
     AgentStopped {
         outcome: AgentStop,
+    },
+    /// `agent_hooks::HookAgentEntry` values, as the engine wrote them.
+    Hooks {
+        agents: serde_json::Value,
+    },
+    /// One `agent_hooks::AgentHooksStatus`.
+    Hook {
+        status: serde_json::Value,
+    },
+    Text {
+        text: String,
     },
     Transcript {
         prompt: Option<String>,

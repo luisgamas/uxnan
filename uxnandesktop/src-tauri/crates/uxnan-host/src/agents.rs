@@ -107,6 +107,33 @@ fn version_of(program: &Path) -> Option<String> {
     Some(out)
 }
 
+/// Every agent's hook state on this machine, as the engine's installer sees
+/// it — "is it here?" answered with the login shell's `PATH`.
+pub fn status() -> serde_json::Value {
+    let dirs = search_dirs();
+    let installed = |name: &str| on_path(&dirs, name);
+    serde_json::to_value(agent_hooks::read_all_agent_status(&installed))
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// Install (`on`) or remove one agent's reporter here.
+pub fn set(agent: &str, on: bool) -> Result<serde_json::Value, String> {
+    let status = if on {
+        let install = agent_hooks::install_shared_scripts().map_err(|e| e.to_string())?;
+        agent_hooks::install_agent(agent, &install)
+    } else {
+        agent_hooks::uninstall_agent(agent)
+    }
+    .map_err(|e| e.to_string())?;
+    serde_json::to_value(status).map_err(|e| e.to_string())
+}
+
+/// Exactly what the installer writes for one agent here.
+pub fn config(agent: &str) -> Result<String, String> {
+    let install = agent_hooks::install_shared_scripts().map_err(|e| e.to_string())?;
+    agent_hooks::render_agent_config(agent, &install).map_err(|e| e.to_string())
+}
+
 /// The account's own shell, as a terminal here starts it.
 fn account_shell() -> PathBuf {
     #[cfg(unix)]

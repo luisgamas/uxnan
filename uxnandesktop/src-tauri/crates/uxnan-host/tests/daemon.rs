@@ -1166,3 +1166,68 @@ async fn the_agent_tools_name_this_daemons_endpoint_and_this_machines_files() {
         "the file names the token's variable, never the token"
     );
 }
+
+#[tokio::test]
+async fn one_agents_hook_is_read_installed_and_removed_on_the_host() {
+    let daemon = Daemon::start(600);
+    let home = daemon.user_home();
+    std::fs::create_dir(home.join(".claude")).unwrap();
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+
+    let claude_of = |agents: &serde_json::Value| {
+        agents
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == "claude")
+            .cloned()
+            .unwrap()
+    };
+    let Outcome::Ok {
+        reply: Reply::Hooks { agents },
+    } = client.call(Call::HooksStatus).await
+    else {
+        panic!("no status");
+    };
+    let claude = claude_of(&agents);
+    assert_eq!(claude["status"]["installed"], false);
+    assert!(claude["configPath"]
+        .as_str()
+        .unwrap()
+        .starts_with(&home.display().to_string()));
+
+    let on = client
+        .call(Call::SetHook {
+            agent: "claude".into(),
+            on: true,
+        })
+        .await;
+    assert!(
+        matches!(&on, Outcome::Ok { reply: Reply::Hook { status } } if status["installed"] == true),
+        "{on:?}"
+    );
+    let Outcome::Ok {
+        reply: Reply::Text { text },
+    } = client
+        .call(Call::HookConfig {
+            agent: "claude".into(),
+        })
+        .await
+    else {
+        panic!("no config");
+    };
+    assert!(text.contains("uxnan-status-relay.cjs"), "{text}");
+
+    let off = client
+        .call(Call::SetHook {
+            agent: "claude".into(),
+            on: false,
+        })
+        .await;
+    assert!(
+        matches!(&off, Outcome::Ok { reply: Reply::Hook { status } } if status["installed"] == false),
+        "{off:?}"
+    );
+    let settings = std::fs::read_to_string(home.join(".claude").join("settings.json")).unwrap();
+    assert!(!settings.contains("uxnan-status-relay"), "{settings}");
+}

@@ -232,6 +232,10 @@ async fn runs_here(conn: &Connection, path: &str) -> bool {
         && v["version"].as_str() == Some(env!("CARGO_PKG_VERSION"))
 }
 
+fn unexpected(what: &str, reply: &Reply) -> AppError {
+    AppError::Invalid(format!("unexpected answer to {what}: {reply:?}"))
+}
+
 /// What receives a session's output.
 pub type OutputFn = Box<dyn Fn(&[u8]) + Send + Sync>;
 /// What is told, once, that a session's program ended.
@@ -774,6 +778,65 @@ impl HostEngine {
             Ok(Reply::Transcript { prompt, summary }) => (prompt, summary),
             _ => (None, None),
         }
+    }
+
+    /// Every agent's hook state on the host, read there by the same installer.
+    pub async fn hooks_status(
+        &self,
+    ) -> Result<Vec<uxnan_workspace_engine::agent_hooks::HookAgentEntry>, AppError> {
+        self.needs(8, "list its agents' hooks")?;
+        match self.request(Call::HooksStatus, None).await? {
+            Reply::Hooks { agents } => serde_json::from_value(agents).map_err(AppError::Serde),
+            other => Err(unexpected("hooks status", &other)),
+        }
+    }
+
+    /// Install (`on`) or remove one agent's reporter on the host.
+    pub async fn set_hook(
+        &self,
+        agent: &str,
+        on: bool,
+    ) -> Result<uxnan_workspace_engine::agent_hooks::AgentHooksStatus, AppError> {
+        self.needs(8, "change its agents' hooks")?;
+        match self
+            .request(
+                Call::SetHook {
+                    agent: agent.to_string(),
+                    on,
+                },
+                None,
+            )
+            .await?
+        {
+            Reply::Hook { status } => serde_json::from_value(status).map_err(AppError::Serde),
+            other => Err(unexpected("a hook change", &other)),
+        }
+    }
+
+    /// Exactly what the installer writes for one agent on the host.
+    pub async fn hook_config(&self, agent: &str) -> Result<String, AppError> {
+        self.needs(8, "show its agents' hook configs")?;
+        match self
+            .request(
+                Call::HookConfig {
+                    agent: agent.to_string(),
+                },
+                None,
+            )
+            .await?
+        {
+            Reply::Text { text } => Ok(text),
+            other => Err(unexpected("a hook config", &other)),
+        }
+    }
+
+    fn needs(&self, protocol: u32, what: &str) -> Result<(), AppError> {
+        if self.welcome.protocol < protocol {
+            return Err(AppError::Invalid(format!(
+                "the host engine running there is too old to {what}"
+            )));
+        }
+        Ok(())
     }
 
     /// Where MCP calls from this host's terminals go.

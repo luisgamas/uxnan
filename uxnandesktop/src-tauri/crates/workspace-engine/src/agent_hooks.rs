@@ -375,8 +375,9 @@ pub struct HookInstall {
     pub antigravity_hooks_path: String,
 }
 
-/// The current install state of one agent's managed hook.
-#[derive(Debug, Clone, Serialize)]
+/// The current install state of one agent's managed hook. Deserializable too:
+/// a host's engine reports its agents in this same shape.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentHooksStatus {
     /// `true` if our managed reporter is present.
@@ -2676,7 +2677,7 @@ pub fn hook_agent_ids() -> Vec<&'static str> {
 
 /// One agent's row for the Settings panel: what it is, where its config lives
 /// and whether our reporter is in it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookAgentEntry {
     pub id: String,

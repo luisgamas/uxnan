@@ -509,17 +509,7 @@ pub async fn pty_create(
         // placed in its folder by *typing* a `cd`, and the families do not share
         // syntax — assuming cmd is what killed every project terminal on a
         // PowerShell host. An unrecognised shell types nothing at all.
-        let shell = {
-            let known = state.ssh_shells.read().await.get(&host_id).copied();
-            match known {
-                Some(kind) => kind,
-                None => {
-                    let kind = crate::ssh::shellkind::classify(&conn).await;
-                    state.ssh_shells.write().await.insert(host_id.clone(), kind);
-                    kind
-                }
-            }
-        };
+        let shell = host_shell(&state, &host_id, &conn).await;
 
         // The host's daemon first: a terminal there outlives a dropped
         // connection and an app restart. Where the daemon cannot run (a Windows
@@ -1130,6 +1120,114 @@ fn forward_host_reports<R: tauri::Runtime>(
 /// The host's daemon for this connection, started (and installed) when it is
 /// not running yet. One started now is watched, so its terminals are told —
 /// and kept — when the connection under it goes away.
+/// Which shell `host_id` starts, asked once per connection and remembered.
+async fn host_shell(
+    state: &AppState,
+    host_id: &str,
+    conn: &ssh::conn::Connection,
+) -> ssh::shellkind::ShellKind {
+    let known = state.ssh_shells.read().await.get(host_id).copied();
+    match known {
+        Some(kind) => kind,
+        None => {
+            let kind = crate::ssh::shellkind::classify(conn).await;
+            state
+                .ssh_shells
+                .write()
+                .await
+                .insert(host_id.to_string(), kind);
+            kind
+        }
+    }
+}
+
+/// The engine of a connected host — started (and installed) if no terminal
+/// started it yet, as the first terminal there would. `None` for a host that is
+/// not connected or where the engine cannot run.
+async fn connected_engine<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    host_id: &str,
+) -> Option<std::sync::Arc<ssh::engine::HostEngine>> {
+    let conn = session_for(state, host_id).await?;
+    let shell = host_shell(state, host_id, &conn).await;
+    engine_for(app, state, host_id, &conn, shell).await.ok()
+}
+
+/// One connected host's agents, as its engine reports them, for Settings →
+/// Agents → Hooks.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostHooks {
+    pub host_id: String,
+    pub label: String,
+    pub agents: Vec<agent_hooks::HookAgentEntry>,
+}
+
+/// The hooks of every connected host whose engine can say — read on that host
+/// by the same installer that wires this machine's.
+#[tauri::command]
+pub async fn host_hooks(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<HostHooks>, CommandError> {
+    let hosts: Vec<(String, String)> = state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .map(|h| (h.id.clone(), h.label.clone()))
+        .collect();
+    let mut out = Vec::new();
+    for (host_id, label) in hosts {
+        let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+            continue;
+        };
+        if let Ok(agents) = engine.hooks_status().await {
+            out.push(HostHooks {
+                host_id,
+                label,
+                agents,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Install (`on`) or remove one agent's reporter on a host, by its engine.
+#[tauri::command]
+pub async fn host_hook_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    agent: String,
+    on: bool,
+) -> Result<AgentHooksStatus, CommandError> {
+    let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    engine
+        .set_hook(&agent, on)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Exactly what the installer writes for one agent on a host.
+#[tauri::command]
+pub async fn host_hook_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    agent: String,
+) -> Result<String, CommandError> {
+    let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    engine.hook_config(&agent).await.map_err(CommandError::from)
+}
+
 async fn engine_for<R: tauri::Runtime>(
     app: &AppHandle<R>,
     state: &AppState,
@@ -5063,9 +5161,6 @@ pub async fn get_hook_install(
 /// wiring a new agent never means touching the frontend's list.
 #[tauri::command]
 pub async fn list_agent_hooks() -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
-    // FOR-DEV: a connected host's own rows (what its engine wired), from a
-    // read-only engine call (`FOR-DEV.md` → Remote hosts → the host engine,
-    // item 4).
     Ok(agent_hooks::read_all_agent_status(
         &crate::agentcli::command_installed,
     ))

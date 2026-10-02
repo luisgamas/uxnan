@@ -1670,7 +1670,9 @@ terminal y solo a el, con el mismo `agentstop` que el desktop, que como
 de un turno terminado, leida en el host por el mismo lector que el desktop,
 `workspace_engine::transcript`, con la misma regla: solo un `.jsonl` dentro de
 la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
-(`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). Imprime
+(`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). 8 = los hooks de cada agente uno a uno (`HooksStatus`, `SetHook`,
+`HookConfig`: el mismo instalador corrido en el host, con el `PATH` de su shell de
+login). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.

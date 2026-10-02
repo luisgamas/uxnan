@@ -512,7 +512,10 @@ impl Daemon {
             | Call::WireHooks
             | Call::StopAgent { .. }
             | Call::TranscriptPreview { .. }
-            | Call::AgentTools => Outcome::Error {
+            | Call::AgentTools
+            | Call::HooksStatus
+            | Call::SetHook { .. }
+            | Call::HookConfig { .. } => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -830,6 +833,29 @@ where
                                             Ok(reply) => Outcome::Ok { reply },
                                             Err(e) => Outcome::Error { code: ErrorCode::Invalid, message: e.to_string() },
                                         },
+                                    };
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: call @ (Call::HooksStatus | Call::SetHook { .. } | Call::HookConfig { .. }) }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    // Files and a login shell: off the connection.
+                                    let done = tokio::task::spawn_blocking(move || match call {
+                                        Call::HooksStatus => Ok(Reply::Hooks { agents: crate::agents::status() }),
+                                        Call::SetHook { agent, on } => {
+                                            crate::agents::set(&agent, on).map(|status| Reply::Hook { status })
+                                        }
+                                        Call::HookConfig { agent } => {
+                                            crate::agents::config(&agent).map(|text| Reply::Text { text })
+                                        }
+                                        _ => Err("not a hook call".to_string()),
+                                    })
+                                    .await;
+                                    let outcome = match done {
+                                        Ok(Ok(reply)) => Outcome::Ok { reply },
+                                        Ok(Err(message)) => Outcome::Error { code: ErrorCode::Invalid, message },
+                                        Err(e) => Outcome::Error { code: ErrorCode::Invalid, message: e.to_string() },
                                     };
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
