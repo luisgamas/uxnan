@@ -16,7 +16,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   restarted app finds each tab's terminal by its persistent id. All of a host's
   terminals share one SSH channel, and a link that goes silent is noticed in
   about 30 seconds — the tabs say so and the host is reconnected — instead of
-  the two minutes the SSH keepalive takes. For builds that carry the engine for that
+  the two minutes the SSH keepalive takes.
+- **A project on a host refreshes by itself.** With the host engine there, the
+  project folder is watched on that machine: the file tree, the open tabs and
+  Changes follow an agent working in it or a commit made in a terminal there,
+  with nothing polled. An updated app keeps talking to the engine that holds
+  the host's terminals, whichever build it is, so an update never strands them. For builds that carry the engine for that
   host's platform: development builds today, release builds once the release
   pipeline ships it; Windows hosts keep their channel terminals for now.
 

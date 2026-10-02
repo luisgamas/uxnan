@@ -18,6 +18,7 @@ mod attach;
 mod daemon;
 mod log;
 mod paths;
+mod watch;
 
 use uxnan_host_protocol::{PROTOCOL, PROTOCOL_MIN};
 

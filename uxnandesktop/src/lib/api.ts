@@ -3,7 +3,7 @@
 // `src-tauri/src/commands.rs`.
 
 import { invoke } from '@tauri-apps/api/core';
-import type { TargetExpectation } from '$lib/target';
+import type { TargetExpectation, TargetId } from '$lib/target';
 import type {
   Automation,
   AutomationRun,
@@ -1342,9 +1342,11 @@ export function mcpInfo(): Promise<McpInfo> {
 }
 
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.
- *  The backend then emits `fs:changed` as files under it change on disk. */
-export function fsSetWatch(path: string | null): Promise<void> {
-  return invoke('fs_set_watch', { path });
+ *  The backend then emits `fs:changed` as files under it change on disk. With a
+ *  host `target`, the folder is watched **there** by the host's engine, and its
+ *  changes arrive as the same event carrying that target. */
+export function fsSetWatch(path: string | null, target?: TargetId | null): Promise<void> {
+  return invoke('fs_set_watch', { path, target: target ?? null });
 }
 
 /** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.

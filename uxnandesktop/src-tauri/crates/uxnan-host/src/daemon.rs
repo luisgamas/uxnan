@@ -324,6 +324,11 @@ impl Daemon {
                     None => not_found(session),
                 }
             }
+            // Per connection, handled where the connection lives.
+            Call::Watch { .. } | Call::Unwatch => Outcome::Error {
+                code: ErrorCode::Invalid,
+                message: "watching is per connection".to_string(),
+            },
             Call::List => {
                 let sessions = self.sessions.lock().unwrap();
                 let mut list: Vec<SessionInfo> = sessions
@@ -425,6 +430,12 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
             }
         }
     }
+}
+
+/// The id of a request this build cannot read, if it is a request at all.
+fn unknown_request_id(json: &[u8]) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_slice(json).ok()?;
+    (v.get("type")?.as_str()? == "request").then(|| v.get("id")?.as_u64())?
 }
 
 /// Which file is at the socket's path (device and inode), to tell our socket
@@ -533,17 +544,64 @@ where
 
     if accepted {
         daemon.clients.fetch_add(1, Ordering::SeqCst);
+        // This connection's folder watch, if it asked for one. Dropped with
+        // the connection, which stops its thread.
+        let mut watch: Option<crate::watch::Watch> = None;
         loop {
             tokio::select! {
                 frame = read_frame(&mut reader) => match frame {
                     Ok(Some(Frame::Control(json))) => {
                         match serde_json::from_slice::<ClientMessage>(&json) {
+                            Ok(ClientMessage::Request { id, call: Call::Watch { root } }) => {
+                                watch = None;
+                                let reporter = viewer.clone();
+                                let watched = root.clone();
+                                let outcome = match crate::watch::start(&root, move |paths, overflow, git| {
+                                    reporter.send(Frame::control(&ServerMessage::Event(Event::Changed {
+                                        root: watched.clone(),
+                                        paths,
+                                        overflow,
+                                        git,
+                                    })));
+                                }) {
+                                    Ok(w) => {
+                                        watch = Some(w);
+                                        Outcome::Ok { reply: Reply::Done }
+                                    }
+                                    Err(e) => Outcome::Error {
+                                        code: ErrorCode::Invalid,
+                                        message: format!("could not watch {root}: {e}"),
+                                    },
+                                };
+                                viewer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Unwatch }) => {
+                                watch = None;
+                                viewer.send(Frame::control(&ServerMessage::Response {
+                                    id,
+                                    outcome: Outcome::Ok { reply: Reply::Done },
+                                }));
+                            }
                             Ok(ClientMessage::Request { id, call }) => {
                                 if let Some(outcome) = daemon.call(viewer_id, &viewer, id, call) {
                                     viewer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 }
                             }
-                            _ => break,
+                            // A call this daemon does not know — a newer client
+                            // asking for something added after it was built —
+                            // is answered, never a reason to hang up: the
+                            // terminals on this connection have nothing to do
+                            // with it.
+                            _ => match unknown_request_id(&json) {
+                                Some(id) => viewer.send(Frame::control(&ServerMessage::Response {
+                                    id,
+                                    outcome: Outcome::Error {
+                                        code: ErrorCode::Invalid,
+                                        message: "this host engine does not know that call".to_string(),
+                                    },
+                                })),
+                                None => break,
+                            },
                         }
                     }
                     Ok(Some(Frame::Data { session, bytes })) => {
@@ -559,6 +617,7 @@ where
                 }
             }
         }
+        drop(watch);
         daemon.detach_everywhere(viewer_id);
         daemon.clients.fetch_sub(1, Ordering::SeqCst);
         daemon.touch();

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installFakeBackend, type FakeBackend } from "../../test/tauri";
 import { git } from "./git.svelte";
@@ -59,7 +59,9 @@ describe("the git panel on a host", () => {
     // The same absolute path exists on both machines often enough that this is
     // not hypothetical: without the target check, this machine's file list
     // would overwrite the host's review.
+    (git as unknown as { listening: boolean }).listening = false;
     await git.startListening();
+    expect(backend.listenerCount("git:status-changed")).toBe(1);
     await git.load("C:/shared/app", "ssh:h1");
     expect(git.files.map((f) => f.path)).toEqual(["remote.rs"]);
 
@@ -73,6 +75,30 @@ describe("the git panel on a host", () => {
 
     expect(git.files.map((f) => f.path)).toEqual(["remote.rs"]);
     expect(git.ahead).toBe(1);
+  });
+
+  it("refreshes once a burst of changes the host's engine reports settles", async () => {
+    // A host has no status poller: its engine says what changed — a commit in
+    // a terminal there touches only `.git` — and one review read follows.
+    // The store is a singleton: its subscription from an earlier test listens
+    // on the bus that test's backend owned.
+    (git as unknown as { listening: boolean }).listening = false;
+    await git.startListening();
+    await git.load("/srv/app", "ssh:h1");
+    backend.clearCalls();
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < 5; i++) {
+        backend.emit("fs:changed", { root: "/srv/app", paths: [], target: "ssh:h1", git: true });
+      }
+      // Another machine's event for the same path, and a local one: ignored.
+      backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app/x"], target: "ssh:h2" });
+      backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app/x"], target: "local" });
+      await vi.advanceTimersByTimeAsync(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(backend.callsTo("ssh_git_review")).toHaveLength(1);
   });
 
   it("acts against the connection the user was looking at", async () => {

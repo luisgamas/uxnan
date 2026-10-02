@@ -44,7 +44,11 @@ import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import { isImagePath } from "$lib/diff";
 import { commitFileDiff } from "$lib/diffParse";
-import type { FileChange, GitStatusEvent } from "$lib/types";
+import type { FileChange, FsChangedEvent, GitStatusEvent } from "$lib/types";
+
+/** How long a host's changes must go quiet before its git panel refreshes:
+ *  one remote status read per burst (a build, a checkout), not per file. */
+const REMOTE_REFRESH_SETTLE_MS = 800;
 
 /** Whether a failure is "that host is not connected yet" — a state, not a
  *  fault. Matched on the backend's own code, like the file tree does, so the
@@ -125,6 +129,7 @@ class GitStore {
   /** A remote fetch (checking for new upstream commits) is in flight. */
   fetching = $state(false);
   private listening = false;
+  private remoteRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Async guards cover fast A → B → A worktree switches and overlapping manual
    *  refreshes; comparing only the path cannot reject the first A response. */
   private loadSeq = 0;
@@ -164,6 +169,18 @@ class GitStore {
     if (this.listening) return;
     this.listening = true;
     try {
+      // A host has no status poller; its engine reports what changed in the
+      // worktree there — files, and `.git` itself (a commit or a stage made in
+      // a terminal) — and the panel refreshes once the burst settles.
+      await listen<FsChangedEvent>("fs:changed", (e) => {
+        const ev = e.payload;
+        if (!this.remote || (ev.target ?? LOCAL_TARGET) !== this.target || ev.root !== this.path) return;
+        if (this.remoteRefreshTimer) clearTimeout(this.remoteRefreshTimer);
+        this.remoteRefreshTimer = setTimeout(() => {
+          this.remoteRefreshTimer = null;
+          void this.refresh();
+        }, REMOTE_REFRESH_SETTLE_MS);
+      });
       await listen<GitStatusEvent>("git:status-changed", (e) => {
         const ev = e.payload;
         // The watcher polls *this* machine. A host's worktree can carry the same

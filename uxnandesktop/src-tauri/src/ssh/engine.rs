@@ -243,6 +243,11 @@ pub struct Sink {
 
 type Sinks = Arc<std::sync::Mutex<HashMap<u32, Sink>>>;
 
+/// What hears that something changed under the folder this engine watches:
+/// `(root, paths, overflow, git)`.
+pub type ChangedFn = Box<dyn Fn(String, Vec<String>, bool, bool) + Send + Sync>;
+type OnChanged = Arc<std::sync::Mutex<Option<ChangedFn>>>;
+
 /// A request waiting for its answer, and — for an `open` — the sink to install
 /// for the session it creates, *before* that session's first output is read.
 struct Pending {
@@ -259,6 +264,7 @@ pub struct HostEngine {
     next_id: AtomicU64,
     alive: Arc<AtomicBool>,
     lost: Arc<Notify>,
+    on_changed: OnChanged,
     /// Asks the reader and the writer to stop, which closes the channel. A
     /// `watch` rather than a notification: it holds the request, so a task that
     /// was busy when it came still sees it.
@@ -325,6 +331,7 @@ impl HostEngine {
         let last_heard = Arc::new(AtomicU64::new(0));
         let pending: Arc<std::sync::Mutex<HashMap<u64, Pending>>> = Arc::default();
         let sinks: Sinks = Arc::default();
+        let on_changed: OnChanged = Arc::default();
 
         // Writer: one owner of the channel's write half.
         let writer_alive = Arc::clone(&alive);
@@ -353,6 +360,7 @@ impl HostEngine {
         let reader_lost = Arc::clone(&lost);
         let reader_pending = Arc::clone(&pending);
         let reader_sinks = Arc::clone(&sinks);
+        let reader_changed = Arc::clone(&on_changed);
         let pong = out.clone();
         let mut reader_shutdown = shutdown_rx.clone();
         let reader_heard = Arc::clone(&last_heard);
@@ -386,6 +394,16 @@ impl HostEngine {
                                     reader_sinks.lock().unwrap().insert(*session, sink);
                                 }
                                 let _ = waiting.reply.send(outcome);
+                            }
+                        }
+                        Ok(ServerMessage::Event(Event::Changed {
+                            root,
+                            paths,
+                            overflow,
+                            git,
+                        })) => {
+                            if let Some(report) = reader_changed.lock().unwrap().as_ref() {
+                                report(root, paths, overflow, git);
                             }
                         }
                         Ok(ServerMessage::Event(Event::Exited { session, .. })) => {
@@ -459,6 +477,7 @@ impl HostEngine {
             next_id: AtomicU64::new(1),
             alive,
             lost,
+            on_changed,
             shutdown,
             generation: conn.generation(),
         }))
@@ -629,6 +648,37 @@ impl HostEngine {
         self.request(Call::Close { session }, None)
             .await
             .map(|_| ())
+    }
+
+    /// Where reports of changes under the watched folder go.
+    pub fn set_on_changed(&self, report: ChangedFn) {
+        *self.on_changed.lock().unwrap() = Some(report);
+    }
+
+    /// Watch `root` on the host (replacing any folder watched before).
+    pub async fn watch(&self, root: &str) -> Result<(), AppError> {
+        // An older daemon still serving this host's terminals does not watch;
+        // the panels then refresh on open, on act and on their button.
+        if self.welcome.protocol < 2 {
+            return Err(AppError::Invalid(
+                "the host engine running there is too old to watch folders".to_string(),
+            ));
+        }
+        self.request(
+            Call::Watch {
+                root: root.to_string(),
+            },
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn unwatch(&self) -> Result<(), AppError> {
+        if self.welcome.protocol < 2 {
+            return Ok(());
+        }
+        self.request(Call::Unwatch, None).await.map(|_| ())
     }
 
     /// Stop delivering a session's output here without ending it.

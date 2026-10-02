@@ -860,6 +860,22 @@ async fn engine_for<R: tauri::Runtime>(
         })
         .await?;
     if fresh {
+        let emit_app = app.clone();
+        let target = format!("ssh:{host_id}");
+        engine.set_on_changed(Box::new(move |root, paths, overflow, git| {
+            // An overflow lists nothing; reporting the root makes the tree
+            // reload what it shows from the top.
+            let paths = if overflow { vec![root.clone()] } else { paths };
+            let _ = emit_app.emit(
+                "fs:changed",
+                crate::fswatch::FsChangedEvent {
+                    root,
+                    paths,
+                    target: target.clone(),
+                    git,
+                },
+            );
+        }));
         let terminals = std::sync::Arc::clone(&state.engine_terminals);
         let watched = std::sync::Arc::clone(&engine);
         let host = host_id.to_string();
@@ -901,9 +917,11 @@ async fn engine_of_tab(
     state.ssh_engines.current(&host_id, conn.generation()).await
 }
 
-/// A host just connected: give back the terminals that were waiting for it.
-async fn reattach_terminals<R: tauri::Runtime>(app: AppHandle<R>, host_id: String) {
+/// A host just connected: watch its project folder again if the file tree
+/// follows one there, and give back the terminals that were waiting for it.
+async fn host_came_back<R: tauri::Runtime>(app: AppHandle<R>, host_id: String) {
     let state = app.state::<AppState>();
+    arm_remote_watch(&app, &state, &host_id).await;
     if !state.engine_terminals.waiting_on(&host_id).await {
         return;
     }
@@ -1668,7 +1686,7 @@ async fn settle_dial<R: tauri::Runtime>(
             watch_session(app.clone(), host_id.clone(), generation, session);
             // Terminals that were waiting for this host — detached by a drop,
             // or restored by the app before the host was up — come back now.
-            tauri::async_runtime::spawn(reattach_terminals(app, host_id.clone()));
+            tauri::async_runtime::spawn(host_came_back(app, host_id.clone()));
             // Startup reconnects the hosts that let us in without asking and
             // leaves the rest until the person is here. Within this session, a
             // host that needed only a password or a passphrase can come back on
@@ -4130,17 +4148,95 @@ pub async fn image_fetch_data_url(
 /// The frontend calls this when the active worktree changes; the backend emits
 /// `fs:changed` (debounced) as files under it are created/deleted/edited so the
 /// file tree + open editor stay current without a manual refresh.
+///
+/// `target` says which machine `path` is on. For a host, the folder is watched
+/// **there**, by the host's engine, and its changes arrive as the same
+/// `fs:changed` (with that target) — so a project on a host refreshes by itself
+/// without this app asking the host anything. Where the engine cannot run, the
+/// remote panels keep refreshing on open, on act and on their button.
 #[tauri::command]
 pub async fn fs_set_watch(
     app: AppHandle,
     state: State<'_, AppState>,
     path: Option<String>,
+    target: Option<String>,
 ) -> Result<(), CommandError> {
-    state
-        .fs_watcher
-        .set(&app, path)
-        .await
-        .map_err(|e| CommandError::new("FS_WATCH_FAILED", e.to_string()))
+    let host_id = match target.as_deref().filter(|t| !t.is_empty() && *t != "local") {
+        Some(t) => TargetId::parse(t)
+            .map_err(CommandError::from)?
+            .ssh_host_id()
+            .map(str::to_string),
+        None => None,
+    };
+    let previous = state.remote_watch.write().await.take();
+    if let Some((old_host, _)) = &previous {
+        if Some(old_host) != host_id.as_ref() {
+            if let Some(engine) = engine_of_host(&state, old_host).await {
+                let _ = engine.unwatch().await;
+            }
+        }
+    }
+    let Some(host_id) = host_id else {
+        return state
+            .fs_watcher
+            .set(&app, path)
+            .await
+            .map_err(|e| CommandError::new("FS_WATCH_FAILED", e.to_string()));
+    };
+    // A remote root: nothing on this machine to watch.
+    let _ = state.fs_watcher.set(&app, None).await;
+    let Some(root) = path else {
+        if let Some(engine) = engine_of_host(&state, &host_id).await {
+            let _ = engine.unwatch().await;
+        }
+        return Ok(());
+    };
+    *state.remote_watch.write().await = Some((host_id.clone(), root.clone()));
+    // Watched now if the host is up; otherwise when it comes back
+    // (`host_came_back`).
+    arm_remote_watch(&app, &state, &host_id).await;
+    Ok(())
+}
+
+/// The running engine of `host_id`'s current connection, if there is one.
+async fn engine_of_host(
+    state: &AppState,
+    host_id: &str,
+) -> Option<std::sync::Arc<ssh::engine::HostEngine>> {
+    let conn = session_for(state, host_id).await?;
+    state.ssh_engines.current(host_id, conn.generation()).await
+}
+
+/// Ask `host_id`'s engine to watch the folder the file tree follows there, if
+/// it is on that host and the host is connected. Quiet on failure: the panels
+/// still refresh on open, on act and on their button.
+async fn arm_remote_watch<R: tauri::Runtime>(app: &AppHandle<R>, state: &AppState, host_id: &str) {
+    let wanted = state.remote_watch.read().await.clone();
+    let Some((host, root)) = wanted.filter(|(h, _)| h == host_id) else {
+        return;
+    };
+    let Some(conn) = session_for(state, &host).await else {
+        return;
+    };
+    let Some(shell) = state.ssh_shells.read().await.get(&host).copied() else {
+        return;
+    };
+    match engine_for(app, state, &host, &conn, shell).await {
+        Ok(engine) => {
+            if let Err(e) = engine.watch(&root).await {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh-engine",
+                    &format!("{host}: could not watch the project folder ({e})"),
+                );
+            }
+        }
+        Err(why) => crate::diagnostics::log(
+            crate::diagnostics::Level::Info,
+            "ssh-engine",
+            &format!("{host}: no host engine to watch with ({why})"),
+        ),
+    }
 }
 
 /// Set (or clear with `None`) the directory the in-app folder browser watches.

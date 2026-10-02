@@ -415,6 +415,51 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS; writes under /tmp on that host"]
+        async fn a_change_on_the_host_reaches_this_side_without_asking() {
+            // The engine watches a folder **there**; this side is told, with no
+            // command run to look. The folder is a fresh one under /tmp.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let dir = format!("/tmp/uxnan-watch-{}", std::process::id());
+            conn.exec(&format!("mkdir -p {dir} && mkdir -p {dir}/.git"))
+                .await
+                .unwrap();
+            type Heard = Vec<(Vec<String>, bool)>;
+            let heard: Arc<StdMutex<Heard>> = Arc::default();
+            let sink = Arc::clone(&heard);
+            engine.set_on_changed(Box::new(move |_root, paths, _overflow, git| {
+                sink.lock().unwrap().push((paths, git));
+            }));
+            engine.watch(&dir).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            conn.exec(&format!("echo hi > {dir}/notes.md"))
+                .await
+                .unwrap();
+            conn.exec(&format!("echo x > {dir}/.git/index"))
+                .await
+                .unwrap();
+            let file = format!("{dir}/notes.md");
+            for _ in 0..100 {
+                let got = heard.lock().unwrap().clone();
+                let saw_file = got.iter().any(|(p, _)| p.contains(&file));
+                let saw_git = got.iter().any(|(_, g)| *g);
+                if saw_file && saw_git {
+                    println!("live: {alias} reported the new file and the .git change by itself");
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            panic!(
+                "the host's change never arrived: {:?}",
+                heard.lock().unwrap()
+            );
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS; freezes its own daemon for ~40 s"]
         async fn a_daemon_that_stops_answering_is_given_up_on() {
             // A half-open link, made on purpose: our own daemon on the host is

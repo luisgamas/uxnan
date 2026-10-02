@@ -78,18 +78,19 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,053 backend tests**
-in total — 954 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 11 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 7
-against the real `uxnan-host` daemon over its socket, and 45 integration tests in
-`tests/` — 995 of which run everywhere; the other 55 are ignored probes that need something real to talk to
-(47 live SSH probes — 35 against a real `sshd`, one of which idles for five
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,057 backend tests**
+in total — 955 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 11 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 10 in
+`uxnan-host` (9 against the real daemon over its socket), and 45 integration tests in
+`tests/` — 1,001 of which run everywhere; the other 56 are ignored probes that need something real to talk to
+(48 live SSH probes — 36 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
 `ssh::terminals`) install the host engine there, lose the connection, and find
 the terminal again: in place when the host returns, and from a fresh session —
-and two more prove the heartbeat both ways: an engine left idle for 45 s stays
+one sees a change made on the host arrive by itself, and two more prove the
+heartbeat both ways: an engine left idle for 45 s stays
 up, and one whose daemon is frozen (`SIGSTOP`, that process only) is given up on, plus **12 against a Linux
 host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
@@ -293,7 +294,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,745 tests** across both
+ships in every build and is never shown). **1,747 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

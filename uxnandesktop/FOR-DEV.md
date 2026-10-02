@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,053 Rust tests (954 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
-in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 7 against the `uxnan-host` daemon + 45
-integration), of which 55 are ignored probes that need something real to talk to
-(47 live SSH probes — 35 against a real `sshd` and 12 against a **Linux host in a
+`docs/chat.md`). 1,057 Rust tests (955 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
+in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 10 in `uxnan-host` (9 against the daemon itself) + 45
+integration), of which 56 are ignored probes that need something real to talk to
+(48 live SSH probes — 36 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,745 frontend Vitest tests across two
+GitHub tests) + 1,747 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1256,12 +1256,12 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
       work on a host now, and so do the tree's own actions — create, rename,
       duplicate, delete — searching it, image diffs, the AI commit draft and the
       image/PDF preview (`ssh/sftp.rs` + `src/lib/fsRouter.ts`,
-      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`). What is left is
-      **watching for changes**
-      (a remote project has no watcher on purpose — 3 s polling against a machine
-      where one command costs ~2 s — so every panel refreshes on open, on act and
-      on its button, and says so) and **GitHub**, which reads this machine's
-      repository and its `gh` sign-in. Spec: `02g` §5.10–§5.11.
+      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`), and with the
+      host engine the folder is **watched there** and the panels refresh by
+      themselves (`02g` §5.16). What is left is **GitHub**, which reads this
+      machine's repository and its `gh` sign-in, and watching on a host without
+      the engine (Windows), where every panel refreshes on open, on act and on
+      its button. Spec: `02g` §5.10–§5.11, §5.16.
 
       **The lesson this item keeps earning:** a call that does not *look* like a
       file read is where the routing gets forgotten. The preview pane asked this

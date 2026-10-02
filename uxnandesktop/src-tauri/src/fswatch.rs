@@ -33,6 +33,14 @@ pub struct FsChangedEvent {
     pub root: String,
     /// Affected paths (forward-slash): changed entries + their parent dirs.
     pub paths: Vec<String>,
+    /// Which machine the root is on (`local`, or `ssh:<hostId>` for a folder a
+    /// host's engine watches): the same path can exist on both, and a change
+    /// on one must not reload the other.
+    pub target: String,
+    /// Something under the root's `.git` changed (a commit, a stage, a
+    /// checkout made outside the app). Only a host's engine reports it — this
+    /// machine's git panel has its own status watcher.
+    pub git: bool,
 }
 
 type FsDebouncer = Debouncer<RecommendedWatcher, FileIdMap>;
@@ -95,6 +103,8 @@ impl FsWatcher {
                     FsChangedEvent {
                         root: emit_root.clone(),
                         paths: paths.into_iter().collect(),
+                        target: "local".to_string(),
+                        git: false,
                     },
                 );
             },

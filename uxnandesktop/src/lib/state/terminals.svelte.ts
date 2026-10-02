@@ -1056,16 +1056,18 @@ class TerminalStore {
     if (this.fsListening) return;
     this.fsListening = true;
     try {
-      await listen<FsChangedEvent>('fs:changed', (e) => this.applyExternalChange(e.payload.paths));
+      await listen<FsChangedEvent>('fs:changed', (e) =>
+        this.applyExternalChange(e.payload.paths, e.payload.target ?? LOCAL_TARGET),
+      );
     } catch {
       this.fsListening = false; // no Tauri event bus (web preview)
     }
   }
 
-  private applyExternalChange(paths: string[]): void {
+  private applyExternalChange(paths: string[], target: TargetId): void {
     const set = new Set(paths);
     for (const st of this.fileStates.values()) {
-      if (set.has(st.path)) st.noteExternalChange();
+      if (st.target === target && set.has(st.path)) st.noteExternalChange();
     }
     for (const st of this.diffStates.values()) {
       const root = st.worktree.replace(/\\/g, '/').replace(/\/+$/, '');

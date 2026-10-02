@@ -1636,8 +1636,16 @@ en silencio lo que ya hubiera, y una actualizacion nunca reemplaza el programa
 del que arranco un daemon vivo.
 
 **Conexion.** Un canal `exec` de `uxnan-host attach`, que une su stdin/stdout al
-socket del daemon (`~/.uxnan/host/run/engine-v<protocolo>.sock`, en carpeta
-`0700`) y lo arranca desacoplado (`setsid`, SIGHUP ignorado) si no corre. Imprime
+socket del daemon (`~/.uxnan/host/run/engine.sock`, en carpeta `0700`) y lo
+arranca desacoplado (`setsid`, SIGHUP ignorado) si no corre. **Un solo socket,
+sea cual sea la version**: una app nueva llega al daemon que tiene las terminales
+del host —de la build que sea— y se encuentran en la ventana de protocolo; el
+daemon nuevo toma el relevo solo cuando el viejo se queda sin nada y sale. Un
+socket por version haria que la app nueva arrancara otro daemon al lado y no
+viera nunca las terminales del viejo, justo lo que una actualizacion no debe
+hacer. Una llamada que el daemon no conoce (de un cliente mas nuevo) se responde
+con un error y la conexion sigue: colgar dejaria sin terminales por una funcion
+que ninguna usa. Versiones: 1 = terminales; 2 = vigilar carpetas. Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1688,10 +1696,21 @@ de un programa terminado, rechazo fuera de la ventana, salida por inactividad,
 instalar por SFTP, abrir, perder la conexion y encontrar la terminal desde una
 sesion nueva.
 
+**Vigilar la carpeta del proyecto** (protocolo 2). `fs_set_watch` recibe el
+target; para un host, el motor vigila la carpeta **alli** (`notify`, el mismo
+debounce de 300 ms que la vigilancia local, `.git` fuera de las rutas) y el
+desktop emite el mismo `fs:changed`, con `target` (la misma ruta puede existir en
+las dos maquinas) y `git` cuando cambio algo bajo `.git` (un commit o un stage en
+una terminal, que el arbol ignora y el panel de Cambios no). El arbol y las
+pestanas recargan lo que muestran; Cambios espera a que la rafaga se calme
+(800 ms) y lee el host una vez. La vigilancia se vuelve a armar cuando el host
+vuelve.
+
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): que la release distribuya los
 binarios del host; hosts Windows en el daemon (hasta entonces, §5.7); hooks y
 `UXNAN_*` en las terminales del motor (fase 2); ficheros, git y busqueda servidos
-por el motor; y el historial por encima de la pantalla tras reiniciar la app.
+por el motor; limpiar builds viejas del host; y el historial por encima de la
+pantalla tras reiniciar la app.
 
 ## 6. Que funciona y que no en un contexto remoto
 
@@ -1712,7 +1731,7 @@ por el motor; y el historial por encima de la pantalla tras reiniciar la app.
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
-| Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
+| Refresco automatico de cualquiera de los anteriores | **Si con el motor** (Linux, macOS): el motor vigila la carpeta **alli** y empuja los cambios —tambien los de `.git`— como el mismo `fs:changed`, con su target (§5.16). Sin el motor (Windows): al abrir, al actuar y con el boton; sondear cuesta ~2 s por `exec` (§5.3) |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
 marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.

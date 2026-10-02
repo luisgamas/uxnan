@@ -53,7 +53,7 @@ impl Drop for Daemon {
 }
 
 fn socket_in(home: &Path) -> PathBuf {
-    home.join("run").join(format!("engine-v{PROTOCOL}.sock"))
+    home.join("run").join("engine.sock")
 }
 
 async fn connect(path: &Path) -> UnixStream {
@@ -417,4 +417,75 @@ async fn a_daemon_never_removes_a_socket_that_is_not_its_own() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert!(socket.exists(), "the other daemon's socket was removed");
+}
+
+#[tokio::test]
+async fn a_watched_folder_reports_what_changed_in_it_but_not_in_git() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let folder = tempfile::tempdir().unwrap();
+    // macOS reports `/private/var/...` for a `/var/...` temp dir.
+    let root = std::fs::canonicalize(folder.path()).unwrap();
+    std::fs::create_dir(root.join(".git")).unwrap();
+    let watched = client
+        .call(Call::Watch {
+            root: root.display().to_string(),
+        })
+        .await;
+    assert_eq!(watched, Outcome::Ok { reply: Reply::Done });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    std::fs::write(root.join(".git").join("index"), b"git churn").unwrap();
+    std::fs::write(root.join("notes.md"), b"hello").unwrap();
+    let event = loop {
+        if let ServerMessage::Event(Event::Changed {
+            root: r,
+            paths,
+            overflow,
+            git,
+        }) = client.control().await
+        {
+            if git && paths.is_empty() {
+                continue;
+            }
+            break (r, paths, overflow);
+        }
+    };
+    assert_eq!(event.0, root.display().to_string());
+    assert!(!event.2);
+    let notes = root.join("notes.md").display().to_string();
+    assert!(
+        event.1.contains(&notes),
+        "the new file is reported: {:?}",
+        event.1
+    );
+    assert!(
+        event.1.iter().all(|p| !p.contains("/.git/")),
+        "git's own churn is not: {:?}",
+        event.1
+    );
+}
+
+#[tokio::test]
+async fn a_call_this_daemon_does_not_know_is_answered_and_the_connection_stays() {
+    // A newer app asking an older daemon for something added since. Hanging up
+    // would take every terminal on the connection down for a feature none of
+    // them use.
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    write_frame(
+        &mut client.stream,
+        &Frame::Control(br#"{"type":"request","id":77,"call":{"method":"teleport","to":"mars"}}"#.to_vec()),
+    )
+    .await
+    .unwrap();
+    loop {
+        if let ServerMessage::Response { id, outcome } = client.control().await {
+            assert_eq!(id, 77);
+            assert!(matches!(outcome, Outcome::Error { .. }), "{outcome:?}");
+            break;
+        }
+    }
+    let listed = client.call(Call::List).await;
+    assert_eq!(listed, Outcome::Ok { reply: Reply::Sessions { sessions: vec![] } });
 }

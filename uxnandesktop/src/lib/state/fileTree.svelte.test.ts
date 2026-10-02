@@ -398,3 +398,24 @@ describe("searching a host's project", () => {
     expect(fileTree.searchResults).toEqual([]);
   });
 });
+
+describe("fileTree — changes reported by a host's engine", () => {
+  it("reloads a host's folder when its engine reports a change there, and only then", async () => {
+    backend.setCommands({ ssh_fs_list: () => [] });
+    (fileTree as unknown as { listening: boolean }).listening = false;
+    fileTree.setRoot("/srv/app", "ssh:h1");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("ssh_fs_list").length).toBeGreaterThan(0);
+    backend.clearCalls();
+
+    // The same path on another machine is another folder.
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "local" });
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "ssh:h2" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("ssh_fs_list")).toHaveLength(0);
+
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "ssh:h1" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("ssh_fs_list").length).toBeGreaterThan(0);
+  });
+});

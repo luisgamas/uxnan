@@ -282,7 +282,7 @@ Select it in the left panel and:
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
 | **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
-| **Automatic refresh** | **Only for what uxnan itself does.** Discarding a change, discarding a hunk or pulling updates the tabs you have open, because the app made the change and knows which files it touched. For anything else that happens on that machine — an agent working in the folder, a `git` command in a terminal there — no. The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button, whose tooltip says as much. Said out loud rather than faked: a commit made in a terminal on the host shows up in Changes when you ask it, not by itself. |
+| **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a Windows host), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
 
 The card carries the host's name, and its terminal count includes the terminals
 open on that machine.
@@ -370,6 +370,9 @@ laptop lid, a Wi-Fi handover or an app restart.
 - **One channel for all of them.** Every terminal on the host travels over one
   SSH channel, so they no longer count one by one against the host's
   `MaxSessions`.
+- **The project folder is watched there.** The tree, the open tabs and Changes
+  refresh by themselves when anything changes in the folder on the host (see
+  *Automatic refresh* above).
 - **A silent link is noticed in seconds.** The app checks on the engine every
   10 seconds; if nothing has come back for 30, the link is treated as gone — the
   tabs say so and the host is reconnected — instead of waiting the two minutes
@@ -384,6 +387,11 @@ laptop lid, a Wi-Fi handover or an app restart.
   instead of opening a second one — and does not launch the agent again.
 - **Closing a tab ends its terminal there** — immediately, or as soon as the host
   is reachable again if it was not.
+- **An app update does not strand terminals.** The app and the engine meet in a
+  protocol window rather than on an exact version: an updated app talks to the
+  engine that holds the host's terminals, whichever build it is, and a newer
+  engine takes over only once the older one has nothing left to do. A feature
+  the older engine lacks (watching, for one) simply waits for it.
 - **It does not linger.** With no terminal running and nobody attached, the
   engine exits on its own after 30 minutes. Its log (`~/.uxnan/host/host.log`)
   records lifecycle only — never what a terminal showed or what was typed.

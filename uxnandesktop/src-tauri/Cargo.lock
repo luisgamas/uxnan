@@ -6785,6 +6785,8 @@ name = "uxnan-host"
 version = "0.0.71"
 dependencies = [
  "libc",
+ "notify",
+ "notify-debouncer-full",
  "serde",
  "serde_json",
  "tempfile",

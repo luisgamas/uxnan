@@ -1362,6 +1362,13 @@ export interface FileNumstat {
 export interface FsChangedEvent {
   root: string;
   paths: string[];
+  /** The machine the root is on (`local` or `ssh:<hostId>`). The same path can
+   *  exist on both, and a change on one must not reload the other. */
+  target?: TargetId;
+  /** Something under the root's `.git` changed (a commit, a stage, a checkout
+   *  made outside the app) — reported by a host's engine only, for the git
+   *  panel, since a host has no status poller. */
+  git?: boolean;
 }
 
 /** Payload of the `browse:changed` event (mirror of Rust `BrowseChangedEvent`):

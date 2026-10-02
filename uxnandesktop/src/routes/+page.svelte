@@ -146,8 +146,12 @@
   // that lives on a host there is nothing here to watch, no git to run and no
   // repository to resolve — and a folder of the same name on *this* machine
   // would answer all three wrongly rather than not at all.
+  // A workspace on a host is watched **there**, by that host's engine, so its
+  // tree and tabs refresh the same way without this app asking the host anything.
   $effect(() => {
-    void fsSetWatch(projects.activeLocalPath).catch(() => {});
+    const remote = projects.activeIsRemote;
+    const path = remote ? projects.activeWorktreePath : projects.activeLocalPath;
+    void fsSetWatch(path, remote ? projects.activeWorktreeTarget : null).catch(() => {});
   });
 
   // Load the active worktree's git status here too — at the always-mounted shell,

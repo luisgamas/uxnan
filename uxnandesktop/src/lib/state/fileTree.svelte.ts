@@ -162,6 +162,8 @@ class FileTreeStore {
     this.listening = true;
     try {
       await listen<FsChangedEvent>("fs:changed", (e) => {
+        // The machine first: a host's folder can have the same path as one here.
+        if ((e.payload.target ?? LOCAL_TARGET) !== this.target) return;
         if (e.payload.root === this.root) this.applyFsChange(e.payload.paths);
       });
     } catch {

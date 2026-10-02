@@ -21,7 +21,10 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// The newest version of this protocol.
-pub const PROTOCOL: u32 = 1;
+///
+/// - 1: terminals (open, attach, detach, resize, close, list).
+/// - 2: folder watching (`Watch`, `Unwatch`, `Event::Changed`).
+pub const PROTOCOL: u32 = 2;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -238,6 +241,13 @@ pub enum Call {
         session: u32,
     },
     List,
+    /// Watch a folder for changes (recursively, `.git` excluded) and report
+    /// them as [`Event::Changed`]. One folder per connection: a new watch
+    /// replaces the previous one, and the watch ends with the connection.
+    Watch {
+        root: String,
+    },
+    Unwatch,
 }
 
 /// How a call ended.
@@ -290,6 +300,19 @@ pub struct SessionInfo {
 pub enum Event {
     /// A terminal's program ended. Its last screen can still be attached to.
     Exited { session: u32, code: Option<i32> },
+    /// Something changed under the watched folder: each changed path and its
+    /// parent folder (`.git` internals never listed). `overflow` says there were
+    /// too many to list, and the whole folder is worth reloading; `git` that
+    /// something under `.git` changed — a commit, a stage, a checkout — which
+    /// the file tree ignores and the git panel does not.
+    Changed {
+        root: String,
+        paths: Vec<String>,
+        #[serde(default)]
+        overflow: bool,
+        #[serde(default)]
+        git: bool,
+    },
 }
 
 /// The version two windows agree on, if they overlap.

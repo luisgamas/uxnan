@@ -58,6 +58,10 @@ pub struct AppState {
     /// Terminals that live in a host's daemon: they survive a dropped
     /// connection and an app restart (`ssh::terminals`).
     pub engine_terminals: Arc<crate::ssh::terminals::EngineTerminals>,
+    /// The folder the file tree follows when it lives on a host, as
+    /// `(host id, root)`: watched by that host's engine, and watched again
+    /// when the host comes back.
+    pub remote_watch: Arc<RwLock<Option<(String, String)>>>,
     /// Ports on a host that are reachable from this machine right now
     /// (`ssh/forward.rs`). Held here, not per connection, because a forward
     /// outlives no connection but the user asks about *all* of them at once —
@@ -205,6 +209,7 @@ impl AppState {
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
             ssh_engines: Arc::new(crate::ssh::engine::Engines::default()),
             engine_terminals: Arc::new(crate::ssh::terminals::EngineTerminals::default()),
+            remote_watch: Arc::new(RwLock::new(None)),
             ssh_forwards: crate::ssh::forward::ForwardManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),

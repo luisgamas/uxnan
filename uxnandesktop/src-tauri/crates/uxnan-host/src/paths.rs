@@ -2,13 +2,16 @@
 //!
 //! Everything lives under `~/.uxnan/host/`, a directory only the user can read
 //! (`0700`): the socket is the daemon's whole front door, and on a machine with
-//! other accounts the file system's permissions are what keeps them out. The
-//! socket's name carries the protocol version, so a daemon of an older version
-//! keeps serving the terminals it holds while a newer one starts beside it.
+//! other accounts the file system's permissions are what keeps them out.
+//!
+//! **One socket, whatever the version.** A newer app reaches the daemon that
+//! holds the host's terminals — of whichever build — and the two meet in their
+//! protocol window; the newer daemon takes over only once the older one has
+//! nothing left to do and exits. A socket per version would have the newer app
+//! start a daemon beside the old one and never see the terminals it holds,
+//! which is exactly what an update must not do.
 
 use std::path::PathBuf;
-
-use uxnan_host_protocol::PROTOCOL;
 
 /// `UXNAN_HOST_HOME` overrides the location — for tests, which must never
 /// touch the real one.
@@ -28,7 +31,7 @@ pub fn run_dir() -> PathBuf {
 }
 
 pub fn socket() -> PathBuf {
-    run_dir().join(format!("engine-v{PROTOCOL}.sock"))
+    run_dir().join("engine.sock")
 }
 
 pub fn log() -> PathBuf {
