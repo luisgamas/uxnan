@@ -2922,7 +2922,21 @@ pub async fn ssh_host_disconnect(
     // learned again rather than remembered across sessions.
     state.ssh_shells.write().await.remove(&host_id);
     state.ssh_sftp.lock().await.remove(&host_id);
-    Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
+    let session = state.ssh_sessions.write().await.remove(&host_id);
+    // Said to the host, not left to dropping it: any channel still open (a
+    // file session, a forward) keeps an SSH connection alive, and a
+    // "disconnected" host that is still connected underneath is a lie.
+    if let Some(conn) = &session {
+        let _ = conn
+            .handle()
+            .disconnect(
+                russh::Disconnect::ByApplication,
+                "disconnected in Uxnan",
+                "",
+            )
+            .await;
+    }
+    Ok(session.is_some())
 }
 
 /// One live session, as the UI needs to know it.

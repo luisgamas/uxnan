@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,047 Rust tests (949 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
+`docs/chat.md`). 1,048 Rust tests (950 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
 in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 6 against the `uxnan-host` daemon + 45
-integration), of which 52 are ignored probes that need something real to talk to
-(44 live SSH probes — 32 against a real `sshd` and 12 against a **Linux host in a
+integration), of which 53 are ignored probes that need something real to talk to
+(45 live SSH probes — 33 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests) + 1,745 frontend Vitest tests across two
 projects — pure logic and **Svelte

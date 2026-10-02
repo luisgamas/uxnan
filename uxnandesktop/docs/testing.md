@@ -78,17 +78,17 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,047 backend tests**
-in total — 949 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,048 backend tests**
+in total — 950 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
 in `uxnan-cli`, 11 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 6
 against the real `uxnan-host` daemon over its socket, and 45 integration tests in
-`tests/` — 995 of which run everywhere; the other 52 are ignored probes that need something real to talk to
-(44 live SSH probes — 32 against a real `sshd`, one of which idles for five
+`tests/` — 995 of which run everywhere; the other 53 are ignored probes that need something real to talk to
+(45 live SSH probes — 33 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
-describe, including that host as its own bastion — and one more (in
-`ssh::terminals`) installs the host engine there, loses the connection and finds
-its terminal again from a fresh session, plus **12 against a Linux
+describe, including that host as its own bastion — and two more (in
+`ssh::terminals`) install the host engine there, lose the connection, and find
+the terminal again: in place when the host returns, and from a fresh session, plus **12 against a Linux
 host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).

@@ -416,6 +416,82 @@ mod tests {
 
         #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
+        async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let terminals = EngineTerminals::default();
+            let conn = connect(&alias).await;
+            let first = engine(&conn).await;
+            let exited = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let exit_flag = Arc::clone(&exited);
+            let (seen, output) = collector();
+            terminals
+                .create(
+                    "live",
+                    &first,
+                    EngineTerminalSpec {
+                        id: "tab-drop".into(),
+                        sid: Some(format!("drop-{}", std::process::id())),
+                        cwd: None,
+                        env: vec![],
+                        cols: 90,
+                        rows: 25,
+                    },
+                    output,
+                    move || exit_flag.store(true, std::sync::atomic::Ordering::SeqCst),
+                )
+                .await
+                .unwrap();
+            terminals
+                .write(Some(&first), "tab-drop", b"echo BEFORE_$((1+1))\n".to_vec())
+                .await
+                .unwrap();
+            until(&seen, "BEFORE_2").await;
+
+            // The link goes. What the app does when it notices: detach, keep.
+            let epoch = first.epoch().to_string();
+            conn.handle()
+                .disconnect(russh::Disconnect::ByApplication, "test drop", "")
+                .await
+                .unwrap();
+            drop(conn);
+            tokio::time::timeout(std::time::Duration::from_secs(20), first.lost())
+                .await
+                .expect("the engine notices its connection ended");
+            terminals.detach_host("live", &epoch).await;
+            until(&seen, "connection to this host was lost").await;
+            assert!(terminals.waiting_on("live").await);
+            assert!(
+                terminals
+                    .write(None, "tab-drop", b"x".to_vec())
+                    .await
+                    .is_err(),
+                "a detached terminal refuses input instead of losing it silently"
+            );
+
+            // It comes back: the same tab, the same terminal, repainted.
+            seen.lock().unwrap().clear();
+            let conn = connect(&alias).await;
+            let second = engine(&conn).await;
+            terminals.reattach_host("live", &second).await;
+            until(&seen, "BEFORE_2").await;
+            assert!(!terminals.waiting_on("live").await);
+            terminals
+                .write(Some(&second), "tab-drop", b"echo AFTER_$((2+2))\n".to_vec())
+                .await
+                .unwrap();
+            until(&seen, "AFTER_4").await;
+            assert!(
+                !exited.load(std::sync::atomic::Ordering::SeqCst),
+                "nothing ended"
+            );
+            println!("live: {alias} terminal detached on the drop and came back in place");
+            terminals.close(Some(&second), "tab-drop").await.unwrap();
+        }
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn an_engine_terminal_survives_a_new_connection_and_is_found_by_its_sid() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
                 panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");

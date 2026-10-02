@@ -226,6 +226,10 @@ pub struct HostEngine {
     next_id: AtomicU64,
     alive: Arc<AtomicBool>,
     lost: Arc<Notify>,
+    /// Asks the reader and the writer to stop, which closes the channel. A
+    /// `watch` rather than a notification: it holds the request, so a task that
+    /// was busy when it came still sees it.
+    shutdown: tokio::sync::watch::Sender<bool>,
     /// Which connection carries it: a reconnect means a new engine.
     generation: u64,
 }
@@ -281,18 +285,29 @@ impl HostEngine {
         let (out, mut out_rx) = mpsc::channel::<Frame>(1024);
         let alive = Arc::new(AtomicBool::new(true));
         let lost = Arc::new(Notify::new());
+        let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
         let pending: Arc<std::sync::Mutex<HashMap<u64, Pending>>> = Arc::default();
         let sinks: Sinks = Arc::default();
 
         // Writer: one owner of the channel's write half.
         let writer_alive = Arc::clone(&alive);
+        let mut writer_shutdown = shutdown_rx.clone();
         tokio::spawn(async move {
             let _lease = lease;
-            while let Some(frame) = out_rx.recv().await {
-                if write_frame(&mut writer, &frame).await.is_err() {
-                    break;
+            loop {
+                tokio::select! {
+                    frame = out_rx.recv() => match frame {
+                        Some(frame) => {
+                            if write_frame(&mut writer, &frame).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => break,
+                    },
+                    _ = writer_shutdown.changed() => break,
                 }
             }
+            let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
             writer_alive.store(false, Ordering::SeqCst);
         });
 
@@ -302,8 +317,16 @@ impl HostEngine {
         let reader_pending = Arc::clone(&pending);
         let reader_sinks = Arc::clone(&sinks);
         let pong = out.clone();
+        let mut reader_shutdown = shutdown_rx;
         tokio::spawn(async move {
-            while let Ok(Some(frame)) = read_frame(&mut reader).await {
+            loop {
+                let frame = tokio::select! {
+                    frame = read_frame(&mut reader) => match frame {
+                        Ok(Some(frame)) => frame,
+                        _ => break,
+                    },
+                    _ = reader_shutdown.changed() => break,
+                };
                 match frame {
                     Frame::Data { session, bytes } => {
                         if let Some(sink) = reader_sinks.lock().unwrap().get(&session) {
@@ -366,6 +389,7 @@ impl HostEngine {
             next_id: AtomicU64::new(1),
             alive,
             lost,
+            shutdown,
             generation: conn.generation(),
         }))
     }
@@ -380,6 +404,13 @@ impl HostEngine {
 
     pub fn is_alive(&self) -> bool {
         self.alive.load(Ordering::SeqCst)
+    }
+
+    /// Close the channel to the daemon. Its terminals keep running there; this
+    /// side stops watching them, and [`Self::lost`] wakes whoever waits on it.
+    pub fn shutdown(&self) {
+        self.alive.store(false, Ordering::SeqCst);
+        let _ = self.shutdown.send(true);
     }
 
     /// Wait until the channel to the daemon is gone.
@@ -613,8 +644,12 @@ impl Engines {
             .cloned()
     }
 
+    /// Forget a host's engine and close its channel — it would otherwise keep
+    /// the SSH connection under it alive.
     pub async fn remove(&self, host_id: &str) {
-        self.engines.lock().await.remove(host_id);
+        if let Some(engine) = self.engines.lock().await.remove(host_id) {
+            engine.shutdown();
+        }
     }
 }
 
