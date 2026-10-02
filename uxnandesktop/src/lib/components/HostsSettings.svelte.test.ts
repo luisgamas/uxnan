@@ -111,3 +111,60 @@ describe('HostsSettings — what a host has', () => {
     expect(await screen.findByText(/no agents/i)).toBeInTheDocument();
   });
 });
+
+describe('HostsSettings — editing and second factors', () => {
+  it('fills the form with the host to edit and saves it under its id', async () => {
+    const { screen, user, backend } = mountWithProviders(HostsSettings, {
+      commands: {
+        ssh_hosts_list: () => [HOST],
+        ssh_hosts_connected: () => [],
+        ssh_host_update: (args) => ({ ...HOST, ...(args.draft as object) }),
+      },
+    });
+    await user.click(await screen.findByRole('button', { name: /Edit Workspace Gamas/ }));
+    const hostname = (await screen.findByLabelText('Host')) as HTMLInputElement;
+    expect(hostname.value).toBe('10.0.0.5');
+    await user.clear(hostname);
+    await user.type(hostname, '10.0.0.9');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await until(() => backend.callsTo('ssh_host_update').length > 0, { label: 'the update' });
+    const call = backend.lastCallTo('ssh_host_update');
+    expect(call?.args.hostId).toBe('h1');
+    expect((call?.args.draft as { hostname: string }).hostname).toBe('10.0.0.9');
+  });
+
+  it('locks what an imported host takes from the SSH configuration', async () => {
+    const imported = { ...HOST, source: 'sshConfig' as const, configHost: 'workspace' };
+    hosts.hosts = [imported];
+    const { screen, user } = mountWithProviders(HostsSettings, {
+      commands: { ssh_hosts_list: () => [imported], ssh_hosts_connected: () => [] },
+    });
+    await user.click(await screen.findByRole('button', { name: /Edit Workspace Gamas/ }));
+    const hostname = (await screen.findByLabelText('Host')) as HTMLInputElement;
+    expect(hostname.disabled).toBe(true);
+    expect(screen.getByText(/Comes from your SSH configuration/)).toBeInTheDocument();
+  });
+
+  it('asks the server’s own questions, with echo only where the server allows it', async () => {
+    const { screen } = mountWithProviders(HostsSettings, {
+      commands: { ssh_hosts_list: () => [HOST], ssh_hosts_connected: () => [] },
+    });
+    hosts.pendingChallenge = {
+      hostId: 'h1',
+      label: 'Workspace Gamas',
+      challenge: {
+        name: '',
+        instructions: '',
+        prompts: [
+          { text: 'Password: ', echo: false },
+          { text: 'Verification code: ', echo: true },
+        ],
+      },
+    };
+    const code = (await screen.findByLabelText('Verification code:')) as HTMLInputElement;
+    const password = screen.getByLabelText('Password:') as HTMLInputElement;
+    expect(code.type).toBe('text');
+    expect(password.type).toBe('password');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+});
