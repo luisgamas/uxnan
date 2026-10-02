@@ -17,7 +17,7 @@
   // one state that is about *you* would be the hardest to spot. The bubble is
   // the only outline in the set that is not a circle.
   import { cn } from "$lib/utils";
-  import { icon } from "$lib/design";
+  import { icon, stateHue } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import CometTrail from "./CometTrail.svelte";
@@ -33,14 +33,9 @@
     class: className,
   }: { status: DisplayStatus; stale?: boolean; class?: string } = $props();
 
-  /** State hue. Applied to the wrapper so `currentColor` reaches the comet too. */
-  const COLOR: Record<DisplayStatus, string> = {
-    working: "text-emerald-500",
-    blocked: "text-amber-500",
-    waiting: "text-orange-500",
-    done: "text-sky-500",
-    idle: "text-muted-foreground/50",
-  };
+  /** State hue (`stateHue`, shared with the chat). Applied to the wrapper so
+   *  `currentColor` reaches the comet too. */
+  const COLOR: Record<DisplayStatus, string> = stateHue;
   const label = $derived(i18n.t(`monitor.${status}`));
 </script>
 

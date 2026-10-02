@@ -325,6 +325,7 @@ export class ThreadStore {
     limit?: number,
     fromEnd = false,
   ): Promise<TurnList> {
+    await this.#afterPendingWrites();
     const threads = await this.#read();
     const thread = await this.#requireThread(threads, threadId);
     const total = thread.turns.length;
@@ -345,6 +346,10 @@ export class ThreadStore {
   }
 
   async getTurn(turnId: string): Promise<Turn> {
+    // Read what was already asked to be written: a client re-reading a turn the
+    // moment it hears it ended must never get the copy from before (see
+    // {@link #afterPendingWrites}).
+    await this.#afterPendingWrites();
     const threads = await this.#read();
     for (const thread of threads) {
       const turn = thread.turns.find((t) => t.id === turnId);
@@ -1277,6 +1282,20 @@ export class ThreadStore {
    * queue tests failing about one run in three.
    */
   #threads: Promise<StoredThread[]> | undefined;
+
+  /**
+   * Resolves once every write requested before this call has landed. A
+   * notification can go out before its write does — the manager announces a
+   * hand-off synchronously so no later event of the run overtakes it — and a
+   * client answers it by re-reading the turn (`turn/read`, `turn/list`): that
+   * read must see the write it was told about, or it would replace the client's
+   * correct live copy with the one from before (a hand-off read back with no
+   * end and no `continuedIn` folded the answer so far away). Never awaited from
+   * inside a mutation, which already holds the lock.
+   */
+  #afterPendingWrites(): Promise<void> {
+    return this.#lock;
+  }
 
   #read(): Promise<StoredThread[]> {
     this.#threads ??= this.#load();

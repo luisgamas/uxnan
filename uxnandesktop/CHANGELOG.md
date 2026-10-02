@@ -4,6 +4,20 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Every queued message can be edited, cancelled or sent now — the first one
+  too.** A message sent while the agent works stays yours until the agent
+  takes it, which now happens when the step it is in ends, so a long or hung
+  command never locks it. *Reaching the agent* shows only for that hand-over.
+- **Send now forces it.** While the agent works it reads *Stop the agent and
+  send this now*: it stops the running turn and that message runs next, on
+  every agent — what gets an agent stuck in a command moving again.
+- **The chat shows "working" the way the rest of the app does.** The pulsing
+  blue dot is gone: a running turn and a running step carry the Comet Trail,
+  in the same green as in the sidebar and on the project cards, and their text
+  (*Working for 12s*, the step's verb) carries a soft sweep of light while it
+  is live — still under reduced motion.
 
 ## [0.0.70] - 20260930
 ### Added

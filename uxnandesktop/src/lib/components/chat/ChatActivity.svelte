@@ -29,6 +29,7 @@
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
+  import ChatWorkingGlyph from "./ChatWorkingGlyph.svelte";
 
   let {
     block,
@@ -119,7 +120,13 @@
       icon={view.glyph}
       class={cn(icon.decorative, "shrink-0", failed ? "text-destructive" : "opacity-70")}
     />
-    <span class={cn("shrink-0 font-medium", failed ? "text-destructive" : "text-foreground/80")}>
+    <span
+      class={cn(
+        "shrink-0 font-medium",
+        failed ? "text-destructive" : "text-foreground/80",
+        running && "text-shimmer",
+      )}
+    >
       {view.verb}
     </span>
     {#if view.detail}
@@ -136,7 +143,7 @@
       </span>
     {/if}
     {#if running}
-      <span class={chat.runningDot} role="status" aria-label={i18n.t("chat.working")}></span>
+      <ChatWorkingGlyph />
     {:else if failed}
       <span class={cn(text.indicator, "shrink-0 text-destructive")}>
         {exit !== null && exit !== 0 ? i18n.t("chat.exitCode", { code: String(exit) }) : i18n.t("chat.failed")}

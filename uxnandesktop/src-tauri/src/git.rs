@@ -1670,20 +1670,20 @@ pub async fn image_diff(
     } else {
         format!(":{file}")
     };
-    let old = blob_bytes(worktree_path, &old_rev).await.map(&encode);
+    let old = blob_bytes(worktree_path, &old_rev).await.map(encode);
 
     // New side: the index for the staged view, the working-tree file otherwise.
     let new = if staged {
         blob_bytes(worktree_path, &format!(":{file}"))
             .await
-            .map(&encode)
+            .map(encode)
     } else {
         let full = format!("{}/{}", worktree_path.trim_end_matches('/'), file);
         tokio::fs::read(&full)
             .await
             .ok()
             .filter(|b| !b.is_empty())
-            .map(&encode)
+            .map(encode)
     };
 
     Ok(ImageDiff { old, new })

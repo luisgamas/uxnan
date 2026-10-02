@@ -126,16 +126,18 @@ push validation (FOR-HUMAN).
   surfaced on `turn/list` + `stream/queue/updated`, and turns left `queued` by a
   previous run are cancelled at startup. This is also what enforces one turn per
   thread — the bridge previously started a second turn on top of the first.
-- **Mid-turn delivery, at the agent's next pause** — a follow-up sent while the
-  agent works always waits in the queue (editable, cancellable). Where the
-  agent's CLI has an input channel while it works, the first queued message
-  goes to it while it is inside a step (`#deliverAtPause`, marked
-  `deliveringTurnId` and no longer cancellable) and is placed when the agent
-  reads it — Claude Code by its echo, the others once the step ends
-  (`#stepsSettled`); the running turn ends there and the new one carries the
-  rest of the agent's run (`#handOff`), so the answer shows under the message
-  it answers. `queue/sendNow` no longer delivers mid-turn. Live-verified
-  (2026-09-29, all seven agents) for **Claude Code** (`--input-format stream-json`, prompt
+- **Mid-turn delivery, at the end of the agent's step** — a follow-up sent
+  while the agent works always waits in the queue (editable, cancellable,
+  sendable now — the first one too). Where the agent's CLI has an input channel
+  while it works, the first queued message goes to it when the step it is in
+  ends (`#deliverAtPause`, marked `deliveringTurnId` and no longer cancellable
+  only for that hand-over) and is placed when the agent reads it — Claude Code
+  by its echo, the others on acceptance; the running turn ends there and the
+  new one carries the rest of the agent's run (`#handOff`), so the answer shows
+  under the message it answers. `queue/sendNow` while a turn runs stops it and
+  runs that message next, on every agent (`#sendNextAfterStop`); OpenCode
+  reports a stop only once its server closed the run. Live-verified
+  (2026-10-01, all seven agents, both paths) for **Claude Code** (`--input-format stream-json`, prompt
   and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
   busy session; 2.x: `delivery: "steer"`; an accepted steer is waited for to
   its second idle), **pi** (`--mode rpc`, `steer` command, taken on its ACK)

@@ -191,6 +191,39 @@ body::after {
   }
 }
 
+/* Live text — the agent working: a soft band of light sweeps across the words
+   in their own colour. Mirrors the desktop's `text-shimmer` utility
+   (`uxnandesktop/src/app.css`). Off under reduced motion. */
+@keyframes ux-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.ux-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 38%,
+    color-mix(in oklab, currentColor 35%, white) 50%,
+    currentColor 62%,
+    currentColor 100%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ux-shimmer 2.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ux-shimmer {
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
 @keyframes ux-comet-breathe {
   0%,
   100% {

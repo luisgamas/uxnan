@@ -268,9 +268,12 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - **Timeline, while a turn runs**: everything in view, in the order the agent
   produced it — prose, and between it the steps it takes. Consecutive steps
   (commands, edits, tool calls, subagents) form one **work group**: a compact
-  row per step (icon, verb, detail; a pulsing dot while it runs, red when it
-  failed), each one opening to its output or diff. A *Working for 12s* line
-  sits under the turn.
+  row per step (icon, verb, detail; while it runs its verb carries a soft
+  sweep of light and the Comet Trail sits where the state goes, red when it
+  failed), each one opening to its output or diff. A *Working for 12s* line —
+  the same Comet Trail and sweep — sits under the turn. The Comet Trail is the
+  app's one "working" mark, in the same hue as in the sidebar and on the
+  project cards (`ChatWorkingGlyph`, `stateHue.working`).
 - **Timeline, once a turn settles**: the work that led to the answer folds
   behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary
@@ -311,16 +314,19 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   next to it while a message is being written. Queued messages show **in
   place**, below everything and in the queue's order, as the outlined bubble
   (`chat.queuedBubble`) with their position (*Next in the queue*, *2 in the
-  queue*), **Edit** (takes it off the queue and puts it back in the composer
-  with its images and files — only once the bridge confirms — and leaves no
-  cancelled bubble behind) and cancel. On an agent that takes input mid-turn
-  the bridge hands the first one over at the agent's next pause: while it does,
-  the bubble reads *Reaching the agent, at the end of its current step*
-  (`queue.delivering`, from `deliveringTurnId`) with a spinner and no actions —
-  the agent already has it — and it drops into place when the agent reads it.
-  **Send now** (`queue/sendNow`) is offered only with nothing running (a paused
-  queue), to run that message next at once. A stopped or failed turn pauses
-  the queue: *Resume* or *Discard*, in the dock.
+  queue*) and three actions on every one, the first included: **Send now**,
+  **Edit** (takes it off the queue and puts it back in the composer with its
+  images and files — only once the bridge confirms — and leaves no cancelled
+  bubble behind) and cancel. On an agent that takes input mid-turn the bridge
+  hands the first one over when the step the agent is in ends — a long or hung
+  command never locks it; only during that hand-over the bubble reads
+  *Reaching the agent* (`queue.delivering`, from `deliveringTurnId`) with a
+  spinner and no actions, and it drops into place when the agent reads it.
+  **Send now** (`queue/sendNow`) forces it: while the agent works it reads
+  *Stop the agent and send this now* — it stops the running turn and that
+  message runs next, on every agent; with nothing running it just runs it
+  next. A turn stopped with **Stop** pauses the queue: *Resume* or *Discard*,
+  in the dock.
 - **A message taken mid-answer**: the turn it interrupted (`Turn.continuedIn`)
   stays whole — its prose is the answer so far, not folded into *Worked for* —
   and ends with *Continues below, with your next message*; the message it

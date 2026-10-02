@@ -4,6 +4,29 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Every queued message stays yours until the agent takes it.** The first
+  queued message now goes to an agent that takes input mid-turn when the step
+  it is in **ends**, not when it starts: a long or hung command no longer locks
+  a message you sent by mistake. It is marked as being delivered only for that
+  hand-over.
+- **Send now forces it, on every agent.** `queue/sendNow` while a turn runs
+  stops that turn and runs the chosen message next — the one way to reach an
+  agent stuck in a step. What the agent had done stays in the stopped turn,
+  and the rest of the queue keeps its order. Verified live on all seven agents.
+
+### Fixed
+
+- **A message taken mid-answer no longer folds away the answer it interrupted.**
+  The hand-off is announced before it is written, so a client that re-read the
+  ended turn at once got the copy from before — no end, no *continues below* —
+  and showed the answer so far folded under *See the work*. A turn or page read
+  now waits for the writes already asked for (`turn/read`, `turn/list`).
+- **An OpenCode turn started right after a stop no longer inherits the stopped
+  run.** A stop counted at once, so the cut-short tool and the run's end that
+  OpenCode sends afterwards landed on the next turn and aborted it too. The stop
+  now ends when OpenCode closes the run, and what it still sends is dropped.
 
 ## [0.0.41-alpha.20260930] - 20260930
 ### Changed

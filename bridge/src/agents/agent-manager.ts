@@ -279,14 +279,20 @@ export class AgentManager {
   /**
    * The steps (by `blockId`) each run is inside right now: a command, a tool, a
    * subagent that started and has not settled. A queued message goes to the
-   * agent while it is in one (see {@link #deliverAtPause}), and is placed in
-   * the conversation once none is left.
+   * agent once the last one settles (see {@link #deliverAtPause}) — never while
+   * one runs, so it stays editable however long a step takes.
    */
   readonly #runningStepsOfRun = new Map<string, Set<string>>();
   /** Deliveries waiting for a run's running steps to settle (or its end). */
   readonly #stepWaiters = new Map<string, Array<() => void>>();
   /** The queued turn being handed to the running agent now, per thread. */
   readonly #deliveringByThread = new Map<string, string>();
+  /**
+   * A queued turn the person sent NOW while the agent worked (`queue/sendNow`):
+   * the running turn is being stopped for it, and when it stops this message
+   * runs next instead of the queue pausing.
+   */
+  readonly #sendNextAfterStop = new Map<string, string>();
   /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
    * hook round-trip AND the Codex app-server approval elicitations; the pending
    * map is shared so a single `respondApproval` call resolves both). The
@@ -689,11 +695,11 @@ export class AgentManager {
     };
 
     // Every message sent while the agent works waits here, where the person
-    // can still edit or cancel it. An agent that takes input mid-turn gets it
-    // at its next pause ({@link #deliverAtPause}); any other, when its turn ends.
+    // can still edit, cancel or send it now. An agent that takes input
+    // mid-turn gets it when the step it is in ends ({@link #deliverAtPause});
+    // any other, when its turn ends.
     queue.push(entry);
     this.#notifyQueue(threadId);
-    void this.#deliverAtPause(threadId);
     // The turn it was queued behind may have ended while this message was
     // being stored and offered to it — its end found the queue empty. Nothing
     // else would ever start it.
@@ -703,26 +709,30 @@ export class AgentManager {
 
   /**
    * Hand the first queued message to the running agent at a pause, the way a
-   * CLI takes what you type while it works: the agent is inside a step (a
-   * command, a tool, a subagent) and reads the message when that step ends.
-   * The message stays in the queue — marked as being delivered, no longer
-   * editable — until the agent takes it; then it is placed where it was taken
-   * and the run goes on under it ({@link #handOff}).
+   * CLI takes what you type while it works: when the step the agent was in (a
+   * command, a tool, a subagent) ends and none is left running, it reads the
+   * message before it goes on. Until that moment the message is an ordinary
+   * queued one — editable, cancellable, sendable now — however long the step
+   * takes, even if it hangs. From the hand-off until the agent takes it, it
+   * stays in the queue marked as being delivered, no longer cancellable; then
+   * it is placed where it was taken and the run goes on under it
+   * ({@link #handOff}).
    *
    * Only ever the FIRST queued message, one at a time, so the order holds; and
    * never while the queue is paused (the person stopped the agent, or it
-   * broke), the agent waits on an answer, or the thread runs another agent.
-   * With no step to wait on — the agent only writing — nothing happens: the
-   * message goes when the turn ends, as the next turn. Any refusal or failure
-   * leaves it queued, so it is never lost.
+   * broke), the agent waits on an answer, the thread runs another agent, or a
+   * message sent now is stopping the run. A message that meets no step end
+   * before the turn ends (the agent was only writing) runs as the next turn.
+   * Any refusal or failure leaves it queued, so it is never lost.
    */
   async #deliverAtPause(threadId: string): Promise<void> {
     if (this.#deliveringByThread.has(threadId) || this.#steerInFlight.has(threadId)) return;
     if (this.#queuePausedByThread.has(threadId) || this.#awaitingInput.has(threadId)) return;
+    if (this.#sendNextAfterStop.has(threadId)) return;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
     if (activeTurnId === undefined) return;
     const runId = this.#runOfTurn.get(activeTurnId) ?? activeTurnId;
-    if ((this.#runningStepsOfRun.get(runId)?.size ?? 0) === 0) return;
+    if ((this.#runningStepsOfRun.get(runId)?.size ?? 0) > 0) return;
     const entry = this.#queueByThread.get(threadId)?.[0];
     if (!entry) return;
     const agentId = entry.options.agentId ?? this.#options.defaultAgent;
@@ -1454,13 +1464,14 @@ export class AgentManager {
   }
 
   /**
-   * The person asked for one queued message to go NOW (`queue/sendNow`): with
-   * nothing running — a paused queue — it runs as the next turn at once, ahead
-   * of the rest and through the pause (asking for it is the decision the pause
-   * waits for). The rest of the queue keeps its order. While a turn runs it is
-   * refused with the reason: an agent that takes input mid-turn already gets
-   * the first queued message at its next pause ({@link #deliverAtPause}), and
-   * any other can only take it when its turn ends.
+   * The person asked for one queued message to go NOW (`queue/sendNow`).
+   * With nothing running — a paused queue — it runs as the next turn at once,
+   * ahead of the rest and through the pause (asking for it is the decision the
+   * pause waits for). While the agent works it STOPS the running turn — the
+   * one thing that reaches an agent stuck in a step, on every agent — and this
+   * message runs as soon as the stop lands, ahead of the rest; what the agent
+   * had done stays in the turn it stopped. The rest of the queue keeps its
+   * order. A message the agent is already taking cannot be sent again.
    */
   async sendQueuedNow(threadId: string, turnId: string): Promise<QueueStateResult> {
     const queue = this.#queueByThread.get(threadId);
@@ -1468,16 +1479,23 @@ export class AgentManager {
     if (!queue || index < 0) {
       throw new RpcError(JsonRpcErrorCode.InvalidParams, 'that message is no longer queued');
     }
+    if (this.#deliveringByThread.get(threadId) === turnId) {
+      throw new RpcError(JsonRpcErrorCode.AgentBusy, 'the agent is already taking this message');
+    }
     const entry = queue[index]!;
-    if (this.#activeTurnByThread.has(threadId)) {
-      const agentId = entry.options.agentId ?? this.#options.defaultAgent;
-      const adapter = this.#adapters.get(agentId);
-      throw new RpcError(
-        JsonRpcErrorCode.AgentBusy,
-        adapter?.capabilities.steering === true && adapter.steerTurn
-          ? 'the agent takes it at its next pause, when the step it is in ends'
-          : 'this agent takes no message while it works; it goes when the turn ends',
-      );
+    const active = this.#activeTurnByThread.get(threadId);
+    if (active !== undefined) {
+      queue.splice(index, 1);
+      queue.unshift(entry);
+      this.#sendNextAfterStop.set(threadId, turnId);
+      this.#notifyQueue(threadId);
+      try {
+        await this.cancelTurn(threadId, active);
+      } catch (err) {
+        this.#sendNextAfterStop.delete(threadId);
+        throw err;
+      }
+      return this.queueState(threadId);
     }
     queue.splice(index, 1);
     queue.unshift(entry);
@@ -1548,6 +1566,23 @@ export class AgentManager {
    * something is queued — pausing an empty queue would surface a "paused" banner
    * with nothing behind it.
    */
+  /**
+   * After the running turn stopped or failed: run the message the person sent
+   * now ({@link sendQueuedNow}), already first in the queue — otherwise hold
+   * the queue for an explicit resume.
+   */
+  #holdOrSendNext(threadId: string, reason: QueuePausedReason): void {
+    const next = this.#sendNextAfterStop.get(threadId);
+    this.#sendNextAfterStop.delete(threadId);
+    if (next !== undefined && this.#queueByThread.get(threadId)?.[0]?.turnId === next) {
+      this.#queuePausedByThread.delete(threadId);
+      this.#notifyQueue(threadId);
+      void this.#drainQueue(threadId);
+      return;
+    }
+    this.#pauseQueue(threadId, reason);
+  }
+
   #pauseQueue(threadId: string, reason: QueuePausedReason): void {
     if ((this.#queueByThread.get(threadId)?.length ?? 0) === 0) return;
     this.#queuePausedByThread.set(threadId, reason);
@@ -1751,9 +1786,10 @@ export class AgentManager {
           // under the new message would repeat it.
           const stepId = content !== undefined ? blockIdOf(content) : undefined;
           if (stepId !== undefined) {
-            this.#trackStep(runId, stepId, isRunning(content));
-            // Inside a step: a message waiting in the queue can go now.
-            void this.#deliverAtPause(threadId);
+            const running = isRunning(content);
+            this.#trackStep(runId, stepId, running);
+            // A step ended: a message waiting in the queue can go now.
+            if (!running) void this.#deliverAtPause(threadId);
             let steps = this.#stepsOfRun.get(runId);
             if (!steps) this.#stepsOfRun.set(runId, (steps = new Map()));
             const shownIn = steps.get(stepId);
@@ -1842,6 +1878,8 @@ export class AgentManager {
           // spawns a CLI, and the queue must drain the instant the turn ends.
           void this.#nameThread(threadId, turnId, text);
           // The turn ended cleanly — this is the moment a queued follow-up runs.
+          // A message sent now while this run was ending is already first in line.
+          this.#sendNextAfterStop.delete(threadId);
           await this.#drainQueue(threadId);
           break;
         }
@@ -1875,8 +1913,10 @@ export class AgentManager {
           await this.#persistAgentSession(threadId);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           // The agent broke (auth, balance, a dead CLI). Hold the queue instead
-          // of feeding follow-ups to something that just failed.
-          this.#pauseQueue(threadId, 'turnError');
+          // of feeding follow-ups to something that just failed — unless the
+          // person stopped it to send a message now (some agents report a
+          // stop as an error): that one runs.
+          this.#holdOrSendNext(threadId, 'turnError');
           break;
         }
         case 'turn_aborted':
@@ -1894,8 +1934,9 @@ export class AgentManager {
           // it, or the next message would start the conversation over.
           await this.#persistAgentSession(threadId);
           // The user stopped this turn. They stopped it for a reason, so the
-          // follow-ups they queued earlier wait for an explicit resume.
-          this.#pauseQueue(threadId, 'turnAborted');
+          // follow-ups they queued earlier wait for an explicit resume —
+          // unless they stopped it to send one now: that one runs.
+          this.#holdOrSendNext(threadId, 'turnAborted');
           break;
       }
     } catch (err) {

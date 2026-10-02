@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Every queued message can be changed until it reaches the agent — the next
+  one included.** A message you send while the agent works stays editable and
+  cancellable until the step the agent is in ends; only then does it show
+  *Reaching the agent* and lose its buttons, for the moment it takes to hand it
+  over. **Send now** is offered on every waiting message, also while the agent
+  works: there it stops the agent and sends your message right after, and its
+  label says so (*Stop the agent and send this now*). The rest of the queue
+  keeps its order.
+
 ## [0.0.34-alpha.20260930+20260936] - 20260930
 ### Added
 

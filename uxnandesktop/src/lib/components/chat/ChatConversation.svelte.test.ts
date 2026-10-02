@@ -157,27 +157,25 @@ describe("ChatConversation", () => {
     });
   });
 
-  it("offers send now only with nothing running, whatever the agent", async () => {
-    chat.agents = [
-      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
-    ] as never;
+  it("offers send now on every queued message, and says it stops a working agent", async () => {
     const { screen } = mount(chatTab());
     const conversation = chat.conversation(THREAD);
     conversation.adoptPage({
       turns: [
         { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
         queuedTurn("q1", "later"),
+        queuedTurn("q2", "and this"),
       ],
-      total: 2,
+      total: 3,
       activeTurnId: "run",
-      queuedTurnIds: ["q1"],
+      queuedTurnIds: ["q1", "q2"],
     });
     await screen.findByText("later");
-    // While the agent works it takes the message at its next pause by itself.
-    expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
+    // The first one too: a message sent by mistake can always be taken back or forced.
+    expect(screen.getAllByRole("button", { name: "Stop the agent and send this now" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Edit (take it off the queue)" })).toHaveLength(2);
 
-    // Stopped with the message still waiting: the queue is paused, and sending
-    // it now is the person's call.
+    // Stopped with the messages still waiting: sending one now just runs it.
     conversation.adoptPage({
       turns: [
         { id: "run", threadId: THREAD, status: "aborted", createdAt: 1, messages: [] },
@@ -205,7 +203,7 @@ describe("ChatConversation", () => {
       queueDeliveringTurnId: "q1",
     });
     expect(
-      await screen.findByText("Reaching the agent, at the end of its current step"),
+      await screen.findByText("Reaching the agent"),
     ).toBeTruthy();
     // Only the one still waiting can be edited or cancelled.
     expect(screen.getAllByRole("button", { name: "Edit (take it off the queue)" })).toHaveLength(1);

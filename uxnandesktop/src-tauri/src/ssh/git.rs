@@ -67,7 +67,7 @@ pub async fn image_diff(
         .await
         .ok()
         .filter(|b| !b.is_empty())
-        .map(&encode);
+        .map(encode);
 
     // New side: the index when staged, otherwise the file as it is on that
     // machine right now.
@@ -77,7 +77,7 @@ pub async fn image_diff(
             .await
             .ok()
             .filter(|b| !b.is_empty())
-            .map(&encode)
+            .map(encode)
     } else {
         let full = format!("{}/{file}", path.trim_end_matches('/'));
         files
@@ -85,7 +85,7 @@ pub async fn image_diff(
             .await
             .ok()
             .filter(|b| !b.is_empty())
-            .map(&encode)
+            .map(encode)
     };
 
     Ok(crate::git::ImageDiff { old, new })

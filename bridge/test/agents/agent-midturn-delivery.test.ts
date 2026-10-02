@@ -135,6 +135,9 @@ class SteerableAdapter extends BaseAgentAdapter {
   abort(threadId: string, turnId: string): void {
     this.emit({ type: 'turn_aborted', threadId, turnId });
   }
+  fail(threadId: string, turnId: string, text = 'stopped'): void {
+    this.emit({ type: 'turn_error', threadId, turnId, data: { text } });
+  }
   /** The agent announced its session for the thread. */
   session(threadId: string, sessionId: string): void {
     this.setNativeSession(threadId, sessionId);
@@ -187,7 +190,7 @@ async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 
 
 const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('a follow-up waits in the queue, goes at the next step and is placed when it ends', async () => {
+test('a follow-up waits in the queue while a step runs and goes when it ends', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
@@ -202,35 +205,30 @@ test('a follow-up waits in the queue, goes at the next step and is placed when i
     assert.deepEqual(h.adapter.steered, []);
     assert.equal((await h.store.getTurn(second.turnId)).status, 'queued');
 
-    // The agent runs a command: it can take the message now, and does.
+    // The agent runs a command: the message still waits, as an ordinary queued one.
     h.adapter.startStep(h.threadId, first.turnId);
-    await waitFor(() => h.adapter.steered.length === 1);
-    assert.deepEqual(h.adapter.steered, [
-      { turnId: second.turnId, activeTurnId: first.turnId, text: 'second' },
-    ]);
-    // Still in the queue — being delivered, no longer cancellable — until the
-    // command ends and the agent reads it.
+    await tick();
+    assert.deepEqual(h.adapter.steered, []);
     assert.deepEqual(h.manager.queueState(h.threadId), {
       queuedTurnIds: [second.turnId],
       paused: false,
-      deliveringTurnId: second.turnId,
     });
-    assert.equal(h.manager.activeTurnId(h.threadId), first.turnId);
+
+    // The command ends: the agent takes it, and it is placed there.
+    h.adapter.endStep(h.threadId, first.turnId);
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === second.turnId);
+    assert.deepEqual(h.adapter.steered, [
+      { turnId: second.turnId, activeTurnId: first.turnId, text: 'second' },
+    ]);
     assert.ok(
       h.notifications.some(
         (n) =>
           n.method === StreamNotification.QueueUpdated &&
           n.params?.['deliveringTurnId'] === second.turnId,
       ),
+      'clients saw it being delivered',
     );
-    await assert.rejects(h.manager.cancelTurn(h.threadId, second.turnId), /already taking/);
-
-    // The command ends: the message is placed where the agent took it.
-    h.adapter.endStep(h.threadId, first.turnId);
-    await waitFor(() => h.manager.activeTurnId(h.threadId) === second.turnId);
     assert.deepEqual(h.manager.queueState(h.threadId), { queuedTurnIds: [], paused: false });
-    // It reached the agent WITHOUT starting a second run — the invariant the
-    // whole one-run-per-thread design rests on.
     assert.deepEqual(
       h.adapter.ran.map((r) => r.text),
       ['first'],
@@ -252,30 +250,34 @@ test('a follow-up waits in the queue, goes at the next step and is placed when i
     // The command the agent was in belongs to the answer it interrupted.
     assert.equal((await assistant(first.turnId))?.blocks?.length, 1);
     assert.equal((await assistant(second.turnId))?.blocks, undefined);
-    assert.equal(h.manager.activeTurnId(h.threadId), undefined);
 
-    // To a client it is a queue that drained early, in order: the first turn
-    // ends, the second starts, and only then does its prose arrive.
-    const order = h.notifications.map((n) =>
-      [n.method, n.params?.['turnId'] === second.turnId ? 'second' : 'first'].join(':'),
-    );
-    const at = (entry: string) => order.indexOf(entry);
-    assert.ok(at(`${StreamNotification.TurnCompleted}:first`) >= 0);
-    assert.ok(
-      at(`${StreamNotification.TurnCompleted}:first`) <
-        at(`${StreamNotification.TurnStarted}:second`),
-    );
-    assert.ok(
-      at(`${StreamNotification.TurnStarted}:second`) <
-        at(`${StreamNotification.MessageDelta}:second`),
-    );
     const firstDone = h.notifications.find(
       (n) => n.method === StreamNotification.TurnCompleted && n.params?.['turnId'] === first.turnId,
     );
-    assert.equal(firstDone?.params?.['text'], 'Before. ');
     assert.equal(firstDone?.params?.['continuedIn'], second.turnId);
     assert.equal((await h.store.getTurn(first.turnId)).continuedIn, second.turnId);
-    assert.equal((await h.store.getTurn(second.turnId)).continuedIn, undefined);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a queued message stays cancellable however long the step runs', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    h.adapter.startStep(h.threadId, first.turnId);
+    const second = await h.manager.sendTurn(h.threadId, 'oops, not this');
+    await tick(50);
+    await h.manager.cancelTurn(h.threadId, second.turnId);
+    assert.equal((await h.store.getTurn(second.turnId)).status, 'cancelled');
+    h.adapter.endStep(h.threadId, first.turnId);
+    h.adapter.complete(h.threadId, first.turnId);
+    await tick(50);
+    assert.deepEqual(h.adapter.steered, []);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first'],
+    );
   } finally {
     await h.cleanup();
   }
@@ -302,15 +304,15 @@ test('with no step before the end, a queued message runs as the next turn', asyn
   }
 });
 
-test('a message queued while the agent is already in a step goes at once', async () => {
+test('a message queued while the agent is in a step goes when that step ends', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
     h.adapter.startStep(h.threadId, first.turnId);
     await tick();
     const second = await h.manager.sendTurn(h.threadId, 'second');
-    await waitFor(() => h.adapter.steered.length === 1);
-    assert.equal(h.manager.queueState(h.threadId).deliveringTurnId, second.turnId);
+    await tick();
+    assert.deepEqual(h.adapter.steered, []);
     h.adapter.endStep(h.threadId, first.turnId);
     await waitFor(() => h.manager.activeTurnId(h.threadId) === second.turnId);
   } finally {
@@ -361,17 +363,16 @@ test('stopping the steered turn stops the run the agent knows', async () => {
   }
 });
 
-test('the message is placed only once every step the agent is in has ended', async () => {
+test('the message goes only once every step the agent is in has ended', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
     h.adapter.startStep(h.threadId, first.turnId, 'a');
     h.adapter.startStep(h.threadId, first.turnId, 'b');
     const second = await h.manager.sendTurn(h.threadId, 'second');
-    await waitFor(() => h.adapter.steered.length === 1);
     h.adapter.endStep(h.threadId, first.turnId, 'a');
     await tick(50);
-    assert.equal(h.manager.activeTurnId(h.threadId), first.turnId, 'b is still running');
+    assert.deepEqual(h.adapter.steered, [], 'b is still running');
     h.adapter.step(h.threadId, first.turnId, {
       type: 'command_execution',
       blockId: 'b',
@@ -454,7 +455,7 @@ test('a hand-off that throws is contained, and the message still queues', async 
   }
 });
 
-test('queued messages go one at a time, in order, one per step', async () => {
+test('queued messages go one at a time, in order, one per step end', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
@@ -463,15 +464,12 @@ test('queued messages go one at a time, in order, one per step', async () => {
     assert.equal(third.queuePosition, 2);
 
     h.adapter.startStep(h.threadId, first.turnId, 'a');
-    await waitFor(() => h.adapter.steered.length === 1);
-    assert.equal(h.adapter.steered[0]?.text, 'second', 'the earlier message goes first');
     h.adapter.endStep(h.threadId, first.turnId, 'a');
     await waitFor(() => h.manager.activeTurnId(h.threadId) === second.turnId);
     assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [third.turnId]);
 
-    // The run goes on (named by its first turn); its next step takes the next one.
+    // The run goes on (named by its first turn); its next step end takes the next one.
     h.adapter.startStep(h.threadId, first.turnId, 'b');
-    await waitFor(() => h.adapter.steered.length === 2);
     h.adapter.endStep(h.threadId, first.turnId, 'b');
     await waitFor(() => h.manager.activeTurnId(h.threadId) === third.turnId);
     assert.deepEqual(
@@ -565,29 +563,99 @@ test('clearing the queue leaves an already-placed message alone', async () => {
   }
 });
 
-test('send now while the agent works says it goes at the next pause', async () => {
+test('send now while the agent works stops it and runs that message next', async () => {
   const h = await harness();
   try {
-    await h.manager.sendTurn(h.threadId, 'first');
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    h.adapter.startStep(h.threadId, first.turnId);
     const second = await h.manager.sendTurn(h.threadId, 'second');
-    await assert.rejects(h.manager.sendQueuedNow(h.threadId, second.turnId), /next pause/);
-    assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId]);
-    assert.deepEqual(h.adapter.steered, []);
+    const third = await h.manager.sendTurn(h.threadId, 'third');
+
+    const state = await h.manager.sendQueuedNow(h.threadId, third.turnId);
+    assert.deepEqual(h.adapter.cancelled, [first.turnId], 'the stuck run is stopped');
+    assert.deepEqual(state.queuedTurnIds, [third.turnId, second.turnId], 'it goes first');
+
+    h.adapter.abort(h.threadId, first.turnId);
+    await waitFor(() => h.adapter.ran.length === 2);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first', 'third'],
+    );
+    assert.equal(h.manager.activeTurnId(h.threadId), third.turnId);
+    assert.deepEqual(h.manager.queueState(h.threadId), {
+      queuedTurnIds: [second.turnId],
+      paused: false,
+    });
+    assert.deepEqual(h.adapter.steered, [], 'never handed into the stopped run');
   } finally {
     await h.cleanup();
   }
 });
 
-test('send now: an agent without mid-turn input says the message waits', async () => {
-  const h = await harness(false);
+test('send now with a stop the agent reports as an error still runs it', async () => {
+  const h = await harness();
   try {
-    await h.manager.sendTurn(h.threadId, 'first');
+    const first = await h.manager.sendTurn(h.threadId, 'first');
     const second = await h.manager.sendTurn(h.threadId, 'second');
-    await assert.rejects(
-      h.manager.sendQueuedNow(h.threadId, second.turnId),
-      /takes no message while it works/,
+    await h.manager.sendQueuedNow(h.threadId, second.turnId);
+    h.adapter.fail(h.threadId, first.turnId, 'aborted');
+    await waitFor(() => h.adapter.ran.length === 2);
+    assert.equal(h.adapter.ran[1]?.text, 'second');
+    assert.equal(h.manager.queueState(h.threadId).paused, false);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now when the run finishes before the stop lands still runs it next', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    const third = await h.manager.sendTurn(h.threadId, 'third');
+    await h.manager.sendQueuedNow(h.threadId, third.turnId);
+    h.adapter.complete(h.threadId, first.turnId);
+    await waitFor(() => h.adapter.ran.length === 2);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first', 'third'],
     );
     assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId]);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now refuses a message the agent is already taking', async () => {
+  const h = await harness();
+  try {
+    h.adapter.behaviour = 'hold';
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    h.adapter.startStep(h.threadId, first.turnId);
+    h.adapter.endStep(h.threadId, first.turnId);
+    await waitFor(() => h.adapter.release !== undefined);
+    assert.equal(h.manager.queueState(h.threadId).deliveringTurnId, second.turnId);
+    await assert.rejects(h.manager.sendQueuedNow(h.threadId, second.turnId), /already taking/);
+    await assert.rejects(h.manager.cancelTurn(h.threadId, second.turnId), /already taking/);
+    assert.deepEqual(h.adapter.cancelled, []);
+    h.adapter.release!(true);
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === second.turnId);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now works the same on an agent without mid-turn input', async () => {
+  const h = await harness(false);
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    await h.manager.sendQueuedNow(h.threadId, second.turnId);
+    assert.deepEqual(h.adapter.cancelled, [first.turnId]);
+    h.adapter.abort(h.threadId, first.turnId);
+    await waitFor(() => h.adapter.ran.length === 2);
+    assert.equal(h.adapter.ran[1]?.text, 'second');
   } finally {
     await h.cleanup();
   }
@@ -626,6 +694,7 @@ test('a run that ends while a message is being delivered answers it once', async
     h.adapter.behaviour = 'hold';
     const second = await h.manager.sendTurn(h.threadId, 'second');
     h.adapter.startStep(h.threadId, first.turnId);
+    h.adapter.endStep(h.threadId, first.turnId);
     await waitFor(() => h.adapter.release !== undefined);
     // The agent's run ends while the delivery is still out...
     h.adapter.complete(h.threadId, first.turnId, 'the whole run');
@@ -654,6 +723,7 @@ test('a delivery the agent turns down as its run ends still runs next', async ()
     h.adapter.behaviour = 'decline-after-end';
     const second = await h.manager.sendTurn(h.threadId, 'second');
     h.adapter.startStep(h.threadId, first.turnId);
+    h.adapter.endStep(h.threadId, first.turnId);
     await waitFor(() => h.adapter.ran.length === 2);
     assert.deepEqual(
       h.adapter.ran.map((r) => r.text),

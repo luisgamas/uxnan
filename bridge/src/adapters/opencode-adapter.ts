@@ -227,6 +227,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #toolsByCwd = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
   readonly #runBySession = new Map<string, ActiveRun>();
+  /**
+   * Sessions being stopped (`cancelTurn`), each with who waits for it to go
+   * quiet. Until OpenCode reports the session idle, whatever it still sends
+   * belongs to the run that was stopped — a tool it cut short, its abort — and
+   * is dropped, so none of it lands on the next turn started on that session.
+   */
+  readonly #quieting = new Map<string, () => void>();
   /** Sessions the server is known to hold: opened here, or confirmed with it
    *  before this process first resumed them. */
   readonly #confirmedSessions = new Set<string>();
@@ -502,13 +509,36 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.#runBySession.delete(run.sessionId);
     const server = await this.#existingServer(run.cwd);
     if (server) {
+      const quiet = this.#untilQuiet(run.sessionId);
       try {
         await server.interrupt(run.sessionId);
+        await quiet;
       } catch {
         /* process may have died — the close handler surfaces it */
+      } finally {
+        this.#quieting.delete(run.sessionId);
       }
     }
     this.emit({ type: 'turn_aborted', threadId, turnId });
+  }
+
+  /**
+   * Resolves once [sessionId]'s stopped run ended — or after [timeoutMs],
+   * so a server that never says so cannot hold the stop. A message sent right
+   * after the stop starts on a session that is really done with the old run.
+   */
+  #untilQuiet(sessionId: string, timeoutMs = 5000): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(done, timeoutMs);
+      timer.unref?.();
+      const self = this;
+      function done(): void {
+        clearTimeout(timer);
+        if (self.#quieting.get(sessionId) === done) self.#quieting.delete(sessionId);
+        resolve();
+      }
+      this.#quieting.set(sessionId, done);
+    });
   }
 
   /** The protocol the installed OpenCode speaks (read from the binary). */
@@ -608,6 +638,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     if (event.sessionId && MODEL_OUTPUT.has(event.kind)) {
       this.#promptOnlySessions.delete(event.sessionId);
+    }
+    // A session being stopped: its last events are the stopped run's — drop
+    // them, and let the stop finish once the session is idle.
+    const quieting = event.sessionId ? this.#quieting.get(event.sessionId) : undefined;
+    if (quieting) {
+      // The run's own end: `idle` on OpenCode 1, `interrupted` (or a failure)
+      // on OpenCode 2 — nothing of the stopped run comes after it.
+      if (event.kind === 'idle' || event.kind === 'interrupted' || event.kind === 'error') {
+        quieting();
+      }
+      return;
     }
     switch (event.kind) {
       case 'permission':

@@ -1030,8 +1030,7 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get queuedDelivering =>
-      'Llegándole al agente, al terminar su paso actual';
+  String get queuedDelivering => 'Llegándole al agente';
 
   @override
   String get queuedMessageCancel => 'Cancelar este mensaje';
@@ -3355,6 +3354,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get queuedMessageSendNow => 'Enviar ahora';
+
+  @override
+  String get queuedSendNowStopping => 'Detener al agente y enviar esto ahora';
 
   @override
   String get composerAttachFile => 'Archivo';

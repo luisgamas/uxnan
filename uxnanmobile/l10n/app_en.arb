@@ -510,9 +510,9 @@
       "position": { "type": "int" }
     }
   },
-  "queuedDelivering": "Reaching the agent, at the end of its current step",
+  "queuedDelivering": "Reaching the agent",
   "@queuedDelivering": {
-    "description": "Label under the queued user message the running agent is taking at its next pause; it can no longer be edited nor cancelled."
+    "description": "Label under the queued user message being handed to the agent now that its current step ended; it can no longer be edited, cancelled nor sent now."
   },
   "queuedMessageCancel": "Cancel this message",
   "@queuedMessageCancel": {
@@ -2010,7 +2010,9 @@
   "questionBack": "Previous question",
   "@questionBack": {"description": "Move to the previous question (tooltip)."},
   "queuedMessageSendNow": "Send now",
-  "@queuedMessageSendNow": {"description": "Queued message: send it now instead of waiting."},
+  "@queuedMessageSendNow": {"description": "Queued message, with nothing running: send it now instead of waiting."},
+  "queuedSendNowStopping": "Stop the agent and send this now",
+  "@queuedSendNowStopping": {"description": "Queued message, while the agent works: stop the running turn and send this message as the next one."},
   "composerAttachFile": "File",
   "@composerAttachFile": {"description": "Composer + menu: attach any file."},
   "composerFilesLimit": "A message carries up to {count} files.",

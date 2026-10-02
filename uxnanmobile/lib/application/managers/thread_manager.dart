@@ -1794,11 +1794,12 @@ class ThreadManager {
     await _queueControl(threadId, 'queue/clear');
   }
 
-  /// Sends the queued [turnId] now (`queue/sendNow`) as the next turn, when
-  /// nothing runs (a held queue). While a turn runs the bridge refuses it for
-  /// every agent: one that takes messages mid-turn gets the first queued one
-  /// at its next pause, any other when it finishes. Returns the bridge's
-  /// reason when it refused (the message stays queued), or null.
+  /// Sends the queued [turnId] now (`queue/sendNow`) as the next turn. With
+  /// nothing running it starts at once; while a turn runs the bridge stops it
+  /// and runs this message as soon as the stop lands, for every agent (the
+  /// rest of the queue keeps its order). No client-side idle check: the bridge
+  /// decides. Returns the bridge's reason when it refused (the message stays
+  /// queued), or null.
   Future<String?> sendQueuedNow(String threadId, String turnId) =>
       _queueControl(threadId, 'queue/sendNow', {'turnId': turnId});
 

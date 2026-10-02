@@ -1,6 +1,11 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.5 | **Fecha:** 2026-09-29 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.6 | **Fecha:** 2026-10-01 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.1.6):** `queue/sendNow` while a turn runs now stops
+> that turn and runs the chosen message next, on every agent (it used to be
+> refused); shape unchanged. A queued message is delivered when the agent's
+> step ends, so `deliveringTurnId` marks only that short hand-over.
 >
 > **Executive summary (1.1.5):** the queue state gains `deliveringTurnId`
 > (`stream/queue/updated`, `QueueStateResult`) and `TurnList` gains
@@ -146,7 +151,7 @@ turn/attachment         -> los bytes de una imagen o un archivo que un mensaje d
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
 queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason?, deliveringTurnId? }.
 queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
-queue/sendNow           -> mandar YA un mensaje encolado, con nada corriendo (una cola en pausa): corre como el siguiente turno de inmediato, por delante del resto y atravesando la pausa. Rechazado (con el motivo) mientras corre un turno: un agente con steering toma el primero de la cola en su siguiente pausa por si solo, y uno sin steering solo al terminar. Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
+queue/sendNow           -> mandar YA un mensaje encolado. Con un turno corriendo DETIENE ese turno (con cualquier agente) y el mensaje corre en cuanto la detencion se confirma, por delante del resto (la cola no se pausa por esa detencion). Con nada corriendo (una cola en pausa) corre como el siguiente turno de inmediato, atravesando la pausa. Rechazado solo para un mensaje que ya se esta entregando (`deliveringTurnId`). Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
 ```
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge

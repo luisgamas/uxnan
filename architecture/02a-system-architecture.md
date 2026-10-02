@@ -1,10 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.5
-> **Fecha:** 2026-09-29
+> **Version:** 1.5.6
+> **Fecha:** 2026-10-01
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.6):** every queued message — the first one too —
+> stays editable, cancellable and sendable now until the agent is handed it,
+> which happens when the step the agent is in **ends** (not when it starts), so
+> a long or hung command never locks a message the person wants back
+> (§5.8.13). `queue/sendNow` while a turn runs now **stops** that turn and runs
+> the chosen message next, on every agent — the one way to reach an agent stuck
+> in a step. OpenCode waits for its server to close a stopped run before the
+> stop counts, so the next turn starts clean.
 
 > **Executive summary (1.5.5):** a message sent while the agent works always
 > waits in the queue — visible, editable, cancellable — and an agent that takes
@@ -2543,20 +2552,23 @@ Encolar hasta el final del turno **no es lo que hacen las CLI**: ellas recogen
 lo que escribes en el siguiente limite de herramienta, *dentro* del turno en
 curso — que es lo que permite corregir el rumbo de un agente sin detenerlo. El
 bridge hace lo mismo donde la CLI del agente realmente lo permite, **y como la
-CLI, a la vista**: el mensaje espera en la cola — visible, editable y
-cancelable — hasta la **siguiente pausa** del agente, y solo entonces se
-entrega.
+CLI, a la vista**: el mensaje espera en la cola — visible, editable, cancelable
+y con "Enviar ahora", el primero incluido — hasta que **termina el paso** en
+que esta el agente, y solo entonces se entrega. Un paso largo, o colgado, no lo
+bloquea.
 
 ```javascript
-// #enqueueTurn -> SIEMPRE a la cola (queued) + #deliverAtPause(threadId)
-// #onEvent(block con blockId) -> #trackStep(run, paso, isRunning) + #deliverAtPause
+// #enqueueTurn -> SIEMPRE a la cola (queued)
+// #onEvent(block con blockId) -> #trackStep(run, paso, isRunning) ; si el paso
+//   TERMINO -> #deliverAtPause
 //
 // #deliverAtPause: entrega el PRIMERO de la cola, de uno en uno, cuando
 //   adapter.capabilities.steering && adapter.steerTurn
 //   + turno en vuelo, del mismo agente
-//   + el agente esta DENTRO de un paso (un comando/herramienta/subagente
-//     `running`): lo lee cuando ese paso termina
-//   + cola NO pausada, sin aprobacion/pregunta pendiente, sin otra entrega
+//   + el agente ya NO esta dentro de ningun paso (el ultimo acaba de terminar):
+//     lo lee antes de seguir
+//   + cola NO pausada, sin aprobacion/pregunta pendiente, sin otra entrega,
+//     sin un "Enviar ahora" deteniendo el turno
 //   entregando -> sigue en queuedTurnIds, marcado deliveringTurnId (ya no se
 //                 puede editar ni cancelar: turn/cancel lo rechaza)
 //   tomado     -> espera a que los pasos en curso de la ejecucion terminen
@@ -2570,6 +2582,13 @@ entrega.
 // Sin pasos antes del final (el agente solo escribe) -> corre como el siguiente turno.
 ```
 
+**Una relectura ve lo anunciado.** `#handOff` anuncia el relevo de forma
+sincrona (ningun evento posterior de la ejecucion lo adelanta) y lo escribe
+justo despues; un cliente que relee el turno al oirlo (`turn/read`,
+`turn/list`) espera a las escrituras ya pedidas (`ThreadStore`
+`#afterPendingWrites`), asi que nunca recibe la copia de antes — sin fin ni
+`continuedIn` — que plegaba la respuesta interrumpida.
+
 **El mensaje queda donde el agente lo leyo.** Lo que el agente dice despues de
 leerlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
 cliente es una cola que avanzo antes de tiempo (el turno anterior termina, el
@@ -2577,25 +2596,34 @@ nuevo empieza). El turno que termino asi lo dice: `Turn.continuedIn` (y
 `continuedIn` en su `stream/turn/completed`) nombra el turno donde siguio la
 ejecucion, de modo que el telefono y el desktop muestran su respuesta como "lo
 dicho hasta ahi" — completa, con un "continua abajo" — y no como una respuesta
-final plegada, y marcan el mensaje que llego a mitad de ejecucion. Mientras se
-entrega, la burbuja sigue en la cola con "Llegandole al agente, al terminar su
-paso actual" y sin acciones.
+final plegada, y marcan el mensaje que llego a mitad de ejecucion. Solo
+mientras se entrega la burbuja sigue en la cola con "Llegandole al agente" y
+sin acciones.
 
 **El momento es el real.** El mensaje se coloca cuando el agente lo lee, no
 cuando el bridge lo escribe:
 - **Claude Code**: `steerTurn` resuelve cuando la CLI devuelve el mensaje al
-  leerlo (`--replay-user-messages`, por su `uuid`); la CLI lo guarda hasta que
-  termina el paso en curso.
+  leerlo (`--replay-user-messages`, por su `uuid`). Escrito al terminar un
+  paso, la CLI puede leerlo ahi o en su siguiente pausa: hasta entonces se ve
+  "Llegandole al agente".
 - **Codex, OpenCode y pi** solo confirman que lo aceptaron; lo leen al terminar
   el paso en que estan, asi que el `AgentManager` espera a que ese paso termine
   antes de colocarlo.
 
-**`queue/sendNow` ya no entrega a mitad de turno.** Con un turno corriendo lo
-rechaza con el motivo (el agente lo toma en su siguiente pausa, o — sin
-steering — cuando termine); sigue sirviendo para correr ya un mensaje de una
-cola en pausa. (Hasta 2026-09-29 el bridge entregaba el mensaje en cuanto
-llegaba, sin pasar por la cola: no se podia editar ni cancelar, y no se veia
-cuando lo leia el agente.)
+**`queue/sendNow` fuerza el envio, con todos los agentes.** Con un turno
+corriendo **detiene ese turno** y el mensaje elegido corre en cuanto la
+detencion se confirma, primero en la cola (`#sendNextAfterStop`; la cola no se
+pausa por esa detencion, ni si el agente la reporta como error). Es lo unico
+que alcanza a un agente atascado en un paso: ninguno lee mensajes hasta que su
+paso termina. Lo hecho queda en el turno detenido y el resto de la cola
+conserva su orden. Sin nada corriendo (una cola en pausa) corre ese mensaje de
+inmediato. Rechazado solo para un mensaje que ya se esta entregando. Para que
+el mensaje forzado empiece sobre una sesion limpia, OpenCode no da por
+detenido un turno hasta que su servidor cierra el run (`idle` en 1.x,
+`interrupted`/fallo en 2.x; 5 s como maximo) y descarta lo que ese run aun
+envia. (Hasta 2026-09-29 el bridge entregaba el mensaje en cuanto llegaba; del
+29-09 al 01-10, al empezar un paso, lo que lo dejaba sin poder retirarse
+mientras el paso durara.)
 
 **"Tomado" significa contestado en esa ejecucion.** `steerTurn` devuelve `true`
 solo cuando la ejecucion en curso va a responder el mensaje, y cada adaptador
