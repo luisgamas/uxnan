@@ -2468,7 +2468,7 @@ export const es: Record<MessageKey, string> = {
   "hosts.trustBody": "Esta máquina se identifica con la clave {algorithm} {fingerprint}. Comprueba que coincide con lo que reporta la máquina: `ssh-keygen -lf` imprime la misma cadena. No se guarda nada hasta que aceptes.",
   "hosts.trustConfirm": "Confiar y conectar",
   "hosts.mismatchTitle": "La clave de {host} ha cambiado",
-  "hosts.mismatchBody": "No se le envió nada. O esa máquina se reinstaló y regeneró sus llaves —y entonces reemplaza la llave registrada—, o algo está respondiendo en su lugar. Si no cambiaste esa máquina, no la reemplaces.",
+  "hosts.mismatchBody": "No se le envió nada. O esa máquina se reinstaló y regeneró sus claves —y entonces reemplaza la clave registrada—, o algo está respondiendo en su lugar. Si no cambiaste esa máquina, no la reemplaces.",
   "hosts.mismatchStored": "Registrada",
   "hosts.mismatchPresented": "Presentada ahora",
   "hosts.passwordTitle": "Contraseña de {host}",
