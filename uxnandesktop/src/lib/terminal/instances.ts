@@ -81,6 +81,10 @@ export interface TerminalSpawnSpec {
    *  here; everything downstream (output events, resize, close) is identical,
    *  which is why nothing else in this file needs to know. */
   target?: string;
+  /** The tab's persistent session id. On a host it names the terminal in that
+   *  host's daemon, so a tab recreated after a restart attaches to the terminal
+   *  it had there instead of opening another. */
+  sid?: string;
 }
 
 /** Everything needed to build a fresh instance. */
@@ -372,6 +376,7 @@ export async function spawnPty(
       // registration that must not reach every shell (OpenCode 2's) goes only
       // on the terminal that launches it.
       launching: launchExecutable(spec.runCommand ?? '') || null,
+      sid: spec.sid ?? null,
     });
     // The PTY now exists at exactly `cols`×`rows`; record that as the known
     // grid, then flush any fit that settled while the spawn was in flight so
@@ -382,6 +387,11 @@ export async function spawnPty(
     if (inst.desiredCols > 0 && inst.desiredRows > 0) {
       requestPtyResize(inst, inst.desiredCols, inst.desiredRows);
     }
+    // A terminal that already existed is running whatever it was running — a
+    // webview reload over a live PTY, or a tab that found its terminal again in
+    // a host's daemon after a restart. Its one-shot launch is spent: typing it
+    // now would land the command in the middle of the agent it already started.
+    if (!fresh) inst.launched = true;
     // Quiet-prompt fallback: shells whose profile prints nothing still launch.
     scheduleAgentLaunch(inst, RUN_COMMAND_FALLBACK_MS);
     // Nudge against the grid the PTY was just synced to (not the spawn args —

@@ -98,6 +98,8 @@ uuid = { version = "1", features = ["v4"] }
 # The workspace engine — terminals today — shared with the host daemon, so a
 # remote host runs the same code as this machine (`crates/workspace-engine`).
 uxnan-workspace-engine = { path = "crates/workspace-engine" }
+# The wire to a host's daemon (`crates/host-protocol`, `ssh/engine.rs`).
+uxnan-host-protocol = { path = "crates/host-protocol" }
 sysinfo = "0.33"
 # libgit2 bindings for high-frequency status/diff (the 3 s watcher + the review
 # panel), avoiding a subprocess per poll. Worktree mgmt / push / pull stay on the

@@ -27,6 +27,7 @@ pub mod browse;
 pub mod config;
 pub mod conn;
 pub mod dial;
+pub mod engine;
 pub mod forward;
 pub mod git;
 pub mod hostkey;
@@ -38,6 +39,7 @@ pub mod search;
 pub mod secrets;
 pub mod sftp;
 pub mod shellkind;
+pub mod terminals;
 // The live suite that runs this whole stack against a Linux host in a container
 // (`docker/ssh-test-host/`). Test-only: it exists to cover the POSIX branches
 // that the machine running the tests — Windows — can never reach.

@@ -157,6 +157,7 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
 | §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
 | §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ssh/ports.rs`, `portscan.rs` |
+| §5.16 | El motor del host: terminales que sobreviven a la conexion | `crates/uxnan-host`, `ssh/engine.rs`, `ssh/terminals.rs` |
 | §5.15 | Como se prueba contra un host de verdad (y contra un servidor en proceso, §5.1–§5.2) | `ssh/testhost.rs`, `ssh/testserver.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
@@ -556,6 +557,10 @@ con perfil. Saltarse el perfil paga con creces el
 viaje extra.
 
 ## 5.7 Terminal remota — IMPLEMENTADO
+
+Dos formas, una por plataforma del host: en Linux y macOS la terminal vive en el
+**motor del host** (§5.16) y sobrevive a la conexion; en un host Windows —y en un
+build sin el motor para esa plataforma— es lo que describe esta seccion:
 
 `src-tauri/src/ssh/pty.rs`. Una terminal remota es **un canal** sobre la conexion
 que ese host ya tiene, con PTY y shell. Ni segundo handshake ni segundo login.
@@ -1464,8 +1469,8 @@ un dueno de las PTY fuera de la sesion SSH, y el estado preciso de agentes
 si o no?" y pasa a ser **cual y como**: la respuesta que se perfila es el mismo
 codigo de workspace que el desktop usa en local, compilado estatico (sin runtime
 que el host deba traer), subido por SFTP desde el desktop (sin Internet en el
-host) y con una ventana de protocolo en vez de version exacta. Cuando se
-construya, esta seccion se reescribe con su diseno.
+host) y con una ventana de protocolo en vez de version exacta. Es lo que se
+construyo: §5.16.
 
 ## 5.15 Como se prueba esto contra un host de verdad — IMPLEMENTADO
 
@@ -1605,6 +1610,76 @@ usuario ya configuro.
 Al desconectar un host se cierran sus tuneles: un socket que lleva conexiones
 sobre una conexion que ya no existe las aceptaria hacia la nada.
 
+## 5.16 El motor del host (`uxnan-host`) — IMPLEMENTADO para terminales
+
+Tres crates, una sola implementacion por capa:
+
+- `crates/workspace-engine` — el gestor de PTY que el desktop ya usaba en local
+  (movido, no copiado: `crate::pty` lo reexporta) y un **modelo de pantalla**
+  (`vt100`). El motor es el mismo en las dos maquinas.
+- `crates/host-protocol` — tramas con longitud (control JSON, bytes de terminal
+  en crudo, ping/pong) sobre **un** flujo de bytes, y un saludo que se encuentra
+  en una **ventana** de versiones (`PROTOCOL_MIN..=PROTOCOL`), no en una version
+  exacta: una actualizacion de la app no deja huerfanas las terminales que tiene
+  un daemon de la version anterior.
+- `crates/uxnan-host` — el binario del host: `version`, `attach` y `serve`.
+
+**Despliegue** (`src-tauri/src/ssh/engine.rs`). `uname -sm` decide la build
+(Linux x86_64/aarch64 musl estatico, macOS arm64/x86_64); se sube por el SFTP que
+el host ya tiene a `~/.uxnan/host/versions/<version>/` (carpetas `0700`, nombre
+temporal y renombrado, porque un rename SFTP no reemplaza), y el propio binario
+prueba que corre ahi (`version`, con su ventana de protocolo). Nada se descarga
+ni se compila en el host. Cada version de la app tiene su carpeta, asi que una
+actualizacion nunca reemplaza el programa del que arranco un daemon vivo.
+
+**Conexion.** Un canal `exec` de `uxnan-host attach`, que une su stdin/stdout al
+socket del daemon (`~/.uxnan/host/run/engine-v<protocolo>.sock`, en carpeta
+`0700`) y lo arranca desacoplado (`setsid`, SIGHUP ignorado) si no corre. Imprime
+una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
+impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
+asi que dejan de contar una a una contra el `MaxSessions` del host.
+
+**Lo que garantiza el daemon** (`crates/uxnan-host/src/daemon.rs`):
+
+- Una terminal es del daemon, no de la conexion. Perder al cliente es
+  **desengancharse**; cerrar la terminal es una llamada explicita.
+- **Orden sin huecos al reengancharse:** el lector de la PTY alimenta el modelo
+  de pantalla y reparte a los espectadores bajo el mismo candado, y `attach` toma
+  ese candado para cortar el snapshot y registrar al espectador; el cliente recibe
+  la respuesta, el snapshot y luego todo lo que sigue, nada dos veces y nada
+  perdido.
+- **Un espectador lento se corta**, no se acumula sin limite: cola acotada por
+  conexion; el cliente vuelve y recibe un snapshot nuevo.
+- Una terminal terminada sigue **adjuntable** un rato (su ultima pantalla).
+- Un socket rancio se **prueba** antes de reemplazarlo: nunca se borra uno con un
+  daemon vivo detras.
+- Sin nada que hacer —ni clientes ni terminales vivas— sale solo a los 30 min.
+- Su log registra solo ciclo de vida; jamas lo que una terminal mostro o recibio.
+
+**Del lado del desktop** (`src-tauri/src/ssh/terminals.rs`), la misma forma que la
+terminal local (§5.7): el frontend elige el id, `pty:output:{id}` y
+`pty:exit:{id}`. Lo nuevo es lo que pasa **entre** conexiones: al caer, la
+terminal se desengancha y la pestana lo dice en una linea tenue —no se informa un
+fin que no ocurrio—; al volver el host, se reengancha y se repinta desde la
+pantalla del daemon. Si el daemon cambio de epoca (el host reinicio), solo
+entonces se informa el fin. Tras reiniciar la app, la pestana se reconoce por su
+`sid` persistente, que el daemon guarda como etiqueta de la terminal, y se
+reengancha en vez de abrir otra — y el frontend no vuelve a lanzar su comando
+(`spawnPty`: una terminal encontrada de nuevo ya gasto su lanzamiento). Cerrar una
+pestana con el host lejos deja el cierre pendiente y se envia al volver.
+
+**Probado:** 11 pruebas del motor (PTY y pantalla), 4 del protocolo, 6 contra el
+binario real por su socket (sobrevivir a la conexion y repintar, ultima pantalla
+de un programa terminado, rechazo fuera de la ventana, salida por inactividad,
+`attach` arrancando un daemon desacoplado) y, en vivo contra un host Linux real:
+instalar por SFTP, abrir, perder la conexion y encontrar la terminal desde una
+sesion nueva.
+
+**Pendiente** (`FOR-DEV.md` → *Remote hosts*): que la release distribuya los
+binarios del host; hosts Windows en el daemon (hasta entonces, §5.7); hooks y
+`UXNAN_*` en las terminales del motor (fase 2); ficheros, git y busqueda servidos
+por el motor; y el historial por encima de la pantalla tras reiniciar la app.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
@@ -1615,7 +1690,7 @@ sobre una conexion que ya no existe las aceptaria hacia la nada.
 
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
-| Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
+| Terminal | **Funciona**: en Linux y macOS vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en Windows, canal sobre la sesion (§5.7) |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir, **guardar** (en el sitio, con fencing) y **previsualizar** imagenes y PDF. Sin marcado de ignorados y sin refresco automatico |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
@@ -1638,7 +1713,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
-| 5 | Continuidad y recursos remotos | Pendiente |
+| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); faltan la distribucion de sus binarios, Windows y los recursos remotos |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
 
 ## 8. Fuera de alcance (con motivo)

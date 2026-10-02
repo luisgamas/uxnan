@@ -78,15 +78,17 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,044 backend tests**
-in total — 946 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,047 backend tests**
+in total — 949 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
 in `uxnan-cli`, 11 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 6
 against the real `uxnan-host` daemon over its socket, and 45 integration tests in
-`tests/` — 993 of which run everywhere; the other 51 are ignored probes that need something real to talk to
-(43 live SSH probes — 31 against a real `sshd`, one of which idles for five
+`tests/` — 995 of which run everywhere; the other 52 are ignored probes that need something real to talk to
+(44 live SSH probes — 32 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
-describe, including that host as its own bastion, plus **12 against a Linux
+describe, including that host as its own bastion — and one more (in
+`ssh::terminals`) installs the host engine there, loses the connection and finds
+its terminal again from a fresh session, plus **12 against a Linux
 host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
@@ -289,7 +291,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,742 tests** across both
+ships in every build and is never shown). **1,745 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

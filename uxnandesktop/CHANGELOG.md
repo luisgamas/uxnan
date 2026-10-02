@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Terminals on a Linux or macOS host outlive the connection.** A small
+  program of the app's own, the host engine, is uploaded over SFTP the first
+  time a terminal opens on a host and owns its terminals there: a closed lid, a
+  Wi-Fi handover or an app restart no longer ends them or the agent in them.
+  The tab says the connection was lost, and when the host is back the terminal
+  is repainted exactly and carries on — nothing is typed into it again. A
+  restarted app finds each tab's terminal by its persistent id. All of a host's
+  terminals share one SSH channel. For builds that carry the engine for that
+  host's platform: development builds today, release builds once the release
+  pipeline ships it; Windows hosts keep their channel terminals for now.
+
 - **Hosts behind a bastion connect.** `ProxyJump` — one bastion or a chain, and
   bastions with a `ProxyJump` of their own — is followed inside the app, each hop
   with its own key check and login, and `ProxyCommand` carries the connection

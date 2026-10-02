@@ -113,6 +113,33 @@ status bar shows **"Backend unreachable"** and settings won't persist — that's
 expected. Use `npm run tauri dev` whenever you need real backend behavior
 (persistence, future PTY/git/agent features).
 
+## The host engine
+
+`uxnan-host` (`src-tauri/crates/uxnan-host`) is the program the app runs on a
+remote Linux or macOS host to own its terminals ([remote hosts → the host
+engine](./remote-hosts.md#terminals-that-outlive-the-connection-the-host-engine)).
+The app uploads the build for the host's platform; until the release pipeline
+ships them, build them yourself. They are static, so cross-compile with zig:
+
+```bash
+rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+brew install zig && cargo install cargo-zigbuild --locked   # once
+cd src-tauri
+cargo zigbuild -p uxnan-host --release --target x86_64-unknown-linux-musl
+cargo zigbuild -p uxnan-host --release --target aarch64-unknown-linux-musl
+```
+
+A debug build of the app (`npm run tauri dev`) finds those under
+`src-tauri/target/<triple>/release/uxnan-host` by itself. Any build also looks
+in `$UXNAN_HOST_BINARIES/<triple>/uxnan-host`. A host whose platform has no build
+here keeps its terminals on plain SSH channels, and the log says so
+(`ssh-engine`).
+
+To try the daemon without the app: `cargo run -p uxnan-host -- version`, and
+`UXNAN_HOST_HOME=/tmp/h cargo run -p uxnan-host -- attach` joins your terminal to
+a daemon of its own (the frames it then expects are in
+`crates/host-protocol/src/lib.rs`). `UXNAN_HOST_HOME` keeps it out of `~/.uxnan`.
+
 ## Type-check while developing
 
 ```bash

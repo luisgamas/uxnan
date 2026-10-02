@@ -70,8 +70,11 @@ The application is **alpha-functional as a standalone app**. The capabilities
 available today are:
 
 - **A project can live on another machine.** Register an SSH host (from your own
-  `~/.ssh/config`, or by hand), browse its folders and add one as a project. Its
-  terminals open **there**, with that machine's CLIs and credentials; its files
+  `~/.ssh/config`, or by hand — bastions, agents of your choosing, second
+  factors and encrypted keys included), browse its folders and add one as a
+  project. Its terminals open **there**, with that machine's CLIs and
+  credentials, and on a Linux or macOS host they **outlive a dropped connection
+  and an app restart** (the host engine keeps them); its files
   are listed, opened and saved over SFTP — a subsystem, so it behaves the same
   whatever shell the host runs, and the tree can be **changed** there too (new
   file, rename, duplicate, delete — deleting on a host is permanent, because SSH
@@ -409,7 +412,8 @@ uxnandesktop/
 │       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
 │       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
 │       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
-│       ├── ssh/           # remote hosts: conn, auth, hostkey, config, registry,
+│       ├── ssh/           # remote hosts: config, dial (route), conn, auth, secrets,
+│       │                  # hostkey, registry, engine + terminals (the host engine),
 │       │                  # inventory, shellkind, pty, browse, sftp, git
 │       ├── control/       # the control surface: the one local server (hook, browser,
 │       │                  # MCP, JSON-RPC routes), catalog dispatch, services, the

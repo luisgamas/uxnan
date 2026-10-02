@@ -6770,6 +6770,7 @@ dependencies = [
  "trash",
  "uuid",
  "uxnan-control-protocol",
+ "uxnan-host-protocol",
  "uxnan-workspace-engine",
  "webkit2gtk",
  "webview2-com",

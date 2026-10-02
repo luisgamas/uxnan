@@ -621,6 +621,93 @@ impl RemoteFiles {
         }
     }
 
+    /// Put an executable on the host at `dir/name`, created with `0755`, and
+    /// make every missing folder on the way (`0700` — it is ours, nobody
+    /// else's business).
+    ///
+    /// Written to a scratch name first and renamed into place, so a reader never
+    /// meets half a binary — and a stale copy at the final name (an earlier
+    /// upload that did not run there) is removed first, because an SFTP rename
+    /// cannot replace an existing path. Two installs racing each other write
+    /// the same bytes to two scratch names; whichever rename lands last leaves
+    /// the same file.
+    pub async fn install_executable(
+        &self,
+        dir: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<String, SftpFailure> {
+        use russh_sftp::protocol::FileAttributes;
+        let dir = normalize(dir);
+        // Create the path one segment at a time: SFTP has no `mkdir -p`.
+        let mut built = String::new();
+        for segment in dir.split('/').filter(|s| !s.is_empty()) {
+            built.push('/');
+            built.push_str(segment);
+            if !self.exists(&built).await? {
+                self.session.create_dir(built.clone()).await.map_err(|e| {
+                    self.failed(&format!("could not create {built} on that host"), e)
+                })?;
+                let _ = self
+                    .session
+                    .set_metadata(
+                        built.clone(),
+                        FileAttributes {
+                            permissions: Some(0o700),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+            }
+        }
+        let target = join(&dir, name);
+        let scratch = format!("{target}.partial-{}", std::process::id());
+        {
+            use russh_sftp::protocol::OpenFlags;
+            use tokio::io::AsyncWriteExt;
+            // `SftpSession::write` opens without CREATE, so a new file is "no
+            // such file"; open it the way a save does.
+            let mut handle = self
+                .session
+                .open_with_flags(
+                    scratch.clone(),
+                    OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                )
+                .await
+                .map_err(|e| self.failed(&format!("could not create {scratch} on that host"), e))?;
+            let written = handle.write_all(bytes).await;
+            let _ = handle.sync_all().await;
+            let closed = handle.close().await;
+            if let Err(e) = written.and(closed.map_err(std::io::Error::other)) {
+                let _ = self.session.remove_file(scratch.clone()).await;
+                return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                    "the upload of {scratch} to that host did not finish: {e}"
+                ))));
+            }
+        }
+        self.session
+            .set_metadata(
+                scratch.clone(),
+                FileAttributes {
+                    permissions: Some(0o755),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| self.failed(&format!("could not make {scratch} executable"), e))?;
+        if self.exists(&target).await? {
+            self.session
+                .remove_file(target.clone())
+                .await
+                .map_err(|e| self.failed(&format!("could not replace {target} on that host"), e))?;
+        }
+        self.session
+            .rename(scratch.clone(), target.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not move {scratch} into place"), e))?;
+        Ok(target)
+    }
+
     /// Delete a file or folder on the host — **permanently**.
     ///
     /// There is no trash here. The local tree moves an entry to the Recycle Bin

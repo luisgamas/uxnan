@@ -52,6 +52,12 @@ pub struct AppState {
     /// means one thing app-wide, and the command layer asks who owns it rather
     /// than making the frontend remember.
     pub ssh_pty: crate::ssh::pty::RemotePtyManager,
+    /// Each connected host's daemon (`uxnan-host`), started on the first
+    /// terminal there (`ssh::engine`).
+    pub ssh_engines: Arc<crate::ssh::engine::Engines>,
+    /// Terminals that live in a host's daemon: they survive a dropped
+    /// connection and an app restart (`ssh::terminals`).
+    pub engine_terminals: Arc<crate::ssh::terminals::EngineTerminals>,
     /// Ports on a host that are reachable from this machine right now
     /// (`ssh/forward.rs`). Held here, not per connection, because a forward
     /// outlives no connection but the user asks about *all* of them at once —
@@ -197,6 +203,8 @@ impl AppState {
             persistence,
             pty: PtyManager::default(),
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
+            ssh_engines: Arc::new(crate::ssh::engine::Engines::default()),
+            engine_terminals: Arc::new(crate::ssh::terminals::EngineTerminals::default()),
             ssh_forwards: crate::ssh::forward::ForwardManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),

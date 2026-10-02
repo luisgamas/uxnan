@@ -479,6 +479,10 @@ pub async fn pty_create(
     // env-based MCP registrations that must not reach every shell (see
     // `mcpinject::launch_env_all`).
     launching: Option<String>,
+    // The tab's persistent session id. A terminal on a host keeps it as its
+    // label there, so a tab recreated after a restart finds its terminal again
+    // instead of opening a second one (`ssh::terminals`).
+    sid: Option<String>,
 ) -> Result<bool, CommandError> {
     // Remote first, because everything below this line is about spawning a local
     // process: hook coordinates for a local server, WSLENV, resource attribution
@@ -517,8 +521,43 @@ pub async fn pty_create(
             }
         };
 
-        let out_app = app.clone();
-        let out_id = id.clone();
+        // The host's daemon first: a terminal there outlives a dropped
+        // connection and an app restart. Where the daemon cannot run (a Windows
+        // host, a platform with no build), the terminal is a plain channel on
+        // the session instead, as it always was.
+        match engine_for(&app, &state, &host_id, &conn, shell).await {
+            Ok(engine) => {
+                let exit_app = app.clone();
+                let exit_id = id.clone();
+                return state
+                    .engine_terminals
+                    .create(
+                        &host_id,
+                        &engine,
+                        crate::ssh::terminals::EngineTerminalSpec {
+                            id: id.clone(),
+                            sid,
+                            cwd,
+                            env: Vec::new(),
+                            cols,
+                            rows,
+                        },
+                        remote_terminal_output(&app, &host_id, &id),
+                        move || {
+                            exit_app.state::<AppState>().agent_changes.notify_waiters();
+                            let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
+                        },
+                    )
+                    .await
+                    .map_err(CommandError::from);
+            }
+            Err(why) => crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh-engine",
+                &format!("{host_id}: no host engine ({why}); this terminal is a plain channel"),
+            ),
+        }
+
         let exit_app = app.clone();
         let exit_id = id.clone();
         return state
@@ -537,40 +576,7 @@ pub async fn pty_create(
                     cols,
                     rows,
                 },
-                {
-                    // A dev server on the host announces its address the moment
-                    // it is ready, and that line is already on its way to the
-                    // terminal — so reading it costs nothing and needs nothing
-                    // installed there (`crate::portscan`). Only remote terminals
-                    // are scanned: a local server is already reachable, so
-                    // announcing it would be noise about nothing.
-                    let announce_app = app.clone();
-                    let announce_host = host_id.clone();
-                    let announce_id = id.clone();
-                    let tail = std::sync::Mutex::new(crate::portscan::Tail::default());
-                    move |bytes: &[u8]| {
-                        let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
-                        let text = String::from_utf8_lossy(bytes);
-                        // A poisoned lock would mean a panic in this closure,
-                        // which cannot happen here; either way the terminal's
-                        // output must not stop because a scan did.
-                        let found = match tail.lock() {
-                            Ok(mut tail) => tail.scan(&text),
-                            Err(_) => Vec::new(),
-                        };
-                        for announced in found {
-                            let _ = announce_app.emit(
-                                "ports:announced",
-                                AnnouncedPort {
-                                    host_id: announce_host.clone(),
-                                    terminal_id: announce_id.clone(),
-                                    port: announced.port,
-                                    path: announced.path,
-                                },
-                            );
-                        }
-                    }
-                },
+                remote_terminal_output(&app, &host_id, &id),
                 move || {
                     exit_app.state::<AppState>().agent_changes.notify_waiters();
                     let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
@@ -794,6 +800,115 @@ pub async fn mcp_info(app: AppHandle, state: State<'_, AppState>) -> Result<McpI
     })
 }
 
+/// Where a remote terminal's output goes: to its tab, and through the scan for
+/// a dev server announcing its address.
+///
+/// A dev server on the host announces its address the moment it is ready, and
+/// that line is already on its way to the terminal — so reading it costs
+/// nothing and needs nothing installed there (`crate::portscan`). Only remote
+/// terminals are scanned: a local server is already reachable, so announcing it
+/// would be noise about nothing.
+fn remote_terminal_output<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host_id: &str,
+    id: &str,
+) -> impl Fn(&[u8]) + Send + Sync + 'static {
+    let out_app = app.clone();
+    let out_id = id.to_string();
+    let announce_host = host_id.to_string();
+    let tail = std::sync::Mutex::new(crate::portscan::Tail::default());
+    move |bytes: &[u8]| {
+        let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+        let text = String::from_utf8_lossy(bytes);
+        // A poisoned lock would mean a panic in this closure, which cannot
+        // happen here; either way the terminal's output must not stop because a
+        // scan did.
+        let found = match tail.lock() {
+            Ok(mut tail) => tail.scan(&text),
+            Err(_) => Vec::new(),
+        };
+        for announced in found {
+            let _ = out_app.emit(
+                "ports:announced",
+                AnnouncedPort {
+                    host_id: announce_host.clone(),
+                    terminal_id: out_id.clone(),
+                    port: announced.port,
+                    path: announced.path,
+                },
+            );
+        }
+    }
+}
+
+/// The host's daemon for this connection, started (and installed) when it is
+/// not running yet. One started now is watched, so its terminals are told —
+/// and kept — when the connection under it goes away.
+async fn engine_for<R: tauri::Runtime>(
+    _app: &AppHandle<R>,
+    state: &AppState,
+    host_id: &str,
+    conn: &std::sync::Arc<ssh::conn::Connection>,
+    shell: ssh::shellkind::ShellKind,
+) -> Result<std::sync::Arc<ssh::engine::HostEngine>, AppError> {
+    let (engine, fresh) = state
+        .ssh_engines
+        .get_or_start(host_id, conn, shell, async {
+            sftp_for(state, host_id)
+                .await
+                .map_err(|e| AppError::Invalid(e.message))
+        })
+        .await?;
+    if fresh {
+        let terminals = std::sync::Arc::clone(&state.engine_terminals);
+        let watched = std::sync::Arc::clone(&engine);
+        let host = host_id.to_string();
+        tauri::async_runtime::spawn(async move {
+            watched.lost().await;
+            terminals.detach_host(&host, watched.epoch()).await;
+        });
+    }
+    Ok(engine)
+}
+
+/// The running daemon of the host a tab's terminal lives on, if the host is
+/// connected now.
+async fn engine_of_tab(
+    state: &AppState,
+    id: &str,
+) -> Option<std::sync::Arc<ssh::engine::HostEngine>> {
+    let host_id = state.engine_terminals.host_of(id).await?;
+    let conn = session_for(state, &host_id).await?;
+    state.ssh_engines.current(&host_id, conn.generation()).await
+}
+
+/// A host just connected: give back the terminals that were waiting for it.
+async fn reattach_terminals<R: tauri::Runtime>(app: AppHandle<R>, host_id: String) {
+    let state = app.state::<AppState>();
+    if !state.engine_terminals.waiting_on(&host_id).await {
+        return;
+    }
+    let Some(conn) = session_for(&state, &host_id).await else {
+        return;
+    };
+    let Some(shell) = state.ssh_shells.read().await.get(&host_id).copied() else {
+        return;
+    };
+    match engine_for(&app, &state, &host_id, &conn, shell).await {
+        Ok(engine) => {
+            state
+                .engine_terminals
+                .reattach_host(&host_id, &engine)
+                .await
+        }
+        Err(why) => crate::diagnostics::log(
+            crate::diagnostics::Level::Info,
+            "ssh-engine",
+            &format!("{host_id} is back but its host engine is not ({why})"),
+        ),
+    }
+}
+
 /// Send user input to a PTY's stdin.
 #[tauri::command]
 pub async fn pty_write(
@@ -801,6 +916,14 @@ pub async fn pty_write(
     id: String,
     data: String,
 ) -> Result<(), CommandError> {
+    if state.engine_terminals.owns(&id).await {
+        let engine = engine_of_tab(&state, &id).await;
+        return state
+            .engine_terminals
+            .write(engine.as_deref(), &id, data.into_bytes())
+            .await
+            .map_err(CommandError::from);
+    }
     if state.ssh_pty.owns(&id).await {
         return state
             .ssh_pty
@@ -887,6 +1010,20 @@ pub async fn pty_paste_submit(
     // one, so every paste-and-submit aimed at a remote agent went to the local
     // manager, which does not know that id: the run engine, the orchestration
     // broadcast and mid-turn delivery each silently did nothing over SSH.
+    if state.engine_terminals.owns(&id).await {
+        let engine = engine_of_tab(&state, &id).await;
+        state
+            .engine_terminals
+            .write(engine.as_deref(), &id, payload.into_bytes())
+            .await
+            .map_err(CommandError::from)?;
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        return state
+            .engine_terminals
+            .write(engine.as_deref(), &id, b"\r".to_vec())
+            .await
+            .map_err(CommandError::from);
+    }
     if state.ssh_pty.owns(&id).await {
         state
             .ssh_pty
@@ -927,6 +1064,14 @@ pub async fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), CommandError> {
+    if state.engine_terminals.owns(&id).await {
+        let engine = engine_of_tab(&state, &id).await;
+        return state
+            .engine_terminals
+            .resize(engine.as_deref(), &id, cols, rows)
+            .await
+            .map_err(CommandError::from);
+    }
     if state.ssh_pty.owns(&id).await {
         return state
             .ssh_pty
@@ -945,6 +1090,16 @@ pub async fn pty_resize(
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     // Snapshot the terminal's last-known members first, so a subtree that
     // survives the kill shows up as an orphan on the next resource sample.
+    if state.engine_terminals.owns(&id).await {
+        // Ends the terminal on the host — or, when the host is away, as soon as
+        // it is back, so nothing is left running there by accident.
+        let engine = engine_of_tab(&state, &id).await;
+        return state
+            .engine_terminals
+            .close(engine.as_deref(), &id)
+            .await
+            .map_err(CommandError::from);
+    }
     if state.ssh_pty.owns(&id).await {
         // No local process tree to account for: this terminal never had one.
         return state.ssh_pty.close(&id).await.map_err(CommandError::from);
@@ -1491,7 +1646,10 @@ async fn settle_dial<R: tauri::Runtime>(
                 .write()
                 .await
                 .insert(host_id.clone(), std::sync::Arc::clone(&session));
-            watch_session(app, host_id.clone(), generation, session);
+            watch_session(app.clone(), host_id.clone(), generation, session);
+            // Terminals that were waiting for this host — detached by a drop,
+            // or restored by the app before the host was up — come back now.
+            tauri::async_runtime::spawn(reattach_terminals(app, host_id.clone()));
             // Startup reconnects the hosts that let us in without asking and
             // leaves the rest until the person is here. Within this session, a
             // host that needed only a password or a passphrase can come back on
@@ -1664,6 +1822,7 @@ fn watch_session<R: tauri::Runtime>(
             // and the file session that was a channel on it.
             state.ssh_shells.write().await.remove(&host_id);
             state.ssh_sftp.lock().await.remove(&host_id);
+            state.ssh_engines.remove(&host_id).await;
             crate::diagnostics::log(
                 crate::diagnostics::Level::Info,
                 "ssh",
@@ -2752,6 +2911,10 @@ pub async fn ssh_host_disconnect(
     // End its terminals first, while the session is still there to carry the
     // goodbye. Afterwards they would have no way to be told.
     state.ssh_pty.close_host(&host_id).await;
+    // The host's daemon is *not* told to end anything: its terminals keep
+    // running there, and come back when the host is connected again. Dropping
+    // the engine closes its channel, which detaches them.
+    state.ssh_engines.remove(&host_id).await;
     // Its forwards go with it: a socket here that carries connections over a
     // connection that no longer exists would accept them into nothing.
     state.ssh_forwards.close_host(&host_id).await;

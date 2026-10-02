@@ -275,7 +275,7 @@ Select it in the left panel and:
 
 | | |
 |---|---|
-| **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
+| **Terminals** | Open on the host, in the project's folder, in your **login** shell there (so the `PATH` a version manager writes into your profile is there too). Splits and further terminals stay there too. On a Linux or macOS host they live in the **host engine** (below) and outlive a dropped connection and an app restart; elsewhere they are a channel on the connection and end with it. |
 | **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. **Creating, renaming, duplicating and deleting work too**, on that machine and fenced like every other mutation — but **deleting there is permanent**: SSH has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching works too** — by file name and by content — by asking git on that machine (`git ls-files` and `git grep`) instead of dragging the project across the link: matching lines come back, files never do. It follows the same `.gitignore` rules the local search does, so both machines answer about the same project, and a folder that is not a repository there says so rather than answering nothing. **Images and PDFs preview from the host as well** — they are read over the same SFTP session, capped at 25 MiB, and the size is asked before the file crosses the link. Gaps that remain: no git-ignored dimming, and no automatic refresh — the refresh button is the reload. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. The Changes view is offered on a host like anywhere else. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
 | **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run git *on the host*, through the shell that machine reported, with every argument quoted for it. Everything the panel draws arrives in **one** command, because each remote command costs a shell start there. Your commit message and any patch travel over SFTP rather than through that shell, so a message with quotes or several lines arrives exactly as you typed it. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** reads the diff on the host and runs your agent here, where its CLI and sign-in are. |
@@ -315,12 +315,17 @@ working. So:
   as disconnected and **Connect** genuinely reconnects it. (Before, the app kept
   saying "connected" and Connect did nothing, because a session was already on
   file.)
-- **Terminals** live in the SSH session, so a dropped connection ends them —
-  and the program in them, on the host. An agent's tab keeps what it showed and
-  offers to resume the session; a plain shell's tab closes. A terminal that could
-  not *start* because its host was away starts by itself once the host connects.
-  Terminals that outlive a disconnection need something on the host that owns
-  them, which is planned, not built.
+- **Terminals in the host engine keep running.** The tab says, in one dim line,
+  that the connection was lost and the terminal keeps running there; when the
+  host is back the terminal is repainted with what it shows now and carries on.
+  Nothing is retyped into it — an agent that was working is still working. Only
+  if the host's daemon itself went away in between (the machine rebooted) does
+  the tab report that the terminal ended.
+- **Terminals on a plain channel** (a Windows host, or a build without the host
+  engine for that machine) end with the connection, and the program in them on
+  the host. An agent's tab keeps what it showed and offers to resume the session;
+  a plain shell's tab closes. A terminal that could not *start* because its host
+  was away starts by itself once the host connects.
 - **The file tree empties itself** and says it is waiting, instead of leaving the
   folders of a machine that is no longer there on screen. It fills back in when
   the host returns.
@@ -346,6 +351,40 @@ working. So:
   three unanswered asks — the same thing mature SSH clients do, and the reason a
   connection nobody is typing at no longer gets dropped for being quiet (it used
   to be reaped after five minutes of silence).
+
+## Terminals that outlive the connection: the host engine
+
+On a Linux or macOS host, the app runs a small program of its own there — the
+**host engine**, `uxnan-host` — that owns the terminals instead of the SSH
+session. That is what lets a terminal, and the agent in it, survive a closed
+laptop lid, a Wi-Fi handover or an app restart.
+
+- **Nothing to install by hand.** The first terminal on a host uploads the
+  engine over the SFTP session the host already has, into
+  `~/.uxnan/host/versions/<app version>/` (a folder only your account can read),
+  and asks it to prove it runs there. It is one static binary — no Node, no
+  compiler, nothing downloaded on the host itself — so a server without Internet
+  access works too. Each app version gets its own folder, so an update never
+  replaces the program a running engine was started from.
+- **One channel for all of them.** Every terminal on the host travels over one
+  SSH channel, so they no longer count one by one against the host's
+  `MaxSessions`.
+- **The screen comes back, not the bytes.** The engine keeps what each terminal
+  shows; a returning tab is repainted from that — a full-screen agent included —
+  and live output resumes after it. What scrolled above the screen before an app
+  restart is not carried over (within one run of the app, the tab still has it).
+- **A restart finds its terminals.** A tab is matched to its terminal by its
+  persistent session id, so reopening the app reattaches to the terminal it had
+  instead of opening a second one — and does not launch the agent again.
+- **Closing a tab ends its terminal there** — immediately, or as soon as the host
+  is reachable again if it was not.
+- **It does not linger.** With no terminal running and nobody attached, the
+  engine exits on its own after 30 minutes. Its log (`~/.uxnan/host/host.log`)
+  records lifecycle only — never what a terminal showed or what was typed.
+
+**Where it does not run yet:** Windows hosts (their terminals stay on plain
+channels), and release builds until the release pipeline ships the engine
+binaries — for development, see [Development → the host engine](./development.md#the-host-engine).
 
 ## From a shell, without the app window
 
@@ -382,16 +421,12 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: precise agent status on a host (it needs a reverse tunnel and reporters
-installed there) and session continuity — knowing what is still running on the
-far side after a terminal closes. Everything else this list used to name —
-searching a host's tree, creating, renaming and deleting from it, image diffs,
-the AI commit draft, and forwarded ports with preview — works today.
+In order: the release pipeline shipping the host engine, precise agent status on
+a host (the engine running the agents' hooks there), files, git and search served
+by the engine with live refresh, worktrees on a host, and Windows hosts in the
+engine.
 
-Two things deliberately *not* coming: a helper program installed on your machines
-— every piece that moved off the shell removed its reason to exist, and it would
-add a class of failure ("could not install the server on your host") that this
-does not have today — and any mode that skips host-key verification.
+Deliberately *not* coming: any mode that skips host-key verification.
 
 Architecture: [`architecture/02g-remote-hosts.md`](../architecture/02g-remote-hosts.md).
 Execution-target identity and mutation fencing:

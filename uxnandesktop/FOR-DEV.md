@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,044 Rust tests (946 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
+`docs/chat.md`). 1,047 Rust tests (949 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 11
 in `uxnan-workspace-engine` + 4 in `uxnan-host-protocol` + 6 against the `uxnan-host` daemon + 45
-integration), of which 51 are ignored probes that need something real to talk to
-(43 live SSH probes — 31 against a real `sshd` and 12 against a **Linux host in a
+integration), of which 52 are ignored probes that need something real to talk to
+(44 live SSH probes — 32 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,742 frontend Vitest tests across two
+GitHub tests) + 1,745 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1101,19 +1101,28 @@ terminal's project is local, so its scope names no host. The scope rule is
 already written for the day phase 2 below lands — nothing to relax then.
 
 ### Backend (Rust)
-- [ ] **The host daemon is built and proven, not yet wired into the app.**
-      `crates/uxnan-host` owns a host's terminals outside any SSH session:
-      opened through `uxnan-host attach` (which starts it detached), they keep
-      running and keep their screen (`crates/workspace-engine` → `screen`), and
-      a client that comes back is repainted exactly before live output resumes;
-      it exits on its own after 30 idle minutes (`crates/uxnan-host/tests/`,
-      and a full drop-and-return cycle run against a real Linux host over SSH).
-      What is left, in order: the desktop's client and installer
-      (`src-tauri/src/ssh/engine.rs` — upload the binary for the host's
-      platform over SFTP, check `uxnan-host version`, `exec` `attach`), remote
-      terminals moved onto it (replacing `ssh/pty.rs` and the channel budget),
-      the release pipeline building the host binaries, and **Windows hosts**,
-      which the daemon refuses today (no named-pipe listener yet).
+- [ ] **The host engine: terminals done, the rest owed.** A host's terminals
+      live in `uxnan-host` when the app has a build for that platform: uploaded
+      over SFTP into `~/.uxnan/host/versions/<version>/`, they outlive a dropped
+      connection and an app restart (found again by the tab's `sid`), with one
+      SSH channel for all of them (`ssh/engine.rs`, `ssh/terminals.rs`; proven
+      against a real Linux host). Owed, in order:
+      1. **The release pipeline building the host binaries** (Linux x86_64 /
+         aarch64 musl, macOS arm64 / x86_64) and the app getting them —
+         `ssh/engine.rs` → `local_binary`, which today finds only a developer's
+         builds (`docs/development.md` → *The host engine*). Measured at 1.3 MB
+         each, bundling all four as resources costs ~5.5 MB; downloading on
+         demand needs the release signing in front of it. Decide, then build.
+      2. **Windows hosts:** the daemon has no named-pipe listener
+         (`crates/uxnan-host/src/daemon.rs` → `bind`). Until it has, their
+         terminals stay on `ssh/pty.rs` — which is deleted, with the channel
+         budget, the day this lands.
+      3. **Agents' hooks and `UXNAN_*` in engine terminals** (precise status,
+         stopping an agent on the host), then files, git and search served by
+         the engine (removing `ssh/git.rs`, `ssh/search.rs`, the remote half of
+         `fsRouter.ts` / `gitRouter.ts`).
+      4. **Scrollback across an app restart:** a reattached tab gets the screen,
+         not what scrolled above it (`crates/workspace-engine/src/screen.rs`).
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
       1. *Builds and packages on all three platforms, with no extra toolchain for
