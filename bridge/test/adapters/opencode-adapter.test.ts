@@ -1065,6 +1065,169 @@ test('a message accepted as the session goes idle keeps the turn open for its an
   assert.match(String((completions[0]?.data as { text: string }).text), /LATE ANSWER/);
 });
 
+// --- background commands: OpenCode 2 wakes the model when they end ---
+//
+// Measured on 2.0.19: the shell tool with `background: true` returns at once,
+// the execution succeeds ("I'll report back"), and when the shell exits the
+// server queues a `synthetic` note and runs the model again on the same
+// session — a second execution nobody prompted, whose reply is this turn's.
+
+/** One background command started in session `ses_1`, then the step ends. */
+function startBackgroundCommand(server: FakeServer, shellId: string, text: string): void {
+  server.emitV2('session.tool.input.started', {
+    sessionID: 'ses_1',
+    id: `call_${shellId}`,
+    name: 'shell',
+  });
+  server.emitV2('session.tool.called', {
+    sessionID: 'ses_1',
+    id: `call_${shellId}`,
+    input: { command: 'sleep 12', background: true },
+  });
+  server.emitV2('session.tool.progress', {
+    sessionID: 'ses_1',
+    id: `call_${shellId}`,
+    metadata: { shellID: shellId },
+  });
+  server.emitV2('session.tool.success', {
+    sessionID: 'ses_1',
+    id: `call_${shellId}`,
+    content: [{ type: 'text', text: `Command moved to the background (shell ID: ${shellId}).` }],
+  });
+  server.emitV2('session.text.delta', {
+    sessionID: 'ses_1',
+    assistantMessageID: `m_${shellId}`,
+    ordinal: 0,
+    delta: text,
+  });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_1' });
+}
+
+test('an OpenCode 2 turn that leaves a command running waits for the wake-up that reports it', async () => {
+  const server = new FakeServer(2);
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run it in the background' });
+  startBackgroundCommand(server, 'sh_1', 'WAITING');
+  await tick();
+  // Completing here closed the turn on "WAITING" and dropped the report.
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+    'held for the command',
+  );
+
+  server.emitV2('shell.exited', { id: 'sh_1', exit: 0, status: 'exited' });
+  server.emitV2('session.execution.started', { sessionID: 'ses_1' });
+  server.emitV2('session.text.delta', {
+    sessionID: 'ses_1',
+    assistantMessageID: 'm_wake',
+    ordinal: 0,
+    delta: 'BG FINISHED',
+  });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_1' });
+
+  const all = await done;
+  const completions = all.filter((e) => e.type === 'turn_completed');
+  assert.equal(completions.length, 1);
+  assert.equal((completions[0]?.data as { text: string }).text, 'WAITINGBG FINISHED');
+  const boundaries = all.filter(
+    (e) =>
+      e.type === 'block' &&
+      (e.data as { content: { type: string } }).content.type === 'assistant_response_boundary',
+  );
+  assert.equal(boundaries.length, 1, 'the report is its own reply, after the first');
+});
+
+test('a wake-up that starts another background command keeps the OpenCode turn held', async () => {
+  const server = new FakeServer(2);
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'wait for CI, then the release' });
+  startBackgroundCommand(server, 'sh_ci', 'Waiting for CI. ');
+  server.emitV2('shell.exited', { id: 'sh_ci', exit: 0, status: 'exited' });
+  startBackgroundCommand(server, 'sh_release', 'CI is green; waiting for the release. ');
+  await tick();
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+    'held for the release',
+  );
+
+  server.emitV2('shell.exited', { id: 'sh_release', exit: 0, status: 'exited' });
+  server.emitV2('session.text.delta', {
+    sessionID: 'ses_1',
+    assistantMessageID: 'm_done',
+    ordinal: 0,
+    delta: 'Released.',
+  });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_1' });
+
+  const all = await done;
+  assert.equal(all.filter((e) => e.type === 'turn_completed').length, 1);
+  assert.match(
+    (all.find((e) => e.type === 'turn_completed')?.data as { text: string }).text,
+    /Waiting for CI\. CI is green; waiting for the release\. Released\./,
+  );
+});
+
+test('a held OpenCode turn completes after the grace period when no wake-up comes', async () => {
+  const server = new FakeServer(2);
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    spawnFn: immediateSpawn() as never,
+    serverFactory: () => server,
+    defaultModel: 'opencode/m',
+    wakeGraceMs: 20,
+  });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go' });
+  startBackgroundCommand(server, 'sh_1', 'WAITING');
+  server.emitV2('shell.exited', { id: 'sh_1', exit: 0, status: 'exited' });
+  await tick();
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+    'a wake-up may still come',
+  );
+
+  const all = await done;
+  assert.equal(
+    (all.find((e) => e.type === 'turn_completed')?.data as { text: string }).text,
+    'WAITING',
+  );
+});
+
+test('a command that ends before the step does not hold the OpenCode turn', async () => {
+  const server = new FakeServer(2);
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run it' });
+  server.emitV2('session.tool.progress', {
+    sessionID: 'ses_1',
+    id: 'call_1',
+    metadata: { shellID: 'sh_fg' },
+  });
+  server.emitV2('shell.exited', { id: 'sh_fg', exit: 0, status: 'exited' });
+  server.emitV2('session.text.delta', {
+    sessionID: 'ses_1',
+    assistantMessageID: 'm1',
+    ordinal: 0,
+    delta: 'Done.',
+  });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_1' });
+
+  const all = await done;
+  assert.equal(
+    (all.find((e) => e.type === 'turn_completed')?.data as { text: string }).text,
+    'Done.',
+  );
+});
+
 test('a message refused as the session goes idle lets the turn end at that idle', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });

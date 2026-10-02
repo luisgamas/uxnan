@@ -143,6 +143,14 @@ export type OpenCodeEvent =
     }
   /** The agent asks the user to choose. Answer with `answerQuestion`. */
   | { kind: 'question'; sessionId: string; requestId: string; questions: QuestionItem[] }
+  /**
+   * A command the agent moved to the background (OpenCode 2's shell tool with
+   * `background: true`). The server wakes the model when it ends, so a turn
+   * that goes idle while one is live is not over.
+   */
+  | { kind: 'shell_started'; sessionId: string; shellId: string }
+  /** A background command ended (exited or was removed). */
+  | { kind: 'shell_ended'; sessionId: string; shellId: string }
   /** The turn finished. */
   | { kind: 'idle'; sessionId: string }
   /** The turn was stopped before it finished (by this bridge or another client). */

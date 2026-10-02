@@ -51,7 +51,13 @@ import { BaseAgentAdapter } from './base-adapter.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
-import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
+import {
+  assistantResponseBoundaryBlock,
+  compactionBlock,
+  planBlock,
+  withBlockId,
+  type PlanStepBlock,
+} from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
@@ -127,7 +133,17 @@ export interface OpenCodeAdapterOptions {
    * The default reads the installed version and starts the matching server.
    */
   serverFactory?: (cwd: string) => IOpenCodeServer;
+  /** Override {@link WAKE_GRACE_MS} (tests). */
+  wakeGraceMs?: number;
 }
+
+/**
+ * How long a turn held for background commands waits, once the last one has
+ * ended, for OpenCode to wake the model. Measured on 2.0.19: the wake-up's
+ * execution starts the moment the shell exits, so this only bounds one that
+ * never comes — then the turn completes with what it has.
+ */
+const WAKE_GRACE_MS = 30_000;
 
 /** Events that mean a model step ran in the session (see `#promptOnlySessions`). */
 const MODEL_OUTPUT: ReadonlySet<OpenCodeEvent['kind']> = new Set([
@@ -207,6 +223,16 @@ interface ActiveRun {
    * and that reply is this turn's.
    */
   idleDuringSteer: boolean;
+  /** Background commands this run started that have not ended yet. */
+  liveShells: Set<string>;
+  /**
+   * The session went idle with background commands still running. OpenCode
+   * wakes the model when they end — a new execution on the same session, with
+   * no prompt — and that reply is this turn's, so the run stays open for it.
+   */
+  held: boolean;
+  /** Armed once a held run's last command ends; see {@link WAKE_GRACE_MS}. */
+  wakeTimer?: ReturnType<typeof setTimeout>;
 }
 
 export class OpenCodeAdapter extends BaseAgentAdapter {
@@ -216,6 +242,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #binaryPath: string;
   readonly #defaultModel: string | undefined;
   readonly #spawn: SpawnFn;
+  readonly #wakeGraceMs: number;
   readonly #onApprovalRequest: OpenCodeAdapterOptions['onApprovalRequest'];
   readonly #onQuestionRequest: OpenCodeAdapterOptions['onQuestionRequest'];
   readonly #serverFactory: OpenCodeAdapterOptions['serverFactory'];
@@ -267,6 +294,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.#onApprovalRequest = options.onApprovalRequest;
     this.#onQuestionRequest = options.onQuestionRequest;
     this.#serverFactory = options.serverFactory;
+    this.#wakeGraceMs = options.wakeGraceMs ?? WAKE_GRACE_MS;
     const flag = process.env['UXNAN_OPENCODE_DEBUG'];
     this.#debug = flag === '1' || flag === 'true';
   }
@@ -401,6 +429,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       finished: false,
       steering: 0,
       idleDuringSteer: false,
+      liveShells: new Set(),
+      held: false,
     };
     this.#active.set(turnId, run);
     this.#runBySession.set(sessionId, run);
@@ -495,8 +525,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (run.idleDuringSteer && run.steering === 0 && !run.finished) {
       run.idleDuringSteer = false;
       // Taken after the session went idle: the server runs it now, and the
-      // idle that follows ends the turn. Refused: the idle already seen does.
-      if (!accepted) this.#complete(run);
+      // idle that follows ends the turn. Refused: the idle already seen does —
+      // unless it left background commands running, which hold it.
+      if (!accepted) {
+        if (run.liveShells.size > 0) run.held = true;
+        else this.#complete(run);
+      }
     }
     return accepted;
   }
@@ -672,7 +706,32 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     const run = this.#runBySession.get(event.sessionId);
     if (!run || run.finished) return;
+    if (run.held && MODEL_OUTPUT.has(event.kind)) {
+      // The wake-up has begun: a reply of its own, set apart from the one
+      // before it, and its own `idle` decides whether the turn is over.
+      run.held = false;
+      if (run.wakeTimer !== undefined) clearTimeout(run.wakeTimer);
+      delete run.wakeTimer;
+      this.emit({
+        type: 'block',
+        threadId: run.threadId,
+        turnId: run.turnId,
+        data: { content: assistantResponseBoundaryBlock() },
+      });
+    }
     switch (event.kind) {
+      case 'shell_started':
+        run.liveShells.add(event.shellId);
+        return;
+      case 'shell_ended':
+        run.liveShells.delete(event.shellId);
+        if (run.held && run.liveShells.size === 0 && run.wakeTimer === undefined) {
+          run.wakeTimer = setTimeout(() => {
+            delete run.wakeTimer;
+            if (run.held && !run.finished) this.#complete(run);
+          }, this.#wakeGraceMs);
+        }
+        return;
       case 'text':
         run.full += event.delta;
         this.emit({
@@ -739,6 +798,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           run.idleDuringSteer = true;
           return;
         }
+        if (run.liveShells.size > 0) {
+          // The model ended its step but left commands running; OpenCode will
+          // wake it when they end. Completing now would close the turn on the
+          // "I'll report back", and the report would land nowhere.
+          this.#log(
+            `turn ${run.turnId} idle with ${run.liveShells.size} background command(s): held`,
+          );
+          run.held = true;
+          return;
+        }
         return this.#complete(run);
       case 'interrupted':
         // Stopped from somewhere else (another client); a cancel from the phone
@@ -800,6 +869,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       | { type: 'turn_aborted' },
   ): void {
     run.finished = true;
+    if (run.wakeTimer !== undefined) clearTimeout(run.wakeTimer);
+    delete run.wakeTimer;
     this.#active.delete(run.turnId);
     this.#runBySession.delete(run.sessionId);
     const base = { threadId: run.threadId, turnId: run.turnId };

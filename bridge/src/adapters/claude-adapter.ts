@@ -124,6 +124,14 @@ const CLAUDE_BRIDGE_OWNED_COMMANDS = new Set([
 ]);
 
 /** How long a folder's command list is reused before the CLI is asked again. */
+/**
+ * How long a turn held for background work waits, once its last task has
+ * ended, for the CLI to wake the model. Measured: the wake-up's `init` follows
+ * the `task_notification` in ~0.2 s, so this only bounds a wake that never
+ * comes — then the input is closed and the run ends as it did before.
+ */
+const WAKE_GRACE_MS = 30_000;
+
 const COMMANDS_TTL_MS = 60_000;
 
 /** How long the CLI may take to answer `initialize`. */
@@ -239,6 +247,8 @@ export interface ClaudeCodeAdapterOptions {
   approvalHook?: { token: string; scriptPath: string; url: () => string | undefined };
   /** Injected spawn function for the one-shot path (tests). */
   spawnFn?: SpawnFn;
+  /** Override {@link WAKE_GRACE_MS} (tests). */
+  wakeGraceMs?: number;
 }
 
 interface ActiveRun {
@@ -576,6 +586,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     | { token: string; scriptPath: string; url: () => string | undefined }
     | undefined;
   readonly #spawn: SpawnFn;
+  readonly #wakeGraceMs: number;
   /** What the CLI last said only works in its terminal (see listCommands). */
   #terminalCommands: string[] = CLAUDE_TERMINAL_COMMANDS;
   /** The CLI's command list per folder, briefly reused (see listCommands). */
@@ -610,6 +621,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#interactiveApprovals = options.interactiveApprovals ?? false;
     this.#approvalHook = options.approvalHook;
     this.#spawn = options.spawnFn ?? defaultSpawn;
+    this.#wakeGraceMs = options.wakeGraceMs ?? WAKE_GRACE_MS;
   }
 
   get defaultModel(): string | undefined {
@@ -876,6 +888,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // turn's completion is held until the tasks resolve and the CLI either
     // produces its follow-up turn or exits.
     let deferredCompletion = false;
+    // Armed when the last background task of a held turn ends: the CLI is about
+    // to wake the model, and the input must stay open for it — the wake-up may
+    // start more background work, which the CLI only waits for while it can
+    // still be written to. Cleared as soon as the wake-up shows; if none does,
+    // it closes the input so the run can end.
+    let wakeTimer: ReturnType<typeof setTimeout> | undefined;
+    const stopWaitingForWake = (): void => {
+      if (wakeTimer !== undefined) clearTimeout(wakeTimer);
+      wakeTimer = undefined;
+    };
     // Whether any `result` arrived at all: a CLI that exits without one did
     // not answer, however cleanly it exited.
     let sawResult = false;
@@ -900,6 +922,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       if (completed || errored) return;
       completed = true;
       run.finished = true;
+      stopWaitingForWake();
       // No more follow-ups can join this turn, and the CLI is still waiting on
       // the pipe — close it so the process can exit.
       endInput();
@@ -935,6 +958,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     reader.on('line', (line) => {
       const event = parseClaudeLine(line);
       if (!event) return;
+      // The wake-up turn has begun (it opens with an `init`, then the model's
+      // output): its own `result` decides whether the turn is over.
+      if (wakeTimer !== undefined && event.kind !== 'other' && event.kind !== 'task_ended') {
+        stopWaitingForWake();
+      }
       // Lines carrying `parent_tool_use_id` belong to a parallel SUBAGENT turn:
       // their tool blocks still feed the work log, but their text/usage must
       // never fold into the main message or close the main text run.
@@ -1119,19 +1147,33 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // ending it.
         if (event.taskStatus === 'stopped' && inputClosed) interruptedTasks += 1;
         // Deliberately NOT completing here even when the last task resolves: a
-        // `completed` task is exactly when the CLI wakes the model, so the run
-        // is finished by its follow-up `result` or by the process exiting.
+        // task ending is exactly when the CLI wakes the model, and the wake-up
+        // turn's own `result` decides — complete if nothing is left running, or
+        // stay held if the wake-up started more background work.
         //
-        // "By the process exiting" now needs help. The turn was held open for
-        // background work while stdin stayed open for follow-ups, and a CLI
-        // reading a message stream never exits on its own. Closing the pipe
-        // once the last task is done lets it wrap up (emitting the wake-up
-        // turn's `result` first, if there is one) instead of hanging.
-        if (deferredCompletion && liveBackgroundTasks.size === 0) endInput();
+        // Nor closing the input. It once was, to let the CLI exit, and that cut
+        // every wake-up after the first: the CLI only waits for background work
+        // while its input is open, so work the wake-up started was stopped
+        // ~5 s later and the model never came back to report it. The input
+        // closes when the turn completes; it closes here only if no wake-up
+        // shows within the grace period, so a CLI that does not wake cannot
+        // hang the turn.
+        if (
+          deferredCompletion &&
+          liveBackgroundTasks.size === 0 &&
+          !inputClosed &&
+          wakeTimer === undefined
+        ) {
+          wakeTimer = setTimeout(() => {
+            wakeTimer = undefined;
+            endInput();
+          }, this.#wakeGraceMs);
+        }
       }
     });
 
     child.on('error', (err) => {
+      stopWaitingForWake();
       reader.close();
       returnUnreadFollowUps();
       run.finished = true;
@@ -1148,6 +1190,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
 
     child.on('close', (code) => {
+      stopWaitingForWake();
       reader.close();
       // First, before any early return: a stopped turn must not leave a
       // delivery waiting on a read that will never come.

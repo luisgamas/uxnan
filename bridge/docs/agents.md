@@ -685,7 +685,9 @@ input is open it waits for as long as the work takes** (a `sleep 240` left
 running after the turn was waited for in full), and **once the input closes**
 it gives the work about **4–6 seconds** and then **stops** it
 (`status:"stopped"`), exiting with that work unfinished. The bridge keeps the
-input open while any task is live, so the work gets its time.
+input open while any task is live, so the work gets its time — and **between
+wake-ups**: a wake-up may start more work, and the CLI waits for that only
+while its input is still open.
 
 #### A long wait is not the same thing (and is not limited)
 
@@ -707,13 +709,26 @@ So the two cases split cleanly:
 | The agent… | Turn state | Bounded? |
 |---|---|---|
 | **waits** for long work (CI, build, tests) | still running; deltas and tool progress keep flowing | **No limit** |
-| **leaves** work running and ends its turn | held open by the adapter (input open) until the work ends and the CLI's follow-up turn completes | **No limit** while the input is open |
+| **leaves** work running and ends its turn | held open by the adapter (input open) until the work ends and a follow-up turn completes with nothing left running — however many wake-ups that takes | **No limit** while the input is open |
 
 So `claude-adapter.ts` tracks live background tasks (`system` lines with
 `subtype:"task_started"` / `"task_notification"` — the reason `system` is no
 longer parsed as one event kind) and **holds the completion** while any is live,
-emitting exactly one `turn_completed` carrying both replies. Work the CLI killed
+emitting exactly one `turn_completed` carrying every reply. Work the CLI killed
 is reported to the user as a warning block rather than passing as a clean turn.
+
+**The input stays open from one wake-up to the next.** When the last live task
+ends, the adapter does not close the input: the CLI is about to wake the model,
+and that wake-up's own `result` decides — the turn completes if nothing is left
+running, and stays held if the wake-up started more background work ("CI is
+green; now I wait for the release"). Closing the input there, as the adapter
+once did to let the CLI exit, cut every wake-up after the first: the work the
+wake-up started was stopped ~5 s later and the model never came back. Measured
+on the real CLI with two background waits in a row: with the input open, each
+wake-up's `init` follows its `task_notification` in ~0.2 s and the third reply
+arrives; with it closed after the first, the second wait is `stopped`. If no
+wake-up shows within `WAKE_GRACE_MS` (30 s) of the last task ending, the input
+closes so a CLI that does not wake cannot hang the turn.
 
 How a task ended decides whether that is so. The CLI reports `completed` (exit
 0), `failed` (exit ≠ 0 — its work finished, and the model reads the result like
@@ -735,29 +750,43 @@ first table row is where the hazard lives:
   never drained twice (which would start a queued follow-up against a CLI that
   is still running).
 
-Claude Code is the only one that comes back. Every agent was probed the same
-way — asked to leave a shell command running and end its turn — and timed:
+Two agents come back: **Claude Code** and **OpenCode 2**. Every agent was
+probed the same way through its own adapter — asked to start a command in the
+background, end its turn, and report when the command finished — and timed.
+Re-measured 2026-10-02 (claude 2.1.287, opencode 2.0.19, codex-cli 0.157.1,
+grok 1.0.46, pi 0.85.1, zero 0.9.0, agy 1.2.14):
 
 | Agent | Wakes the model after its turn? | What happens to the deferred work |
 |---|---|---|
-| **Claude Code** | **Yes** | Waited for while its input is open (the bridge keeps it open while tasks run) → the CLI wakes the model and a second turn reports it. Once the input closes, ~4–6 s and then **stopped**, work lost |
-| **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
-| Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
-| Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
-| Pi | No — the turn ends on `agent_settled`; no background tool, no wake-up path | The resident process stays for the thread's next turn (until the 24 h idle teardown, a recycle, a cancel, or the thread's archive/delete); tracked pids exist for exactly that |
-| Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
-| Antigravity | No — the turn ends on `result` | Same as pi: the resident process stays for the thread's next turn |
+| **Claude Code** | **Yes** | Waited for while its input is open (the bridge keeps it open while tasks run and between wake-ups) → the CLI wakes the model and a second turn reports it — and a third, if the second started more work. Once the input closes, ~4–6 s and then **stopped**, work lost |
+| **OpenCode 2** | **Yes** — its shell tool takes `background: true`, tells the model it *will be notified*, and when the shell exits the server queues a `synthetic` note and runs the model again on the same session | Survives; the wake-up reports it. The adapter holds the turn through it (below) |
+| OpenCode 1 | No — no background shell; a `&` job is left to the OS | Survives, and is never reported |
+| Codex | No (nothing after `turn/completed`) | Dies: a `nohup` job did not outlive the app-server the adapter ends after the turn |
+| Grok | No | Survives while the session's process lives, and is never reported |
+| Pi | No — no background tool | Its shell waits for a `&` job's output to close, so the "background" command ran inside the turn (25 s) and was reported in it |
+| Zero | No | Survived the turn (finished after it), and is never reported |
+| Antigravity | No | Like pi: the command ran inside the turn and was reported in it |
+
+**OpenCode 2 is held the same way as Claude.** Its stream says what is running:
+the shell tool reports its shell as `session.tool.progress` (`metadata.shellID`),
+and `shell.exited` / `shell.deleted` end it. When the session's execution
+succeeds with a background shell of the run still live, the adapter does not
+complete the turn: the wake-up — a new `session.execution.started` the moment
+the shell exits, then the model's report — is set apart with a response
+boundary, and its own `execution.succeeded` decides again (held if it left more
+running). If no wake-up shows within 30 s of the last shell ending, the turn
+completes with what it has. A command that ends inside the step (its shell exits
+before the execution does) holds nothing.
 
 Two consequences worth keeping straight, because they need different answers:
 
-- **Claude Code** genuinely defers and returns, so its turn must stay open —
-  that is what the adapter now does.
+- **Claude Code and OpenCode 2** genuinely defer and return, so their turn must
+  stay open — that is what both adapters do.
 - **Everyone else** ends for real. An agent there can still *say* it will report
-  back, and nobody ever will: with Codex, Grok, Pi and Zero the work is already
-  dead, and with **OpenCode it is worse** — the work really does keep running
-  (the CLI waits for it), so it completes and is never reported. There is no
-  deferred state to model in those cases, only a promise not to take at face
-  value.
+  back, and nobody ever will: with Codex the work is already dead, and with
+  Grok, Zero and OpenCode 1 it is worse — the work keeps running, completes and
+  is never reported. There is no deferred state to model in those cases, only a
+  promise not to take at face value.
 
 None of this makes the guards Claude-specific: the hazard is structural for
 every adapter in the first table above, today or after any upstream change.
