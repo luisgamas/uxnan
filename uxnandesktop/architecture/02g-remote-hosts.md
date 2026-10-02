@@ -1433,8 +1433,9 @@ refresca al abrir la pestaña, al actuar y con el boton, y la interfaz lo dice e
 vez de fingir un directo que no existe.
 
 Fuera de la fase 3: los **puertos reenviados** son ya la fase 4 (§5.14), y el
-**estado preciso de agentes** sigue pendiente porque necesita un tunel inverso y
-reporters instalados alli. La escalera de reconexion, que estaba en esta lista,
+**estado preciso de agentes** quedaba fuera: necesitaba algo vivo en el host
+que recibiera los reportes. Llego con el motor del host (§5.16), sin tunel
+inverso. La escalera de reconexion, que estaba en esta lista,
 es ahora §5.12.
 
 ### La decision sobre el ayudante en el host: no para la fase 3, reabierta por las fases 2 y 5
@@ -1720,9 +1721,52 @@ pestanas recargan lo que muestran; Cambios espera a que la rafaga se calme
 (800 ms) y lee el host una vez. La vigilancia se vuelve a armar cuando el host
 vuelve.
 
+**Estado preciso de agentes** (protocolo 3, fase 2). Sin tunel inverso: el
+reporter de cada agente postea a un receptor del **propio motor**, en el
+loopback del host, y el reporte viaja por el canal que ya existe.
+
+- *Cableado.* `WireHooks` corre en el host el **mismo instalador** que el
+  desktop (`workspace_engine::agent_hooks`): los mismos scripts en
+  `~/.uxnan/hooks/` del host y el mismo registro en la config de cada agente,
+  conservando lo ajeno, los permisos del fichero y el `.bak`. El alcance es
+  `Reach::PresentAgents`: solo los agentes de los que el host da señales (su
+  ejecutable en el `PATH` del shell de login —el del daemon es el minimo de un
+  `ssh host cmd`— o su carpeta de config); nunca se crea la carpeta de otro
+  producto. El desktop lo pide al conectar si `auto_install_hooks` esta activo.
+- *Receptor.* `127.0.0.1:<puerto>` con token propio del daemon (24 bytes de
+  `/dev/urandom`), una sola ruta (`POST /hook`), cuerpos con `Content-Length`,
+  `Expect: 100-continue` atendido, topes de 16 KiB de cabeceras, 512 KiB de
+  cuerpo y 5 s por peticion. Responde `204` en el acto: ningun reporter lee la
+  respuesta y ninguno debe esperar a un enlace lento. Las coordenadas tambien
+  quedan en `~/.uxnan/host/run/endpoint.env` (`0600`).
+- *Entorno.* Cada terminal del motor arranca con `UXNAN_AGENT_ID` (lo manda el
+  desktop: el id de la pestana) y, despues —para que ganen—, `UXNAN_HOOK_URL`,
+  `UXNAN_HOOK_TOKEN` y `UXNAN_ENDPOINT_FILE` del daemon. El daemon borra de su
+  propio entorno esas claves heredadas (`pty::PER_TERMINAL_KEYS`, la misma lista
+  que `launchenv`) y ya **no** cambia su umask: las terminales la heredan, y un
+  fichero creado en ellas debe salir como en cualquier sesion SSH (sus propios
+  ficheros llevan modo explicito).
+- *Entrega.* `Event::Hook { session, headers, body }` — las cabeceras
+  `x-uxnan-*` (nunca el token) y el cuerpo tal cual — solo a las conexiones que
+  miran **esa** terminal; sin nadie mirando se guardan los 64 mas recientes y se
+  entregan tras la pantalla al reengancharse. El desktop los procesa **en
+  orden** y los busca por sesion (`tab_for`): tras reiniciar la app la pestana
+  tiene otro id y el agente conserva el viejo. Reescribe `x-uxnan-agent-id` al
+  de la pestana y llama al mismo `hooks::handle_report` con
+  `ReportOrigin::Host`, que no lee en esta maquina ninguna ruta que el reporte
+  nombre (el transcript esta en el host).
+
+Probado contra el binario real (un reporte del script real llega solo a su
+terminal, espera mientras nadie mira y llega tras la pantalla; el cableado
+registra los reporters y conserva lo ajeno; la umask de las terminales) y en
+vivo contra un host Linux: un reporte cruza un reinicio de la app hasta la
+pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
+(`UserPromptSubmit`, `Stop`, `SessionEnd`) llegaron a esta maquina.
+
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
-empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7); hooks y
-`UXNAN_*` en las terminales del motor (fase 2); ficheros, git y busqueda servidos
+empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
+detener un agente del host al pasar su sesion a un chat, la vista previa del transcript y el
+navegador/MCP para las terminales del motor; ficheros, git y busqueda servidos
 por el motor; limpiar builds viejas del host; y el historial por encima de la
 pantalla tras reiniciar la app.
 
@@ -1731,7 +1775,7 @@ pantalla tras reiniciar la app.
 | Capa de estado de agente (`02d`) | Remoto |
 |---|---|
 | Capa 2 — titulo / OSC | **Funciona sin trabajo extra**: viaja en el stream de bytes del PTY |
-| Capa 1 — hooks HTTP | Requiere tunel inverso + instalar los reporters en el host. Fase posterior |
+| Capa 1 — hooks HTTP | **Funciona con el motor** (Linux, macOS): los reporters, cableados alli, postean al receptor del motor y el reporte viaja por su canal (§5.16). Sin el motor (Windows): no |
 | Capa 3 — deteccion de proceso | Requiere sondeo remoto de procesos. Fase posterior |
 
 | Panel sobre un proyecto remoto | Hoy |
@@ -1756,7 +1800,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
-| 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
+| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan detener un agente del host al pasar su sesion a un chat, la vista previa del transcript y Windows |
 | 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador; faltan Windows y los recursos remotos |

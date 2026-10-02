@@ -26,6 +26,23 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 
 use crate::error::Error;
 
+/// The variables that give a terminal its identity: the id its client gave it
+/// and where its agents report (hooks, browser, MCP). A terminal is started
+/// with its own; anything that would *inherit* them — a process started from
+/// inside a terminal — would impersonate that terminal, so whoever spawns
+/// terminals scrubs them from itself first (the app's `launchenv`, a host's
+/// daemon).
+pub const PER_TERMINAL_KEYS: &[&str] = &[
+    "UXNAN_AGENT_ID",
+    "UXNAN_HOOK_URL",
+    "UXNAN_HOOK_TOKEN",
+    "UXNAN_ENDPOINT_FILE",
+    "UXNAN_BROWSER_URL",
+    "UXNAN_BROWSER_TOKEN",
+    "UXNAN_MCP_URL",
+    "UXNAN_MCP_TOKEN",
+];
+
 /// Shared child handle: the reader/waiter threads, `close`/`close_all` and the
 /// pid scan all need it, so it lives behind an `Arc<Mutex<…>>`.
 type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;

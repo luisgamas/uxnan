@@ -344,7 +344,13 @@ async fn route_hook<R: tauri::Runtime>(
     if !matches!(ctx.caller(&headers).await, Some(Caller::Launch { .. })) {
         return StatusCode::UNAUTHORIZED;
     }
-    crate::hooks::handle_report(&ctx.app, headers, body).await
+    crate::hooks::handle_report(
+        &ctx.app,
+        headers,
+        body,
+        crate::hooks::ReportOrigin::ThisMachine,
+    )
+    .await
 }
 
 /// The JSON body the agent `BROWSER` shim POSTs to open a URL in-app: `{"url": …}`.

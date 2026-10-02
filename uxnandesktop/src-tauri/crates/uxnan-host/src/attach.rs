@@ -84,6 +84,7 @@ pub async fn attach() -> std::io::Result<()> {
 #[cfg(unix)]
 fn start_daemon() -> std::io::Result<()> {
     use std::process::{Command, Stdio};
+    paths::ensure_private_dir(&paths::home())?;
     paths::ensure_private_dir(&paths::run_dir())?;
     let exe = std::env::current_exe()?;
     Command::new(exe)

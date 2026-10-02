@@ -24,7 +24,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///
 /// - 1: terminals (open, attach, detach, resize, close, list).
 /// - 2: folder watching (`Watch`, `Unwatch`, `Event::Changed`).
-pub const PROTOCOL: u32 = 2;
+/// - 3: agent hooks (`WireHooks`, `Reply::HooksWired`, `Event::Hook`).
+pub const PROTOCOL: u32 = 3;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -248,6 +249,11 @@ pub enum Call {
         root: String,
     },
     Unwatch,
+    /// Wire the agents' reporters on this machine: write the scripts to its
+    /// `~/.uxnan/hooks/` and register them in the config of every agent the
+    /// machine shows signs of — the same installer the desktop runs on its
+    /// own. Idempotent; the reports then arrive as [`Event::Hook`].
+    WireHooks,
 }
 
 /// How a call ended.
@@ -272,9 +278,21 @@ pub enum ErrorCode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Reply {
-    Opened { session: u32, pid: Option<u32> },
-    Attached { session: u32, alive: bool },
-    Sessions { sessions: Vec<SessionInfo> },
+    Opened {
+        session: u32,
+        pid: Option<u32>,
+    },
+    Attached {
+        session: u32,
+        alive: bool,
+    },
+    Sessions {
+        sessions: Vec<SessionInfo>,
+    },
+    /// The agents whose reporter is registered now.
+    HooksWired {
+        agents: Vec<String>,
+    },
     Done,
 }
 
@@ -312,6 +330,17 @@ pub enum Event {
         overflow: bool,
         #[serde(default)]
         git: bool,
+    },
+    /// An agent in one of this connection's terminals reported its state.
+    /// Exactly what its reporter posted — the `x-uxnan-*` headers (never the
+    /// token) and the body — so the desktop reads it with the same code that
+    /// reads a report from an agent on its own machine. Sent to the
+    /// connections watching that terminal; held while nobody is, and sent
+    /// after the screen when one attaches.
+    Hook {
+        session: u32,
+        headers: Vec<(String, String)>,
+        body: String,
     },
 }
 
@@ -372,6 +401,28 @@ mod tests {
         assert_eq!(negotiate(1, 9), Some(PROTOCOL));
         // One that has dropped everything this daemon speaks is refused.
         assert_eq!(negotiate(PROTOCOL + 1, PROTOCOL + 3), None);
+    }
+
+    #[test]
+    fn a_hook_report_has_a_stable_shape() {
+        let event = ServerMessage::Event(Event::Hook {
+            session: 4,
+            headers: vec![("x-uxnan-agent-id".into(), "tab-1".into())],
+            body: r#"{"hook_event_name":"Stop"}"#.into(),
+        });
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"event","event":"hook","session":4,"headers":[["x-uxnan-agent-id","tab-1"]],"body":"{\"hook_event_name\":\"Stop\"}"}"#
+        );
+        let wire = ClientMessage::Request {
+            id: 2,
+            call: Call::WireHooks,
+        };
+        assert_eq!(
+            serde_json::to_string(&wire).unwrap(),
+            r#"{"type":"request","id":2,"call":{"method":"wireHooks"}}"#
+        );
     }
 
     #[test]

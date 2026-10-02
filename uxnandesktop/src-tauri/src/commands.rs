@@ -538,7 +538,15 @@ pub async fn pty_create(
                             id: id.clone(),
                             sid,
                             cwd,
-                            env: Vec::new(),
+                            // Only the tab's id: the hook coordinates are the
+                            // host engine's own (it adds them), and nothing
+                            // else of this machine's environment means
+                            // anything there.
+                            // FOR-DEV: the integrated browser and its MCP for
+                            // these terminals — their endpoints are this
+                            // machine's loopback (`FOR-DEV.md` → Remote hosts
+                            // → the host engine, item 3).
+                            env: vec![("UXNAN_AGENT_ID".to_string(), id.clone())],
                             cols,
                             rows,
                         },
@@ -841,6 +849,69 @@ fn remote_terminal_output<R: tauri::Runtime>(
     }
 }
 
+/// A host's agent reports, fed — one at a time, in order — to the same reader
+/// as this machine's (`hooks::handle_report`), under the tab that shows the
+/// terminal now. That tab is found by the terminal's session, not by the id the
+/// terminal was started with: the tab's id changes when the app restarts, the
+/// terminal (and the agent's environment in it) does not.
+fn forward_host_reports<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host_id: &str,
+    engine: &std::sync::Arc<ssh::engine::HostEngine>,
+) {
+    use axum::http::{HeaderMap, HeaderName, HeaderValue};
+    let (tx, mut rx) =
+        tokio::sync::mpsc::unbounded_channel::<(u32, Vec<(String, String)>, String)>();
+    engine.set_on_hook(Box::new(move |session, headers, body| {
+        let _ = tx.send((session, headers, body));
+    }));
+    let app = app.clone();
+    let host = host_id.to_string();
+    let epoch = engine.epoch().to_string();
+    tauri::async_runtime::spawn(async move {
+        while let Some((session, headers, body)) = rx.recv().await {
+            let state = app.state::<AppState>();
+            // A report held while nobody watched arrives right after the screen
+            // that reattaches its terminal — a moment before the tab is
+            // registered.
+            let mut tab = None;
+            for _ in 0..20 {
+                tab = state.engine_terminals.tab_for(&host, &epoch, session).await;
+                if tab.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            let Some(tab) = tab else {
+                continue;
+            };
+            let Ok(tab) = HeaderValue::from_str(&tab) else {
+                continue;
+            };
+            let mut map = HeaderMap::new();
+            for (name, value) in headers {
+                if name == "x-uxnan-agent-id" || !name.starts_with("x-uxnan-") {
+                    continue;
+                }
+                if let (Ok(name), Ok(value)) = (
+                    HeaderName::from_bytes(name.as_bytes()),
+                    HeaderValue::from_str(&value),
+                ) {
+                    map.insert(name, value);
+                }
+            }
+            map.insert(HeaderName::from_static("x-uxnan-agent-id"), tab);
+            crate::hooks::handle_report(
+                &app,
+                map,
+                body.into_bytes().into(),
+                crate::hooks::ReportOrigin::Host,
+            )
+            .await;
+        }
+    });
+}
+
 /// The host's daemon for this connection, started (and installed) when it is
 /// not running yet. One started now is watched, so its terminals are told —
 /// and kept — when the connection under it goes away.
@@ -876,6 +947,28 @@ async fn engine_for<R: tauri::Runtime>(
                 },
             );
         }));
+        forward_host_reports(app, host_id, &engine);
+        if state.data.read().await.settings.auto_install_hooks {
+            let wiring = std::sync::Arc::clone(&engine);
+            let host = host_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                let (level, message) = match wiring.wire_hooks().await {
+                    Ok(agents) if agents.is_empty() => (
+                        crate::diagnostics::Level::Info,
+                        format!("{host}: no agent there to wire hooks for"),
+                    ),
+                    Ok(agents) => (
+                        crate::diagnostics::Level::Info,
+                        format!("{host}: agent hooks wired for {}", agents.join(", ")),
+                    ),
+                    Err(e) => (
+                        crate::diagnostics::Level::Warn,
+                        format!("{host}: could not wire agent hooks: {e}"),
+                    ),
+                };
+                crate::diagnostics::log(level, "ssh-engine", &message);
+            });
+        }
         let terminals = std::sync::Arc::clone(&state.engine_terminals);
         let watched = std::sync::Arc::clone(&engine);
         let host = host_id.to_string();
@@ -1155,6 +1248,9 @@ pub async fn pty_stop_agent(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<crate::agentstop::StopOutcome, CommandError> {
+    // FOR-DEV: a terminal on a host's engine is not in `state.pty`; stopping
+    // its agent needs an engine call (`FOR-DEV.md` → Remote hosts → the host
+    // engine, item 3).
     let Some(shell_pid) = state.pty.pid_of(&id) else {
         return Err(CommandError::from(AppError::NotFound(format!(
             "terminal {id}"
@@ -4744,6 +4840,9 @@ pub async fn get_hook_install(
 /// wiring a new agent never means touching the frontend's list.
 #[tauri::command]
 pub async fn list_agent_hooks() -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
+    // FOR-DEV: a connected host's own rows (what its engine wired), from a
+    // read-only engine call (`FOR-DEV.md` → Remote hosts → the host engine,
+    // item 6).
     Ok(agent_hooks::read_all_agent_status(
         &crate::agentcli::command_installed,
     ))

@@ -92,6 +92,19 @@ impl EngineTerminals {
         self.tabs.lock().await.contains_key(id)
     }
 
+    /// The tab whose terminal is `session` of the daemon `epoch` on `host_id`.
+    /// A tab's id changes when the app restarts while its terminal on the host
+    /// does not, so this — not the id the terminal was started with — is what
+    /// names the tab now.
+    pub async fn tab_for(&self, host_id: &str, epoch: &str, session: u32) -> Option<String> {
+        self.tabs
+            .lock()
+            .await
+            .iter()
+            .find(|(_, t)| t.host_id == host_id && t.epoch == epoch && t.session == session)
+            .map(|(id, _)| id.clone())
+    }
+
     /// The host a tab's terminal lives on.
     pub async fn host_of(&self, id: &str) -> Option<String> {
         self.tabs.lock().await.get(id).map(|t| t.host_id.clone())
@@ -573,6 +586,192 @@ mod tests {
             );
             println!("live: {alias} terminal detached on the drop and came back in place");
             terminals.close(Some(&second), "tab-drop").await.unwrap();
+        }
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
+        async fn an_agents_report_on_the_host_reaches_the_tab_that_shows_it_now() {
+            // What a reporter does, typed into a terminal on the host: POST to
+            // the coordinates the engine gave that terminal. Then the app
+            // "restarts": a new tab id finds the same terminal, whose agent still
+            // carries the old id — and its report must land on the new tab.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let sid = format!("hook-{}", std::process::id());
+            let spec = |id: &str| EngineTerminalSpec {
+                id: id.into(),
+                sid: Some(sid.clone()),
+                cwd: None,
+                env: vec![("UXNAN_AGENT_ID".into(), id.into())],
+                cols: 100,
+                rows: 30,
+            };
+            let first_run = EngineTerminals::default();
+            let conn = connect(&alias).await;
+            let first = engine(&conn).await;
+            let (seen, output) = collector();
+            first_run
+                .create("live", &first, spec("tab-hook-1"), output, || {})
+                .await
+                .unwrap();
+            first_run
+                .write(
+                    Some(&first),
+                    "tab-hook-1",
+                    b"echo READY_$((3+3))\n".to_vec(),
+                )
+                .await
+                .unwrap();
+            until(&seen, "READY_6").await;
+            drop(first_run);
+            drop(first);
+            drop(conn);
+
+            let second_run = EngineTerminals::default();
+            let conn = connect(&alias).await;
+            let second = engine(&conn).await;
+            type Heard = Vec<(u32, Vec<(String, String)>, String)>;
+            let heard: Arc<StdMutex<Heard>> = Arc::default();
+            let sink = Arc::clone(&heard);
+            second.set_on_hook(Box::new(move |session, headers, body| {
+                sink.lock().unwrap().push((session, headers, body));
+            }));
+            let (_seen, output) = collector();
+            let fresh = second_run
+                .create("live", &second, spec("tab-hook-2"), output, || {})
+                .await
+                .unwrap();
+            assert!(!fresh, "the terminal is found again by its sid");
+            let report = concat!(
+                "printf '%s' '{\"hook_event_name\":\"Stop\"}' | curl -fsS -X POST \"$UXNAN_HOOK_URL\" ",
+                "-H \"X-Uxnan-Token: $UXNAN_HOOK_TOKEN\" -H \"X-Uxnan-Agent-Id: $UXNAN_AGENT_ID\" ",
+                "-H 'X-Uxnan-Agent-Type: claude' --data-binary @-\n"
+            );
+            second_run
+                .write(Some(&second), "tab-hook-2", report.as_bytes().to_vec())
+                .await
+                .unwrap();
+            let mut got = None;
+            for _ in 0..100 {
+                if let Some(first) = heard.lock().unwrap().first().cloned() {
+                    got = Some(first);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            let (session, headers, body) = got.expect("the report never arrived");
+            assert_eq!(body, r#"{"hook_event_name":"Stop"}"#);
+            let id = headers
+                .iter()
+                .find(|(k, _)| k == "x-uxnan-agent-id")
+                .map(|(_, v)| v.as_str());
+            assert_eq!(
+                id,
+                Some("tab-hook-1"),
+                "the agent kept the id it started with"
+            );
+            assert!(headers.iter().all(|(k, _)| k != "x-uxnan-token"));
+            assert_eq!(
+                second_run
+                    .tab_for("live", second.epoch(), session)
+                    .await
+                    .as_deref(),
+                Some("tab-hook-2"),
+                "and the session names the tab that shows it now"
+            );
+            println!("live: {alias} forwarded the agent's report to the tab that shows it");
+            second_run.close(Some(&second), "tab-hook-2").await.unwrap();
+        }
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_WIRE=1; wires the host's real agents and runs its Claude Code once"]
+        async fn the_hosts_own_claude_reports_its_turn_through_the_wired_hooks() {
+            // The whole path with nothing stood in: the engine wires the host's
+            // agents with the app's own installer, then Claude Code itself runs
+            // one turn in a terminal there and its hooks report it here. It
+            // changes that machine's agent configs (keeping a rolling `.bak`),
+            // so it runs only when asked twice.
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            assert_eq!(
+                std::env::var("UXNAN_SSH_TEST_WIRE").as_deref(),
+                Ok("1"),
+                "set UXNAN_SSH_TEST_WIRE=1: this writes the host's agent configs"
+            );
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let wired = engine.wire_hooks().await.unwrap();
+            assert!(wired.contains(&"claude".to_string()), "{wired:?}");
+
+            type Heard = Vec<(Vec<(String, String)>, String)>;
+            let heard: Arc<StdMutex<Heard>> = Arc::default();
+            let sink = Arc::clone(&heard);
+            engine.set_on_hook(Box::new(move |_session, headers, body| {
+                sink.lock().unwrap().push((headers, body));
+            }));
+            let dir = format!("/tmp/uxnan-claude-{}", std::process::id());
+            conn.exec(&format!("mkdir -p {dir}")).await.unwrap();
+            let terminals = EngineTerminals::default();
+            let (seen, output) = collector();
+            terminals
+                .create(
+                    "live",
+                    &engine,
+                    EngineTerminalSpec {
+                        id: "tab-claude".into(),
+                        sid: None,
+                        cwd: Some(dir.clone()),
+                        env: vec![("UXNAN_AGENT_ID".into(), "tab-claude".into())],
+                        cols: 120,
+                        rows: 30,
+                    },
+                    output,
+                    || {},
+                )
+                .await
+                .unwrap();
+            terminals
+                .write(
+                    Some(&engine),
+                    "tab-claude",
+                    b"claude -p 'Reply with exactly the word: ok'; echo CLAUDE_RAN_$((1+1))\n"
+                        .to_vec(),
+                )
+                .await
+                .unwrap();
+            for _ in 0..1200 {
+                if seen.lock().unwrap().contains("CLAUDE_RAN_2") {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            // The last reports may trail the turn's output a little.
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let got = heard.lock().unwrap().clone();
+            let events: Vec<String> = got
+                .iter()
+                .filter_map(|(_, body)| {
+                    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+                    let source = v.get("source").unwrap_or(&v);
+                    source
+                        .get("hook_event_name")
+                        .and_then(|e| e.as_str())
+                        .map(str::to_string)
+                })
+                .collect();
+            println!("live: {alias} wired {wired:?}; Claude reported {events:?}");
+            terminals.close(Some(&engine), "tab-claude").await.unwrap();
+            conn.exec(&format!("rm -rf {dir}")).await.unwrap();
+            assert!(
+                got.iter().all(|(h, _)| h
+                    .iter()
+                    .any(|(k, v)| k == "x-uxnan-agent-id" && v == "tab-claude")),
+                "every report names the terminal it came from"
+            );
+            assert!(events.iter().any(|e| e == "UserPromptSubmit"), "{events:?}");
+            assert!(events.iter().any(|e| e == "Stop"), "{events:?}");
         }
 
         #[tokio::test]

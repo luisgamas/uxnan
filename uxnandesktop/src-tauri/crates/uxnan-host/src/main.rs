@@ -14,8 +14,10 @@
 //!   if it is not running. This is what the desktop `exec`s over SSH.
 //! - `serve` — be the daemon (normally started by `attach`, detached).
 
+mod agents;
 mod attach;
 mod daemon;
+mod hooks;
 mod log;
 mod paths;
 
@@ -36,6 +38,12 @@ fn main() {
         }
         "attach" => run(attach::attach()),
         "serve" => {
+            // A terminal's identity must never be inherited: started from
+            // inside one of our own terminals, the daemon would hand that
+            // terminal's coordinates to every terminal it opens.
+            for key in uxnan_workspace_engine::pty::PER_TERMINAL_KEYS {
+                std::env::remove_var(key);
+            }
             let detached = args.any(|a| a == "--detached");
             if detached {
                 daemon::detach_from_session();

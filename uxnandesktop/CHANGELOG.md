@@ -23,6 +23,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with nothing polled. An updated app keeps talking to the engine that holds
   the host's terminals, whichever build it is, so an update never strands them.
   Windows hosts keep their channel terminals for now.
+- **An agent on a host shows its state as precisely as one here.** Connecting
+  to a host wires the agents it has with the same reporters this machine uses —
+  only those it has, keeping everything else in their configs — and each report
+  travels over the engine's channel to the tab it came from: the working /
+  waiting / done cards, the checks and the notifications, also for a turn that
+  ended while the lid was closed. Proven with Claude Code on a real Linux host.
+  Follows the hooks auto-install setting.
 - **Every installer carries the host engine for every platform it can run
   on** — Linux and macOS, x86-64 and ARM — whatever machine the app itself is
   on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is

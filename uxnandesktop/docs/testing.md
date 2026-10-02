@@ -78,12 +78,14 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,060 backend tests**
-in total — 911 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 59 in `uxnan-workspace-engine`, 4 in `uxnan-host-protocol`, 9 in
-`uxnan-host` (all against the real daemon over its socket), and 45 integration tests in
-`tests/` — 1,004 of which run everywhere; the other 56 are ignored probes that need something real to talk to
-(48 live SSH probes — 36 against a real `sshd`, one of which idles for five
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,071 backend tests**
+in total — 913 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 60 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 16 in
+`uxnan-host` (12 against the real daemon over its socket — among them an agent's
+report sent by the real reporter script reaching only its own terminal, and the
+hooks wired into a temporary `HOME`), and 45 integration tests in
+`tests/` — 1,013 of which run everywhere; the other 58 are ignored probes that need something real to talk to
+(50 live SSH probes — 38 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -91,7 +93,11 @@ describe, including that host as its own bastion — and two more (in
 the terminal again: in place when the host returns, and from a fresh session —
 one sees a change made on the host arrive by itself, and two more prove the
 heartbeat both ways: an engine left idle for 45 s stays
-up, and one whose daemon is frozen (`SIGSTOP`, that process only) is given up on, plus **12 against a Linux
+up, and one whose daemon is frozen (`SIGSTOP`, that process only) is given up on,
+and two more carry agent reports: one typed into a host terminal reaches the
+tab that shows it after an app restart, and one — armed also by
+`UXNAN_SSH_TEST_WIRE=1`, because it wires that host's real agents — runs the
+host's own Claude Code once and hears its hooks, plus **12 against a Linux
 host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).

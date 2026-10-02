@@ -30,7 +30,7 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
 - **Cache persistente:** El ultimo estado de cada agente se guarda en disco con un **TTL de 7 dias**. Esto permite que al reiniciar el ADE, la sidebar muestre el estado correcto de cada agente sin necesidad de que estos re-reporten.
 - **Broadcast:** Cada cambio de estado se difunde al frontend via **Tauri events** para actualizacion inmediata de la UI. El evento `agent:status-changed` se emite con el nuevo estado normalizado.
 - **Reporters listos para usar (multi-shell):** El ADE embebe sus scripts
-  (`src-tauri/crates/workspace-engine/src/agent_hooks.rs` + `hooks/`, el mismo instalador que corre el motor de un host) y los escribe **una sola
+  (`src-tauri/crates/workspace-engine/src/agent_hooks.rs` + `hooks/`, el mismo instalador que corre el motor de un host —`02g` §5.16: en un host cablea solo los agentes que alli existen y los reportes vuelven por el canal del motor—) y los escribe **una sola
   vez por máquina**, en `~/.uxnan/hooks/`, en cada arranque e idempotente.
   **La ruta registrada no nombra a ninguna instancia, y esa es la regla.** La
   configuración de cada agente es un fichero por máquina; mientras el ADE

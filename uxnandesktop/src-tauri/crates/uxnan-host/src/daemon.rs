@@ -16,9 +16,16 @@
 //! has a bounded queue; one that cannot keep up is closed, and its client
 //! reattaches and gets a fresh snapshot — which costs a repaint instead of the
 //! daemon's memory.
+//!
+//! **An agent's report goes to its own terminal's viewers.** Every terminal is
+//! started with the daemon's hook coordinates (`hooks`) and the id its client
+//! gave it (`UXNAN_AGENT_ID`); a report naming that id is sent to whoever is
+//! watching that terminal — never to another client's — and held, bounded,
+//! while nobody is, so a laptop that slept still hears how the turn ended.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -43,6 +50,10 @@ const EXITED_KEPT: Duration = Duration::from_secs(10 * 60);
 /// How often the daemon looks at whether it has anything left to do.
 const SWEEP: Duration = Duration::from_secs(15);
 
+/// Reports held for a terminal nobody is watching. The newest matter — they
+/// are the agent's state now — so the oldest go first.
+const HELD_REPORTS: usize = 64;
+
 /// One connection's way out: its queue, and the switch that closes it.
 #[derive(Clone)]
 struct Viewer {
@@ -64,9 +75,14 @@ impl Viewer {
 struct Shared {
     screen: Screen,
     viewers: HashMap<u64, Viewer>,
+    /// Agent reports that arrived while nobody was watching.
+    held: VecDeque<Frame>,
 }
 
 struct Session {
+    /// The id the client gave this terminal (`UXNAN_AGENT_ID`), which its
+    /// agent's reports carry back.
+    agent_id: Option<String>,
     label: String,
     cwd: String,
     started: Instant,
@@ -84,6 +100,8 @@ pub struct Daemon {
     clients: AtomicUsize,
     last_busy: Mutex<Instant>,
     epoch: String,
+    /// Where this daemon's terminals report, once its listener is up.
+    hooks: OnceLock<crate::hooks::Endpoint>,
 }
 
 impl Daemon {
@@ -100,6 +118,7 @@ impl Daemon {
             clients: AtomicUsize::new(0),
             last_busy: Mutex::new(Instant::now()),
             epoch: format!("{nanos:x}-{:x}", std::process::id()),
+            hooks: OnceLock::new(),
         }
     }
 
@@ -135,6 +154,7 @@ impl Daemon {
         let shared = Arc::new(Mutex::new(Shared {
             screen: Screen::new(rows, cols),
             viewers: HashMap::new(),
+            held: VecDeque::new(),
         }));
         let alive = Arc::new(AtomicBool::new(true));
         let ended_at = Arc::new(Mutex::new(None));
@@ -148,6 +168,19 @@ impl Daemon {
         };
         let home = paths_home();
         let cwd = cwd.filter(|c| !c.is_empty()).unwrap_or(home);
+        let agent_id = env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == "UXNAN_AGENT_ID")
+            .map(|(_, v)| v.clone())
+            .filter(|v| !v.trim().is_empty());
+        // The client's variables, then this machine's hook coordinates — last,
+        // so they win: a URL from the client's machine names a port that
+        // means nothing here.
+        let mut env = env;
+        if let Some(hooks) = self.hooks.get() {
+            env.extend(hooks.env());
+        }
 
         // Held across the spawn: the reader thread's first bytes wait for it, so
         // the client hears "opened" (with the id of the request it answers)
@@ -210,6 +243,7 @@ impl Daemon {
         self.sessions.lock().unwrap().insert(
             session,
             Session {
+                agent_id,
                 label: label.clone(),
                 cwd,
                 started: Instant::now(),
@@ -254,8 +288,44 @@ impl Daemon {
             session,
             bytes: shared.screen.snapshot(),
         });
+        // What the agent said while nobody was watching, after the screen
+        // that shows where it got to.
+        for report in shared.held.drain(..) {
+            viewer.send(report);
+        }
         shared.viewers.insert(viewer_id, viewer.clone());
         true
+    }
+
+    /// Route an agent's report to the terminal it came from. A report naming
+    /// no terminal of this daemon is dropped: nobody here could show it.
+    pub fn report(&self, report: crate::hooks::Report) {
+        let Some(agent_id) = report.agent_id() else {
+            return;
+        };
+        let sessions = self.sessions.lock().unwrap();
+        let Some((&session, s)) = sessions
+            .iter()
+            .find(|(_, s)| s.agent_id.as_deref() == Some(agent_id.as_str()))
+        else {
+            return;
+        };
+        let frame = Frame::control(&ServerMessage::Event(Event::Hook {
+            session,
+            headers: report.headers,
+            body: report.body,
+        }));
+        let mut shared = s.shared.lock().unwrap();
+        if shared.viewers.is_empty() {
+            if shared.held.len() == HELD_REPORTS {
+                shared.held.pop_front();
+            }
+            shared.held.push_back(frame);
+        } else {
+            for viewer in shared.viewers.values() {
+                viewer.send(frame.clone());
+            }
+        }
     }
 
     fn detach_everywhere(&self, viewer_id: u64) {
@@ -324,10 +394,11 @@ impl Daemon {
                     None => not_found(session),
                 }
             }
-            // Per connection, handled where the connection lives.
-            Call::Watch { .. } | Call::Unwatch => Outcome::Error {
+            // Handled where the connection lives: a watch is per connection,
+            // and wiring blocks on files and a login shell.
+            Call::Watch { .. } | Call::Unwatch | Call::WireHooks => Outcome::Error {
                 code: ErrorCode::Invalid,
-                message: "watching is per connection".to_string(),
+                message: "handled by the connection".to_string(),
             },
             Call::List => {
                 let sessions = self.sessions.lock().unwrap();
@@ -383,7 +454,12 @@ fn paths_home() -> String {
 }
 
 /// Leave the SSH session that started us: a new session (so its hang-up does
-/// not reach us), SIGHUP ignored, a private umask.
+/// not reach us), SIGHUP ignored.
+///
+/// The umask is left as the account has it. Every terminal inherits this
+/// process's, and a file made in one must come out as it would in any SSH
+/// session; the daemon's own files get their modes explicitly instead
+/// (`paths::ensure_private_dir`, the log, the endpoint file).
 pub fn detach_from_session() {
     #[cfg(unix)]
     unsafe {
@@ -391,12 +467,12 @@ pub fn detach_from_session() {
         // exists; failure leaves us attached, which `attach` notices.
         libc::setsid();
         libc::signal(libc::SIGHUP, libc::SIG_IGN);
-        libc::umask(0o077);
     }
 }
 
 /// Be the daemon until there is nothing left to do.
 pub async fn serve(idle: Duration) -> std::io::Result<()> {
+    paths::ensure_private_dir(&paths::home())?;
     paths::ensure_private_dir(&paths::run_dir())?;
     let listener = bind().await?;
     let ours = socket_identity();
@@ -406,6 +482,15 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
         env!("CARGO_PKG_VERSION"),
         daemon.epoch
     ));
+    // Before any terminal opens, so every one is started with it. Without it
+    // the terminals still work; their agents just cannot say what they do.
+    let routed = Arc::clone(&daemon);
+    match crate::hooks::start(move |report| routed.report(report)).await {
+        Ok(endpoint) => {
+            let _ = daemon.hooks.set(endpoint);
+        }
+        Err(e) => log::line(&format!("agent reports unavailable: {e}")),
+    }
 
     let sweeper = Arc::clone(&daemon);
     let mut ticks = tokio::time::interval(SWEEP.min(idle.max(Duration::from_secs(1))));
@@ -574,6 +659,20 @@ where
                                     },
                                 };
                                 viewer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::WireHooks }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let outcome = match tokio::task::spawn_blocking(crate::agents::wire).await {
+                                        Ok(Ok(agents)) => {
+                                            log::line(&format!("agent reporters wired: {}", agents.join(", ")));
+                                            Outcome::Ok { reply: Reply::HooksWired { agents } }
+                                        }
+                                        Ok(Err(e)) => Outcome::Error { code: ErrorCode::Invalid, message: e },
+                                        Err(e) => Outcome::Error { code: ErrorCode::Invalid, message: e.to_string() },
+                                    };
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
                             }
                             Ok(ClientMessage::Request { id, call: Call::Unwatch }) => {
                                 watch = None;

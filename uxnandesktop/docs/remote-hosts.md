@@ -373,6 +373,12 @@ laptop lid, a Wi-Fi handover or an app restart.
 - **The project folder is watched there.** The tree, the open tabs and Changes
   refresh by themselves when anything changes in the folder on the host (see
   *Automatic refresh* above).
+- **Agents there report their state.** With auto-install on, connecting wires
+  the agents the host has (the same reporters as here, registered in their
+  configs there) and their terminals report to the engine, which hands each
+  report to the tab it came from — the same cards, checks and notifications as
+  a local agent, also after the lid was closed. See
+  [agent hooks → Agents on an SSH host](./agent-hooks.md#agents-on-an-ssh-host).
 - **A silent link is noticed in seconds.** The app checks on the engine every
   10 seconds; if nothing has come back for 30, the link is treated as gone — the
   tabs say so and the host is reconnected — instead of waiting the two minutes
@@ -436,8 +442,8 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: Windows hosts in the engine, precise agent status on
-a host (the engine running the agents' hooks there), files, git and search served
+In order: Windows hosts in the engine, handing a host agent's session over to
+a chat (the engine running the agents' hooks there), files, git and search served
 by the engine, and worktrees on a host.
 
 Deliberately *not* coming: any mode that skips host-key verification.

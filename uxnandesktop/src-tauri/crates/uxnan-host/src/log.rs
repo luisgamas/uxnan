@@ -18,11 +18,12 @@ pub fn line(message: &str) {
     {
         let _ = std::fs::rename(&path, path.with_extension("log.1"));
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    // Readable by the user alone, whatever the umask.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    if let Ok(mut file) = options.open(&path) {
         let secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

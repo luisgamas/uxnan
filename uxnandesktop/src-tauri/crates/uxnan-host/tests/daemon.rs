@@ -3,8 +3,9 @@
 //! it — the version check, refusing a client it cannot speak to, attach
 //! starting a daemon, and exiting once there is nothing left to do.
 //!
-//! Every test points `UXNAN_HOST_HOME` at a temporary directory: nothing here
-//! touches `~/.uxnan`.
+//! Every test points `UXNAN_HOST_HOME` and `HOME` at a temporary directory:
+//! nothing here touches `~/.uxnan`, nor the agents' own configs (wiring the
+//! hooks writes there).
 
 #![cfg(unix)]
 
@@ -27,10 +28,22 @@ struct Daemon {
 
 impl Daemon {
     fn start(idle_secs: u64) -> Self {
+        Self::start_with(idle_secs, &[])
+    }
+
+    /// As `attach` starts it in production: detached from the session.
+    fn start_detached(idle_secs: u64) -> Self {
+        Self::start_with(idle_secs, &["--detached"])
+    }
+
+    fn start_with(idle_secs: u64, flags: &[&str]) -> Self {
         let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("user")).unwrap();
         let child = Command::new(BIN)
             .arg("serve")
+            .args(flags)
             .env("UXNAN_HOST_HOME", home.path())
+            .env("HOME", home.path().join("user"))
             .env("UXNAN_HOST_IDLE_SECS", idle_secs.to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -42,6 +55,33 @@ impl Daemon {
 
     fn socket(&self) -> PathBuf {
         socket_in(self.home.path())
+    }
+
+    /// The `HOME` the daemon and its terminals see.
+    fn user_home(&self) -> PathBuf {
+        self.home.path().join("user")
+    }
+}
+
+/// The reporter the agents' hooks run — the real script, not a stand-in.
+fn reporter() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../workspace-engine/hooks/uxnan-event-hook.sh")
+        .canonicalize()
+        .unwrap()
+}
+
+/// The next agent report on this connection, skipping everything else.
+async fn next_hook(client: &mut Client) -> (u32, Vec<(String, String)>, String) {
+    loop {
+        if let ServerMessage::Event(Event::Hook {
+            session,
+            headers,
+            body,
+        }) = client.control().await
+        {
+            return (session, headers, body);
+        }
     }
 }
 
@@ -507,5 +547,195 @@ async fn a_call_this_daemon_does_not_know_is_answered_and_the_connection_stays()
         Outcome::Ok {
             reply: Reply::Sessions { sessions: vec![] }
         }
+    );
+}
+
+async fn open_shell(client: &mut Client, agent_id: &str) -> u32 {
+    let opened = client
+        .call(Call::Open {
+            cols: 100,
+            rows: 30,
+            cwd: None,
+            command: Some(vec!["/bin/sh".into()]),
+            env: vec![("UXNAN_AGENT_ID".into(), agent_id.into())],
+            label: agent_id.into(),
+        })
+        .await;
+    match opened {
+        Outcome::Ok {
+            reply: Reply::Opened { session, .. },
+        } => session,
+        other => panic!("open failed: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn an_agents_report_reaches_its_own_terminal_and_waits_while_nobody_watches() {
+    let daemon = Daemon::start(600);
+    let (mut a, _) = Client::hello(&daemon.socket()).await;
+    let (mut b, _) = Client::hello(&daemon.socket()).await;
+    let mine = open_shell(&mut a, "tab-1").await;
+    let _theirs = open_shell(&mut b, "tab-2").await;
+
+    // The coordinates are on disk too, for the user alone.
+    let endpoint = daemon.home.path().join("run").join("endpoint.env");
+    let text = std::fs::read_to_string(&endpoint).unwrap();
+    assert!(
+        text.starts_with("UXNAN_HOOK_URL=http://127.0.0.1:"),
+        "{text}"
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&endpoint).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    // What an agent's hook runner does: pipe the raw event to the reporter.
+    let event = r#"{"hook_event_name":"Stop","session_id":"s-1"}"#;
+    let script = reporter().display().to_string();
+    a.type_in(
+        mine,
+        &format!("printf '%s' '{event}' | sh '{script}' claude\n"),
+    )
+    .await;
+    let (session, headers, body) = next_hook(&mut a).await;
+    assert_eq!(session, mine);
+    assert_eq!(body, event);
+    let header = |name: &str| {
+        headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+    assert_eq!(header("x-uxnan-agent-id"), Some("tab-1"));
+    assert_eq!(header("x-uxnan-agent-type"), Some("claude"));
+    assert_eq!(
+        header("x-uxnan-token"),
+        None,
+        "the token never leaves the host"
+    );
+
+    // Another client's connection never hears it.
+    let other = tokio::time::timeout(Duration::from_millis(800), async {
+        next_hook(&mut b).await
+    })
+    .await;
+    assert!(
+        other.is_err(),
+        "a report reached a terminal it did not come from"
+    );
+
+    // Nobody watching: the report waits, and comes after the screen.
+    a.type_in(
+        mine,
+        &format!("sleep 1; printf '%s' '{event}' | sh '{script}' claude\n"),
+    )
+    .await;
+    assert_eq!(
+        a.call(Call::Detach { session: mine }).await,
+        Outcome::Ok { reply: Reply::Done }
+    );
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let attached = a
+        .call(Call::Attach {
+            session: mine,
+            cols: 100,
+            rows: 30,
+        })
+        .await;
+    assert!(matches!(
+        attached,
+        Outcome::Ok {
+            reply: Reply::Attached { alive: true, .. }
+        }
+    ));
+    let mut saw_screen = false;
+    let held = loop {
+        match a.frame().await {
+            Frame::Data { session, .. } if session == mine => saw_screen = true,
+            Frame::Control(json) => {
+                if let ServerMessage::Event(Event::Hook { session, body, .. }) =
+                    serde_json::from_slice(&json).unwrap()
+                {
+                    break (session, body);
+                }
+            }
+            _ => {}
+        }
+    };
+    assert!(saw_screen, "the held report came before the screen");
+    assert_eq!(held, (mine, event.to_string()));
+}
+
+#[tokio::test]
+async fn wiring_hooks_registers_the_reporters_with_the_agents_this_host_has() {
+    let daemon = Daemon::start(600);
+    let home = daemon.user_home();
+    // Claude has been used here: its folder exists, with a setting of the
+    // person's own that wiring must keep.
+    std::fs::create_dir(home.join(".claude")).unwrap();
+    std::fs::write(
+        home.join(".claude").join("settings.json"),
+        r#"{"theme":"dark"}"#,
+    )
+    .unwrap();
+
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let wired = client.call(Call::WireHooks).await;
+    let Outcome::Ok {
+        reply: Reply::HooksWired { agents },
+    } = wired
+    else {
+        panic!("wiring failed: {wired:?}");
+    };
+    assert!(agents.contains(&"claude".to_string()), "{agents:?}");
+
+    let settings = std::fs::read_to_string(home.join(".claude").join("settings.json")).unwrap();
+    assert!(settings.contains("uxnan-status-relay.cjs"), "{settings}");
+    assert!(
+        settings.contains("\"theme\""),
+        "the person's own setting stays"
+    );
+    assert!(home
+        .join(".uxnan")
+        .join("hooks")
+        .join("uxnan-event-hook.sh")
+        .is_file());
+
+    // Idempotent: wiring again changes nothing.
+    let again = client.call(Call::WireHooks).await;
+    assert!(matches!(
+        again,
+        Outcome::Ok {
+            reply: Reply::HooksWired { .. }
+        }
+    ));
+    assert_eq!(
+        std::fs::read_to_string(home.join(".claude").join("settings.json")).unwrap(),
+        settings
+    );
+}
+
+#[tokio::test]
+async fn a_terminal_keeps_the_accounts_umask() {
+    // The daemon is a long-lived process every terminal inherits from; a
+    // private umask of its own would make every file made in them unreadable
+    // to the person's group, unlike any other SSH session.
+    let daemon = Daemon::start_detached(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let session = open_shell(&mut client, "tab-umask").await;
+    client
+        .type_in(session, "echo UMASK_$(umask)_$((6*7))\n")
+        .await;
+    let seen = client.until_output(session, "_42").await;
+    let line = seen
+        .split("UMASK_")
+        .filter_map(|rest| rest.split("_42").next())
+        .find(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()))
+        .unwrap_or_else(|| panic!("no umask in {seen:?}"));
+    assert_ne!(
+        line.trim_start_matches('0'),
+        "77",
+        "the daemon's terminals got umask 077"
     );
 }

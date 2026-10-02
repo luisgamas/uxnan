@@ -785,15 +785,27 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Handle one `POST /hook` that the local server has already authorized
-/// (`control::server`): resolve the report (from headers and/or body, in any
-/// of the three accepted shapes), normalize, cache + persist, broadcast. Always
-/// fails open — an unrecognized event or a malformed body returns `204` so a
-/// broken hook can never break the agent that fired it.
+/// Which machine a report was made on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReportOrigin {
+    /// An agent in a terminal here, through the local server.
+    ThisMachine,
+    /// An agent in a terminal on a host, forwarded by that host's engine. The
+    /// paths it names are the host's, so nothing here is read on their word.
+    Host,
+}
+
+/// Handle one report: a `POST /hook` that the local server has already
+/// authorized (`control::server`), or one a host's engine forwarded
+/// (`ssh::engine`). Resolve it (from headers and/or body, in any of the three
+/// accepted shapes), normalize, cache + persist, broadcast. Always fails open —
+/// an unrecognized event or a malformed body returns `204` so a broken hook can
+/// never break the agent that fired it.
 pub(crate) async fn handle_report<R: tauri::Runtime>(
     app: &AppHandle<R>,
     headers: HeaderMap,
     body: Bytes,
+    origin: ReportOrigin,
 ) -> StatusCode {
     // The body may be: a JSON envelope `{agentId, agentType, event, source, …}`
     // (node relay / JS plugin), a raw provider event (shell curl), or empty
@@ -981,8 +993,12 @@ pub(crate) async fn handle_report<R: tauri::Runtime>(
     // from the session transcript the hook pointed us at. Only Claude fills the
     // hook's own `summary` (measured across a real run of every wired agent), so
     // for the others this file IS the reply — without it their card can only ever
-    // show a bare status.
-    if status == AgentStatus::Done {
+    // show a bare status. Only here: a host's transcript is on the host, and the
+    // same path on this machine is someone else's file, or nobody's.
+    // FOR-DEV: a host agent's preview — the engine reading the transcript where
+    // it is and sending the preview with the report (`FOR-DEV.md` → Remote
+    // hosts → the host engine, item 3).
+    if status == AgentStatus::Done && origin == ReportOrigin::ThisMachine {
         let base = agent_type.as_deref().and_then(transcript_base_for);
         if let (Some(base), Some(tp)) = (
             base,

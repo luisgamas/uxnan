@@ -329,6 +329,38 @@ started last owned it and the other's agents got nothing. It no longer does: the
 server is registered **per launch**, on the process each window spawns, so every
 agent talks to the window that launched it (see [browser](./browser.md)).
 
+### Agents on an SSH host
+
+An agent in a terminal on a host reports exactly as one here does — the same
+cards, checks, needs-you badges and notifications — wherever the host engine
+runs (Linux and macOS hosts; see [remote hosts](./remote-hosts.md)). Nothing
+about the reporters changes; only where they post:
+
+- **The same installer, run there.** When the app connects to a host with
+  auto-install on, the engine writes these same scripts to *that* machine's
+  `~/.uxnan/hooks/` and registers them in the configs of the agents **it has**
+  — its executable is on the login shell's `PATH`, or its config folder exists.
+  A server is never given another product's config folder. Every other setting
+  in those files is kept, their permissions too, and the rolling `.bak` is
+  written as here. Which agents were wired is in the diagnostics log
+  (`ssh-engine`).
+- **A receiver on the host's loopback.** The engine listens on
+  `127.0.0.1` there with a token of its own, and starts each of its terminals
+  with `UXNAN_HOOK_URL` / `UXNAN_HOOK_TOKEN` / `UXNAN_ENDPOINT_FILE` pointing at
+  it (`~/.uxnan/host/run/endpoint.env`, `0600`), plus the tab's
+  `UXNAN_AGENT_ID`. Nothing is tunnelled back to this machine.
+- **Over the engine's channel, to the same reader.** A report is answered at
+  once and sent to the app watching that terminal — never to another app's — and
+  read by the same code as a local one. While nobody is watching (the lid is
+  closed) the newest reports wait on the host and arrive after the screen when
+  the tab comes back. A tab renamed by an app restart still gets them: they are
+  matched by terminal, not by the id the agent was started with.
+
+What a host's report does not do yet: read the session transcript for the
+completion preview (it is on the host — only this machine's transcripts are
+read, so a Claude turn there shows Claude's own summary and the others a bare
+status), open the integrated browser, or reach the browser MCP.
+
 ### OpenCode 1 and OpenCode 2
 
 OpenCode 2 changed both halves of what the reporter depends on: the **plugin
