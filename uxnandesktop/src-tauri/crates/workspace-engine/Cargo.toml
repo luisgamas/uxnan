@@ -16,5 +16,10 @@ portable-pty = "0.9"
 # from the middle of an escape sequence. Pure Rust, MIT, three small
 # dependencies (vte, unicode-width, itoa).
 vt100 = "0.16"
+# Watching a project folder for the file tree, editor and git panel. The same
+# crates and versions the app's other watchers use; `notify` is re-exported by
+# the debouncer, so the two are pinned together.
+notify = "6"
+notify-debouncer-full = "0.3"
 
 [dev-dependencies]

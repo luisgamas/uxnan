@@ -546,7 +546,7 @@ where
         daemon.clients.fetch_add(1, Ordering::SeqCst);
         // This connection's folder watch, if it asked for one. Dropped with
         // the connection, which stops its thread.
-        let mut watch: Option<crate::watch::Watch> = None;
+        let mut watch: Option<uxnan_workspace_engine::watch::Watch> = None;
         loop {
             tokio::select! {
                 frame = read_frame(&mut reader) => match frame {
@@ -556,12 +556,12 @@ where
                                 watch = None;
                                 let reporter = viewer.clone();
                                 let watched = root.clone();
-                                let outcome = match crate::watch::start(&root, move |paths, overflow, git| {
+                                let outcome = match uxnan_workspace_engine::watch::start(&root, move |batch| {
                                     reporter.send(Frame::control(&ServerMessage::Event(Event::Changed {
                                         root: watched.clone(),
-                                        paths,
-                                        overflow,
-                                        git,
+                                        paths: batch.paths,
+                                        overflow: batch.overflow,
+                                        git: batch.git,
                                     })));
                                 }) {
                                     Ok(w) => {

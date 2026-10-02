@@ -6782,11 +6782,9 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host"
-version = "0.0.71"
+version = "0.0.72"
 dependencies = [
  "libc",
- "notify",
- "notify-debouncer-full",
  "serde",
  "serde_json",
  "tempfile",
@@ -6797,7 +6795,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host-protocol"
-version = "0.0.71"
+version = "0.0.72"
 dependencies = [
  "serde",
  "serde_json",
@@ -6806,8 +6804,10 @@ dependencies = [
 
 [[package]]
 name = "uxnan-workspace-engine"
-version = "0.0.71"
+version = "0.0.72"
 dependencies = [
+ "notify",
+ "notify-debouncer-full",
  "portable-pty",
  "vt100",
 ]

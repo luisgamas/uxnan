@@ -67,6 +67,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **The handshake asks for the key types already on file first**, so a host
   with a recorded key is always checked against it instead of passing as new by
   presenting another key type.
+- **The file tree's watcher reports only its own folder.** On macOS the system
+  also hands over the creation of the watched folder and of the folder above
+  it, which reached the tree as changes it does not show. The tree here and a
+  host's engine now share one watcher, which keeps every report inside the
+  folder it watches.
 
 ## [0.0.72] - 20261002
 ### Changed

@@ -724,8 +724,9 @@ cambia `HEAD`.
   estado git del panel de cambios; las **carpetas padre** que contienen cambios
   también se colorean (ámbar) para poder rastrear visualmente dónde hay cambios.
 - **Auto-refresco (watcher de filesystem)**: el backend vigila la raíz del
-  worktree activo (`src-tauri/src/fswatch.rs`, `notify` + debounce, `.git`
-  filtrado) y emite el evento `fs:changed`; el árbol recarga **solo** los
+  worktree activo (`src-tauri/src/fswatch.rs` sobre el vigilante del motor,
+  `crates/workspace-engine/src/watch.rs`: `notify` + debounce, `.git` filtrado y
+  nada fuera de la raiz; el mismo que vigila un proyecto en un host) y emite el evento `fs:changed`; el árbol recarga **solo** los
   directorios afectados conservando la expansión, de modo que archivos
   creados/eliminados en disco (p. ej. por un agente) aparecen sin recargar a
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).

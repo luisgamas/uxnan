@@ -1,5 +1,6 @@
 //! The workspace engine: the part of Uxnan Desktop that does the work on a
-//! machine — today its terminals, and the screen each one shows.
+//! machine — its terminals, the screen each one shows, and watching the
+//! folder a project is in.
 //!
 //! It is **one** implementation used in two places. On this machine the app
 //! links it in process; on a remote host the `uxnan-host` daemon links the same
@@ -13,5 +14,6 @@
 pub mod error;
 pub mod pty;
 pub mod screen;
+pub mod watch;
 
 pub use error::Error;

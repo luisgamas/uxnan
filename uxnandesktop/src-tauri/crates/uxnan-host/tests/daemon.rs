@@ -437,32 +437,45 @@ async fn a_watched_folder_reports_what_changed_in_it_but_not_in_git() {
 
     std::fs::write(root.join(".git").join("index"), b"git churn").unwrap();
     std::fs::write(root.join("notes.md"), b"hello").unwrap();
-    let event = loop {
-        if let ServerMessage::Event(Event::Changed {
-            root: r,
-            paths,
-            overflow,
-            git,
-        }) = client.control().await
-        {
-            if git && paths.is_empty() {
-                continue;
-            }
-            break (r, paths, overflow);
-        }
-    };
-    assert_eq!(event.0, root.display().to_string());
-    assert!(!event.2);
+    // Changes can arrive over more than one batch; every batch is held to the
+    // watched folder and keeps git's churn out of its paths, and the new file
+    // shows up in one of them.
     let notes = root.join("notes.md").display().to_string();
+    let inside = format!("{}", root.display());
+    let mut heard_git = false;
+    let mut heard_notes = false;
+    let seen = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let ServerMessage::Event(Event::Changed {
+                root: r,
+                paths,
+                overflow,
+                git,
+            }) = client.control().await
+            else {
+                continue;
+            };
+            assert_eq!(r, inside);
+            assert!(!overflow);
+            heard_git |= git;
+            assert!(
+                paths.iter().all(|p| p.starts_with(&inside)),
+                "nothing outside the folder is reported: {paths:?}"
+            );
+            assert!(
+                paths.iter().all(|p| !p.contains("/.git")),
+                "git's own churn is not a path: {paths:?}"
+            );
+            heard_notes |= paths.contains(&notes);
+            if heard_notes && heard_git {
+                return;
+            }
+        }
+    })
+    .await;
     assert!(
-        event.1.contains(&notes),
-        "the new file is reported: {:?}",
-        event.1
-    );
-    assert!(
-        event.1.iter().all(|p| !p.contains("/.git/")),
-        "git's own churn is not: {:?}",
-        event.1
+        seen.is_ok(),
+        "never heard both the new file ({heard_notes}) and the git flag ({heard_git})"
     );
 }
 
@@ -475,7 +488,9 @@ async fn a_call_this_daemon_does_not_know_is_answered_and_the_connection_stays()
     let (mut client, _) = Client::hello(&daemon.socket()).await;
     write_frame(
         &mut client.stream,
-        &Frame::Control(br#"{"type":"request","id":77,"call":{"method":"teleport","to":"mars"}}"#.to_vec()),
+        &Frame::Control(
+            br#"{"type":"request","id":77,"call":{"method":"teleport","to":"mars"}}"#.to_vec(),
+        ),
     )
     .await
     .unwrap();
@@ -487,5 +502,10 @@ async fn a_call_this_daemon_does_not_know_is_answered_and_the_connection_stays()
         }
     }
     let listed = client.call(Call::List).await;
-    assert_eq!(listed, Outcome::Ok { reply: Reply::Sessions { sessions: vec![] } });
+    assert_eq!(
+        listed,
+        Outcome::Ok {
+            reply: Reply::Sessions { sessions: vec![] }
+        }
+    );
 }
