@@ -30,11 +30,11 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,003 Rust tests (926 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
-integration), of which 49 are ignored probes that need something real to talk to
-(41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
+`docs/chat.md`). 1,030 Rust tests (953 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+integration), of which 51 are ignored probes that need something real to talk to
+(43 live SSH probes — 31 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,735 frontend Vitest tests across two
+GitHub tests) + 1,742 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1063,12 +1063,20 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 **Goal:** connect to a remote machine over SSH and run agents *there* — the UI
 stays local, the work happens on the host with its CLIs and its credentials.
 
-**Landed — phases 0 and 1, and half of phase 3.** Execution-target identity (every repo/worktree
+**Landed — phases 0, 1, 3 (files, git and search; a remote project still exposes one root, no worktrees) and 4.** Execution-target identity (every repo/worktree
 carries a `target`, workspaces key on `(target, path)`, schema v2, and
 `target::check` refuses a mutation aimed at another machine); the user's own SSH
 configuration read through `ssh -G`; host-key verification with its four
-verdicts and TOFU; authentication (agent → key → password); one connection with
-N channels and a generation each; the host inventory; a remote terminal;
+verdicts and TOFU — read from every `known_hosts` file the configuration names,
+under `HostKeyAlias`, with `StrictHostKeyChecking`, an anti-downgrade key order
+and a guided replacement of a rotated key; the route resolved at every connect,
+through bastions (`ProxyJump`, in process) or a `ProxyCommand`; authentication
+in the order that interrupts least (agent keys the config names → unlocked key
+files → other agent keys unless `IdentitiesOnly` → a passphrase prompt), with
+`IdentityAgent`, certificates, `ForwardAgent`, keyboard-interactive second
+factors and partial success, and what the person typed held in memory for the
+app's session (`ssh/dial.rs`, `ssh/auth.rs`, `ssh/secrets.rs`); one connection
+with N channels and a generation each; the host inventory; a remote terminal;
 browsing a host's folders and registering one as a project; **using** that
 project (its workspace keys on the machine, its terminals open there in its
 folder, and the panels that read this machine stand down and say so); and the
@@ -1197,11 +1205,13 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
       test), which proves the script is valid but not that an `sshd` hands it
       through intact. Windows containers on a Linux runner cannot do this; a
       `windows-latest` runner with OpenSSH Server enabled could.
-- [ ] **An in-process SSH server for wire-level tests.** `russh::server` would
-      let the protocol-shaped assertions (SFTP behaviour, a channel that dies
-      mid-request, a server that answers slowly) run with no Docker and no
-      network, leaving the container for what only a real `sshd` can show. Today
-      those cases are covered by the live suite or not at all.
+- [ ] **The in-process SSH server covers the transport, not yet the channels.**
+      `ssh/testserver.rs` runs on every `cargo test` and proves authentication,
+      bastions, agent forwarding and the host-key decisions
+      (`ssh/transport_tests.rs`, `docs/testing.md`). Still covered only by the
+      live suite, or not at all: SFTP behaviour, a channel that dies
+      mid-request, and a server that answers slowly. Extend the server with an
+      SFTP subsystem and a fault switch (`ssh/testserver.rs`); nothing blocks it.
 - [ ] **Orphans on the far side.** Closing a remote terminal ends its channel;
       anything the shell left detached keeps running on that host, and nothing
       here can see it — the resource monitor walks *local* processes. Raised by

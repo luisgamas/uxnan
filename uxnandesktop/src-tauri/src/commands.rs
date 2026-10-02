@@ -1074,100 +1074,68 @@ pub async fn ssh_host_remove(
     Ok(removed)
 }
 
-/// What reaching a host said about its identity, before any credential.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SshHostProbe {
-    /// `trusted` | `unknown` | `changed` | `revoked`.
-    pub status: String,
-    /// The fingerprint to show the user, in OpenSSH's own format.
-    pub fingerprint: Option<String>,
-    pub algorithm: Option<String>,
-    /// For `changed`: what `known_hosts` has on file instead.
-    pub stored_fingerprint: Option<String>,
-}
-
-/// Reach a host and report what `known_hosts` says about the key it presents.
+/// Record the key the host just presented, after the person confirmed its
+/// fingerprint.
 ///
-/// Nothing is written and no credential is offered. On `unknown` the key is held
-/// in memory so [`ssh_host_trust`] can record *exactly what the server
-/// presented* once the user confirms — the blob never travels through the UI.
-#[tauri::command]
-pub async fn ssh_host_probe(
-    state: State<'_, AppState>,
-    host_id: String,
-) -> Result<SshHostProbe, CommandError> {
-    let host = find_ssh_host(&state, &host_id).await?;
-    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
-    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
-
-    match ssh::conn::connect(endpoint, &known)
-        .await
-        .map_err(CommandError::from)?
-    {
-        ssh::conn::Handshake::Ready(_) => Ok(SshHostProbe {
-            status: "trusted".into(),
-            fingerprint: None,
-            algorithm: None,
-            stored_fingerprint: None,
-        }),
-        // Not a verdict about the key: nothing was presented, because nothing
-        // answered. Reported as its own status rather than folded into
-        // "unknown", which would invite the user to trust a machine we never
-        // spoke to.
-        ssh::conn::Handshake::Unreachable { detail, .. } => Ok(SshHostProbe {
-            status: "unreachable".into(),
-            fingerprint: Some(detail),
-            algorithm: None,
-            stored_fingerprint: None,
-        }),
-        ssh::conn::Handshake::Unknown { fingerprint, key } => {
-            let algorithm = key.algorithm.clone();
-            state.ssh_pending_keys.write().await.insert(host_id, key);
-            Ok(SshHostProbe {
-                status: "unknown".into(),
-                fingerprint: Some(fingerprint),
-                algorithm: Some(algorithm),
-                stored_fingerprint: None,
-            })
-        }
-        ssh::conn::Handshake::Changed {
-            presented_fingerprint,
-            stored_fingerprint,
-        } => Ok(SshHostProbe {
-            status: "changed".into(),
-            fingerprint: Some(presented_fingerprint),
-            algorithm: None,
-            stored_fingerprint: Some(stored_fingerprint),
-        }),
-        ssh::conn::Handshake::Revoked { fingerprint } => Ok(SshHostProbe {
-            status: "revoked".into(),
-            fingerprint: Some(fingerprint),
-            algorithm: None,
-            stored_fingerprint: None,
-        }),
-    }
-}
-
-/// Record the key a probe just saw, after the user confirmed the fingerprint.
-///
-/// Only ever appends the key **this app watched the server present**, and only
-/// for a host whose probe came back `unknown`. There is deliberately no way to
-/// trust a *changed* key from here: that path exists to be refused.
+/// Only ever appends the key **this app watched the server present**, for a
+/// host whose last connect stopped at "unknown" — on whichever hop of its route
+/// presented it — and only into the `known_hosts` file that hop's configuration
+/// names. A key that *replaces* one on file is never recorded from here: that
+/// is [`ssh_host_replace_key`], a separate and deliberate act.
 #[tauri::command]
 pub async fn ssh_host_trust(
     state: State<'_, AppState>,
     host_id: String,
 ) -> Result<bool, CommandError> {
-    let host = find_ssh_host(&state, &host_id).await?;
-    let Some(key) = state.ssh_pending_keys.write().await.remove(&host_id) else {
-        return Err(CommandError::from(AppError::Invalid(
-            "no host key is awaiting confirmation for this host".to_string(),
-        )));
-    };
-    let line = ssh::hostkey::trust_line(&host.hostname, host.port, &key);
-    append_known_host(&line).map_err(CommandError::from)?;
+    let pending = take_pending_key(&state, &host_id, false).await?;
+    ssh::dial::record_key(&pending.pending).map_err(CommandError::from)?;
     Ok(true)
+}
+
+/// Replace the key on file for a host whose key changed, after the person
+/// confirmed the change is theirs (the machine was reinstalled, its keys
+/// regenerated).
+///
+/// The stale entries are backed up to `known_hosts.old` and only they go: the
+/// same name, port and algorithm. The alternative the interface used to offer —
+/// nothing, edit the file yourself — left people deleting whole lines of a file
+/// they could not read, which is how a real warning gets dismissed next time.
+#[tauri::command]
+pub async fn ssh_host_replace_key(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    let pending = take_pending_key(&state, &host_id, true).await?;
+    let removed = ssh::dial::replace_key(&pending.pending).map_err(CommandError::from)?;
+    crate::diagnostics::log(
+        crate::diagnostics::Level::Info,
+        "ssh",
+        &format!(
+            "replaced {removed} known_hosts entr{} for {} with {}",
+            if removed == 1 { "y" } else { "ies" },
+            pending.hop,
+            pending.pending.fingerprint()
+        ),
+    );
+    Ok(true)
+}
+
+/// The key a host's last connect stopped on, if it is the kind of decision the
+/// caller is about to make.
+async fn take_pending_key(
+    state: &AppState,
+    host_id: &str,
+    changed: bool,
+) -> Result<ssh::PendingHostKey, CommandError> {
+    let mut pending = state.ssh_pending_keys.write().await;
+    match pending.get(host_id) {
+        Some(p) if p.changed == changed => Ok(pending.remove(host_id).expect("just found")),
+        _ => Err(CommandError::from(AppError::Invalid(if changed {
+            "no changed host key is awaiting replacement for this host".to_string()
+        } else {
+            "no host key is awaiting confirmation for this host".to_string()
+        }))),
+    }
 }
 
 /// The result of trying to open a working session on a host.
@@ -1178,15 +1146,16 @@ pub async fn ssh_host_trust(
 #[serde(rename_all = "camelCase")]
 pub struct SshConnectReport {
     /// `connected` | `hostUnknown` | `hostChanged` | `hostRevoked` |
-    /// `needsPassword` | `needsPassphrase` | `failed` | `noUsableMethod` |
-    /// `unreachable`.
+    /// `needsPassword` | `needsPassphrase` | `needsAnswers` | `failed` |
+    /// `noUsableMethod` | `unreachable` | `proxyFailed`.
     pub status: String,
     /// For `unreachable`: which kind of not-reachable it was (`timeout` |
     /// `unknownAddress` | `refused` | `handshake`). They lead to different
     /// actions — a machine that is asleep is worth another try, a name that does
     /// not resolve is not — and one failure string made them look alike.
     pub reason: Option<ssh::conn::Unreachable>,
-    /// A sentence naming the host and what happened, for `unreachable`.
+    /// A sentence naming the host and what happened, for `unreachable` and
+    /// `proxyFailed`.
     pub detail: Option<String>,
     /// The connection incarnation, for `connected`. Travels with every mutation
     /// prepared against this session (`target::TargetExpectation`).
@@ -1196,10 +1165,26 @@ pub struct SshConnectReport {
     /// For the host-key outcomes.
     pub fingerprint: Option<String>,
     pub stored_fingerprint: Option<String>,
+    /// For `hostUnknown`: the configuration says `StrictHostKeyChecking yes`,
+    /// so a new key cannot be trusted from here — only shown.
+    pub strict: bool,
     /// For `needsPassphrase`: which key file needs one.
     pub path: Option<String>,
+    /// For `needsPassphrase`: one was given and it did not open the key.
+    pub wrong: bool,
     /// What was offered and refused, in order, so the message can name it.
     pub attempted: Vec<String>,
+    /// For `needsAnswers`: the questions, as the server asked them.
+    pub challenge: Option<ssh::auth::Challenge>,
+    /// Which hop the outcome is about, when it is a **bastion** on the way and
+    /// not the host itself ("the bastion wants a password").
+    pub hop: Option<String>,
+    /// The identity of the hop that asked, to send its secret back with
+    /// (`user@hostname:port`). Set on every outcome that is about a hop.
+    pub hop_key: Option<String>,
+    /// Hosts whose new key was recorded without asking (`StrictHostKeyChecking
+    /// accept-new`), as `label → fingerprint`, for `connected`.
+    pub learned_keys: Vec<(String, String)>,
     /// Which shell this host starts (`posix` | `cmd` | `powershell` |
     /// `unknown`), for `connected`. The interface needs it to quote an agent's
     /// command line for the shell that will actually receive it — quoting for
@@ -1218,11 +1203,43 @@ impl SshConnectReport {
             method: None,
             fingerprint: None,
             stored_fingerprint: None,
+            strict: false,
             path: None,
+            wrong: false,
             attempted: Vec::new(),
+            challenge: None,
+            hop: None,
+            hop_key: None,
+            learned_keys: Vec::new(),
         }
     }
+
+    fn about(status: &str, hop: &ssh::dial::HopRef) -> Self {
+        let mut report = Self::of(status);
+        report.hop = (!hop.is_target).then(|| hop.label.clone());
+        report.hop_key = Some(hop.key.clone());
+        report
+    }
 }
+
+/// Something the person typed for one hop of a host's route. Deliberately has
+/// no `Debug`: it carries the secret itself.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSecret {
+    /// `password` | `passphrase`.
+    pub kind: String,
+    /// The hop it is for, as the report that asked named it (`hopKey`).
+    pub hop_key: String,
+    /// For a passphrase: the key file it opens.
+    pub path: Option<String>,
+    pub value: String,
+}
+
+/// How long a connection paused on a second factor waits for the answers. A
+/// server's own login grace time is typically two minutes; past it the server
+/// has hung up anyway.
+const CHALLENGE_TTL: std::time::Duration = std::time::Duration::from_secs(180);
 
 /// Open an authenticated session on a host and keep it.
 ///
@@ -1230,14 +1247,15 @@ impl SshConnectReport {
 /// opening a second one. Everything that runs on the host — terminal, inventory,
 /// git — shares this connection, which is the point of an in-process client.
 ///
-/// `password` is supplied only on a retry, after the app has asked for it. It is
-/// used for this attempt and never stored.
+/// `secret` is supplied on a retry, after the app asked for a password or a
+/// passphrase. It is kept in memory for the app's session (`ssh::secrets`) so a
+/// dropped connection can come back without asking again — never on disk.
 #[tauri::command]
 pub async fn ssh_host_connect<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
     host_id: String,
-    password: Option<String>,
+    secret: Option<SshSecret>,
 ) -> Result<SshConnectReport, CommandError> {
     // An existing session is only worth keeping while its transport is up. One
     // that has ended answers nothing and can open no channel, so reporting it as
@@ -1272,75 +1290,188 @@ pub async fn ssh_host_connect<R: tauri::Runtime>(
         }
         None => {}
     }
-    connect_fresh(app, state, host_id, password).await
+    if let Some(secret) = secret {
+        remember_secret(&state, secret).await;
+    }
+    connect_fresh(app, state, host_id).await
 }
 
-/// Reach a host that has no live session, from the host key to the shell it
+/// Send the person's answers to the questions a host's second factor asked, on
+/// the connection that is waiting for them, and carry on connecting.
+#[tauri::command]
+pub async fn ssh_host_answer<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    host_id: String,
+    answers: Vec<String>,
+) -> Result<SshConnectReport, CommandError> {
+    let parked = state.ssh_dials.lock().await.remove(&host_id);
+    let Some((mut dial, since)) = parked else {
+        return Err(CommandError::from(AppError::Invalid(
+            "this host is not waiting for answers — connect again".to_string(),
+        )));
+    };
+    if since.elapsed() > CHALLENGE_TTL {
+        return Err(CommandError::from(AppError::Invalid(
+            "the host stopped waiting for these answers — connect again".to_string(),
+        )));
+    }
+    let secrets = secrets_snapshot(&state, dial.route()).await;
+    let step = dial
+        .answer(answers, &|hop| secrets_for_hop(&secrets, hop))
+        .await
+        .map_err(CommandError::from)?;
+    settle_dial(app, &state, &host_id, dial, step).await
+}
+
+/// Give up on a connection paused on a second factor (the person closed the
+/// dialog). Dropping it closes the connection that was waiting.
+#[tauri::command]
+pub async fn ssh_host_cancel(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    Ok(state.ssh_dials.lock().await.remove(&host_id).is_some())
+}
+
+/// Edit a registered host (see `ssh::registry::update_host` for what an imported
+/// host lets you change). A live session is left alone: it was opened with the
+/// old settings and keeps working; the next connect uses the new ones.
+#[tauri::command]
+pub async fn ssh_host_update(
+    state: State<'_, AppState>,
+    host_id: String,
+    draft: ssh::registry::HostDraft,
+) -> Result<SshHost, CommandError> {
+    if draft.hostname.trim().is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "a host needs a hostname".to_string(),
+        )));
+    }
+    let mut data = state.data.write().await;
+    let updated = ssh::registry::update_host(&mut data.settings.ssh_hosts, &host_id, draft)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("ssh host {host_id}"))))?;
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    drop(data);
+    state.ssh_unlocked.write().await.remove(&host_id);
+    Ok(updated)
+}
+
+async fn remember_secret(state: &AppState, secret: SshSecret) {
+    let mut store = state.ssh_secrets.write().await;
+    match (secret.kind.as_str(), secret.path) {
+        ("passphrase", Some(path)) => {
+            store.put_passphrase(&ssh::auth::expand_path(&path), secret.value)
+        }
+        _ => store.put_password(&secret.hop_key, secret.value),
+    }
+}
+
+/// What the person has given for each hop of `route`, copied out so the lock
+/// is not held while talking to any of them.
+async fn secrets_snapshot(
+    state: &AppState,
+    route: &ssh::dial::Route,
+) -> std::collections::HashMap<String, ssh::auth::Secrets> {
+    let store = state.ssh_secrets.read().await;
+    route
+        .hops
+        .iter()
+        .map(|hop| {
+            let files: Vec<std::path::PathBuf> = hop
+                .resolved
+                .identity_files
+                .iter()
+                .map(|f| ssh::auth::expand_path(f))
+                .collect();
+            (hop.key.clone(), store.secrets_for(&hop.key, &files))
+        })
+        .collect()
+}
+
+fn secrets_for_hop(
+    snapshot: &std::collections::HashMap<String, ssh::auth::Secrets>,
+    hop: &ssh::dial::Hop,
+) -> ssh::auth::Secrets {
+    snapshot.get(&hop.key).cloned().unwrap_or_default()
+}
+
+/// Reach a host that has no live session, from its route to the shell it
 /// starts. Split out of [`ssh_host_connect`] so both the first connection and a
 /// replacement for one that ended take exactly the same path.
 async fn connect_fresh<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
     host_id: String,
-    password: Option<String>,
 ) -> Result<SshConnectReport, CommandError> {
     let host = find_ssh_host(&state, &host_id).await?;
-    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
-    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
-
-    let mut connection = match ssh::conn::connect(endpoint, &known)
-        .await
-        .map_err(CommandError::from)?
-    {
-        ssh::conn::Handshake::Ready(conn) => conn,
-        ssh::conn::Handshake::Unreachable { why, detail } => {
-            let mut report = SshConnectReport::of("unreachable");
-            report.reason = Some(why);
-            report.detail = Some(detail);
-            return Ok(report);
-        }
-        ssh::conn::Handshake::Unknown { fingerprint, key } => {
-            let mut report = SshConnectReport::of("hostUnknown");
-            report.fingerprint = Some(fingerprint);
-            state
-                .ssh_pending_keys
-                .write()
-                .await
-                .insert(host_id.clone(), key);
-            return Ok(report);
-        }
-        ssh::conn::Handshake::Changed {
-            presented_fingerprint,
-            stored_fingerprint,
-        } => {
-            let mut report = SshConnectReport::of("hostChanged");
-            report.fingerprint = Some(presented_fingerprint);
-            report.stored_fingerprint = Some(stored_fingerprint);
-            return Ok(report);
-        }
-        ssh::conn::Handshake::Revoked { fingerprint } => {
-            let mut report = SshConnectReport::of("hostRevoked");
-            report.fingerprint = Some(fingerprint);
-            return Ok(report);
-        }
-    };
-
-    // The agent first, then the key files this host's config points at, then a
-    // password if the user has already been asked for one.
-    let mut credentials = ssh::auth::credentials_for(true, &host.identity_files);
-    if let Some(password) = password {
-        credentials.push(ssh::auth::Credential::Password(password));
-    }
-
-    let outcome = ssh::auth::authenticate(&mut connection, &host.user, &credentials)
+    // Resolved now, not when the host was added: an edit to `~/.ssh/config`
+    // takes effect on the next connect, as it would for `ssh`.
+    let route = ssh::dial::route_for(&host)
         .await
         .map_err(CommandError::from)?;
+    refresh_host_snapshot(&state, &host_id, route.target()).await?;
 
-    match outcome {
-        ssh::auth::AuthOutcome::Success { method } => {
+    // A connection left paused on an earlier attempt is superseded by this one.
+    state.ssh_dials.lock().await.remove(&host_id);
+
+    let secrets = secrets_snapshot(&state, &route).await;
+    let mut dial = ssh::dial::Dial::new(route);
+    let step = dial
+        .run(&|hop| secrets_for_hop(&secrets, hop))
+        .await
+        .map_err(CommandError::from)?;
+    settle_dial(app, &state, &host_id, dial, step).await
+}
+
+/// Keep an imported host's record in step with what its configuration says now.
+async fn refresh_host_snapshot(
+    state: &AppState,
+    host_id: &str,
+    target: &ssh::dial::Hop,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    let Some(host) = data.settings.ssh_hosts.iter_mut().find(|h| h.id == host_id) else {
+        return Ok(());
+    };
+    if ssh::registry::refresh_snapshot(host, &target.resolved) {
+        state.persistence.save(&data).map_err(CommandError::from)?;
+    }
+    Ok(())
+}
+
+/// Turn where a dial got to into the report the interface acts on — and do
+/// what each outcome implies: keep the session, park the paused connection,
+/// hold a key for the person's decision, forget a secret that was refused.
+async fn settle_dial<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: &AppState,
+    host_id: &str,
+    dial: ssh::dial::Dial,
+    step: ssh::dial::Step,
+) -> Result<SshConnectReport, CommandError> {
+    use ssh::dial::{Step, Stop};
+    let host_id = host_id.to_string();
+    match step {
+        Step::Ready(ready) => {
+            let ssh::dial::Ready {
+                connection,
+                method,
+                needed_secrets,
+                answered_challenges,
+                learned,
+            } = ready;
+            for (label, fingerprint) in &learned {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh",
+                    &format!("recorded the new key of {label} ({fingerprint}) — StrictHostKeyChecking accept-new"),
+                );
+            }
             let mut report = SshConnectReport::of("connected");
             report.generation = Some(connection.generation());
             report.method = Some(method);
+            report.learned_keys = learned;
             // Ask now, once, which shell this machine starts. Everything that
             // later types into it — a terminal's `cd`, an agent's quoted command
             // line — needs the answer, and asking here means no caller has to
@@ -1360,29 +1491,119 @@ async fn connect_fresh<R: tauri::Runtime>(
                 .await
                 .insert(host_id.clone(), std::sync::Arc::clone(&session));
             watch_session(app, host_id.clone(), generation, session);
-            // Remember that this host let us in without asking, so startup can
-            // reconnect the silent ones and leave the rest until the user is here.
-            set_needs_prompt(&state, &host_id, false).await?;
+            // Startup reconnects the hosts that let us in without asking and
+            // leaves the rest until the person is here. Within this session, a
+            // host that needed only a password or a passphrase can come back on
+            // its own — the app still holds them; one that needed a code cannot.
+            set_needs_prompt(state, &host_id, needed_secrets).await?;
+            let mut unlocked = state.ssh_unlocked.write().await;
+            if needed_secrets && !answered_challenges {
+                unlocked.insert(host_id.clone());
+            } else {
+                unlocked.remove(&host_id);
+            }
             Ok(report)
         }
-        ssh::auth::AuthOutcome::NeedsPassword { attempted } => {
-            let mut report = SshConnectReport::of("needsPassword");
-            report.attempted = attempted;
-            set_needs_prompt(&state, &host_id, true).await?;
+        Step::Paused { hop, challenge } => {
+            let mut report = SshConnectReport::about("needsAnswers", &hop);
+            report.challenge = Some(challenge);
+            set_needs_prompt(state, &host_id, true).await?;
+            state
+                .ssh_dials
+                .lock()
+                .await
+                .insert(host_id, (dial, std::time::Instant::now()));
             Ok(report)
         }
-        ssh::auth::AuthOutcome::NeedsPassphrase { path } => {
-            let mut report = SshConnectReport::of("needsPassphrase");
-            report.path = Some(path);
-            set_needs_prompt(&state, &host_id, true).await?;
+        Step::Stopped(stop) => {
+            let report = match stop {
+                Stop::Unreachable { hop, why, detail } => {
+                    let mut r = SshConnectReport::about("unreachable", &hop);
+                    r.reason = Some(why);
+                    r.detail = Some(detail);
+                    r
+                }
+                Stop::ProxyFailed { hop, detail } => {
+                    let mut r = SshConnectReport::about("proxyFailed", &hop);
+                    r.detail = Some(detail);
+                    r
+                }
+                Stop::HostUnknown {
+                    hop,
+                    pending,
+                    strict,
+                } => {
+                    let mut r = SshConnectReport::about("hostUnknown", &hop);
+                    r.fingerprint = Some(pending.fingerprint());
+                    r.strict = strict;
+                    if !strict {
+                        state.ssh_pending_keys.write().await.insert(
+                            host_id.clone(),
+                            ssh::PendingHostKey {
+                                hop: hop.label.clone(),
+                                pending,
+                                changed: false,
+                            },
+                        );
+                    }
+                    r
+                }
+                Stop::HostChanged {
+                    hop,
+                    pending,
+                    stored_fingerprint,
+                } => {
+                    let mut r = SshConnectReport::about("hostChanged", &hop);
+                    r.fingerprint = Some(pending.fingerprint());
+                    r.stored_fingerprint = Some(stored_fingerprint);
+                    state.ssh_pending_keys.write().await.insert(
+                        host_id.clone(),
+                        ssh::PendingHostKey {
+                            hop: hop.label.clone(),
+                            pending,
+                            changed: true,
+                        },
+                    );
+                    r
+                }
+                Stop::HostRevoked { hop, fingerprint } => {
+                    let mut r = SshConnectReport::about("hostRevoked", &hop);
+                    r.fingerprint = Some(fingerprint);
+                    r
+                }
+                Stop::NeedsPassword { hop, attempted } => {
+                    set_needs_prompt(state, &host_id, true).await?;
+                    let mut r = SshConnectReport::about("needsPassword", &hop);
+                    r.attempted = attempted;
+                    r
+                }
+                Stop::NeedsPassphrase { hop, path, wrong } => {
+                    set_needs_prompt(state, &host_id, true).await?;
+                    if wrong {
+                        state
+                            .ssh_secrets
+                            .write()
+                            .await
+                            .forget_passphrase(&ssh::auth::expand_path(&path));
+                    }
+                    let mut r = SshConnectReport::about("needsPassphrase", &hop);
+                    r.path = Some(path);
+                    r.wrong = wrong;
+                    r
+                }
+                Stop::Failed { hop, attempted } => {
+                    // A password the person gave was part of what got refused:
+                    // forget it, so the next attempt asks instead of replaying
+                    // the wrong one.
+                    state.ssh_secrets.write().await.forget_password(&hop.key);
+                    let mut r = SshConnectReport::about("failed", &hop);
+                    r.attempted = attempted;
+                    r
+                }
+                Stop::NoUsableMethod { hop } => SshConnectReport::about("noUsableMethod", &hop),
+            };
             Ok(report)
         }
-        ssh::auth::AuthOutcome::Failed { attempted } => {
-            let mut report = SshConnectReport::of("failed");
-            report.attempted = attempted;
-            Ok(report)
-        }
-        ssh::auth::AuthOutcome::NoUsableMethod => Ok(SshConnectReport::of("noUsableMethod")),
     }
 }
 
@@ -1510,7 +1731,7 @@ async fn reconnect_ladder<R: tauri::Runtime>(app: AppHandle<R>, host_id: String)
             return;
         }
 
-        match connect_fresh(app.clone(), state, host_id.clone(), None).await {
+        match connect_fresh(app.clone(), state, host_id.clone()).await {
             Ok(report) if report.status == "connected" => {
                 crate::diagnostics::log(
                     crate::diagnostics::Level::Info,
@@ -1570,8 +1791,10 @@ fn worth_retrying(report: &SshConnectReport) -> bool {
     }
 }
 
-/// Whether this host is one the app may bring back without asking anything —
-/// the same rule `ssh_hosts_resumable` applies at startup.
+/// Whether this host is one the app may bring back without asking anything:
+/// it let us in without a prompt last time — or needed only a password or a
+/// passphrase that this session still holds — and every hop of its route has
+/// its key settled. The same rule `ssh_hosts_resumable` applies at startup.
 async fn is_resumable(state: &AppState, host_id: &str) -> bool {
     let Some(host) = state
         .data
@@ -1585,14 +1808,19 @@ async fn is_resumable(state: &AppState, host_id: &str) -> bool {
     else {
         return false;
     };
-    if host.needs_prompt {
+    let unlocked = state.ssh_unlocked.read().await.contains(host_id);
+    if host.needs_prompt && !unlocked {
         return false;
     }
-    let Ok(path) = known_hosts_path() else {
-        return false;
-    };
-    let known = ssh::hostkey::read_known_hosts(&path).unwrap_or_default();
-    ssh::hostkey::is_known(&known, &host.hostname, host.port)
+    route_is_silent(&host).await
+}
+
+/// Whether reaching `host` can go through without a key decision on any hop.
+async fn route_is_silent(host: &SshHost) -> bool {
+    match ssh::dial::route_for(host).await {
+        Ok(route) => route.hops.iter().all(ssh::dial::Hop::key_is_settled),
+        Err(_) => false,
+    }
 }
 
 /// Payload of `ssh:session-ended`.
@@ -2556,20 +2784,22 @@ pub struct SshHostSession {
 /// reaching it can raise a dialog, and there are exactly two ways it can:
 ///
 /// - it asked for a password or a passphrase last time (`needs_prompt`), or
-/// - **its host key is not on file**, which can only end in the trust prompt.
+/// - **a host key along its route is not on file** — the host's own, or a
+///   bastion's — which can only end in the trust prompt.
 ///
 /// Neither belongs on screen unprompted while the app is still opening. A host
 /// left out of this list is not refused — it connects the moment the user asks.
 #[tauri::command]
 pub async fn ssh_hosts_resumable(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
     let hosts = state.data.read().await.settings.ssh_hosts.clone();
-    // Read the file once: this runs at startup, for every host at once.
-    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).unwrap_or_default();
-    Ok(hosts
-        .into_iter()
-        .filter(|h| !h.needs_prompt && ssh::hostkey::is_known(&known, &h.hostname, h.port))
-        .map(|h| h.id)
-        .collect())
+    // Each host resolves its route through `ssh -G`, a few milliseconds apiece.
+    let mut silent = Vec::new();
+    for host in hosts.into_iter().filter(|h| !h.needs_prompt) {
+        if route_is_silent(&host).await {
+            silent.push(host.id);
+        }
+    }
+    Ok(silent)
 }
 
 /// The hosts with a live session, and which incarnation each one is.
@@ -2624,45 +2854,6 @@ async fn find_ssh_host(state: &AppState, host_id: &str) -> Result<SshHost, Comma
         .find(|h| h.id == host_id)
         .cloned()
         .ok_or_else(|| CommandError::from(AppError::NotFound(format!("ssh host {host_id}"))))
-}
-
-fn known_hosts_path() -> Result<std::path::PathBuf, CommandError> {
-    let home = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .ok_or_else(|| {
-            CommandError::from(AppError::Invalid("no home directory to read".to_string()))
-        })?;
-    Ok(std::path::PathBuf::from(home)
-        .join(".ssh")
-        .join("known_hosts"))
-}
-
-/// Append one line to `known_hosts`, creating `~/.ssh` if this is the first
-/// host ever trusted. Appends — never rewrites — so entries the user or their
-/// own `ssh` put there are untouched.
-fn append_known_host(line: &str) -> Result<(), AppError> {
-    use std::io::Write;
-    let path = known_hosts_path().map_err(|e| AppError::Invalid(e.message))?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)?;
-    // A file that does not end in a newline would otherwise glue our entry onto
-    // the last one and corrupt both.
-    let needs_newline = std::fs::metadata(&path)
-        .map(|m| m.len() > 0)
-        .unwrap_or(false)
-        && !std::fs::read_to_string(&path)
-            .map(|s| s.ends_with('\n'))
-            .unwrap_or(true);
-    if needs_newline {
-        file.write_all(b"\n")?;
-    }
-    writeln!(file, "{line}")?;
-    Ok(())
 }
 
 // --- Repositories ----------------------------------------------------------
@@ -5372,7 +5563,7 @@ mod tests {
                 .ssh_sessions
                 .write()
                 .await
-                .insert(HOST.to_string(), Arc::new(conn));
+                .insert(HOST.to_string(), Arc::new(*conn));
             (dir, state)
         }
 

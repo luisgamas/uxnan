@@ -39,15 +39,25 @@ refuses it — before anything runs — if that no longer matches.
 
 ## Secrets
 
-**None are stored.** A host record holds an alias, hostname, port, user and a
+**None are written.** A host record holds an alias, hostname, port, user and a
 *reference* to an identity file. Never a key, never a password. Those come from
-your system's ssh-agent, from the key file on disk, or from a prompt that lives
-in memory for that session only.
+the agent your SSH configuration names, from the key file on disk, or from what
+you type when the app asks.
+
+What you type — a password, a key passphrase — is kept **in memory until you
+close the app**, so a dropped connection (a laptop lid, a Wi-Fi handover) can
+come back on its own instead of asking again. It is never written anywhere, never
+logged, and wiped from memory when replaced. A wrong one is forgotten at once, so
+the next attempt asks rather than replaying it. Answers to a second factor (a
+one-time code) are never kept at all: they cannot be reused.
 
 For git operations on the remote host, use **`ForwardAgent`**: it lets git over
 there use the keys held by the agent over here, without a private key ever
-leaving this machine. The app reads the setting from your SSH config and honors
-it per host.
+leaving this machine. Set it in your SSH config or in the host's form; the app
+asks the host to forward the agent on every terminal and command it opens there,
+and accepts the host's agent requests only on a connection that asked for them.
+Anyone with root on that host can use the forwarded agent while you are
+connected — enable it for machines you trust.
 
 ## Your SSH configuration — works today
 
@@ -59,17 +69,49 @@ than retyping what you already wrote:
   survives an include cycle. Wildcard patterns like `Host *` are skipped — those
   configure defaults, they are not hosts you connect to. If you have no config
   file, the list is simply empty.
-- **Resolving one alias** shells out to **`ssh -G <alias>`** rather than
-  interpreting the file ourselves. OpenSSH's own precedence rules (`Match`
-  blocks, pattern order, canonicalization) are subtle enough that a hand-written
-  parser eventually connects somewhere your own `ssh` would not. `ssh -G` ships
-  with Windows, macOS and Linux, and prints exactly what OpenSSH would use.
+- **Resolving a host** shells out to **`ssh -G`** rather than interpreting the
+  file ourselves. OpenSSH's own precedence rules (`Match` blocks, pattern order,
+  canonicalization) are subtle enough that a hand-written parser eventually
+  connects somewhere your own `ssh` would not. `ssh -G` ships with Windows, macOS
+  and Linux, and prints exactly what OpenSSH would use.
 
-What is read from the resolved output: hostname, port, user, identity files,
-`IdentityAgent`, `IdentitiesOnly`, `ForwardAgent`, `ProxyCommand` and
-`ProxyJump`. OpenSSH prints the literal `none` for the last three when they are
-unset, and the app treats that as "not configured" — otherwise it would try to
-run a proxy command called `none`.
+**It is resolved at every connect**, not once when the host is added: edit your
+config and the next connection uses the change, as it would for `ssh`. A host you
+typed by hand is resolved the way the matching command line would be
+(`ssh -p 2222 -l dev -J bastion box`), so it still picks up your `Host *`
+defaults — the agent socket, the known-hosts files, `IdentitiesOnly`. An
+imported host shows a snapshot of what it resolved to; only its label is edited
+in the app, because the rest comes from the file.
+
+What the app acts on:
+
+| Setting | What it does here |
+|---|---|
+| `HostName`, `Port`, `User` | where and as whom |
+| `IdentityFile`, `CertificateFile` | keys to offer, with their certificate (also `<key>-cert.pub`) |
+| `IdentityAgent` | which agent to ask — a socket path, `SSH_AUTH_SOCK`, or `none` for no agent |
+| `IdentitiesOnly` | offer only the configured keys, even when the agent holds others |
+| `ForwardAgent` | forward the agent to the host (above) |
+| `ProxyJump` | reach the host through one or more bastions — see below |
+| `ProxyCommand` | let a command carry the connection (`%h %p %r %n %%` expanded) |
+| `HostKeyAlias` | the name the host key is filed under |
+| `UserKnownHostsFile`, `GlobalKnownHostsFile` | where host keys are read (and the first user file, where they are written) |
+| `StrictHostKeyChecking` | what happens with a key that is not on file — see *Host keys* |
+
+OpenSSH prints the literal `none` for `ProxyCommand`, `ProxyJump` and
+`HostKeyAlias` when they are unset, and the app treats that as "not configured".
+`IdentityAgent none` is kept: there it means *use no agent*.
+
+### Bastions (`ProxyJump`)
+
+A host behind a jump host is reached the way `ssh -J` reaches it, inside the
+app: the bastion is an SSH connection of its own — its own key check, its own
+login — and the host is a full SSH session carried in a tunnel the bastion opens
+to it. That is why a name only the bastion can resolve works. Chains
+(`ProxyJump a,b`) and bastions with a `ProxyJump` of their own are followed, with
+a loop check. When a bastion asks for something — a password, a code, a key to
+trust — the dialog names it: *"edge (on the way to build-box)"*. A bastion's
+password is offered to that bastion only.
 
 ## How you authenticate
 
@@ -84,40 +126,58 @@ the truth is "this machine wants a password and nobody asked you for one". If a
 key of yours is refused on a host that also takes passwords, you get told both
 things: which key was refused, and that you can try a password.
 
-When you do have keys, the app tries your **ssh-agent first**, then the identity
-files your SSH config points at for that host. The agent goes first on purpose: it holds keys you have
-already unlocked, so connecting to five hosts does not mean five passphrase
-prompts. On Windows that is OpenSSH's agent service; elsewhere it is whatever
-`SSH_AUTH_SOCK` points at.
+Keys are offered in the order that interrupts you least:
 
-If a key file is encrypted and the app has no passphrase for it, it **asks you
-for that key** rather than reporting a failure — "wrong key" and "I could not
-open your key" are different problems, and telling you the first when it is the
-second sends you off to debug the wrong thing. Key paths in your config that do
-not exist on disk are skipped rather than attempted, because OpenSSH lists its
-defaults whether or not you have them.
+1. keys your config names **that the agent already holds** — unlocked once,
+   usable everywhere;
+2. keys your config names that open without asking (not encrypted, or unlocked
+   earlier in this session);
+3. every other key the agent holds — unless `IdentitiesOnly yes`;
+4. only then an encrypted key nobody has unlocked: the app **asks for its
+   passphrase**, and says so if the one you typed did not open it.
 
-Nothing you type is stored: a passphrase lives in memory for one attempt. The
-app records the *path* to a key, never the key.
+Asking last means a working agent never causes a passphrase prompt. Key paths in
+your config that do not exist on disk are skipped rather than attempted, because
+OpenSSH lists its defaults whether or not you have them. On Windows the agent is
+OpenSSH's agent service; elsewhere it is whatever `SSH_AUTH_SOCK` — or your
+`IdentityAgent` — points at.
+
+**Second factors work.** A server that asks more than a password over
+keyboard-interactive — a one-time code, a hardware-token prompt — gets its
+questions shown to you exactly as it sent them, with typing visible where the
+server allows it (a code) and hidden where it does not. The connection waits
+while you answer, and a server that needs a key **and** a code (`partial
+success`) is carried through both steps instead of reporting the key as refused.
+A single hidden "Password:" prompt is answered with the password you already
+gave.
 
 ## Host keys — the rules the app connects under
 
 The confirmation is in the app (Settings → Hosts asks you before trusting a key
 it has never seen), and the decision behind it is verified against a real SSH
-server. The rules:
+server on every test run. The rules:
 
 - **A key already in `known_hosts`** → connects.
 - **A host you have never seen** → the app asks you, showing the `SHA256:…`
-  fingerprint to compare, and **writes nothing** until you confirm.
-- **A host whose key changed** → refused, showing both fingerprints. This is a
-  separate outcome from "never seen", deliberately: collapsing the two is how a
-  man-in-the-middle gets waved through.
+  fingerprint to compare, and **writes nothing** until you confirm. Under
+  `StrictHostKeyChecking yes` it shows the fingerprint and offers nothing: your
+  configuration says such keys are added by hand. Under `accept-new` (or `no`)
+  a new key is recorded without asking, and the log says so.
+- **A host whose key changed** → refused, showing both fingerprints, and no
+  credential is sent. If you know the machine was reinstalled, the dialog offers
+  **"The machine was reinstalled — replace the key"**: the old entries for that
+  name, port and key type are taken out of your own `known_hosts` (backed up first
+  to `known_hosts.old`, as `ssh-keygen -R` does) and the presented key is
+  recorded. A stale entry in a system-wide file cannot be replaced from here.
+  No setting lets a changed key through on its own.
 - **`@revoked`** → refused, and never offered for trust.
 
 An unverified host is **never connected to, not even to ask you**: the handshake
 is refused, and only after you confirm does the app connect again with the key
 recorded. Asking after connecting would mean an impostor had already been talked
-to.
+to. The handshake also asks the server for the key **types already on file**
+first, so an impostor cannot dodge the check by presenting a type that has no
+entry and passing as a new host.
 
 The fingerprint the app shows is the same string OpenSSH shows, so you can
 compare it against `ssh-keygen -lf` or what the host's administrator gave you —
@@ -232,10 +292,16 @@ open on that machine.
 Hosts that let uxnan in **without asking for anything** are reconnected on their
 own when the app starts, so a project on one of them has its files, its branch
 and its terminal without you opening Settings first. A host that asked for a
-password or a key passphrase last time is *not* reconnected automatically — a
-stack of credential prompts at launch is not a greeting; connect it when you want
-it. Nothing is stored either way: the prompt lives in memory for that attempt
-only.
+password, a key passphrase or a code last time is *not* reconnected
+automatically — a stack of credential prompts at launch is not a greeting;
+connect it when you want it. Nor is one with a key not yet on file, on itself or
+on any bastion of its route: that can only end in the trust dialog.
+
+Once you have connected one, though, a dropped connection **does** come back on
+its own within the session — the reconnect steps (2, 5, 15, 30, 60 s) reuse the
+password or passphrase you typed, which the app holds in memory until it closes.
+A host that needed a one-time code is the exception: a code cannot be replayed,
+so it waits for you.
 
 ### When something on the host goes away
 
@@ -249,8 +315,12 @@ working. So:
   as disconnected and **Connect** genuinely reconnects it. (Before, the app kept
   saying "connected" and Connect did nothing, because a session was already on
   file.)
-- **Terminals** whose channel ended say so in the tab; they restart when their
-  host connects again.
+- **Terminals** live in the SSH session, so a dropped connection ends them —
+  and the program in them, on the host. An agent's tab keeps what it showed and
+  offers to resume the session; a plain shell's tab closes. A terminal that could
+  not *start* because its host was away starts by itself once the host connects.
+  Terminals that outlive a disconnection need something on the host that owns
+  them, which is planned, not built.
 - **The file tree empties itself** and says it is waiting, instead of leaving the
   folders of a machine that is no longer there on screen. It fills back in when
   the host returns.
@@ -289,8 +359,11 @@ uxnan-cli host connect build-box  # open a session on one that has none
 ```
 
 `connect` never asks for anything secret. A host that wants a password or a key
-passphrase answers `needsPassword` / `needsPassphrase` and stops; one whose key
-is unknown or has changed answers that and stops too, having trusted nothing.
+passphrase you have not given in this session of the app answers
+`needsPassword` / `needsPassphrase` and stops; one that wants a second factor
+answers `needsAnswers`; one whose key is unknown or has changed answers that and
+stops too, having trusted nothing. Any of them can be about a bastion on the
+way, and a `ProxyCommand` that cannot run answers `proxyFailed`.
 Those are yours to finish in Settings → Hosts — and adding, editing or removing
 a host has no command at all, for the same reason. The agents uxnan launches do
 **not** see this: their token is scoped to one project, so hosts are the

@@ -269,6 +269,73 @@ pub fn trust_line(hostname: &str, port: u16, key: &PresentedKey) -> String {
     )
 }
 
+/// The key algorithms `known_hosts` already holds for this host, in file order
+/// and without repeats.
+///
+/// They go **first** in what the handshake asks the server for. Otherwise the
+/// negotiation picks whatever this client prefers, and a man-in-the-middle
+/// holding only, say, an RSA key gets a host whose ed25519 key is on file to
+/// present an algorithm with no entry — which reads as a brand-new host and
+/// earns a friendly trust prompt instead of the alarm it deserves. Asking for
+/// the recorded algorithms first means a host with a key on file is always
+/// checked against it.
+pub fn recorded_algorithms(known_hosts: &str, hostname: &str, port: u16) -> Vec<String> {
+    let pattern = host_pattern(hostname, port);
+    let mut out: Vec<String> = Vec::new();
+    for line in known_hosts.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('@') {
+            continue;
+        }
+        let mut fields = line.split_whitespace();
+        let (Some(hosts), Some(keytype)) = (fields.next(), fields.next()) else {
+            continue;
+        };
+        if hosts_match(hosts, &pattern) && !out.iter().any(|k| k == keytype) {
+            out.push(keytype.to_string());
+        }
+    }
+    out
+}
+
+/// Take out the entries for this host and algorithm, for replacing a key the
+/// user has confirmed was rotated.
+///
+/// Returns the new file text and how many lines went. Only lines that name this
+/// host (plainly or hashed) **and** carry this algorithm are removed: a key of a
+/// different type is still a valid record, and a line listing several hosts is
+/// removed whole, as `ssh-keygen -R` does, because editing a line in place could
+/// leave the other names pointing at nothing. `@revoked` and `@cert-authority`
+/// lines are never touched — those are decisions, not stale records.
+pub fn remove_entries(
+    known_hosts: &str,
+    hostname: &str,
+    port: u16,
+    algorithm: &str,
+) -> (String, usize) {
+    let pattern = host_pattern(hostname, port);
+    let mut kept = String::with_capacity(known_hosts.len());
+    let mut removed = 0;
+    for line in known_hosts.split_inclusive('\n') {
+        let trimmed = line.trim();
+        let stale =
+            !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.starts_with('@') && {
+                let mut fields = trimmed.split_whitespace();
+                matches!(
+                    (fields.next(), fields.next()),
+                    (Some(hosts), Some(keytype))
+                        if hosts_match(hosts, &pattern) && keytype.eq_ignore_ascii_case(algorithm)
+                )
+            };
+        if stale {
+            removed += 1;
+        } else {
+            kept.push_str(line);
+        }
+    }
+    (kept, removed)
+}
+
 /// Read the user's `known_hosts`, returning an empty string when there is none
 /// (a first-ever connection is [`Verdict::Unknown`], not an error).
 pub fn read_known_hosts(path: &std::path::Path) -> Result<String, AppError> {
@@ -487,6 +554,69 @@ mod tests {
             line.contains("AAAAC3NzaC1lZDI1NTE5AAAAIB6VNvJmkxWXvGqZjkQXmH1kdCLZVGkVAoPUKGCwHwOr")
         );
         assert_eq!(verify(&line, "build-box", 22, &ours), Verdict::Trusted);
+    }
+
+    #[test]
+    fn recorded_algorithms_are_listed_once_in_file_order() {
+        let ed = key("ssh-ed25519", 1);
+        let rsa = key("ssh-rsa", 2);
+        let file = format!(
+            "{}\n{}\n{}\nother {} AAAA\n@revoked box ssh-dss AAAA\n",
+            line_for("box", &ed),
+            line_for("box,alias", &rsa),
+            line_for("box", &ed),
+            "ecdsa-sha2-nistp256",
+        );
+        assert_eq!(
+            recorded_algorithms(&file, "box", 22),
+            ["ssh-ed25519", "ssh-rsa"]
+        );
+        assert!(recorded_algorithms(&file, "box", 2222).is_empty());
+    }
+
+    #[test]
+    fn removing_a_rotated_key_takes_only_that_host_and_algorithm() {
+        let old = key("ssh-ed25519", 1);
+        let rsa = key("ssh-rsa", 2);
+        let file = format!(
+            "# mine\n{}\n{}\n{}\n@revoked box ssh-ed25519 AAAA\n{}\n",
+            line_for("box", &old),
+            line_for("box", &rsa),
+            line_for("other", &old),
+            line_for("[box]:2222", &old),
+        );
+        let (kept, removed) = remove_entries(&file, "box", 22, "ssh-ed25519");
+        assert_eq!(removed, 1);
+        assert!(kept.starts_with("# mine\n"), "comments survive: {kept}");
+        assert!(
+            kept.contains(&line_for("box", &rsa)),
+            "another algorithm is still valid"
+        );
+        assert!(
+            kept.contains(&line_for("other", &old)),
+            "another host is untouched"
+        );
+        assert!(
+            kept.contains("@revoked box"),
+            "a revocation is a decision, not a stale record"
+        );
+        assert!(kept.contains("[box]:2222"), "another port is another host");
+        assert_eq!(verify(&kept, "box", 22, &old), Verdict::Revoked);
+    }
+
+    #[test]
+    fn removing_matches_hashed_entries_too() {
+        // A hashed file is how most people's known_hosts looks; a rotation that
+        // left the hashed line behind would keep reporting the key as changed.
+        let old = key("ssh-ed25519", 3);
+        let salt = [7u8; 20];
+        let hash = hmac_sha1(&salt, b"box");
+        let engine = base64::engine::general_purpose::STANDARD;
+        let hashed = format!("|1|{}|{}", engine.encode(salt), engine.encode(hash));
+        let file = format!("{}\n", line_for(&hashed, &old));
+        let (kept, removed) = remove_entries(&file, "box", 22, "ssh-ed25519");
+        assert_eq!(removed, 1);
+        assert!(kept.is_empty());
     }
 
     #[test]

@@ -375,7 +375,7 @@ List the remote machines Uxnan is registered against, with the state of their li
   - `port` (integer) — Its SSH port.
   - `user` (string) — The user Uxnan logs in as.
   - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
-  - `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+  - `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
   - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
   - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
   - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
@@ -416,7 +416,7 @@ Describe one host: the record `host/list` gives, plus the projects registered on
 - `port` (integer) — Its SSH port.
 - `user` (string) — The user Uxnan logs in as.
 - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
-- `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+- `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
 - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
 - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
 - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
@@ -1800,7 +1800,7 @@ Scroll your workspace's browser page — or one scrollable element, by its `ref`
 
 ### `host/connect`
 
-Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.
+Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase the person has not given in this session of the app, a second factor, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `host_connect`
@@ -1820,7 +1820,7 @@ Open a session on a registered host that has none — the same path startup take
 - `host` (object) — What the attempt came to.
   - `id` (string) — The host id.
   - `connected` (boolean) — Whether there is a live session now. True also when one was already open.
-  - `status` (string) — `connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`.
+  - `status` (string) — `connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `failed` or `noUsableMethod`.
   - `generation` (integer, optional) — The connection incarnation, when connected.
   - `shell` (string, optional) — The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected.
   - `reason` (string, optional) — For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not.

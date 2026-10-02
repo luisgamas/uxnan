@@ -92,14 +92,32 @@ pub struct AppState {
     /// session, because a reconnect may find a different configuration.
     pub ssh_shells:
         Arc<RwLock<std::collections::HashMap<String, crate::ssh::shellkind::ShellKind>>>,
-    /// Host keys seen during a probe, kept between "we asked" and "the user
-    /// said yes", keyed by host id.
+    /// Host keys waiting for the person's decision, kept between "the host
+    /// presented this" and "the user said yes", keyed by host id — whichever hop
+    /// of its route presented them.
     ///
     /// The key never travels to the frontend and back. The UI is shown a
     /// fingerprint and returns a decision, not a blob it could have altered —
     /// what gets written to `known_hosts` is exactly what the server presented.
     pub ssh_pending_keys:
-        Arc<RwLock<std::collections::HashMap<String, crate::ssh::hostkey::PresentedKey>>>,
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::PendingHostKey>>>,
+    /// What the person typed to reach a host — passwords and passphrases — for
+    /// this session of the app only (`ssh::secrets`). Never written anywhere.
+    pub ssh_secrets: Arc<RwLock<crate::ssh::secrets::SecretStore>>,
+    /// Connections paused mid-authentication on a second factor, waiting for
+    /// the person's answers, keyed by host id. Each one holds a live connection
+    /// (the server's question is asked *on* it), so it is dropped after a few
+    /// minutes rather than kept open for someone who walked away.
+    pub ssh_dials: Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, (crate::ssh::dial::Dial, std::time::Instant)>,
+        >,
+    >,
+    /// Hosts that needed a password or a passphrase, which this session still
+    /// holds — so a dropped connection to one of them can come back on its own.
+    /// A host that needed a second-factor code is never here: a code cannot be
+    /// replayed.
+    pub ssh_unlocked: Arc<RwLock<std::collections::HashSet<String>>>,
     /// Worktree path the right panel is reviewing, polled for status while set
     /// (the background git watcher reads this). `None` = nothing to watch.
     pub git_watch: Arc<RwLock<Option<String>>>,
@@ -184,6 +202,9 @@ impl AppState {
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_sftp: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_secrets: Arc::new(RwLock::new(crate::ssh::secrets::SecretStore::default())),
+            ssh_dials: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            ssh_unlocked: Arc::new(RwLock::new(std::collections::HashSet::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),
             browse_watcher: BrowseWatcher::default(),

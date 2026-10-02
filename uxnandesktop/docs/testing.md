@@ -78,14 +78,33 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **809 backend tests**
-in total, 759 of which run everywhere; the other 50 are ignored probes that need
-something real to talk to (41 live SSH probes — 29 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **12 against a Linux
-host in a container**; see below — one pwsh preflight that runs the generated
-PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
-the real-scheduler probe). The remaining 37 are the integration tests in
-`tests/`.
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,030 backend tests**
+in total — 953 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli` and 45 integration tests in `tests/` — 979 of which run
+everywhere; the other 51 are ignored probes that need something real to talk to
+(43 live SSH probes — 31 against a real `sshd`, one of which idles for five
+minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
+by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
+describe, including that host as its own bastion, plus **12 against a Linux
+host in a container**;
+see below — one pwsh preflight that runs the generated PowerShell script through
+a real `pwsh`, and the 7 supervised live GitHub tests).
+
+### An SSH server inside the test process
+
+`src-tauri/src/ssh/testserver.rs` is an SSH server built from the same
+library's server half, started on a loopback port per test; the transport is
+proven against it on **every** `cargo test`, with no Docker and no system `sshd`
+(`ssh/transport_tests.rs`). Each test configures the server like a real one: a
+password then a one-time code in two keyboard-interactive rounds, a key that is
+only *partial success* until a code follows, a bastion that opens `direct-tcpip`
+tunnels (`ProxyJump`), a host that opens an agent channel back to us
+(`ForwardAgent`), a key on file that is not the one presented (rotation), and
+`StrictHostKeyChecking` in its three readings. Host and client keys come from
+fixed seeds, so nothing needs randomness; the encrypted-key test uses
+`ssh-keygen`, and the agent tests start a private `ssh-agent` on a socket of
+their own (killed when the test ends, even on panic) so the developer's agent
+never decides a result — each skips with a reason where the tool is missing.
 
 ### A Linux host, in a container
 
@@ -269,7 +288,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,735 tests** across both
+ships in every build and is never shown). **1,742 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

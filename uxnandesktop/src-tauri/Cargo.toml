@@ -148,6 +148,10 @@ russh = "0.62.6"
 # needs nothing installed there, which is why remote files go through it rather
 # than through commands typed at a prompt. Apache-2.0, pure Rust, ~54 KiB.
 russh-sftp = "2.4.0"
+# Wipes the passwords and passphrases held for the app session from memory when
+# they are replaced or dropped (`ssh/secrets.rs`). Already in the tree through
+# the SSH and crypto crates; MIT/Apache-2.0.
+zeroize = "1"
 # SHA-1, for exactly one thing: reading OpenSSH's hashed `known_hosts` entries
 # (`|1|salt|hmac`), whose lookup keys are HMAC-SHA1 by that file format's own
 # definition. Not a security primitive here — the host key itself is compared

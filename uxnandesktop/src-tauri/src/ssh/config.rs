@@ -43,7 +43,7 @@ pub struct ConfigAlias {
     pub source: String,
 }
 
-/// The effective OpenSSH settings for one alias, as `ssh -G` reports them.
+/// The effective OpenSSH settings for one host, as `ssh -G` reports them.
 ///
 /// Only the fields the ADE acts on are lifted out; `ssh -G` prints dozens more
 /// and they are deliberately ignored rather than mirrored, so this struct never
@@ -56,6 +56,11 @@ pub struct ResolvedHost {
     pub user: String,
     /// Every `IdentityFile` in the order OpenSSH would try them.
     pub identity_files: Vec<String>,
+    /// `CertificateFile`s, offered with the key they certify.
+    pub certificate_files: Vec<String>,
+    /// `IdentityAgent` as OpenSSH printed it: a socket path, the literal
+    /// `SSH_AUTH_SOCK` (use the environment), or `none` (use no agent at all).
+    /// `None` means it was not configured, which is the environment's agent.
     pub identity_agent: Option<String>,
     pub identities_only: bool,
     /// `ForwardAgent yes` — the setting that lets git on the remote host use the
@@ -63,6 +68,46 @@ pub struct ResolvedHost {
     pub forward_agent: bool,
     pub proxy_command: Option<String>,
     pub proxy_jump: Option<String>,
+    /// `HostKeyAlias`: the name the host key is filed under in `known_hosts`
+    /// instead of `hostname`.
+    pub host_key_alias: Option<String>,
+    /// `UserKnownHostsFile`, in order. The first one is where a newly trusted
+    /// key is written.
+    pub user_known_hosts_files: Vec<String>,
+    /// `GlobalKnownHostsFile`: read, never written.
+    pub global_known_hosts_files: Vec<String>,
+    pub strict_host_key_checking: StrictHostKeys,
+}
+
+/// `StrictHostKeyChecking`, as far as this app honours it.
+///
+/// There is no value that lets a **changed** key through: OpenSSH's `no` still
+/// warns about one, and here it refuses it outright, like every other value.
+/// What the setting decides is only what happens with a host that has no key on
+/// file yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StrictHostKeys {
+    /// `ask` (OpenSSH's default): show the fingerprint and let the user decide.
+    #[default]
+    Ask,
+    /// `yes`: never trust a new key from here. It has to be on file already.
+    Yes,
+    /// `accept-new` — and `no`, read the same way: record a new key without
+    /// asking, but never one that replaces a key on file.
+    AcceptNew,
+}
+
+impl StrictHostKeys {
+    /// OpenSSH writes this one as `yes`/`no` in a config file but `ssh -G`
+    /// prints `true`/`false`, so both spellings are read.
+    fn parse(value: &str) -> Self {
+        match value.to_ascii_lowercase().as_str() {
+            "yes" | "true" => StrictHostKeys::Yes,
+            "accept-new" | "no" | "false" | "off" => StrictHostKeys::AcceptNew,
+            _ => StrictHostKeys::Ask,
+        }
+    }
 }
 
 /// The default location of the user's SSH configuration.
@@ -217,20 +262,151 @@ fn expand_include(entry: &str, including: &Path) -> Vec<PathBuf> {
 /// silently connecting somewhere else.
 pub async fn resolve(alias: &str) -> Result<ResolvedHost, AppError> {
     let alias = alias.trim();
-    if alias.is_empty() || alias.starts_with('-') {
+    if !is_safe_word(alias) {
         // A leading dash would be read as a flag by `ssh` itself.
         return Err(AppError::Invalid(format!("invalid ssh alias: {alias}")));
     }
+    run_dash_g(&[alias.to_string()]).await
+}
+
+/// What a host the user typed by hand resolves to, **through their own
+/// configuration**.
+///
+/// A hand-written host is still subject to the user's `Host *` defaults — the
+/// agent socket, the known-hosts files, `IdentitiesOnly` — exactly as typing
+/// `ssh -p 2222 me@box` would be. So it is resolved the way that command line
+/// would be: the typed values become `ssh` flags and OpenSSH merges them. What
+/// the user typed wins, because command-line options always do.
+pub async fn resolve_typed(typed: &TypedHost<'_>) -> Result<ResolvedHost, AppError> {
+    run_dash_g(&typed_args(typed)?).await
+}
+
+/// The values of a hand-written host that `ssh -G` should see.
+pub struct TypedHost<'a> {
+    pub hostname: &'a str,
+    pub port: u16,
+    pub user: &'a str,
+    pub identity_files: &'a [String],
+    pub proxy_jump: Option<&'a str>,
+    pub proxy_command: Option<&'a str>,
+    pub forward_agent: bool,
+}
+
+fn typed_args(typed: &TypedHost<'_>) -> Result<Vec<String>, AppError> {
+    let hostname = typed.hostname.trim();
+    let user = typed.user.trim();
+    if !is_safe_word(hostname) {
+        return Err(AppError::Invalid(format!("invalid host name: {hostname}")));
+    }
+    if !user.is_empty() && !is_safe_word(user) {
+        return Err(AppError::Invalid(format!("invalid user name: {user}")));
+    }
+    let mut args = vec!["-p".to_string(), typed.port.to_string()];
+    if !user.is_empty() {
+        args.extend(["-l".to_string(), user.to_string()]);
+    }
+    for file in typed.identity_files.iter().filter(|f| !f.trim().is_empty()) {
+        args.extend(["-i".to_string(), file.trim().to_string()]);
+    }
+    if let Some(jump) = typed.proxy_jump.map(str::trim).filter(|j| !j.is_empty()) {
+        args.extend(["-J".to_string(), jump.to_string()]);
+    }
+    if let Some(command) = typed.proxy_command.map(str::trim).filter(|c| !c.is_empty()) {
+        args.extend(["-o".to_string(), format!("ProxyCommand={command}")]);
+    }
+    if typed.forward_agent {
+        args.extend(["-o".to_string(), "ForwardAgent=yes".to_string()]);
+    }
+    args.push(hostname.to_string());
+    Ok(args)
+}
+
+/// One `ProxyJump` hop as written: `[user@]host[:port]`, or the URI form
+/// `ssh://[user@]host[:port]`. The host part may be an alias of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JumpSpec {
+    pub user: Option<String>,
+    pub host: String,
+    pub port: Option<u16>,
+}
+
+/// Split a `ProxyJump` value into its hops, first to last.
+///
+/// Errors on a hop that cannot be read, rather than skipping it: connecting
+/// without one of the bastions the user configured would mean dialling a
+/// machine by a route they never chose.
+pub fn parse_jumps(value: &str) -> Result<Vec<JumpSpec>, AppError> {
+    let mut hops = Vec::new();
+    for raw in value.split(',').map(str::trim).filter(|h| !h.is_empty()) {
+        let body = raw.strip_prefix("ssh://").unwrap_or(raw);
+        let (user, rest) = match body.rsplit_once('@') {
+            Some((u, r)) => (Some(u.to_string()), r),
+            None => (None, body),
+        };
+        // `[v6::addr]:port` keeps its colons inside the brackets.
+        let (host, port) = if let Some(inner) = rest.strip_prefix('[') {
+            match inner.split_once(']') {
+                Some((h, tail)) => (h.to_string(), tail.strip_prefix(':')),
+                None => return Err(AppError::Invalid(format!("unreadable jump host: {raw}"))),
+            }
+        } else {
+            match rest.rsplit_once(':') {
+                Some((h, p)) if !h.contains(':') => (h.to_string(), Some(p)),
+                _ => (rest.to_string(), None),
+            }
+        };
+        let port = match port {
+            Some(p) => Some(
+                p.parse::<u16>()
+                    .ok()
+                    .filter(|p| *p > 0)
+                    .ok_or_else(|| AppError::Invalid(format!("unreadable jump port: {raw}")))?,
+            ),
+            None => None,
+        };
+        if !is_safe_word(&host) || user.as_deref().is_some_and(|u| !is_safe_word(u)) {
+            return Err(AppError::Invalid(format!("unreadable jump host: {raw}")));
+        }
+        hops.push(JumpSpec { user, host, port });
+    }
+    Ok(hops)
+}
+
+/// Resolve one jump hop through the user's configuration, as OpenSSH resolves
+/// the hosts of a `-J` list: the host part is looked up as an alias of its own.
+pub async fn resolve_jump(jump: &JumpSpec) -> Result<ResolvedHost, AppError> {
+    let mut args = Vec::new();
+    if let Some(port) = jump.port {
+        args.extend(["-p".to_string(), port.to_string()]);
+    }
+    if let Some(user) = &jump.user {
+        args.extend(["-l".to_string(), user.clone()]);
+    }
+    args.push(jump.host.clone());
+    run_dash_g(&args).await
+}
+
+/// A name `ssh` will read as a name: not empty, not a flag, no whitespace or
+/// control characters that would split it into something else.
+fn is_safe_word(word: &str) -> bool {
+    !word.is_empty()
+        && !word.starts_with('-')
+        && !word.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+async fn run_dash_g(args: &[String]) -> Result<ResolvedHost, AppError> {
     let output = crate::winproc::command("ssh")
         .arg("-G")
-        .arg(alias)
+        .args(args)
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .map_err(|e| AppError::Invalid(format!("could not run `ssh -G`: {e}")))?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(AppError::Invalid(format!(
-            "`ssh -G {alias}` failed: {}",
+            "`ssh -G {}` failed: {}",
+            args.last().map(String::as_str).unwrap_or_default(),
             if detail.is_empty() {
                 "no detail".into()
             } else {
@@ -271,14 +447,26 @@ pub fn parse_resolved(stdout: &str) -> ResolvedHost {
                 }
             }
             "identityfile" => out.identity_files.push(value.to_string()),
+            "certificatefile" => out.certificate_files.push(value.to_string()),
             "identitiesonly" => out.identities_only = is_yes(value),
             "forwardagent" => out.forward_agent = is_yes(value),
+            // Kept as printed, `none` included: here it is not a placeholder
+            // but an instruction — use no agent at all.
+            "identityagent" => out.identity_agent = Some(value.to_string()),
             // `ssh -G` prints the literal `none` for these rather than omitting
             // them; taking it at face value would have us run a proxy command
             // called `none`.
-            "identityagent" => out.identity_agent = unset_if_none(value),
             "proxycommand" => out.proxy_command = unset_if_none(value),
             "proxyjump" => out.proxy_jump = unset_if_none(value),
+            "hostkeyalias" => out.host_key_alias = unset_if_none(value),
+            // Several files on one line, space-separated.
+            "userknownhostsfile" => {
+                out.user_known_hosts_files = value.split_whitespace().map(String::from).collect()
+            }
+            "globalknownhostsfile" => {
+                out.global_known_hosts_files = value.split_whitespace().map(String::from).collect()
+            }
+            "stricthostkeychecking" => out.strict_host_key_checking = StrictHostKeys::parse(value),
             _ => {}
         }
     }
@@ -413,10 +601,121 @@ mod tests {
     fn treats_the_literal_none_as_unset() {
         // `ssh -G` prints "none" rather than omitting these; running `none` as a
         // proxy command would be a confusing failure at connect time.
-        let r = parse_resolved("proxycommand none\nproxyjump none\nidentityagent none\n");
+        let r = parse_resolved("proxycommand none\nproxyjump none\nhostkeyalias none\n");
         assert_eq!(r.proxy_command, None);
         assert_eq!(r.proxy_jump, None);
-        assert_eq!(r.identity_agent, None);
+        assert_eq!(r.host_key_alias, None);
+    }
+
+    #[test]
+    fn identity_agent_none_is_kept_because_it_means_use_no_agent() {
+        // Unlike the proxy settings, `IdentityAgent none` is an instruction —
+        // dropping it would quietly offer the agent the user switched off.
+        let r = parse_resolved("identityagent none\n");
+        assert_eq!(r.identity_agent.as_deref(), Some("none"));
+        assert_eq!(parse_resolved("").identity_agent, None);
+    }
+
+    #[test]
+    fn reads_the_host_key_settings_ssh_dash_g_prints() {
+        // Copied from OpenSSH 10.3 `ssh -G`: two files per line, and `true` /
+        // `false` where a config file would say `yes` / `no`.
+        let out = "userknownhostsfile /u/.ssh/known_hosts /u/.ssh/known_hosts2\n\
+                   globalknownhostsfile /etc/ssh/ssh_known_hosts /etc/ssh/ssh_known_hosts2\n\
+                   hostkeyalias box-key\n\
+                   certificatefile ~/.ssh/id_ed25519-cert.pub\n\
+                   stricthostkeychecking true\n";
+        let r = parse_resolved(out);
+        assert_eq!(
+            r.user_known_hosts_files,
+            ["/u/.ssh/known_hosts", "/u/.ssh/known_hosts2"]
+        );
+        assert_eq!(r.global_known_hosts_files.len(), 2);
+        assert_eq!(r.host_key_alias.as_deref(), Some("box-key"));
+        assert_eq!(r.certificate_files, ["~/.ssh/id_ed25519-cert.pub"]);
+        assert_eq!(r.strict_host_key_checking, StrictHostKeys::Yes);
+
+        for (printed, expected) in [
+            ("ask", StrictHostKeys::Ask),
+            ("false", StrictHostKeys::AcceptNew),
+            ("accept-new", StrictHostKeys::AcceptNew),
+            ("yes", StrictHostKeys::Yes),
+        ] {
+            let r = parse_resolved(&format!("stricthostkeychecking {printed}\n"));
+            assert_eq!(r.strict_host_key_checking, expected, "{printed}");
+        }
+    }
+
+    #[test]
+    fn jump_lists_are_split_into_hops_in_order() {
+        let hops = parse_jumps("bastion, ops@edge:2222,ssh://me@[fe80::1]:22").unwrap();
+        assert_eq!(
+            hops,
+            vec![
+                JumpSpec {
+                    user: None,
+                    host: "bastion".into(),
+                    port: None
+                },
+                JumpSpec {
+                    user: Some("ops".into()),
+                    host: "edge".into(),
+                    port: Some(2222)
+                },
+                JumpSpec {
+                    user: Some("me".into()),
+                    host: "fe80::1".into(),
+                    port: Some(22)
+                },
+            ]
+        );
+        // A hop that cannot be read stops the route: skipping it would dial
+        // the target by a path the user never configured.
+        assert!(parse_jumps("edge:notaport").is_err());
+        assert!(parse_jumps("-oProxyCommand=x").is_err());
+        assert!(parse_jumps("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_typed_host_becomes_the_ssh_flags_that_command_line_would_carry() {
+        let files = vec!["~/.ssh/work".to_string()];
+        let args = typed_args(&TypedHost {
+            hostname: "box.lan",
+            port: 2222,
+            user: "dev",
+            identity_files: &files,
+            proxy_jump: Some("bastion"),
+            proxy_command: None,
+            forward_agent: true,
+        })
+        .unwrap();
+        assert_eq!(
+            args,
+            [
+                "-p",
+                "2222",
+                "-l",
+                "dev",
+                "-i",
+                "~/.ssh/work",
+                "-J",
+                "bastion",
+                "-o",
+                "ForwardAgent=yes",
+                "box.lan"
+            ]
+        );
+        // A host or user that `ssh` would read as a flag is refused.
+        let bad = TypedHost {
+            hostname: "-oProxyCommand=calc",
+            port: 22,
+            user: "",
+            identity_files: &[],
+            proxy_jump: None,
+            proxy_command: None,
+            forward_agent: false,
+        };
+        assert!(typed_args(&bad).is_err());
     }
 
     #[test]

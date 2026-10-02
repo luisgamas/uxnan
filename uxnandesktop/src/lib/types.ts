@@ -766,8 +766,9 @@ export type SshHostSource = "manual" | "sshConfig";
 /** A registered remote machine (mirror of Rust `SshHost`).
  *
  *  Holds **no secret**: alias, address, user and a *reference* to an identity
- *  file. Keys and passwords come from the system agent, from disk, or from a
- *  prompt that lives in memory for one attempt. */
+ *  file. Keys and passwords come from the agent the host's configuration names,
+ *  from disk, or from what the person typed — held in memory for the app's
+ *  session, never written. */
 export interface SshHost {
   /** Stable id, and the only thing a project stores. Never the hostname. */
   id: string;
@@ -818,16 +819,6 @@ export interface SshHostAdded {
   recovered: boolean;
   /** An already-registered machine was updated instead of a new one added. */
   updatedExisting: boolean;
-}
-
-/** What reaching a host said about its identity, before any credential. */
-export interface SshHostProbe {
-  status: "trusted" | "unknown" | "changed" | "revoked";
-  /** In OpenSSH's own format, so it can be compared with `ssh-keygen -lf`. */
-  fingerprint?: string | null;
-  algorithm?: string | null;
-  /** For `changed`: what `known_hosts` holds instead. Show both. */
-  storedFingerprint?: string | null;
 }
 
 /** A worktree's git state on a host (mirror of Rust `ssh::git::RemoteGitStatus`).
@@ -913,14 +904,17 @@ export interface SshConnectReport {
     | "hostRevoked"
     | "needsPassword"
     | "needsPassphrase"
+    | "needsAnswers"
     | "failed"
     | "noUsableMethod"
-    | "unreachable";
+    | "unreachable"
+    | "proxyFailed";
   /** For `unreachable`: which kind it was. They lead to different actions — a
    *  machine that is asleep is worth another try, a name that does not resolve
    *  is not — and one failure string made them indistinguishable. */
   reason?: "timeout" | "unknownAddress" | "refused" | "handshake" | null;
-  /** For `unreachable`: a sentence naming the host and what happened. */
+  /** For `unreachable` and `proxyFailed`: a sentence naming the host and what
+   *  happened. */
   detail?: string | null;
   /** Connection incarnation, for `connected`. Travels with every mutation
    *  prepared against this session. */
@@ -934,10 +928,43 @@ export interface SshConnectReport {
   shell?: RemoteShellKind | null;
   fingerprint?: string | null;
   storedFingerprint?: string | null;
+  /** For `hostUnknown`: the host's configuration says `StrictHostKeyChecking
+   *  yes`, so its key can be shown but not trusted from here. */
+  strict: boolean;
   /** For `needsPassphrase`: which key file needs one. */
   path?: string | null;
+  /** For `needsPassphrase`: one was given and did not open the key. */
+  wrong: boolean;
   /** What was offered and refused, in order. */
   attempted: string[];
+  /** For `needsAnswers`: the server's questions, as it asked them. */
+  challenge?: SshChallenge | null;
+  /** The bastion the outcome is about, when it is one on the way and not the
+   *  host itself. `null` means the host. */
+  hop?: string | null;
+  /** Identity of the hop that asked (`user@hostname:port`), to send its secret
+   *  back with. */
+  hopKey?: string | null;
+  /** Keys recorded without asking (`StrictHostKeyChecking accept-new`), as
+   *  `[label, fingerprint]` pairs. */
+  learnedKeys: [string, string][];
+}
+
+/** Questions a keyboard-interactive server asked — a one-time code, a second
+ *  factor (mirror of Rust `ssh::auth::Challenge`). */
+export interface SshChallenge {
+  name: string;
+  instructions: string;
+  prompts: { text: string; echo: boolean }[];
+}
+
+/** Something the person typed for one hop of a host's route (mirror of Rust
+ *  `SshSecret`). */
+export interface SshSecret {
+  kind: "password" | "passphrase";
+  hopKey: string;
+  path?: string | null;
+  value: string;
 }
 
 /** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust

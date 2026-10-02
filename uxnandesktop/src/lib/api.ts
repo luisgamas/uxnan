@@ -41,7 +41,7 @@ import type {
   SshHost,
   SshHostAdded,
   SshHostDraft,
-  SshHostProbe,
+  SshSecret,
   SshHostSession,
   SshRemoteListing,
   SshResolvedHost,
@@ -627,13 +627,6 @@ export function sshHostRemove(hostId: string): Promise<boolean> {
   return invoke<boolean>('ssh_host_remove', { hostId });
 }
 
-/** Reach a host and report what `known_hosts` says about the key it presents.
- *  Writes nothing and offers no credential. On `unknown`, the backend holds the
- *  key so `sshHostTrust` can record exactly what the server presented. */
-export function sshHostProbe(hostId: string): Promise<SshHostProbe> {
-  return invoke<SshHostProbe>('ssh_host_probe', { hostId });
-}
-
 /** Record the key the last probe saw, after the user confirmed its fingerprint.
  *  Only valid right after an `unknown` probe — there is deliberately no way to
  *  trust a *changed* key. */
@@ -642,11 +635,34 @@ export function sshHostTrust(hostId: string): Promise<boolean> {
 }
 
 /** Open an authenticated session on a host and keep it. Idempotent: a host that
- *  is already connected reports that rather than connecting twice. `password` is
- *  passed only on a retry, after the app has asked for one — it is used for that
- *  attempt and never stored. */
-export function sshHostConnect(hostId: string, password?: string): Promise<SshConnectReport> {
-  return invoke<SshConnectReport>('ssh_host_connect', { hostId, password: password ?? null });
+ *  is already connected reports that rather than connecting twice. `secret` is
+ *  passed on a retry, after the app asked for a password or a passphrase; the
+ *  backend keeps it in memory for this session of the app, never on disk. */
+export function sshHostConnect(hostId: string, secret?: SshSecret): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_connect', { hostId, secret: secret ?? null });
+}
+
+/** Answer the questions a host's second factor asked (`needsAnswers`), on the
+ *  connection that is waiting for them. */
+export function sshHostAnswer(hostId: string, answers: string[]): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_answer', { hostId, answers });
+}
+
+/** Give up on a connection waiting for second-factor answers. */
+export function sshHostCancel(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_cancel', { hostId });
+}
+
+/** Replace the key on file for a host whose key changed, after the person
+ *  confirmed the change is theirs. The old entries are backed up first. */
+export function sshHostReplaceKey(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_replace_key', { hostId });
+}
+
+/** Edit a registered host. An imported one only takes a new label: the rest
+ *  comes from `~/.ssh/config` at every connect. */
+export function sshHostUpdate(hostId: string, draft: SshHostDraft): Promise<SshHost> {
+  return invoke<SshHost>('ssh_host_update', { hostId, draft });
 }
 
 /** Ask a connected host what it has: OS, home, git, a multiplexer, and the agent

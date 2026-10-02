@@ -1,31 +1,39 @@
 // Remote hosts state for Settings → Hosts (Svelte 5 runes).
 //
 // The connect flow is the whole reason this store exists. Reaching a host can
-// end in six different places, and each one is a different thing to ask the
-// user — trust this key, type a password, unlock this key file, or nothing at
-// all. Collapsing them into "connected / failed" would push that decision into
-// the component, where it would be re-derived (and eventually got wrong) at
-// every call site.
+// end in many different places, and each one is a different thing to ask the
+// user — trust this key, replace one that changed, type a password, unlock a
+// key file, answer a second factor, or nothing at all — about the host itself
+// or a bastion on the way to it. Collapsing them into "connected / failed"
+// would push that decision into the component, where it would be re-derived
+// (and eventually got wrong) at every call site.
 
 import {
   sshConfigHosts,
   sshConfigResolve,
   sshHostAdd,
+  sshHostAnswer,
+  sshHostCancel,
   sshHostConnect,
   sshHostDisconnect,
   sshHostInventory,
   sshHostRemove,
+  sshHostReplaceKey,
   sshHostTrust,
+  sshHostUpdate,
   sshHostsConnected,
   sshHostsResumable,
   sshHostsList,
 } from "$lib/api";
 import type {
   RemoteShellKind,
+  SshChallenge,
   SshConfigAlias,
+  SshConnectReport,
   SshHost,
   SshHostDraft,
   SshHostInventory,
+  SshSecret,
   SshSessionEnded,
 } from "$lib/types";
 import { listen } from "@tauri-apps/api/event";
@@ -39,7 +47,9 @@ const msg = (e: unknown) =>
     ? String((e as { message: unknown }).message)
     : String(e);
 
-/** A host key the user has to confirm before anything else can happen. */
+/** A host key the user has to confirm before anything else can happen.
+ *  `label` names the machine that presented it — the host, or a bastion on the
+ *  way to it. */
 export interface PendingHostKey {
   hostId: string;
   label: string;
@@ -47,15 +57,34 @@ export interface PendingHostKey {
   algorithm?: string | null;
 }
 
-/** A credential the host asked for. `attempted` is what was already refused, so
+/** A credential a hop asked for. `attempted` is what was already refused, so
  *  the prompt can say *why* it is asking rather than just asking. */
 export interface PendingCredential {
   hostId: string;
+  /** The machine that asked: the host, or a bastion on the way to it. */
   label: string;
+  /** Which hop the secret is for (`user@hostname:port`). */
+  hopKey: string;
   kind: "password" | "passphrase";
   /** For a passphrase: which key file. */
   path?: string | null;
+  /** For a passphrase: the last one given did not open the key. */
+  wrong?: boolean;
   attempted: string[];
+}
+
+/** A second factor waiting for the person's answers, on a connection the
+ *  backend is holding open. */
+export interface PendingChallenge {
+  hostId: string;
+  label: string;
+  challenge: SshChallenge;
+}
+
+/** The machine a report is about, said so it stands alone: the host, or "the
+ *  bastion, on the way to the host". */
+function hopLabel(hostLabel: string, report: SshConnectReport): string {
+  return report.hop ? i18n.t("hosts.viaHop", { hop: report.hop, host: hostLabel }) : hostLabel;
 }
 
 class HostsStore {
@@ -85,8 +114,11 @@ class HostsStore {
   pendingKey = $state<PendingHostKey | null>(null);
   /** Set when a host asked for a password or a passphrase. */
   pendingCredential = $state<PendingCredential | null>(null);
+  /** Set when a host asked second-factor questions. */
+  pendingChallenge = $state<PendingChallenge | null>(null);
   /** Set when a host's key does **not** match what we have on file. Not a
-   *  prompt: there is nothing to confirm, only something to be told. */
+   *  trust prompt: the only way forward is the person saying the change is
+   *  theirs (`replaceChangedKey`), and the dialog says what that means. */
   keyMismatch = $state<{ hostId: string; label: string; presented: string; stored: string } | null>(
     null,
   );
@@ -258,15 +290,34 @@ class HostsStore {
     }
   }
 
+  /** Edit a registered host. */
+  async update(hostId: string, draft: SshHostDraft): Promise<SshHost | null> {
+    this.error = null;
+    try {
+      const updated = await sshHostUpdate(hostId, draft);
+      await this.load();
+      return updated;
+    } catch (e) {
+      this.error = msg(e);
+      return null;
+    }
+  }
+
   /** Reach a host and take it as far as it will go. Every outcome that needs
    *  the user lands in one of the `pending*` fields for the UI to raise. */
-  async connect(hostId: string, password?: string): Promise<void> {
+  async connect(hostId: string, secret?: SshSecret): Promise<void> {
+    await this.drive(hostId, () => sshHostConnect(hostId, secret));
+  }
+
+  /** Run one step of the connect flow and route its outcome. */
+  private async drive(hostId: string, step: () => Promise<SshConnectReport>): Promise<void> {
     if (this.isBusy(hostId)) return;
     this.error = null;
     this.busy = [...this.busy, hostId];
     try {
-      const report = await sshHostConnect(hostId, password);
-      const label = this.labelOf(hostId);
+      const report = await step();
+      const hostLabel = this.labelOf(hostId);
+      const label = hopLabel(hostLabel, report);
       switch (report.status) {
         case "connected":
           await this.refreshSessions();
@@ -280,9 +331,19 @@ class HostsStore {
           terminals.restartFailedOnHost(hostId);
           this.pendingKey = null;
           this.pendingCredential = null;
+          this.pendingChallenge = null;
           void this.loadInventory(hostId);
           break;
         case "hostUnknown":
+          if (report.strict) {
+            // The host's own configuration forbids trusting a new key from
+            // anywhere but its known_hosts: show it, offer nothing.
+            this.error = i18n.t("hosts.errStrictUnknown", {
+              host: label,
+              fingerprint: report.fingerprint ?? "",
+            });
+            break;
+          }
           this.pendingKey = {
             hostId,
             label,
@@ -304,16 +365,29 @@ class HostsStore {
           this.error = i18n.t("hosts.errRevoked", { host: label });
           break;
         case "needsPassword":
-          this.pendingCredential = { hostId, label, kind: "password", attempted: report.attempted };
+          this.pendingCredential = {
+            hostId,
+            label,
+            hopKey: report.hopKey ?? "",
+            kind: "password",
+            attempted: report.attempted,
+          };
           break;
         case "needsPassphrase":
           this.pendingCredential = {
             hostId,
             label,
+            hopKey: report.hopKey ?? "",
             kind: "passphrase",
             path: report.path,
+            wrong: report.wrong,
             attempted: report.attempted,
           };
+          break;
+        case "needsAnswers":
+          if (report.challenge) {
+            this.pendingChallenge = { hostId, label, challenge: report.challenge };
+          }
           break;
         case "failed":
           this.error = report.attempted.length
@@ -328,6 +402,9 @@ class HostsStore {
           // and that sentence names the machine and the port, so it is shown as
           // it is rather than flattened into "could not connect".
           this.error = report.detail ?? i18n.t("hosts.errRefused", { host: label });
+          break;
+        case "proxyFailed":
+          this.error = i18n.t("hosts.errProxy", { host: label, detail: report.detail ?? "" });
           break;
       }
       // A host that let us in (or asked for something) may have flipped its
@@ -356,13 +433,57 @@ class HostsStore {
     await this.connect(pending.hostId);
   }
 
-  /** Answer the credential a host asked for, and continue. The value is passed
-   *  straight through to one attempt; nothing keeps it. */
-  async submitPendingCredential(secret: string): Promise<void> {
+  /** Answer the credential a host asked for, and continue. The backend keeps
+   *  it in memory for this session of the app, so a dropped connection can come
+   *  back without asking again; nothing here keeps it. */
+  async submitPendingCredential(value: string): Promise<void> {
     const pending = this.pendingCredential;
     if (!pending) return;
     this.pendingCredential = null;
-    await this.connect(pending.hostId, secret);
+    await this.connect(pending.hostId, {
+      kind: pending.kind,
+      hopKey: pending.hopKey,
+      path: pending.path ?? null,
+      value,
+    });
+  }
+
+  /** Send the person's answers to a second factor, on the connection that is
+   *  waiting for them. Nothing keeps them: a code is spent once used. */
+  async answerPendingChallenge(answers: string[]): Promise<void> {
+    const pending = this.pendingChallenge;
+    if (!pending) return;
+    this.pendingChallenge = null;
+    await this.drive(pending.hostId, () => sshHostAnswer(pending.hostId, answers));
+  }
+
+  /** Close a second-factor prompt without answering; the connection that was
+   *  waiting is dropped. */
+  async cancelPendingChallenge(): Promise<void> {
+    const pending = this.pendingChallenge;
+    this.pendingChallenge = null;
+    if (pending) {
+      try {
+        await sshHostCancel(pending.hostId);
+      } catch {
+        // Nothing was waiting any more; there is nothing to undo.
+      }
+    }
+  }
+
+  /** The person says the changed key is theirs (the machine was reinstalled):
+   *  replace the record and carry on connecting. */
+  async replaceChangedKey(): Promise<void> {
+    const mismatch = this.keyMismatch;
+    if (!mismatch) return;
+    this.keyMismatch = null;
+    try {
+      await sshHostReplaceKey(mismatch.hostId);
+    } catch (e) {
+      this.error = msg(e);
+      return;
+    }
+    await this.connect(mismatch.hostId);
   }
 
   /** Ask a connected host what it has. Failure is not surfaced as an error:

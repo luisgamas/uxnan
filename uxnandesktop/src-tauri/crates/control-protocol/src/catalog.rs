@@ -238,7 +238,7 @@ fn host_view(full: bool) -> Value {
         "port": field("integer", "Its SSH port."),
         "user": field("string", "The user Uxnan logs in as."),
         "source": field("string", "Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`)."),
-        "needsPrompt": field("boolean", "Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it."),
+        "needsPrompt": field("boolean", "Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it."),
         "connected": field("boolean", "Whether a live session is open on it right now — the session itself, not what the settings remember."),
         "generation": optional("integer", "The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it."),
         "shell": optional("string", "The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine."),
@@ -1115,7 +1115,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "host/connect",
             tool: "host_connect",
             group: Group::Create,
-            summary: "Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.",
+            summary: "Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase the person has not given in this session of the app, a second factor, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.",
             params: object(
                 json!({
                     "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." },
@@ -1128,7 +1128,7 @@ pub fn catalog() -> Vec<Entry> {
                 "host": nested("What the attempt came to.", json!({
                     "id": field("string", "The host id."),
                     "connected": field("boolean", "Whether there is a live session now. True also when one was already open."),
-                    "status": field("string", "`connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`."),
+                    "status": field("string", "`connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `failed` or `noUsableMethod`."),
                     "generation": optional("integer", "The connection incarnation, when connected."),
                     "shell": optional("string", "The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected."),
                     "reason": optional("string", "For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not."),

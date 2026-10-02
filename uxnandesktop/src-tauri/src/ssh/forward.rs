@@ -674,7 +674,7 @@ mod tests {
 
         let manager = ForwardManager::default();
         let info = manager
-            .open("live", &Arc::new(conn), served_port, &[])
+            .open("live", &Arc::new(*conn), served_port, &[])
             .await
             .expect("a forward");
         // The preferred number is held by the server itself here, so this also
@@ -769,7 +769,7 @@ mod tests {
 
         let manager = ForwardManager::default();
         let info = manager
-            .open("live", &Arc::new(conn), empty, &[])
+            .open("live", &Arc::new(*conn), empty, &[])
             .await
             .expect("the tunnel still opens — the port here is ours to bind");
         println!(

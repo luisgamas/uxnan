@@ -111,8 +111,10 @@ takes for the hosts that need nothing.
 Two things it deliberately does not do:
 
 - **It takes no credential.** A host that wants a password or a key passphrase
-  comes back as `needsPassword` / `needsPassphrase` and stops there; so does one
-  whose host key is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
+  the person has not given in this session of the app comes back as
+  `needsPassword` / `needsPassphrase` and stops there; so does one that wants a
+  second factor (`needsAnswers`), and one whose host key — its own or a
+  bastion's — is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
   `hostRevoked` — nothing is trusted). Those are the person's to finish in
   Settings → Hosts, and the result carries no fingerprint, key path or
   credential method for a caller to work with.

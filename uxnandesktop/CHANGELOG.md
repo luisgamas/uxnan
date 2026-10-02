@@ -5,6 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Hosts behind a bastion connect.** `ProxyJump` — one bastion or a chain, and
+  bastions with a `ProxyJump` of their own — is followed inside the app, each hop
+  with its own key check and login, and `ProxyCommand` carries the connection
+  when the configuration says so. The jump-host field in the form used to be
+  saved and then ignored.
+- **Second factors.** A server that asks more than a password — a one-time code,
+  a key *and* a code — shows its own questions in a dialog, with the code visible
+  as you type it where the server allows it, and the connection waits for the
+  answer.
+- **Replacing a key that changed.** When a machine is reinstalled, the
+  key-changed dialog offers *The machine was reinstalled — replace the key*: the
+  old entries are backed up to `known_hosts.old` and only they are replaced.
+- **Editing a host.** A host typed by hand can be edited in place, keeping its
+  id and projects; an imported one takes a new label (the rest comes from
+  `~/.ssh/config`).
+
+### Changed
+
+- **Your SSH configuration is read at every connect**, not once when the host
+  was added, and a host typed by hand is resolved through it too — so `Host *`
+  defaults, an edited `HostName` or a new bastion take effect on the next
+  connect, as they would for `ssh`.
+- **`IdentityAgent`, `IdentitiesOnly`, `CertificateFile`, `HostKeyAlias`,
+  `UserKnownHostsFile`, `GlobalKnownHostsFile` and `StrictHostKeyChecking` are
+  honoured.** A password manager's agent is used, a full agent no longer burns
+  the server's attempts on unrelated keys, certificates are offered with their
+  key, and `accept-new` records a new key without asking.
+- **A password or passphrase is kept in memory until the app closes**, so a
+  dropped connection to a host that needed one comes back on its own. It is never
+  written, a wrong one is forgotten at once, and a one-time code is never kept.
+- **Keys are offered in the order that interrupts you least**: an encrypted key
+  nobody has unlocked is asked for only after the agent's keys have been tried.
+
+### Fixed
+
+- **An encrypted key can be unlocked.** The passphrase you typed was sent as a
+  password and the key was retried without it, so the app asked for it forever.
+- **`ForwardAgent` works.** It was saved and never requested, so git on the host
+  could not use the keys held here.
+- **The handshake asks for the key types already on file first**, so a host
+  with a recorded key is always checked against it instead of passing as new by
+  presenting another key type.
+
 ## [0.0.72] - 20261002
 ### Changed
 

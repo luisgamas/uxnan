@@ -62,7 +62,7 @@ async fn reach_host() -> Option<(Connection, String)> {
         .await
         .expect("the password attempt should complete")
     {
-        AuthOutcome::Success { method } => Some((conn, method)),
+        AuthOutcome::Success { method } => Some((*conn, method)),
         other => panic!("the container accepts a password; got {other:?}"),
     }
 }

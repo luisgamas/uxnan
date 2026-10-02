@@ -40,16 +40,24 @@ capacidades acotadas) y fingirlo en la interfaz seria mentir.
 Lo que si se garantiza es que el trabajo aterriza en la maquina que el usuario
 quiso: el fencing de mutaciones de `02a` §2.9.
 
-## 3. Secretos: ninguno se guarda
+## 3. Secretos: ninguno se escribe
 
 El registro de un host guarda alias, hostname, puerto, usuario y una
 **referencia** a un fichero de identidad. Nunca una llave, nunca una contrasena.
-Los aportan el agente SSH del sistema, el fichero de llave en disco y, si hace
-falta, un prompt que vive solo en memoria durante la sesion.
+Los aportan el agente que nombra la configuracion del host, el fichero de llave
+en disco y lo que la persona escribe cuando se le pide.
+
+Lo que la persona escribe —contrasena, passphrase— se guarda **en memoria hasta
+que se cierra la app** (`ssh/secrets.rs`, borrado de memoria al reemplazarse o
+soltarse), para que una conexion caida vuelva sola en vez de volver a preguntar.
+Nunca se escribe en disco ni en un log ni viaja a la interfaz; uno rechazado se
+olvida al instante. Las respuestas a un segundo factor **no se guardan nunca**:
+un codigo de un solo uso no se puede repetir.
 
 `ForwardAgent` es la pieza que evita copiar nada: permite que git **en el host**
 use las llaves que sostiene el agente **aqui**, sin que una llave privada salga
-de esta maquina.
+de esta maquina. Cada canal de sesion pide el reenvio, y un canal de agente que
+el host abre hacia nosotros solo se acepta en una conexion que lo pidio.
 
 ## 4. Configuracion SSH del usuario — IMPLEMENTADO
 
@@ -72,8 +80,44 @@ Del `ssh -G` se levantan solo los campos sobre los que el ADE actua; el literal
 se trata como "sin valor" (ejecutar un comando llamado `none` seria un fallo
 desconcertante en el momento de conectar).
 
+**Se resuelve en cada conexion**, no una vez al añadir el host: un cambio en
+`~/.ssh/config` entra en la siguiente conexion, como en `ssh`. Un host escrito a
+mano se resuelve como lo haria su linea de comandos (`ssh -p … -l … -J … host`),
+asi que hereda los `Host *` del usuario; lo escrito gana, porque las opciones de
+linea de comandos siempre ganan. De un host importado se guarda una **copia**
+para la interfaz, que se refresca al conectar; solo su etiqueta se edita en la
+app (`ssh_host_update`), porque el resto viene del fichero.
+
+Campos sobre los que se actua: `HostName`, `Port`, `User`, `IdentityFile`,
+`CertificateFile`, `IdentityAgent` (`none` se conserva: significa *ningun
+agente*), `IdentitiesOnly`, `ForwardAgent`, `ProxyJump`, `ProxyCommand`,
+`HostKeyAlias`, `UserKnownHostsFile`, `GlobalKnownHostsFile` y
+`StrictHostKeyChecking` (que `ssh -G` imprime como `true`/`false`, no `yes`/`no`).
+Si `ssh` no puede ejecutarse en esta maquina, el registro es todo lo que hay y se
+usa tal cual, sin ruta por bastiones.
+
 Comandos: `ssh_config_hosts` y `ssh_config_resolve`. Ambos de solo lectura y sin
 conexion alguna.
+
+### 4.1 La ruta: bastiones y `ProxyCommand` — IMPLEMENTADO
+
+`src-tauri/src/ssh/dial.rs`. La ruta a un host es una lista de saltos, bastiones
+primero y el host al final. `ProxyJump` (uno, una cadena `a,b`, y bastiones con
+su propio `ProxyJump`, con control de ciclos y tope de 8 saltos) se recorre
+**dentro del proceso**: cada bastion es una conexion SSH propia —su propia
+verificacion de clave, su propio login— y el siguiente salto es un canal
+`direct-tcpip` abierto **por el bastion**, que lleva una sesion SSH completa.
+Por eso un nombre que solo el bastion resuelve funciona, y funciona en Windows
+sin un proceso por salto. `ProxyCommand` lleva la conexion por las tuberias de un
+proceso hijo, por la shell como `ssh` lo ejecuta, con `%h %p %r %n %%`
+expandidos; su stderr va al log.
+
+Cada salto puede detenerse por la persona y el resultado dice **cual**: "edge (de
+camino a build-box) pide una contrasena". Los secretos se guardan por identidad
+de salto (`usuario@host:puerto`), asi que un bastion compartido por dos hosts se
+pregunta una vez y su contrasena no se ofrece a nadie mas. Un segundo factor
+**pausa** el intento con la conexion abierta (`ssh_host_answer`, `ssh_host_cancel`,
+caduca a los 3 minutos) y continua sobre esa misma conexion.
 
 ## 5. Transporte — IMPLEMENTADO
 
@@ -91,9 +135,10 @@ conexion alguna.
 
 | | Que cubre | Estado |
 |---|---|---|
+| §4.1 | la ruta: bastiones (`ProxyJump`) y `ProxyCommand` | implementado |
 | §5.0 | handshake, veredicto de clave, generacion de conexion | implementado |
 | §5.1 | la decision sobre `known_hosts` | implementado |
-| §5.2 | autenticacion (agente, llave, contrasena) | implementado |
+| §5.2 | autenticacion (agente, llaves, certificados, contrasena, segundo factor) | implementado |
 | §5.3 | comandos como canales, su coste medido, el candado y que shell se usa | implementado |
 | §5.4 | registro de hosts y lapidas | implementado |
 | §5.5 | sesiones vivas y su superficie de comandos | implementado |
@@ -112,6 +157,7 @@ conexion alguna.
 | §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
 | §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
 | §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ssh/ports.rs`, `portscan.rs` |
+| §5.15 | Como se prueba contra un host de verdad (y contra un servidor en proceso, §5.1–§5.2) | `ssh/testhost.rs`, `ssh/testserver.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -176,71 +222,93 @@ silencio. La huella `SHA256:…` se contrasta en tests contra la que calcula la
 propia libreria, porque si divergiera, la que se ensena al usuario para comparar
 no valdria nada.
 
+**Que ficheros y bajo que nombre.** Se leen todos los `UserKnownHostsFile` y
+`GlobalKnownHostsFile` que da `ssh -G`, y la clave se busca bajo `HostKeyAlias`
+cuando lo hay; una clave confirmada se escribe en el **primer** fichero de
+usuario, nunca en uno global. `StrictHostKeyChecking`: `ask` pregunta; `yes`
+muestra la huella y no ofrece confiar; `accept-new` (y `no`, leido igual) registra
+una clave nueva sin preguntar y lo deja en el log. Ningun valor deja pasar una
+clave **cambiada**.
+
+**Anti-downgrade.** El handshake pide primero los tipos de clave que ya estan
+registrados para ese host (`hostkey::recorded_algorithms`). Sin eso, un impostor
+que solo tenga, por ejemplo, una clave RSA haria que un host con su ed25519
+registrada presentara un tipo sin entrada — que parece un host nuevo y gana un
+dialogo amable en vez de la alarma que merece.
+
+**Rotacion guiada.** Ante `Changed` no se envia ninguna credencial. Si la persona
+confirma que la maquina se reinstalo, `ssh_host_replace_key` saca **solo** las
+entradas de ese nombre, puerto y tipo de los ficheros de usuario (con copia previa
+en `known_hosts.old`, como `ssh-keygen -R`) y registra la clave presentada, la
+que vio este proceso y nunca una que viajo por la interfaz. Una entrada vieja en
+un fichero global no se toca desde aqui.
+
 Cableado: el callback del cliente la consulta en cada handshake, y la confirmacion
-TOFU vive en Ajustes -> Hosts.
+TOFU vive en Ajustes -> Hosts. Probado en cada `cargo test` contra un servidor
+SSH dentro del proceso de pruebas (`ssh/testserver.rs`).
 
 ## 5.2 Autenticacion — IMPLEMENTADA
 
-`src-tauri/src/ssh/auth.rs`. Orden: **agente del sistema primero**, luego los
-ficheros de identidad que la configuracion resuelta del host señala. El orden no
-es cosmetico: el agente sostiene llaves que el usuario ya desbloqueo, asi que
-probarlo primero es lo que evita que conectar a varios hosts se convierta en
-varios prompts de passphrase.
+`src-tauri/src/ssh/auth.rs` (`Authenticator`). El orden decide cuantas veces se
+interrumpe a la persona:
 
-**Ningun secreto se guarda.** Una credencial es una *referencia* —"el agente" o
-"la llave en esta ruta"—; la passphrase vive en memoria durante un intento y no
-se escribe en ningun sitio. La etiqueta de una credencial (la que va a logs y
-UI) nunca incluye la passphrase, y hay un test que lo exige.
+1. llaves que la configuracion nombra **y que el agente ya sostiene**;
+2. llaves que la configuracion nombra y que abren sin preguntar (sin cifrar, o
+   desbloqueadas antes en esta sesion);
+3. el resto de llaves del agente, salvo `IdentitiesOnly yes` — sin ese limite,
+   un agente lleno gasta los `MaxAuthTries` del servidor en llaves ajenas;
+4. solo entonces una llave cifrada que nadie desbloqueo: es lo unico que obliga
+   a parar y pedir su passphrase (`NeedsPassphrase { path, wrong }`).
 
-**El intercambio abre con un intento `none`.** No es un atajo esperando un
-servidor abierto: es como SSH pregunta *"¿que aceptas?"*. Esa respuesta es lo que
-evita ofrecer llaves a un host que solo toma contraseña y, sobre todo, lo que
-evita decir "fallo la autenticacion" cuando la respuesta real es "esta maquina
-quiere una contraseña y a nadie se le ha pedido una".
+OpenSSH pide esa passphrase en cuanto encuentra la llave, aunque una del agente
+mas abajo hubiera servido; pedirla al final hace que un agente que funciona
+nunca cause un prompt. El agente es el que nombra `IdentityAgent` (un socket,
+`SSH_AUTH_SOCK`, o `none`); en Windows, el named pipe de OpenSSH. Los
+certificados (`CertificateFile`, `<llave>-cert.pub`, y los que sostiene el
+agente) se ofrecen con su llave.
+
+**El intercambio abre con un intento `none`.** Es como SSH pregunta *"¿que
+aceptas?"*: evita ofrecer llaves a un host que solo toma contrasena y, sobre
+todo, decir "fallo la autenticacion" cuando la respuesta real es "esta maquina
+quiere una contrasena y a nadie se le ha pedido una".
+
+**Segundo factor y exito parcial.** keyboard-interactive puede preguntar
+cualquier cosa; sus preguntas llegan a la persona tal como el servidor las
+mando, con eco donde el servidor lo permite (un codigo) y oculto donde no
+(`NeedsAnswers(Challenge)`), y la conversacion espera en la misma conexion. Solo
+un unico prompt oculto que se lee como contrasena se responde por la persona,
+con la que ya dio, y una sola vez: repetirla en el siguiente seria quemar un
+intento de OTP. Un servidor configurado para pedir llave **y** codigo
+(`AuthenticationMethods publickey,keyboard-interactive`) acepta la llave con
+"falta algo" y el intercambio sigue con lo que aun pide, en vez de reportar la
+llave como rechazada. Tope de 8 rondas.
 
 Resultados tipados, no un booleano:
 
 | Resultado | Significa | Que hace la UI |
 |---|---|---|
 | `Success { method }` | autenticado, y **con que** credencial | puede decir por donde entro |
-| `NeedsPassphrase { path }` | la llave esta cifrada y no habia passphrase (o era incorrecta) | la pide y reintenta **esa** credencial |
-| `NeedsPassword { attempted }` | el host acepta contraseña y no teniamos ninguna; `attempted` lleva lo ya rechazado | pide contraseña, diciendo tambien que llave fue rechazada |
-| `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto, no "fallo la autenticacion" |
+| `NeedsPassphrase { path, wrong }` | una llave configurada esta cifrada y nada mas sirvio; `wrong` = la dada no la abrio | la pide, diciendo si la anterior fallo |
+| `NeedsPassword { attempted }` | el host acepta contrasena y no teniamos ninguna | pide contrasena, diciendo tambien que se rechazo |
+| `NeedsAnswers(challenge)` | el servidor pregunto algo que solo la persona sabe | muestra sus preguntas; la conexion espera |
+| `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto; la contrasena dada se olvida |
 | `NoUsableMethod` | el host no acepta nada que podamos ofrecer | lo dice tal cual, no como rechazo |
 
-**La contraseña es el camino que hace posible una primera conexion sin preparar
+**La contrasena es el camino que hace posible una primera conexion sin preparar
 nada en la maquina remota** — sin generar llave, sin tocar `authorized_keys` —, y
 para la mayoria de la gente esa es la diferencia entre "conecte" y "lo deje".
-`NeedsPassword` lleva lo ya intentado para poder decir las dos cosas a la vez:
-que llave se rechazo y que se puede probar contraseña.
 
-Se prueban `password` y `keyboard-interactive`, porque los servidores discrepan
-sobre a cual pertenece una contraseña simple (con PAM de por medio suele ser solo
-la segunda). El lado interactivo responde **solo a peticiones de un unico
-prompt**: un servidor que pregunta dos cosas esta pidiendo un segundo factor, y
-repetir ahi la contraseña seria erroneo ademas de quemar un intento de OTP; eso
-necesita una UI prompt-a-prompt y queda diferido en vez de fingido.
+Las rutas de identidad que **no existen se descartan**, no se intentan: `ssh -G`
+lista los defaults de OpenSSH existan o no.
 
-Dos decisiones que evitan diagnosticos equivocados:
-
-- Una llave cifrada **detiene** la cadena. Seguir probando reportaria "fallo la
-  autenticacion" para una llave que quiza es la correcta, y mandaria al usuario
-  a depurar el problema equivocado.
-- Las rutas de identidad que **no existen se descartan**, no se intentan:
-  `ssh -G` lista los defaults de OpenSSH existan o no, y probar cada ausente
-  convertiria un "no tienes credenciales" en una lista de fallos sin sentido.
-
-Un certificado OpenSSH presente en el agente se **salta**: es otro metodo de
-autenticacion, con sus principales y su validez, y ofrecerlo como si fuera una
-llave suelta fallaria de una forma que parece una llave rechazada.
-
-Windows habla con el agente por named pipe de OpenSSH; el resto por
-`SSH_AUTH_SOCK`. **Validado de punta a punta** contra un `sshd` real: se habla
-con el named pipe, se ofrece una identidad que el agente sostiene, el servidor la
-acepta y despues un comando corre en esa sesion autenticada. Tambien validado el
-lado negativo: una llave no autorizada vuelve como rechazo limpio nombrando lo
-que se ofrecio, y una contrasena incorrecta como rechazo, no como error de
-transporte.
+**Validado en cada `cargo test`** contra un servidor SSH dentro del proceso
+(`ssh/testserver.rs`, `ssh/transport_tests.rs`): contrasena y codigo en dos
+rondas, llave con exito parcial y codigo, bastion con su propia contrasena, llave
+cifrada con passphrase correcta e incorrecta, `IdentityAgent` y `IdentitiesOnly`
+con un `ssh-agent` real, `ForwardAgent` de punta a punta (el host cuenta las
+identidades del agente reenviado). Y en vivo contra un `sshd` real (tests
+`--ignored`): named pipe de Windows, llave no autorizada rechazada nombrando lo
+ofrecido, contrasena incorrecta como rechazo y no como error de transporte.
 
 ## 5.3 Comandos como canales — IMPLEMENTADO, con una medicion que condiciona el diseño
 
@@ -541,8 +609,11 @@ Lo comprueba un test en vivo que **se queda quieto mas de esos 5 minutos** y
 despues usa la conexion; sin el keepalive falla. Esta `--ignored` por lo que
 cuesta, y hay que correrlo cuando se toque cualquiera de los dos timers.
 
-Queda un hueco, anotado en `FOR-DEV.md` en vez de disimulado: cuando la conexion
-se cae, el frontend no recibe **evento**; se entera al preguntar.
+Cuando la conexion se cae, el frontend lo sabe sin preguntar: un vigilante por
+sesion emite `ssh:session-ended` (§5.10f) y la escalera de §5.12 intenta
+volver. Lo que **no** sobrevive a la caida es la terminal misma: vive en un canal
+de la sesion, asi que el programa que corria en ella termina en el host (§7,
+fase 5).
 
 Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
 redimensionar y cerrar; crear dos veces el mismo id no abre dos terminales; y
@@ -900,7 +971,7 @@ posterior a una recarga llevaria una expectativa que no emitio nadie.
 | Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
 | Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
 | Guardar un fichero | **Funciona** — en el sitio y con fencing (arriba) |
-| Renombrar / borrar / crear desde el arbol | **Pendiente**: el menu contextual sigue siendo local |
+| Renombrar / borrar / crear desde el arbol | **Hecho** en §5.10d |
 
 Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
 rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
@@ -961,7 +1032,7 @@ usuario.
 
 Ese hueco existia desde antes y **no se veia**: al arrancar nadie conectaba el
 host, asi que el primer listado fallaba y el mensaje de "esperando" tapaba la
-falta. Al reconectar los hosts solos al arrancar (§5.4b) el mensaje dejo de
+falta. Al reconectar los hosts solos al arrancar (§5.5, `ssh_hosts_resumable`) el mensaje dejo de
 aparecer y el hueco quedo a la vista. Leccion anotada: **cuando un cambio quita
 un estado de la interfaz, hay que buscar que otra cosa dependia de que ese estado
 ocurriera.**
@@ -994,7 +1065,7 @@ Las secciones van marcadas y no contadas: dos pueden venir vacias y una
 (`--porcelain -z`) no contiene saltos de linea, asi que partir por lineas las
 fundiria — y un repositorio limpio volveria como uno que no se pudo leer.
 
-**El unico bug real de esta parte lo encontro el host Linux** (§5.12), no los
+**El unico bug real de esta parte lo encontro el host Linux** (§5.15), no los
 unitarios: el estado de un cambio sin preparar es un **espacio** a la izquierda
 (` M README.md`), y recortar la seccion como espacio en blanco se lo comia, con
 lo que cada ruta llegaba un caracter mas corta y el panel listaba `EADME.md`
@@ -1361,23 +1432,24 @@ Fuera de la fase 3: los **puertos reenviados** son ya la fase 4 (§5.14), y el
 reporters instalados alli. La escalera de reconexion, que estaba en esta lista,
 es ahora §5.12.
 
-### La decision sobre el ayudante en el host: NO se construye
+### La decision sobre el ayudante en el host: no para la fase 3, reabierta por las fases 2 y 5
 
-Estaba anotado como decision pendiente y aqui queda tomada, con lo medido.
+Para ficheros, git y busqueda se decidio, con lo medido, no desplegar nada en el
+host.
 
-**Que hacen los maduros.** Zed sube un binario `remote_server` a `~/.zed_server`
-atado a la version exacta del cliente, y multiplexa con `ControlMaster` — que el
-OpenSSH de Windows no implementa, o sea que su transporte no es copiable aqui.
-VS Code instala su servidor y paga el precio en compatibilidad: desde la 1.99
-exige **glibc ≥ 2.28**, y **Alpine/musl no esta soportado**; los sistemas viejos
-necesitan un sysroot y `patchelf`.
+**Que se observo en clientes comparables.** Los que despliegan un servidor en el
+host lo atan a la version exacta del cliente —cada actualizacion deja
+inalcanzable lo que corria en el anterior— o lo construyen sobre un runtime que
+el host tiene que traer (Node, una libc minima, compilar modulos nativos alli).
+Y muchos multiplexan con `ControlMaster`, que el OpenSSH de Windows no
+implementa, asi que ese transporte no es copiable aqui.
 
-**Por que aqui no hace falta.** Cada pieza que salio de la shell le quito su
+**Por que la fase 3 no lo necesito.** Cada pieza que salio de la shell le quito su
 razon de ser: los ficheros van por SFTP (§5.10), el explorador tambien (§5.8) y
 la sonda pregunta en la shell que el host reporto (§5.3). Lo unico que queda con
 forma de shell es git — y el panel de Cambios **pide el diff por fichero al
 seleccionarlo**, no todos de golpe, asi que su forma natural son comandos
-sueltos: ~2 s al abrir la pestaña y ~2 s por fichero abierto. Lento, no roto. Los
+sueltos: ~2 s al abrir la pestana y ~2 s por fichero abierto. Lento, no roto. Los
 dos casos que parecian imposibles (stdin y binarios) los resuelve el SFTP que ya
 esta abierto.
 
@@ -1385,14 +1457,17 @@ esta abierto.
 clase de fallo nueva —"no pude instalar el servidor en tu maquina"— que hoy no
 existe. Justo en la parte que mas se le pide a esta funcion: que sea facil.
 
-**Que reabriria la decision.** Que Cambios, ya construido sobre `exec`, se sienta
-lento en un host real. Entonces la conversacion deja de ser "¿ayudante si o no?"
-y pasa a ser "estos N segundos por clic valen un binario que desplegar", que es
-una pregunta que se responde con un numero. Mientras tanto la alternativa mas
-barata sigue anotada: **mantener un canal de shell abierto** y escribirle los
-comandos (§5.3), que quita el arranque de shell sin desplegar nada.
+**Que la reabre.** Las dos fases pendientes de §7 no se pueden hacer sin algo
+vivo en el host: terminales que sobrevivan a una desconexion (fase 5) necesitan
+un dueno de las PTY fuera de la sesion SSH, y el estado preciso de agentes
+(fase 2) necesita reporters escuchando alli. La pregunta deja de ser "¿ayudante
+si o no?" y pasa a ser **cual y como**: la respuesta que se perfila es el mismo
+codigo de workspace que el desktop usa en local, compilado estatico (sin runtime
+que el host deba traer), subido por SFTP desde el desktop (sin Internet en el
+host) y con una ventana de protocolo en vez de version exacta. Cuando se
+construya, esta seccion se reescribe con su diseno.
 
-## 5.12 Como se prueba esto contra un host de verdad — IMPLEMENTADO
+## 5.15 Como se prueba esto contra un host de verdad — IMPLEMENTADO
 
 Hasta ahora **todas** las pruebas en vivo hablaban con el `sshd` de la maquina que
 las ejecuta, que en este proyecto siempre ha sido Windows con `cmd`. La mitad
@@ -1546,7 +1621,7 @@ sobre una conexion que ya no existe las aceptaria hacia la nada.
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
 | Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
-| Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
+| Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
 | Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
@@ -1559,9 +1634,9 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
