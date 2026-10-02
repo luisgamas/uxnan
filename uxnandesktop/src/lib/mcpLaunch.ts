@@ -145,8 +145,19 @@ export function requiredLaunchArgs(commandLine: string): string[] {
 /** Append what this launch needs to a command line — the CLI's required
  *  arguments, then its MCP registration — quoted for `shell`. Returns the line
  *  untouched when there is nothing to add — the common case for every command
- *  that isn't one of the registered agents. */
-export function withMcpLaunch(commandLine: string, shell?: string | null): string {
+ *  that isn't one of the registered agents.
+ *
+ *  `onHost`: the terminal runs on another machine, and this catalog describes
+ *  this one. Its registration names this machine's server (a config file in
+ *  this app's data, a `127.0.0.1` URL), and its required arguments follow the
+ *  CLI versions installed here (`--standalone` is OpenCode 2's, and OpenCode 1
+ *  rejects it) — neither holds there, so a host launch is typed as it is. */
+export function withMcpLaunch(
+  commandLine: string,
+  shell?: string | null,
+  onHost = false,
+): string {
+  if (onHost) return commandLine;
   const args = [...requiredLaunchArgs(commandLine), ...mcpLaunchArgs(commandLine)];
   if (args.length === 0) return commandLine;
   const kind: ShellKind = shellKind(shell);

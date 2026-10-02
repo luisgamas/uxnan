@@ -93,6 +93,16 @@ describe("launchExecutable", () => {
   });
 });
 
+describe("withMcpLaunch on a host", () => {
+  it("adds nothing this machine's catalog decided: not its server, not its CLI versions", () => {
+    __setMcpCatalog(WITH_OPENCODE_2);
+    expect(withMcpLaunch("claude", "/bin/bash", true)).toBe("claude");
+    expect(withMcpLaunch("codex", "/bin/zsh", true)).toBe("codex");
+    // OpenCode 2 here says nothing about the host's OpenCode, and 1 rejects it.
+    expect(withMcpLaunch("opencode", "/bin/zsh", true)).toBe("opencode");
+  });
+});
+
 describe("withMcpLaunch", () => {
   it("appends Claude's config flag, quoted for the shell", () => {
     // The path has a space, so each shell needs its own quoting; the flag value

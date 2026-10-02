@@ -82,6 +82,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **The handshake asks for the key types already on file first**, so a host
   with a recorded key is always checked against it instead of passing as new by
   presenting another key type.
+- **An agent launched on a host is no longer pointed at this machine's
+  tools.** Claude Code and Codex started on a host got the registration of this
+  app's control tools — a config file in this machine's app data, a
+  `127.0.0.1` address here — which names nothing on the host — and OpenCode got
+  `--standalone` when this machine's OpenCode is version 2, which a host's
+  OpenCode 1 rejects. A host launch is now typed as it is.
 - **Wiring an agent's hooks keeps its config file's permissions.** The file
   was rewritten as a new one, so a private config (`0600`) came out readable by
   the machine's other accounts, and a shared one private.
