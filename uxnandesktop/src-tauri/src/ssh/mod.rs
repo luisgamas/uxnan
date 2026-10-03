@@ -26,6 +26,7 @@ pub mod auth;
 pub mod config;
 pub mod conn;
 pub mod dial;
+pub mod doctor;
 pub mod engine;
 pub mod forward;
 pub mod hostkey;

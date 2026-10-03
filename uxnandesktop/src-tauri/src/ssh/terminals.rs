@@ -571,6 +571,9 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_secs(45)).await;
             assert!(engine.is_alive(), "an idle engine was given up on");
             assert!(engine.list().await.is_ok(), "and it still answers");
+            // The heartbeats that kept it up measured the link as they went.
+            let latency = engine.latency_ms().expect("a heartbeat came back");
+            println!("live: {alias} heartbeat round trip {latency} ms");
             println!("live: {alias} engine idle for 45 s, still up");
         }
 

@@ -361,6 +361,8 @@ pub struct HostEngine {
     on_mcp: OnMcp,
     on_url: OnUrl,
     on_agent: OnAgent,
+    /// The heartbeat's last round trip, in milliseconds (`u64::MAX`: none yet).
+    round_trip: Arc<AtomicU64>,
     /// The host's facts for its launches, asked once per connection.
     tools: tokio::sync::OnceCell<Option<HostTools>>,
     /// Asks the reader and the writer to stop, which closes the channel. A
@@ -433,6 +435,11 @@ impl HostEngine {
         // `started`: every frame is proof of life, not only a pong.
         let started = std::time::Instant::now();
         let last_heard = Arc::new(AtomicU64::new(0));
+        // The heartbeat's own round trip: which ping is out, when it left, and
+        // how long the last one took to come back (`u64::MAX`: not yet).
+        let ping_out = Arc::new(AtomicU64::new(0));
+        let ping_sent = Arc::new(AtomicU64::new(0));
+        let round_trip = Arc::new(AtomicU64::new(u64::MAX));
         let pending: Arc<std::sync::Mutex<HashMap<u64, Pending>>> = Arc::default();
         let sinks: Sinks = Arc::default();
         let on_changed: OnChanged = Arc::default();
@@ -468,6 +475,9 @@ impl HostEngine {
         let reader_lost = Arc::clone(&lost);
         let reader_pending = Arc::clone(&pending);
         let reader_sinks = Arc::clone(&sinks);
+        let reader_ping_out = Arc::clone(&ping_out);
+        let reader_ping_sent = Arc::clone(&ping_sent);
+        let reader_round_trip = Arc::clone(&round_trip);
         let reader_changed = Arc::clone(&on_changed);
         let reader_hook = Arc::clone(&on_hook);
         let reader_mcp = Arc::clone(&on_mcp);
@@ -561,7 +571,13 @@ impl HostEngine {
                     Frame::Ping(n) => {
                         let _ = pong.try_send(Frame::Pong(n));
                     }
-                    Frame::Pong(_) => {}
+                    Frame::Pong(n) => {
+                        if n == reader_ping_out.load(Ordering::SeqCst) {
+                            let now = started.elapsed().as_millis() as u64;
+                            let sent = reader_ping_sent.load(Ordering::SeqCst);
+                            reader_round_trip.store(now.saturating_sub(sent), Ordering::SeqCst);
+                        }
+                    }
                 }
             }
             reader_alive.store(false, Ordering::SeqCst);
@@ -575,6 +591,8 @@ impl HostEngine {
         let beat_alive = Arc::clone(&alive);
         let beat_shutdown = shutdown.clone();
         let mut beat_stop = shutdown_rx;
+        let beat_ping_out = Arc::clone(&ping_out);
+        let beat_ping_sent = Arc::clone(&ping_sent);
         tokio::spawn(async move {
             let mut n: u64 = 0;
             loop {
@@ -597,6 +615,8 @@ impl HostEngine {
                     return;
                 }
                 n += 1;
+                beat_ping_sent.store(started.elapsed().as_millis() as u64, Ordering::SeqCst);
+                beat_ping_out.store(n, Ordering::SeqCst);
                 let _ = beat_out.try_send(Frame::Ping(n));
             }
         });
@@ -622,10 +642,24 @@ impl HostEngine {
             on_mcp,
             on_url,
             on_agent,
+            round_trip,
             tools: tokio::sync::OnceCell::new(),
             shutdown,
             generation: conn.generation(),
         }))
+    }
+
+    /// How long the last heartbeat took to come back — the link's latency as
+    /// it stands, measured with no traffic of its own. `None` until one has.
+    pub fn latency_ms(&self) -> Option<u64> {
+        let rtt = self.round_trip.load(Ordering::SeqCst);
+        (rtt != u64::MAX).then_some(rtt)
+    }
+
+    /// What the daemon said about itself when it answered: its build, the
+    /// protocol both sides speak, its platform.
+    pub fn welcome(&self) -> &Welcome {
+        &self.welcome
     }
 
     pub fn epoch(&self) -> &str {

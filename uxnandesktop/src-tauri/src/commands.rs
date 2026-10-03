@@ -1337,6 +1337,127 @@ async fn engine_for<R: tauri::Runtime>(
     Ok(engine)
 }
 
+/// A host's connection, step by step, for the host page's check: the way
+/// there, whether it answers, its key, the sign-in, the shell, the engine and
+/// the round trip (`ssh::doctor`). Never signs in to find out: a host that is
+/// not connected says so, and the steps that need a session wait for one.
+#[tauri::command]
+pub async fn ssh_host_doctor(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<ssh::doctor::HostDoctor, CommandError> {
+    let host = state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("host {host_id}"))))?;
+    let mut doctor = ssh::doctor::HostDoctor::default();
+    ssh::doctor::route_facts(&host, &mut doctor).await;
+    let shell = state.ssh_shells.read().await.get(&host_id).copied();
+    doctor.shell = shell.map(|s| s.as_str().to_string());
+    let Some(conn) = session_for(&state, &host_id)
+        .await
+        .filter(|c| !c.handle().is_closed())
+    else {
+        return Ok(doctor);
+    };
+    doctor.connected = true;
+    match engine_for(&app, &state, &host_id, &conn, shell.unwrap_or_default()).await {
+        Ok(engine) => {
+            let welcome = engine.welcome();
+            doctor.engine = Some(ssh::doctor::DoctorEngine {
+                version: welcome.version.clone(),
+                protocol: welcome.protocol,
+                os: welcome.os.clone(),
+                arch: welcome.arch.clone(),
+            });
+            let started = std::time::Instant::now();
+            if engine.list().await.is_ok() {
+                doctor.round_trip_ms = Some(started.elapsed().as_millis() as u64);
+            }
+        }
+        Err(e) => doctor.engine_error = Some(e.to_string()),
+    }
+    Ok(doctor)
+}
+
+/// One terminal the host's engine holds, as the host page lists it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostSession {
+    pub session: u32,
+    pub label: String,
+    pub cwd: String,
+    pub alive: bool,
+    /// An age, never a timestamp: the two machines' clocks do not agree.
+    pub started_ago_ms: u64,
+    /// The tab of this window that shows it, if one does — `None` for one a
+    /// previous run of the app left there, or another app opened.
+    pub tab: Option<String>,
+}
+
+/// The terminals a connected host's engine holds, newest first — including
+/// ones no tab of this window shows.
+#[tauri::command]
+pub async fn ssh_host_sessions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<Vec<HostSession>, CommandError> {
+    let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    let listed = engine.list().await.map_err(CommandError::from)?;
+    let mut sessions = Vec::with_capacity(listed.len());
+    for s in listed {
+        let tab = state
+            .engine_terminals
+            .tab_for(&host_id, engine.epoch(), s.session)
+            .await;
+        sessions.push(HostSession {
+            session: s.session,
+            label: s.label,
+            cwd: s.cwd,
+            alive: s.alive,
+            started_ago_ms: s.started_ago_ms,
+            tab,
+        });
+    }
+    sessions.sort_by_key(|s| s.started_ago_ms);
+    Ok(sessions)
+}
+
+/// End one terminal a host's engine holds — its program, and with it whatever
+/// ran there. Fenced: it cannot be taken back.
+#[tauri::command]
+pub async fn ssh_host_session_end(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    session: u32,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(
+        &app,
+        &state,
+        Some(&format!("ssh:{host_id}")),
+        Some(expect.as_ref()),
+    )
+    .await?
+    {
+        Machine::Host(engine) => engine.close(session).await.map_err(CommandError::from),
+        Machine::Here => Err(CommandError::from(AppError::Invalid(format!(
+            "{host_id} is not a host"
+        )))),
+    }
+}
+
 /// The running daemon of the host a tab's terminal lives on, if the host is
 /// connected now.
 async fn engine_of_tab(
@@ -2790,6 +2911,8 @@ pub struct SshHostSession {
     /// restarted and reloaded far more often than a host is connected — without
     /// it, every save after a reload would carry a generation of nobody's.
     pub generation: u64,
+    /// The link's latency as the host engine's heartbeat last measured it.
+    pub latency_ms: Option<u64>,
 }
 
 /// The hosts that can be brought back **without asking the user anything**.
@@ -2828,17 +2951,27 @@ pub async fn ssh_hosts_resumable(state: State<'_, AppState>) -> Result<Vec<Strin
 pub async fn ssh_hosts_connected(
     state: State<'_, AppState>,
 ) -> Result<Vec<SshHostSession>, CommandError> {
-    Ok(state
+    let live: Vec<(String, u64)> = state
         .ssh_sessions
         .read()
         .await
         .iter()
         .filter(|(_, conn)| !conn.handle().is_closed())
-        .map(|(host_id, conn)| SshHostSession {
-            host_id: host_id.clone(),
-            generation: conn.generation(),
-        })
-        .collect())
+        .map(|(host_id, conn)| (host_id.clone(), conn.generation()))
+        .collect();
+    let mut sessions = Vec::with_capacity(live.len());
+    for (host_id, generation) in live {
+        let latency_ms = match state.ssh_engines.live(&host_id).await {
+            Some(engine) => engine.latency_ms(),
+            None => None,
+        };
+        sessions.push(SshHostSession {
+            host_id,
+            generation,
+            latency_ms,
+        });
+    }
+    Ok(sessions)
 }
 
 /// Record whether a host asked for something interactive. Persisted because the
