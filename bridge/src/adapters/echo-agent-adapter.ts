@@ -31,7 +31,10 @@ interface PendingApproval {
 export class EchoAgentAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'echo';
   readonly capabilities: AgentCapabilities = {
-    planMode: false,
+    // The reference agent offers every mode, so the contract is exercised end
+    // to end without a CLI (it enforces none of them).
+    accessModes: ['requestApproval', 'approveForMe', 'fullAccess', 'plan'],
+    defaultAccessMode: 'fullAccess',
     streaming: true,
     approvals: true,
     forking: false,

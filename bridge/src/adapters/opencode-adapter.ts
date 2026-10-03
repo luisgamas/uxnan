@@ -61,6 +61,7 @@ import {
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
+  agentFor,
   permissionPolicyFor,
   splitOpenCodeModel,
   type IOpenCodeServer,
@@ -68,7 +69,6 @@ import {
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
-  type OpenCodePermissionPolicy,
   type OpenCodeProtocolVersion,
   type PermissionReply,
 } from './opencode-protocol.js';
@@ -83,7 +83,8 @@ import {
 export type { SpawnFn, SpawnedProcess } from './spawn.js';
 
 const OPENCODE_CAPABILITIES: AgentCapabilities = {
-  planMode: true,
+  accessModes: ['requestApproval', 'approveForMe', 'fullAccess', 'plan'],
+  defaultAccessMode: 'fullAccess',
   streaming: true,
   // The server surfaces a permission request before a gated tool runs, so the
   // bridge can request the user's approval (unlike the old one-shot `run`).
@@ -281,7 +282,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * replaced, so a turn whose access mode differs — or whose session this
    * process did not create, and so cannot vouch for — sets them first.
    */
-  readonly #policyBySession = new Map<string, OpenCodePermissionPolicy>();
+  readonly #policyBySession = new Map<string, string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** cwd → the server's commands there, briefly reused (see `listCommands`). */
@@ -397,14 +398,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
     }
     const policy = permissionPolicyFor(options.accessMode);
-    if (sessionId && this.#policyBySession.get(sessionId) !== policy) {
+    const policyKey = JSON.stringify(policy);
+    if (sessionId && this.#policyBySession.get(sessionId) !== policyKey) {
       // The conversation's access mode is the one it has now, not the one its
       // session was created under — in both directions: a session made to ask
       // that is now in full access must stop asking, and one made to allow
       // that is now set to ask must ask again.
       try {
         await server.setPermission(sessionId, policy);
-        this.#policyBySession.set(sessionId, policy);
+        this.#policyBySession.set(sessionId, policyKey);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -426,7 +428,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         this.setNativeSession(threadId, sessionId);
         this.#confirmedSessions.add(sessionId);
         this.#promptOnlySessions.add(sessionId);
-        this.#policyBySession.set(sessionId, policy);
+        this.#policyBySession.set(sessionId, policyKey);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -478,6 +480,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           name,
           args: options.command.args?.trim() ?? '',
           skill: known?.skill ?? false,
+          agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
         });
@@ -485,6 +488,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } else {
         await server.prompt(sessionId, {
           text,
+          agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
         });

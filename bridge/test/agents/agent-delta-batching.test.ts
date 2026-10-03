@@ -34,7 +34,6 @@ import {
 import { rmrf } from '../helpers/fs.js';
 
 const CAPS: AgentCapabilities = {
-  planMode: false,
   streaming: true,
   approvals: false,
   forking: false,

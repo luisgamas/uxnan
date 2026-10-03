@@ -214,8 +214,8 @@ export function piAgentCommands(reported: PiReportedCommand[]): AgentCommand[] {
 }
 
 const PI_CAPABILITIES: AgentCapabilities = {
-  // Plan mode is a pi extension, not core, so it's not advertised here.
-  planMode: false,
+  // No access modes: pi has no approval system (plan mode is an extension,
+  // not core), so it runs in its configured posture and shows no selector.
   streaming: true,
   // pi runs its tools autonomously in `-p` mode (no per-turn approval RPC).
   approvals: false,

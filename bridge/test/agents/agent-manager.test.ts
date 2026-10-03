@@ -26,7 +26,6 @@ import { rmrf } from '../helpers/fs.js';
 
 /** Caps for the controllable test adapter (streaming, no approvals/images). */
 const CONTROLLED_CAPS: AgentCapabilities = {
-  planMode: false,
   streaming: true,
   approvals: false,
   forking: false,

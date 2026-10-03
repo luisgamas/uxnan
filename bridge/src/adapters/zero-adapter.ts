@@ -19,8 +19,12 @@
  *  - `session/new { cwd, mcpServers:[] }` → `{ sessionId, modes }`. We advertise
  *    `fs:{readTextFile:false,writeTextFile:false}` so Zero does its own local file
  *    I/O and never asks the client for `fs/*`.
- *  - `session/set_mode { modeId }` — `ask` (gate every state-changing tool) vs
- *    `auto` (safe tools auto, ask before risky) ← the thread's access mode.
+ *  - `session/set_mode { modeId }` — the thread's access mode, natively: `ask`
+ *    (gate every state-changing tool), `auto` (safe tools on their own, ask
+ *    before risky ones) or `plan` (read-only; write and shell tools hidden) —
+ *    the three `session/new` advertises (zero 0.9.0). There is no way to run
+ *    `zero acp` without its sandbox (no ACP mode, no flag — only the user's
+ *    global config), so Zero offers no "full access".
  *  - `_zero/set_model { model }` — pick the model for the session.
  *  - `session/prompt { prompt:[{type:'text',text}] }` — a REQUEST that resolves
  *    with `{ stopReason }` when the turn ends (our `turn_completed` signal).
@@ -76,7 +80,8 @@ import {
 } from './acp-tools.js';
 
 const ZERO_CAPABILITIES: AgentCapabilities = {
-  planMode: true,
+  accessModes: ['requestApproval', 'approveForMe', 'plan'],
+  defaultAccessMode: 'approveForMe',
   streaming: true,
   // ACP `session/request_permission` gives real per-action approvals.
   approvals: true,
@@ -168,10 +173,14 @@ function readTextFile(path: string): string | undefined {
 }
 
 /** Zero's ACP session modes (from `session/new`'s `availableModes`). */
-type ZeroMode = 'ask' | 'auto';
+type ZeroMode = 'ask' | 'auto' | 'plan';
 
-/** How a run should answer Zero's permission prompts. */
-type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
+/** The Zero mode each access mode it offers runs in. */
+const ZERO_MODES: Record<'requestApproval' | 'approveForMe' | 'plan', ZeroMode> = {
+  requestApproval: 'ask',
+  approveForMe: 'auto',
+  plan: 'plan',
+};
 
 export interface ZeroAdapterOptions {
   /** Resolved `zero` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
@@ -211,8 +220,6 @@ interface ActiveRun {
   tools: Map<string, AcpToolCall>;
   /** Tool ids already emitted as a block. */
   emitted: Set<string>;
-  /** How this run answers permission prompts (from the thread's access mode). */
-  posture: PermissionPosture;
   finished: boolean;
 }
 
@@ -463,8 +470,19 @@ export class ZeroAdapter extends BaseAgentAdapter {
       return this.#failTurn(threadId, turnId, `zero session failed: ${errorMessage(err)}`);
     }
 
-    const posture = postureFor(options.accessMode);
-    await this.#applyMode(rpc, sessionId, posture);
+    const accessMode = options.accessMode ?? 'approveForMe';
+    const mode =
+      accessMode in ZERO_MODES ? ZERO_MODES[accessMode as keyof typeof ZERO_MODES] : 'auto';
+    try {
+      await this.#applyMode(rpc, sessionId, mode);
+    } catch (err) {
+      // Running in another mode than the one chosen would break its promise.
+      return this.#failTurn(
+        threadId,
+        turnId,
+        `zero could not switch to its ${mode} mode: ${errorMessage(err)}`,
+      );
+    }
     if (model) await this.#applyModel(rpc, sessionId, model);
 
     const run: ActiveRun = {
@@ -474,7 +492,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
       full: '',
       tools: new Map(),
       emitted: new Set(),
-      posture,
       finished: false,
     };
     this.#active.set(turnId, run);
@@ -636,16 +653,11 @@ export class ZeroAdapter extends BaseAgentAdapter {
     return res.sessionId;
   }
 
-  /** Set the session's permission mode from the run's posture (once per change). */
-  async #applyMode(rpc: NdjsonRpc, sessionId: string, posture: PermissionPosture): Promise<void> {
-    const mode: ZeroMode = posture === 'interactive' ? 'ask' : 'auto';
+  /** Put the session in [mode] (once per change); throws when Zero refuses. */
+  async #applyMode(rpc: NdjsonRpc, sessionId: string, mode: ZeroMode): Promise<void> {
     if (this.#modeBySession.get(sessionId) === mode) return;
-    try {
-      await rpc.request('session/set_mode', { sessionId, modeId: mode });
-      this.#modeBySession.set(sessionId, mode);
-    } catch {
-      /* best-effort; a failed mode set falls back to Zero's current mode */
-    }
+    await rpc.request('session/set_mode', { sessionId, modeId: mode });
+    this.#modeBySession.set(sessionId, mode);
   }
 
   /** Point the session at a model (best-effort; an unknown model keeps Zero's). */
@@ -792,18 +804,9 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const toolCall = isRecord(p['toolCall']) ? p['toolCall'] : {};
     // A request for no turn of ours is refused: nothing the user set allows it.
     if (!run) return cancelledOutcome();
-    // Non-interactive postures auto-answer without troubling the phone.
-    if (run.posture === 'approveAll') {
-      return selectOption(options, 'approve') ?? cancelledOutcome();
-    }
-    if (run.posture === 'approveSession') {
-      return (
-        selectOption(options, 'approveSession') ??
-        selectOption(options, 'approve') ??
-        cancelledOutcome()
-      );
-    }
-    // Interactive, with no one to ask: refuse.
+    // Zero asks only what its mode leaves to a person — everything in `ask`,
+    // what it judges risky in `auto` — so every question goes to them. With
+    // no one to ask: refuse.
     if (!this.#onApprovalRequest) return selectOption(options, 'reject') ?? cancelledOutcome();
     // Interactive: ask the phone.
     let decision: ApprovalDecision = 'reject';
@@ -932,19 +935,6 @@ export function parseZeroModels(stdout: string): AgentModel[] {
 }
 
 /** Map the thread's access mode to how this run answers permission prompts. */
-function postureFor(accessMode: SendTurnOptions['accessMode']): PermissionPosture {
-  switch (accessMode) {
-    case 'approveForMe':
-      return 'approveAll';
-    case 'fullAccess':
-      return 'approveSession';
-    case 'requestApproval':
-      return 'interactive';
-    default:
-      return 'interactive';
-  }
-}
-
 /**
  * Pick the ACP permission option matching a decision, by option `kind`:
  * approve→allow_once, approveSession→allow_always, reject→reject_once. Returns

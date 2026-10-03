@@ -32,6 +32,8 @@ import {
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
   type OpenCodeModelRef,
+  type OpenCodeAgent,
+  type OpenCodeEffect,
   type OpenCodePermissionPolicy,
   type OpenCodePrompt,
   type PermissionReply,
@@ -48,9 +50,14 @@ const GATED_PERMISSIONS = ['edit', 'bash', 'webfetch', 'external_directory'] as 
 
 /** The session rules for a policy: every gated permission, on any pattern. */
 function permissionRules(
-  action: OpenCodePermissionPolicy,
-): { permission: string; pattern: string; action: OpenCodePermissionPolicy }[] {
-  return GATED_PERMISSIONS.map((permission) => ({ permission, pattern: '**', action }));
+  policy: OpenCodePermissionPolicy,
+): { permission: string; pattern: string; action: OpenCodeEffect }[] {
+  return GATED_PERMISSIONS.map((permission) => ({
+    permission,
+    pattern: '**',
+    // 1.x calls the shell permission `bash`.
+    action: policy[permission === 'bash' ? 'shell' : permission],
+  }));
 }
 
 /** Per-session bookkeeping the V1 bus needs to tell text from reasoning. */
@@ -549,7 +556,7 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   }
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
-    await this.#promptAsync(sessionId, prompt.text, prompt.model, prompt.variant);
+    await this.#promptAsync(sessionId, prompt.text, prompt.model, prompt.variant, prompt.agent);
   }
 
   /**
@@ -566,10 +573,13 @@ export class OpenCodeV1Server implements IOpenCodeServer {
     text: string,
     model?: OpenCodeModelRef,
     variant?: string,
+    agent?: OpenCodeAgent,
   ): Promise<void> {
     await this.#serve.request('POST', `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       ...(model !== undefined ? { model } : {}),
       ...(variant !== undefined ? { variant } : {}),
+      // 1.x takes the agent per prompt (1.18.34 `prompt_async` body).
+      ...(agent !== undefined ? { agent } : {}),
       parts: [{ type: 'text', text }],
     });
   }
@@ -597,6 +607,7 @@ export class OpenCodeV1Server implements IOpenCodeServer {
       arguments: run.args,
       ...(run.model ? { model: `${run.model.providerID}/${run.model.modelID}` } : {}),
       ...(run.variant !== undefined ? { variant: run.variant } : {}),
+      agent: run.agent,
     };
     void this.#serve
       .request('POST', `/session/${encodeURIComponent(sessionId)}/command`, body)

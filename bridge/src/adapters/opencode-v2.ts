@@ -42,6 +42,8 @@ import {
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
   type OpenCodeModelRef,
+  type OpenCodeAgent,
+  type OpenCodeEffect,
   type OpenCodePermissionPolicy,
   type OpenCodePrompt,
   type PermissionReply,
@@ -58,9 +60,9 @@ const GATED_ACTIONS = ['shell', 'edit', 'webfetch', 'external_directory'] as con
 
 /** The session rules for a policy: every gated action, on any resource. */
 function permissionRules(
-  permission: OpenCodePermissionPolicy,
-): { action: string; resource: string; effect: OpenCodePermissionPolicy }[] {
-  return GATED_ACTIONS.map((action) => ({ action, resource: '*', effect: permission }));
+  policy: OpenCodePermissionPolicy,
+): { action: string; resource: string; effect: OpenCodeEffect }[] {
+  return GATED_ACTIONS.map((action) => ({ action, resource: '*', effect: policy[action] }));
 }
 
 /** How long `models()` waits for a freshly booted server to load its catalog. */
@@ -450,6 +452,8 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   readonly #cwd: string;
   /** sessionID → the model it runs, so a turn switches only when it differs. */
   readonly #sessionModel = new Map<string, string>();
+  /** sessionID → the primary agent it runs, as this process last set it. */
+  readonly #sessionAgent = new Map<string, OpenCodeAgent>();
 
   constructor(opts: OpenCodeV2ServerOptions) {
     this.#cwd = opts.cwd;
@@ -536,6 +540,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
     await this.#useModel(sessionId, prompt.model, prompt.variant);
+    await this.#useAgent(sessionId, prompt.agent);
     await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
       text: prompt.text,
     });
@@ -570,6 +575,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
    */
   async runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
     await this.#useModel(sessionId, run.model, run.variant);
+    await this.#useAgent(sessionId, run.agent);
     const id = encodeURIComponent(sessionId);
     if (run.skill) {
       await this.#serve.request('POST', `/api/session/${id}/prompt`, {
@@ -582,6 +588,20 @@ export class OpenCodeV2Server implements IOpenCodeServer {
         text: run.args,
       });
     }
+  }
+
+  /**
+   * Put the session on [agent] (2.x keeps the agent on the session: `POST
+   * /api/session/:id/agent`, 2.0.19). Set once per session in this process,
+   * then only when it changes — a session this process did not set may be on
+   * either.
+   */
+  async #useAgent(sessionId: string, agent: OpenCodeAgent): Promise<void> {
+    if (this.#sessionAgent.get(sessionId) === agent) return;
+    await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/agent`, {
+      agent,
+    });
+    this.#sessionAgent.set(sessionId, agent);
   }
 
   /** Switch the session's model when a turn asks for another one. */
