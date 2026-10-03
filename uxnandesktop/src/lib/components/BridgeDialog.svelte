@@ -35,6 +35,7 @@
   import SmartphoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
   import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import ConnectionRouteLabel, { phoneRoutes } from "$lib/components/ConnectionRouteLabel.svelte";
   import StatusDot from "$lib/components/StatusDot.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { toastError } from "$lib/toast";
@@ -168,6 +169,8 @@
 
   // ---- the devices ----
   const phonesOnline = $derived(connectedPhoneIds());
+  /** How each connected phone reaches the bridge (LAN, Tailscale or relay). */
+  const routes = $derived(phoneRoutes(chat.clients));
   const desktops = $derived(bridgeOn ? chat.clients.filter((c) => c.kind === "desktop") : []);
 
   /** What a phone is, in one quiet line. */
@@ -260,6 +263,10 @@
                 <span class={cn(text.meta, "flex shrink-0 items-center gap-1.5")}>
                   <StatusDot tone={online ? "ok" : "off"} />
                   {online ? i18n.t("bridge.panelDeviceOnline") : i18n.t("bridge.panelDeviceOffline")}
+                  {#if online && routes.get(device.deviceId)}
+                    <span class="text-muted-foreground/60" aria-hidden="true">·</span>
+                    <ConnectionRouteLabel route={routes.get(device.deviceId)} />
+                  {/if}
                 </span>
               </li>
             {/each}

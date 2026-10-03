@@ -72,7 +72,10 @@ one that holds the lock.
 While connected, the section also lists **every paired phone** — named as
 every client names it (`sync/changes.devices`, `stream/devices/updated`), with
 its model, OS and app version and whether it is connected now (presence,
-`stream/presence/updated`). A phone is renamed in place (`device/rename`; the
+`stream/presence/updated`) — and, when it is, **how**: *LAN* (the same
+network), *Tailscale* or *Relay*, from presence's `route` (a bridge too old to
+report it shows no label; the **Bridge** window's device list shows the same
+label). A phone is renamed in place (`device/rename`; the
 latest rename wins, even one made on the phone offline) or unpaired
 (`bridge/removeTrustedDevice`). **Connect a phone** — also in the **Bridge**
 window, one click away from the left sidebar's **Bridge** row under Search
@@ -122,6 +125,20 @@ app only asks, through `relay/*`, and follows `stream/relay/updated`
   Cloudflare too).
 - **No bridge, or one older than `relay/*`:** the section stays, disabled, with
   the reason.
+
+Once a relay is set up, the **status bar** carries a relay indicator beside the
+backend one (`RelayStatusButton.svelte`; the same icon-trigger + status popover
+as the ports and usage indicators). Its cloud icon says the state at a glance —
+green *Connected*, amber *Connecting…*, red *Can't connect*, muted *Off* — and a
+dot marks a newer relay to deploy. The popover shows the state with the
+bridge's reason when it cannot connect, the relay's address, the phones on it
+(the relay's own count, named from presence where `route` is `relay`), the
+deployed version, **Update relay** when the bridge ships a newer one, and
+**Remote access settings**; both open Settings → Bridge & mobile scrolled to
+Remote access, where the update (and its token prompt) lives. Like the ports and
+usage indicators, it is hidden when there is nothing to say: no bridge, a bridge
+older than `relay/*`, or no relay set up. It reads the same two replicas as
+Settings (`relay` and `chat.clients`) and keeps no state of its own.
 
 ## One list of projects with the phone
 

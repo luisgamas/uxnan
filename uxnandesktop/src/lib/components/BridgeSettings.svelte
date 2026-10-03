@@ -39,6 +39,7 @@
   import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import RelaySettings from "$lib/components/RelaySettings.svelte";
+  import ConnectionRouteLabel, { phoneRoutes } from "$lib/components/ConnectionRouteLabel.svelte";
   import { Input } from "$lib/components/ui/input";
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
   import DeleteIcon from "@hugeicons/core-free-icons/Delete02Icon";
@@ -85,6 +86,8 @@
   const connectedIds = $derived(
     new Set(chat.clients.filter((c) => c.kind === "phone").map((c) => c.id)),
   );
+  /** How each connected phone reaches the bridge (LAN, Tailscale or relay). */
+  const routes = $derived(phoneRoutes(chat.clients));
 
   /** What a phone is, in one quiet line: model · OS · app version. */
   function phoneAbout(phone: TrustedDevice): string {
@@ -427,11 +430,17 @@
               {/if}
               <p class={cn(text.meta, "flex min-w-0 items-center gap-1.5")}>
                 <StatusDot tone={connected ? "ok" : "off"} />
-                <span class="truncate">
-                  {connected ? i18n.t("bridge.phoneConnected") : i18n.t("bridge.phoneAway")}{phoneAbout(phone)
-                    ? ` · ${phoneAbout(phone)}`
-                    : ""}
+                <span class="shrink-0">
+                  {connected ? i18n.t("bridge.phoneConnected") : i18n.t("bridge.phoneAway")}
                 </span>
+                {#if connected && routes.get(phone.deviceId)}
+                  <span class="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
+                  <ConnectionRouteLabel route={routes.get(phone.deviceId)} />
+                {/if}
+                {#if phoneAbout(phone)}
+                  <span class="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
+                  <span class="min-w-0 truncate">{phoneAbout(phone)}</span>
+                {/if}
               </p>
             {/snippet}
             {#snippet control()}

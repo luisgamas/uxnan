@@ -24,6 +24,10 @@ import { bridge, isUnknownMethodError, type BridgeClientStore, type BridgeNotifi
 /** The notification that carries the whole status. */
 export const RELAY_UPDATED = 'stream/relay/updated';
 
+/** DOM id of Settings → Bridge & mobile → Remote access, so the status bar's
+ *  relay popover can open Settings right at it. */
+export const REMOTE_ACCESS_ANCHOR = 'settings-remote-access';
+
 /** Whether `value` is shaped like a `RelayStatus` — payloads cross a process
  *  boundary, so they are checked, not trusted. */
 export function isRelayStatus(value: unknown): value is RelayStatus {

@@ -1,8 +1,19 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.5.0
+> **Version:** 1.6.0
 > **Fecha:** 2026-10-02
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.6.0):** §5.2 se reescribe con lo que el desktop
+> muestra de verdad. El estado del bridge y sus telefonos viven en la fila
+> *Bridge* de la barra lateral y en la ventana *Bridge* (no en la barra de
+> estado). La barra de estado gana un indicador del **relay propio**, visible
+> solo con un relay configurado: color por `RelayStatus.state`, popover con
+> `lastError`, direccion, telefonos por el relay, version y acceso a *Acceso
+> remoto* (§5.4). Cada telefono conectado lleva su **ruta** — LAN, Tailscale o
+> Relay — tomada de `ClientPresence.route` (`02a` §5.8.17), en Ajustes →
+> Bridge y movil y en la ventana *Bridge*. Sin metodos ni notificaciones
+> nuevos: lee las mismas dos replicas (`relay`, `chat.clients`).
 
 > **Resumen ejecutivo (1.5.0):** el desktop ya muestra el relay propio como
 > cliente del bridge: Ajustes → Bridge y movil → *Acceso remoto* (§5.4). Una
@@ -731,34 +742,52 @@ propia maquina por el canal de control local (§3.5).
 
 ### 5.2 Estado de conexion movil en la UI del desktop
 
-Cuando el bridge esta embebido, el ADE desktop puede mostrar informacion en tiempo real sobre la conexion movil:
+El desktop muestra la conexion movil como cliente del bridge, con las mismas
+replicas que el resto de la app: presencia (`chat.clients`, alimentada por
+`sync/changes.clients` y `stream/presence/updated`, `02a` §5.8.17), los
+telefonos emparejados (`chat.devices`) y el relay (`RelayStore`, §5.4). No
+guarda ningun estado propio de la conexion.
 
-#### Indicador en la barra de estado
+#### El bridge y sus telefonos: barra lateral y ventana *Bridge*
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  [Proyectos ▾]  [Terminales]  [Diffs]         📱 Conectado    │
-└─────────────────────────────────────────────────────────────────┘
-```
+La fila *Bridge* de la barra lateral (bajo *Buscar*) lleva el estado del
+bridge como insignia de color (en linea, iniciando, atencion, detenido o
+fallido, version nueva, actualizando) y, a su lado, cuantos telefonos estan
+conectados ahora. Un click abre la ventana *Bridge*: estado y actualizacion,
+cada telefono emparejado y cada desktop conectado con si esta conectado, y el
+QR de pairing (§5.3). Ajustes → Bridge y movil → *Telefonos* lista los mismos
+telefonos con su modelo, sistema y version de la app, para renombrarlos o
+desemparejarlos.
 
-El indicador de telefono en la barra de estado muestra:
+#### Por donde llega cada telefono
 
-| Estado | Indicador | Descripcion |
-|---|---|---|
-| Bridge deshabilitado | Sin indicador | El modulo bridge esta desactivado en settings |
-| Bridge activo, sin telefono | `Esperando conexion` | Bridge escuchando en la LAN (y conectado a su relay, si tiene), esperando movil |
-| Telefono conectado | `Conectado: iPhone de Jorge` | Sesion E2EE activa con el movil |
-| Telefono desconectado | `Desconectado` | Sesion E2EE cerrada, esperando reconexion |
+Cada telefono conectado lleva una etiqueta pequeña con su ruta, tomada de
+`ClientPresence.route`: *LAN* (misma red), *Tailscale* o *Relay* — los mismos
+iconos con que *Acceso remoto* explica esas tres formas. Aparece en *Telefonos*
+de Ajustes y en la lista de dispositivos de la ventana *Bridge*. Un bridge
+anterior a `route` no la envia y la fila no muestra etiqueta. La fila de la
+barra lateral solo cuenta telefonos, asi que no la lleva.
 
-#### Panel de detalle (opcional)
+#### Indicador del relay en la barra de estado
 
-Al hacer click en el indicador, se abre un panel con informacion detallada:
+Junto al indicador del backend, con la misma forma que los de puertos y uso
+(icono que abre un popover de estado):
 
-- Nombre del dispositivo movil conectado.
-- Tiempo de conexion activa.
-- Ultimo comando recibido del movil (si el usuario quiere visibilidad).
-- Boton para desconectar la sesion del movil.
-- Boton para acceder a la configuracion del bridge.
+| Situacion | Indicador |
+|---|---|
+| Sin bridge, bridge anterior a `relay/*` o sin relay configurado | Oculto |
+| `state: connected` | Nube verde; el tooltip suma los telefonos por el relay |
+| `state: connecting` | Nube ambar, pulsando |
+| `state: error` | Nube roja |
+| `state: off` (relay configurado y apagado) | Nube atenuada |
+| `deployedVersion` distinta de `bundledVersion` (relay del bridge) | Punto sobre el icono |
+
+El popover muestra el estado con `lastError` cuando falla, la direccion del
+relay, los telefonos por el relay (`connectedPhones`, nombrados desde la
+presencia con `route: relay`), la version desplegada, *Actualizar relay* cuando
+hay una mas nueva y *Ajustes de acceso remoto*. Ambas acciones abren Ajustes →
+Bridge y movil en *Acceso remoto*, donde vive la actualizacion con su peticion
+de token (§5.4): el indicador no repite ese flujo.
 
 ### 5.3 Flujo de pairing desde el desktop
 
