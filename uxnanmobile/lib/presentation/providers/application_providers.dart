@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
@@ -33,9 +34,9 @@ import 'package:uxnan/domain/enums/activity_metric.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
-import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
@@ -148,24 +149,18 @@ final connectedEndpointProvider = StreamProvider<String?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectedEndpointStream,
 );
 
-/// The network path the LIVE channel is actually using — LAN, Tailscale, a
-/// direct address, or the relay — classified client-side from
-/// [connectedEndpointProvider] against the connected device's relay
-/// (see [classifyEndpoint]). [NetworkKind.unknown] while no device
-/// holds the live channel.
+/// How the LIVE channel reaches the PC — LAN, Tailscale or the relay — or
+/// null while no device holds it. Classified once, by the session, from the
+/// endpoint the channel actually settled on
+/// (`SessionCoordinator.connectedRoute`); every badge, label and hint reads
+/// this, so no surface classifies twice.
 ///
 /// Deliberately NOT derived from [bridgeStatusProvider].relayConnected: that
-/// field only distinguishes relay vs. direct and can't tell LAN from
-/// Tailscale, and it's keyed to whichever PC last answered `bridge/status`
-/// rather than the endpoint actually in use. This is a pure, synchronous
-/// derivation of the two streams that already track the real connection, so
-/// the transport badge never lags or misreports during a reconnect.
-final networkKindProvider = Provider<NetworkKind>((ref) {
-  final device = ref.watch(connectedDeviceProvider).value;
-  if (device == null) return NetworkKind.unknown;
-  final endpoint = ref.watch(connectedEndpointProvider).value;
-  return classifyEndpoint(endpoint, relayUrl: device.relay?.url ?? '');
-});
+/// says whether the PC's bridge is connected to its relay, not how THIS phone
+/// reaches the PC.
+final connectedRouteProvider = StreamProvider<ConnectionRoute?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).connectedRouteStream,
+);
 
 /// The connected bridge's status (`bridge/status`), re-read on every
 /// (re)connect. Null while not connected or against an older bridge —
@@ -941,6 +936,75 @@ final pendingRelaySwitchProvider =
     FutureProvider.family<bool?, String>((ref, deviceId) {
   ref.watch(connectedDeviceProvider);
   return ref.watch(relayManagerProvider).pendingEnabled(deviceId);
+});
+
+/// What the "remote access" hint on a PC suggests.
+enum RemoteAccessHint {
+  /// The PC has no relay: set one up.
+  setUp,
+
+  /// The PC has a relay that is switched off: turn it on.
+  turnOn,
+}
+
+/// The PCs (by `macDeviceId`) whose remote-access hint the person dismissed,
+/// persisted so the hint never returns for them. `null` until read from
+/// storage, so a dismissed hint does not flash in on a cold start.
+class RemoteAccessHintDismissal extends Notifier<Set<String>?> {
+  @override
+  Set<String>? build() {
+    unawaited(_hydrate());
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    Set<String> stored;
+    try {
+      stored = await ref.read(remoteAccessHintStoreProvider).readDismissed();
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('Reading the dismissed hints failed', error, stackTrace);
+      stored = const {};
+    }
+    if (!ref.mounted) return;
+    state = {...?state, ...stored};
+  }
+
+  /// Hides the hint for the PC [deviceId] for good.
+  Future<void> dismiss(String deviceId) async {
+    final next = {...?state, deviceId};
+    state = next;
+    await ref.read(remoteAccessHintStoreProvider).writeDismissed(next);
+  }
+}
+
+/// Drives the dismissal of the remote-access hint.
+final remoteAccessHintDismissalProvider =
+    NotifierProvider<RemoteAccessHintDismissal, Set<String>?>(
+  RemoteAccessHintDismissal.new,
+);
+
+/// Whether to suggest remote access for the PC [deviceId], and which step.
+///
+/// Only while this phone reaches that PC **directly** (LAN or Tailscale) —
+/// the moment the person can act on it from the phone — and only when the PC
+/// has no relay (`BridgeSettings.relay`, mirrored on the PC's record) or has
+/// it switched off. Never once dismissed for that PC. `null` = no hint.
+final remoteAccessHintProvider =
+    Provider.family<RemoteAccessHint?, String>((ref, deviceId) {
+  final connected = ref.watch(connectedDeviceProvider).value;
+  if (connected?.macDeviceId != deviceId) return null;
+  final route = ref.watch(connectedRouteProvider).value;
+  if (route != ConnectionRoute.lan && route != ConnectionRoute.tailscale) {
+    return null;
+  }
+  final dismissed = ref.watch(remoteAccessHintDismissalProvider);
+  if (dismissed == null || dismissed.contains(deviceId)) return null;
+  final devices = ref.watch(trustedDevicesProvider).value;
+  final device = devices?.firstWhereOrNull((d) => d.macDeviceId == deviceId);
+  if (device == null) return null;
+  final relay = device.relay;
+  if (relay == null) return RemoteAccessHint.setUp;
+  return relay.enabled ? null : RemoteAccessHint.turnOn;
 });
 
 /// The phones paired to the connected PC (this one among them).

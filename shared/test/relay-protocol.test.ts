@@ -149,3 +149,29 @@ test('parseRelayServerFrame accepts challenge, ready and dial and nothing else',
     assert.equal(parseRelayServerFrame(raw), null, raw);
   }
 });
+
+test('isTailscaleAddress and directRoute tell a tailnet address from the LAN', async () => {
+  const { isTailscaleAddress, directRoute } = await import('../src/index.js');
+  for (const ip of [
+    '100.64.0.1',
+    '100.76.97.16',
+    '100.127.255.254',
+    '::ffff:100.100.1.1',
+    '[fd7a:115c:a1e0::1]',
+  ]) {
+    assert.ok(isTailscaleAddress(ip), ip);
+    assert.equal(directRoute(ip), 'tailscale');
+  }
+  for (const ip of [
+    '192.168.18.22',
+    '100.63.255.255',
+    '100.128.0.1',
+    '10.0.0.5',
+    '::1',
+    'fe80::1',
+    'host.local',
+  ]) {
+    assert.ok(!isTailscaleAddress(ip), ip);
+    assert.equal(directRoute(ip), 'lan');
+  }
+});

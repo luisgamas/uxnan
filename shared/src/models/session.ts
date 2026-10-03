@@ -7,11 +7,42 @@ import type { ClientPresence } from './sync.js';
 
 export type HandshakeMode = 'qr_bootstrap' | 'trusted_reconnect';
 
+/**
+ * How a phone reaches the bridge right now: on the same network, over the
+ * user's Tailscale tailnet, or through the user's own relay.
+ */
+export type ConnectionRoute = 'lan' | 'tailscale' | 'relay';
+
 export interface ConnectedPhone {
   deviceId: string;
   displayName: string;
   connectedAt: number;
   lastSeen: number;
+  /** How this phone is connected. Absent on an older bridge. */
+  route?: ConnectionRoute;
+}
+
+/**
+ * Whether [address] (an IP, as a socket reports it, or a URL host) belongs to a
+ * Tailscale tailnet: IPv4 `100.64.0.0/10` (Tailscale's CGNAT range) or IPv6
+ * `fd7a:115c:a1e0::/48`. Anything else reached directly is the local network.
+ */
+export function isTailscaleAddress(address: string): boolean {
+  const host = address
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/^::ffff:/, '');
+  if (host.startsWith('fd7a:115c:a1e0:')) return true;
+  const octets = host.split('.');
+  if (octets.length !== 4 || !octets.every((o) => /^\d{1,3}$/.test(o))) return false;
+  const [a, b] = octets.map(Number) as [number, number];
+  return a === 100 && b >= 64 && b <= 127;
+}
+
+/** The route of a direct (non-relay) connection from [address]. */
+export function directRoute(address: string): Exclude<ConnectionRoute, 'relay'> {
+  return isTailscaleAddress(address) ? 'tailscale' : 'lan';
 }
 
 export interface TrustedDevice {

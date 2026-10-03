@@ -26,6 +26,7 @@ export class SessionState {
       kind: 'phone',
       name: phone.displayName,
       since: phone.connectedAt,
+      ...(phone.route ? { route: phone.route } : {}),
     });
   }
 

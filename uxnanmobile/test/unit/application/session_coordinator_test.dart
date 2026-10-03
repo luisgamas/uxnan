@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/connection_session.dart';
@@ -15,6 +16,7 @@ import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/secure_session.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
@@ -84,11 +86,16 @@ Map<String, dynamic> _json(Uint8List bytes) =>
 
 /// A persistent simulated bridge: completes the handshake then echoes requests.
 class _FakeBridge {
-  _FakeBridge(this.transport, this.identity, this.handler);
+  _FakeBridge(this.transport, this.identity, this.handler, {this.beforeReady});
 
   final _InMemoryTransport transport;
   final Ed25519KeyPairBytes identity;
   final RpcMessage Function(RpcMessage request) handler;
+
+  /// Runs once the handshake is authenticated, before `ready` goes out — where
+  /// the real bridge registers the new connection and closes the phone's
+  /// previous one.
+  final Future<void> Function()? beforeReady;
 
   final HandshakeCrypto _crypto = HandshakeCrypto();
   final KeyGeneration _keygen = KeyGeneration();
@@ -170,6 +177,8 @@ class _FakeBridge {
       );
       _channel = channel;
 
+      await beforeReady?.call();
+
       // Send ready only after the channel is ready, so a notification pushed
       // right after the phone connects cannot race ahead of it.
       await transport.send(
@@ -249,6 +258,45 @@ class _FakeSelector implements TransportSelector {
         : (device.hosts.isNotEmpty ? 'ws://${device.hosts.first}' : null);
     phoneSides.add(phone);
     final fakeBridge = _FakeBridge(bridge, identity, handler);
+    currentBridge = fakeBridge;
+    unawaited(fakeBridge.run());
+    return phone;
+  }
+
+  /// Whether the PC's direct hosts answer [selectDirect].
+  bool directReachable = false;
+
+  /// How many times the direct hosts were dialed on their own.
+  int directDials = 0;
+
+  /// When true, a direct connection's handshake closes the connection it
+  /// replaces before `ready` — as the real bridge does when it registers a
+  /// phone's newer connection.
+  bool supersede = true;
+
+  @override
+  Future<WebSocketTransport?> selectDirect(TrustedDevice device) async {
+    directDials++;
+    if (!directReachable || device.hosts.isEmpty) return null;
+    final previous = phoneSides.isEmpty ? null : phoneSides.last;
+    final phone = _InMemoryTransport();
+    final bridge = _InMemoryTransport();
+    phone
+      ..peer = bridge
+      ..connectedUrl = 'ws://${device.hosts.first}';
+    bridge.peer = phone;
+    phoneSides.add(phone);
+    final fakeBridge = _FakeBridge(
+      bridge,
+      identity,
+      handler,
+      beforeReady: supersede && previous != null
+          ? () async {
+              await previous.peer.forceClose();
+              await previous.forceClose();
+            }
+          : null,
+    );
     currentBridge = fakeBridge;
     unawaited(fakeBridge.run());
     return phone;
@@ -369,6 +417,8 @@ void main() {
     RpcMessage Function(RpcMessage) handler, {
     bool setActive = true,
     DelayFn? delay,
+    RelayEndpoint? relay = _relay,
+    List<String> hosts = const [],
   }) async {
     bridgeId = await keygen.generateIdentityKeyPair();
     final phoneId = await keygen.generateIdentityKeyPair();
@@ -393,7 +443,8 @@ void main() {
         macDeviceId: 'mac-1',
         displayName: 'Test Bridge',
         macIdentityPublicKey: bridgeId.publicKey,
-        relay: _relay,
+        relay: relay,
+        hosts: hosts,
         sessionId: 'session-xyz',
         pairedAt: DateTime(2026),
       );
@@ -850,6 +901,173 @@ void main() {
     expect(harness.coordinator.connectedDevice?.relay, _relay);
     final sessions = await harness.connectionRepo.getAll();
     expect(sessions.last.transport, ConnectionTransport.relay);
+  });
+
+  group('route and the way back home', () {
+    const lanHost = '192.168.1.5:19850';
+
+    test('classifies the live route once, and clears it on disconnect',
+        () async {
+      final harness = await build(echo);
+      addTearDown(harness.coordinator.dispose);
+
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+
+      await harness.coordinator.disconnect();
+      expect(harness.coordinator.connectedRoute, isNull);
+    });
+
+    test('a direct tailnet host is Tailscale', () async {
+      final harness = await build(
+        echo,
+        relay: null,
+        hosts: const ['100.76.97.16:19850'],
+      );
+      addTearDown(harness.coordinator.dispose);
+
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.tailscale);
+    });
+
+    test(
+        'on a network change a relay session moves to a direct host that '
+        'answers, without dropping the session', () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+
+      final phases = <ConnectionPhase>[];
+      final sub = harness.coordinator.connectionPhaseStream.listen(phases.add);
+      addTearDown(sub.cancel);
+      harness.selector.directReachable = true;
+
+      await harness.coordinator.handleNetworkChange();
+      await pumpEventQueue();
+
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      expect(harness.coordinator.connectedEndpoint, 'ws://$lanHost');
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+      // The bridge closed the relay connection itself when the direct one
+      // registered; that was expected, never a reason to reconnect.
+      expect(phases, isNot(contains(ConnectionPhase.reconnecting)));
+      expect(harness.selector.selected, hasLength(1));
+      // Requests now travel the direct channel.
+      final response = await harness.coordinator
+          .sendRequest('ping')
+          .timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'ping');
+      // The connection log closed the relay session and opened a direct one.
+      final sessions = await harness.connectionRepo.getAll();
+      expect(
+        sessions.map((s) => s.transport),
+        [ConnectionTransport.relay, ConnectionTransport.direct],
+      );
+      expect(sessions.first.isOpen, isFalse);
+      expect(sessions.last.isOpen, isTrue);
+    });
+
+    test('a request sent while the move runs is delivered over the new path',
+        () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      harness.selector.directReachable = true;
+
+      final moving = harness.coordinator.handleNetworkChange();
+      // Let the direct host answer, so the handshake is what is running.
+      await Future<void>.delayed(Duration.zero);
+      final sending = harness.coordinator.sendRequest('turn/send');
+      await moving;
+
+      final response = await sending.timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'turn/send');
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+    });
+
+    test('stays on the relay when no direct host answers', () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+
+      await harness.coordinator.handleNetworkChange();
+
+      expect(harness.selector.directDials, 1);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+      final response = await harness.coordinator
+          .sendRequest('ping')
+          .timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'ping');
+    });
+
+    test('resume() also brings a relay session home', () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      harness.selector.directReachable = true;
+
+      await harness.coordinator.resume();
+      await pumpEventQueue();
+
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    });
+
+    test('a direct session never dials again on a network change', () async {
+      final harness = await build(echo, relay: null, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      harness.selector.directReachable = true;
+
+      await harness.coordinator.handleNetworkChange();
+
+      expect(harness.selector.directDials, 0);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    });
+
+    test('a PC with no direct hosts is never dialed directly', () async {
+      final harness = await build(echo);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      harness.selector.directReachable = true;
+
+      await harness.coordinator.handleNetworkChange();
+
+      expect(harness.selector.directDials, 0);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+    });
+  });
+
+  test('the reconnect loop says when the PC has no route from here', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    final states = <ConnectionRecoveryState>[];
+    final sub = harness.coordinator.recoveryStateStream.listen(states.add);
+    addTearDown(sub.cancel);
+    harness.selector.failNext.add(
+      const TransportException(TransportErrorKind.noRoute, 'no route'),
+    );
+    await harness.selector.dropCurrent();
+    await harness.coordinator.connectionPhaseStream
+        .firstWhere((p) => p == ConnectionPhase.connected)
+        .timeout(const Duration(seconds: 5));
+    await pumpEventQueue();
+
+    expect(
+      states
+          .where((s) => s.attempt == 2 && s.isRecovering)
+          .first
+          .lastTransportFailure,
+      TransportErrorKind.noRoute,
+    );
+    // Back online: nothing to explain any more.
+    expect(states.last.lastTransportFailure, isNull);
   });
 }
 

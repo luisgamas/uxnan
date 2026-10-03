@@ -40,8 +40,9 @@ class BridgeStatus extends Equatable {
     );
   }
 
-  /// Whether the bridge is currently serving this phone over its own relay
-  /// (false means a direct LAN/Tailscale connection).
+  /// Whether the PC's bridge is connected to its relay right now — so phones
+  /// can reach it from other networks. It does NOT say how this phone reaches
+  /// the PC; that is `SessionCoordinator.connectedRoute`.
   final bool relayConnected;
 
   /// The bridge daemon version, when reported.

@@ -37,10 +37,12 @@ import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/profile_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/prompt_templates_store.dart';
 import 'package:uxnan/infrastructure/storage/question_response_store.dart';
+import 'package:uxnan/infrastructure/storage/remote_access_hint_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/usage_summary_cache_store.dart';
+import 'package:uxnan/infrastructure/transport/network_change_monitor.dart';
 import 'package:uxnan/infrastructure/updates/app_update_service.dart';
 
 /// Infrastructure-layer providers.
@@ -148,6 +150,16 @@ final appearancePreferencesStoreProvider = Provider<AppearancePreferencesStore>(
 /// Persists the user's `/` command-palette prompt templates (on-device).
 final promptTemplatesStoreProvider = Provider<PromptTemplatesStore>(
   (ref) => PromptTemplatesStore(),
+);
+
+/// Remembers the PCs whose "set up remote access" hint was dismissed.
+final remoteAccessHintStoreProvider = Provider<RemoteAccessHintStore>(
+  (ref) => RemoteAccessHintStore(),
+);
+
+/// Tells the session when the phone moved to another network.
+final networkChangeMonitorProvider = Provider<NetworkChangeMonitor>(
+  (ref) => ConnectivityNetworkChangeMonitor(),
 );
 
 /// Persists thread-list view preferences (sort + density, on-device).

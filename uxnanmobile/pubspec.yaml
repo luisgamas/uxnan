@@ -85,6 +85,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   mocktail: ^1.0.0 # test doubles
+  stream_channel: ^2.1.4 # fake WebSocket channels in transport tests
   very_good_analysis: ^7.0.0 # lint ruleset (see analysis_options.yaml)
 
 flutter:

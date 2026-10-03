@@ -12,6 +12,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   back to empty until the next event arrived. A read that crossed a newer event
   is now asked again, so nothing a later notification brought is undone.
 
+### Added
+
+- **Your relay in the status bar.** Once a relay is set up, a cloud icon beside
+  the backend indicator says how it stands at a glance — green connected, amber
+  connecting, red can't connect, muted off — with a dot when a newer relay is
+  ready to deploy. Its popover shows the bridge's reason when it cannot
+  connect, the relay's address, the phones using it by name, its version with
+  **Update relay**, and a way straight to Settings → Remote access. With no
+  relay set up it stays out of the way.
+- **How each phone is connected.** The phones list in Settings → Bridge & mobile
+  and the Bridge window now label every connected phone *LAN*, *Tailscale* or
+  *Relay*, as the bridge reports it. A bridge too old to say shows no label.
+
 ## [0.0.73] - 20261003
 ### Added
 

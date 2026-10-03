@@ -176,13 +176,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
     // While the reconnection loop works on this PC, the banner says why the
-    // relay refused the last attempt ("your PC is offline") rather than only
-    // that the list is not live.
+    // last attempt failed ("your PC is offline", "its remote access is off")
+    // rather than only that the list is not live.
     final reconnectingHere =
         ref.watch(activeMacProvider).value?.macDeviceId == widget.deviceId;
-    final relayFailure = ref.watch(
-      connectionRecoveryProvider.select((s) => s.value?.lastRelayFailure),
-    );
+    final recovery = ref.watch(connectionRecoveryProvider).value;
 
     final worktreeSort = ref.watch(listSortProvider(SortLevel.worktrees));
     final projectSort = ref.watch(listSortProvider(SortLevel.projects));
@@ -251,8 +249,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           child: _OfflineBanner(
             connecting: connectingHere,
             onConnect: _connectHere,
-            reason: reconnectingHere && relayFailure != null
-                ? relayFailureText(l10n, relayFailure)
+            reason: reconnectingHere && recovery != null
+                ? recoveryFailureText(l10n, _title(devices), recovery)
                 : null,
           ),
         )

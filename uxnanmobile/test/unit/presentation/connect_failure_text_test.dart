@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
+import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
 
@@ -58,6 +60,58 @@ void main() {
     expect(
       connectFailureText(en, 'Studio', StateError('no route')),
       en.deviceConnectFailed('Studio'),
+    );
+  });
+
+  test('no route from this network says remote access is off, in words', () {
+    const noRoute =
+        TransportException(TransportErrorKind.noRoute, 'no relay is on');
+    expect(
+      connectFailureText(en, 'Studio', noRoute),
+      "Can't reach Studio from this network: its remote access is off. "
+      "Turn it on from the PC — or from here, the next time you're on the "
+      'same network.',
+    );
+    expect(
+      connectFailureText(es, 'Studio', noRoute),
+      es.deviceNoRemoteRoute('Studio'),
+    );
+    // Any other transport failure stays the generic line.
+    expect(
+      connectFailureText(
+        en,
+        'Studio',
+        const TransportException(TransportErrorKind.connection, 'closed'),
+      ),
+      en.deviceConnectFailed('Studio'),
+    );
+  });
+
+  test('the reconnect loop reads the same way', () {
+    expect(
+      recoveryFailureText(
+        en,
+        'Studio',
+        const ConnectionRecoveryState(
+          lastRelayFailure: RelayFailure.full,
+          lastTransportFailure: TransportErrorKind.connection,
+        ),
+      ),
+      en.relayFailureFull,
+    );
+    expect(
+      recoveryFailureText(
+        en,
+        'Studio',
+        const ConnectionRecoveryState(
+          lastTransportFailure: TransportErrorKind.noRoute,
+        ),
+      ),
+      en.deviceNoRemoteRoute('Studio'),
+    );
+    expect(
+      recoveryFailureText(en, 'Studio', const ConnectionRecoveryState()),
+      isNull,
     );
   });
 }

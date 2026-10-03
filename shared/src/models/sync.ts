@@ -19,7 +19,7 @@
 import type { RelayEndpoint } from './relay.js';
 import type { Project } from './project.js';
 import type { Thread } from './thread.js';
-import type { TrustedDevice } from './session.js';
+import type { ConnectionRoute, TrustedDevice } from './session.js';
 
 /**
  * Settings the bridge shares with every client, editable from any of them
@@ -76,6 +76,8 @@ export interface ClientPresence {
   name: string;
   /** When this connection opened (epoch ms). */
   since: number;
+  /** A phone's route to the bridge. Absent for the desktop and on an older bridge. */
+  route?: ConnectionRoute;
 }
 
 export interface SyncChanges {

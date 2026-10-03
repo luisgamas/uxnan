@@ -7,6 +7,7 @@
   import { panel, text } from "$lib/design";
 
   let {
+    id,
     title,
     description,
     headerAction,
@@ -14,6 +15,9 @@
     children,
     class: className,
   }: {
+    /** Anchor a deep link can scroll to (e.g. the status bar's relay popover
+     *  opening Settings → Bridge & mobile at Remote access). */
+    id?: string;
     title: string;
     description?: string;
     /** Optional control aligned to the right of the header (e.g. a primary action). */
@@ -26,7 +30,7 @@
   } = $props();
 </script>
 
-<section class={cn("space-y-5", className)}>
+<section {id} class={cn("space-y-5", className)}>
   <div class={panel.sectionHeader}>
     <div class="min-w-0 space-y-1.5">
       <h2 class={text.pageTitle}>{title}</h2>

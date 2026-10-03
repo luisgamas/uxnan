@@ -63,6 +63,29 @@ abstract class WebSocketTransport {
 /// for direct LAN/Tailscale hosts and for the relay alike (the relay routes by
 /// URL path, `/v1/connect/<routingId>`; no custom headers).
 class WebSocketChannelTransport implements WebSocketTransport {
+  /// Creates a transport. [openChannel] opens the socket (tests inject a fake);
+  /// [closeTimeout] bounds how long [disconnect] waits for the closing
+  /// handshake.
+  WebSocketChannelTransport({
+    WebSocketChannel Function(Uri url)? openChannel,
+    Duration closeTimeout = const Duration(seconds: 2),
+  })  : _openChannel = openChannel ?? _openIoChannel,
+        _closeTimeout = closeTimeout;
+
+  final WebSocketChannel Function(Uri url) _openChannel;
+  final Duration _closeTimeout;
+
+  static WebSocketChannel _openIoChannel(Uri url) => IOWebSocketChannel.connect(
+        url,
+        // Heartbeat: the underlying socket sends WebSocket protocol pings and
+        // closes if no pong arrives, so a dropped link is detected (and
+        // reconnection is triggered) instead of lingering as a half-open
+        // "connected" socket. Protocol pings, never the relay's `ping` text
+        // frame: those are answered by the runtime on both the bridge and the
+        // relay, and nothing but E2EE frames ever reaches the secure layer.
+        pingInterval: const Duration(seconds: 20),
+      );
+
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
   late StreamController<Uint8List> _incoming = _newIncoming();
@@ -100,16 +123,7 @@ class WebSocketChannelTransport implements WebSocketTransport {
     _resetIncoming();
     _closeCode = null;
     _state.add(TransportState.connecting);
-    final channel = IOWebSocketChannel.connect(
-      Uri.parse(url),
-      // Heartbeat: the underlying socket sends WebSocket protocol pings and
-      // closes if no pong arrives, so a dropped link is detected (and
-      // reconnection is triggered) instead of lingering as a half-open
-      // "connected" socket. Protocol pings, never the relay's `ping` text
-      // frame: those are answered by the runtime on both the bridge and the
-      // relay, and nothing but E2EE frames ever reaches the secure layer.
-      pingInterval: const Duration(seconds: 20),
-    );
+    final channel = _openChannel(Uri.parse(url));
     _channel = channel;
     await channel.ready;
     _subscription = channel.stream.listen(
@@ -148,12 +162,19 @@ class WebSocketChannelTransport implements WebSocketTransport {
     channel.sink.add(text);
   }
 
+  /// Closes the socket. Waits for the closing handshake at most
+  /// [_closeTimeout]: a socket that died with the network it ran on (the phone
+  /// switched from mobile data to Wi-Fi) never answers it, and waiting would
+  /// stall whoever is disconnecting — a reconnect included.
   @override
   Future<void> disconnect() async {
     _state.add(TransportState.closing);
     await _subscription?.cancel();
-    await _channel?.sink.close();
+    final sink = _channel?.sink;
     _channel = null;
+    if (sink != null) {
+      await sink.close().timeout(_closeTimeout, onTimeout: () {});
+    }
     _connectedUrl = null;
     _unheard.clear();
     _endedUnheard = false;

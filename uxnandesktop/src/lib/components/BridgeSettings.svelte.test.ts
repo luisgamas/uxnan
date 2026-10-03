@@ -101,7 +101,8 @@ describe("BridgeSettings", () => {
       }),
     });
     expect(screen.getByText("Pixel 9")).toBeTruthy();
-    expect(screen.getByText("Connected · Google Pixel 9 · Android 16 · Uxnan 0.0.23")).toBeTruthy();
+    expect(screen.getByText("Connected")).toBeTruthy();
+    expect(screen.getByText("Google Pixel 9 · Android 16 · Uxnan 0.0.23")).toBeTruthy();
     expect(screen.getByText("Not connected")).toBeTruthy();
     expect((screen.getByLabelText("Computer name") as HTMLInputElement).value).toBe("Studio");
 
@@ -115,6 +116,34 @@ describe("BridgeSettings", () => {
       params: { deviceId: "p1", name: "Work phone" },
     });
     await until(() => screen.queryByText("Work phone") !== null);
+    bridge.applyStatus({ state: "off" });
+  });
+
+  it("says how each connected phone reaches the bridge", () => {
+    bridge.applyStatus({ state: "connected", bridgeVersion: "1", instanceId: "i", managed: false });
+    chat.settings = { home: "/Users/me", name: "Studio", relay: null };
+    chat.devices = [
+      { deviceId: "p1", displayName: "Pixel 9", publicKey: "k", pairedAt: 1 },
+      { deviceId: "p2", displayName: "Work iPhone", publicKey: "k", pairedAt: 1 },
+      { deviceId: "p3", displayName: "Tablet", publicKey: "k", pairedAt: 1 },
+      { deviceId: "p4", displayName: "Old phone", publicKey: "k", pairedAt: 1 },
+    ];
+    chat.clients = [
+      { id: "p1", kind: "phone", name: "Pixel 9", since: 1, route: "lan" },
+      { id: "p2", kind: "phone", name: "Work iPhone", since: 1, route: "relay" },
+      // A bridge that predates `route` says nothing — and neither does the row.
+      { id: "p3", kind: "phone", name: "Tablet", since: 1 },
+    ];
+    const { container } = mountWithProviders(BridgeSettings, { commands: commands() }).screen;
+    const routes = Array.from(container.querySelectorAll("[data-route]")).map((el) => [
+      el.getAttribute("data-route"),
+      el.textContent?.trim(),
+      el.getAttribute("title"),
+    ]);
+    expect(routes).toEqual([
+      ["lan", "LAN", "Connected on the same network"],
+      ["relay", "Relay", "Connected through your relay"],
+    ]);
     bridge.applyStatus({ state: "off" });
   });
 });

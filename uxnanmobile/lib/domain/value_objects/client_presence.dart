@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 
 /// One client connected to a bridge right now (`ClientPresence`,
 /// architecture/02a §5.8.17) — how the phone knows Uxnan Desktop is linked.
@@ -10,6 +11,7 @@ class ClientPresence extends Equatable {
     required this.kind,
     required this.name,
     required this.since,
+    this.route,
   });
 
   /// Parses one wire entry; `null` when it is malformed.
@@ -25,6 +27,7 @@ class ClientPresence extends Equatable {
       kind: kind,
       name: name,
       since: DateTime.fromMillisecondsSinceEpoch(since is int ? since : 0),
+      route: ConnectionRoute.fromWire(json['route']),
     );
   }
 
@@ -47,6 +50,10 @@ class ClientPresence extends Equatable {
   /// When this connection opened.
   final DateTime since;
 
+  /// How a phone reaches the bridge (`ClientPresence.route`); null for the
+  /// desktop and on an older bridge.
+  final ConnectionRoute? route;
+
   @override
-  List<Object?> get props => [id, kind, name, since];
+  List<Object?> get props => [id, kind, name, since, route];
 }

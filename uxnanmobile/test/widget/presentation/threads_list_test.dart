@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
@@ -63,6 +64,8 @@ Widget _wrap({
   bool embedded = false,
   List<ClientPresence> presence = const [],
   RelayFailure? relayFailure,
+  TransportErrorKind? transportFailure,
+  List<TrustedDevice> pcs = const [],
 }) {
   final router = GoRouter(
     routes: [
@@ -129,8 +132,7 @@ Widget _wrap({
       // No live bridge in the widget test: report no auth info so tiles keep
       // their normal status dot (the real provider would hit the session).
       authStatusProvider.overrideWith((ref, agentId) => null),
-      trustedDevicesProvider
-          .overrideWith((ref) => Stream.value(const <TrustedDevice>[])),
+      trustedDevicesProvider.overrideWith((ref) => Stream.value(pcs)),
       connectedDeviceProvider.overrideWith(
         (ref) => Stream.value(
           connected
@@ -170,8 +172,9 @@ Widget _wrap({
       connectionRecoveryProvider.overrideWith(
         (ref) => Stream.value(
           ConnectionRecoveryState(
-            isRecovering: relayFailure != null,
+            isRecovering: relayFailure != null || transportFailure != null,
             lastRelayFailure: relayFailure,
+            lastTransportFailure: transportFailure,
           ),
         ),
       ),
@@ -204,6 +207,37 @@ void main() {
     expect(
       find.text('Not connected to this PC — showing a cached view.'),
       findsNothing,
+    );
+  });
+
+  testWidgets(
+      'the offline banner says when no route reaches this PC from here '
+      '(no direct host answered, remote access off)', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        threads: [_thread('a', 'One', 'codex')],
+        transportFailure: TransportErrorKind.noRoute,
+        pcs: [
+          TrustedDevice(
+            macDeviceId: 'mac-1',
+            displayName: 'Studio',
+            macIdentityPublicKey: Uint8List(32),
+            sessionId: 'session-1',
+            pairedAt: DateTime(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.text(
+        "Can't reach Studio from this network: its remote access is off. "
+        "Turn it on from the PC — or from here, the next time you're on the "
+        'same network.',
+      ),
+      findsOneWidget,
     );
   });
 

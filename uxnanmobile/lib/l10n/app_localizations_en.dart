@@ -37,9 +37,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionRelay => 'Relay';
 
   @override
-  String get connectionDirect => 'Direct';
-
-  @override
   String get transportLan => 'LAN';
 
   @override
@@ -3398,6 +3395,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relayFailureUnreachable => 'Can\'t reach your relay.';
+
+  @override
+  String deviceNoRemoteRoute(String device) {
+    return 'Can\'t reach $device from this network: its remote access is off. Turn it on from the PC — or from here, the next time you\'re on the same network.';
+  }
+
+  @override
+  String get remoteAccessHintTitle => 'Reach this PC away from home';
+
+  @override
+  String get remoteAccessHintSetUpBody =>
+      'Set up remote access to keep reaching this PC away from home.';
+
+  @override
+  String get remoteAccessHintTurnOnBody =>
+      'Remote access is off on this PC. Turn it on to keep reaching it away from home.';
+
+  @override
+  String get remoteAccessHintSetUpAction => 'Set up';
+
+  @override
+  String get remoteAccessHintTurnOnAction => 'Turn on';
+
+  @override
+  String get remoteAccessHintDismiss => 'Don\'t suggest again';
 
   @override
   String get remoteAccessTitle => 'Remote access';

@@ -50,7 +50,7 @@ test('a reconnecting phone is caught up on outbound it missed (seq > resumeState
       deviceState: bridge.context.deviceState,
       trustStore: bridge.trustStore,
       displayName: 'Test PC',
-      transport: 'direct',
+      route: 'lan',
       expectedSessionId: sessionId,
     });
   };
@@ -123,7 +123,7 @@ test('a first-time phone (no resumeState) is not sent any backlog', async () => 
       deviceState: bridge.context.deviceState,
       trustStore: bridge.trustStore,
       displayName: 'Test PC',
-      transport: 'direct',
+      route: 'lan',
       expectedSessionId: sessionId,
     });
     const phone = await FakePhone.connect(phoneIo, { sessionId });

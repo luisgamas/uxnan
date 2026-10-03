@@ -1,4 +1,6 @@
 import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
+import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 
 /// What to tell the person when the user's relay did not put this phone
@@ -27,14 +29,35 @@ String relayFailureText(AppLocalizations l10n, RelayFailure failure) =>
     };
 
 /// What to tell the person when connecting to the PC [deviceName] failed with
-/// [error]: the relay's reason when it was the relay that said no, and the
-/// general "couldn't reach it" otherwise. Every "Connect" action in the app
-/// says it through this, so the same failure reads the same everywhere.
+/// [error]: the relay's reason when it was the relay that said no; that the
+/// PC's remote access is off when no direct host answered and there was no
+/// relay to try ([TransportErrorKind.noRoute]); the general "couldn't reach
+/// it" otherwise. Every "Connect" action in the app says it through this, so
+/// the same failure reads the same everywhere.
 String connectFailureText(
   AppLocalizations l10n,
   String deviceName,
   Object error,
 ) =>
-    error is RelayException
-        ? relayFailureText(l10n, error.failure)
-        : l10n.deviceConnectFailed(deviceName);
+    switch (error) {
+      RelayException(:final failure) => relayFailureText(l10n, failure),
+      TransportException(kind: TransportErrorKind.noRoute) =>
+        l10n.deviceNoRemoteRoute(deviceName),
+      _ => l10n.deviceConnectFailed(deviceName),
+    };
+
+/// Why the reconnection loop's last attempt at the PC [deviceName] failed, in
+/// the same words as [connectFailureText] — or `null` when there is nothing
+/// more specific to say than "not connected".
+String? recoveryFailureText(
+  AppLocalizations l10n,
+  String deviceName,
+  ConnectionRecoveryState state,
+) {
+  final relay = state.lastRelayFailure;
+  if (relay != null) return relayFailureText(l10n, relay);
+  if (state.lastTransportFailure == TransportErrorKind.noRoute) {
+    return l10n.deviceNoRemoteRoute(deviceName);
+  }
+  return null;
+}

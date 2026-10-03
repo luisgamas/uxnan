@@ -41,7 +41,7 @@ test('a phone completes the handshake and exchanges encrypted JSON-RPC', async (
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
   });
 
@@ -73,7 +73,7 @@ test('the handshake rejects a sessionId that does not match the pairing session'
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: 'expected-session',
   });
 
@@ -95,7 +95,7 @@ test('a qr_bootstrap is rejected while the pairing window is not armed, with no 
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     isPairingArmed: () => false,
   });
@@ -119,7 +119,7 @@ test('a qr_bootstrap succeeds while the pairing window is armed', async () => {
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     isPairingArmed: () => true,
   });
@@ -154,7 +154,7 @@ test('the armed pairing window expires after PAIRING_WINDOW_MS; a late qr_bootst
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     isPairingArmed: () => pairingWindow.isArmed(),
   });
@@ -179,7 +179,7 @@ test('trusted_reconnect succeeds with no arming and no pairing proof', async () 
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     isPairingArmed: () => true,
   });
@@ -195,7 +195,7 @@ test('trusted_reconnect succeeds with no arming and no pairing proof', async () 
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     isPairingArmed: () => false,
   });
@@ -224,7 +224,7 @@ test('the handshake rejects a phone speaking a different secure protocol version
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
     // Armed, so the ONLY thing that can turn this phone away is the version.
     isPairingArmed: () => true,

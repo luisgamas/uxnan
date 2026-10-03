@@ -335,6 +335,7 @@ export {
 } from './transport/server-handshake.js';
 export {
   handleSecureConnection,
+  SESSION_IDLE_TIMEOUT_MS,
   type SecureConnectionOptions,
 } from './transport/session-handler.js';
 export { FileTrustStore, type TrustStore } from './transport/trust-store.js';

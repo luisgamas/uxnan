@@ -332,6 +332,37 @@ void main() {
       );
     });
 
+    test('skipInboundThrough refuses what another channel already delivered',
+        () async {
+      final shared = session();
+      final bridge = SecureChannel(shared, role: SecureChannelRole.bridge);
+      final phone = SecureChannel(shared);
+
+      final e1 = await bridge.encrypt(Uint8List.fromList([1]));
+      final e2 = await bridge.encrypt(Uint8List.fromList([2]));
+      final e3 = await bridge.encrypt(Uint8List.fromList([3]));
+
+      phone
+        ..skipInboundThrough(2)
+        // Never backwards.
+        ..skipInboundThrough(1);
+      expect(phone.session.bridgeOutboundSeq, 2);
+      for (final replayed in [e1, e2]) {
+        await expectLater(
+          phone.decrypt(replayed),
+          throwsA(
+            isA<TransportException>().having(
+              (e) => e.kind,
+              'kind',
+              TransportErrorKind.replay,
+            ),
+          ),
+        );
+      }
+      expect(await phone.decrypt(e3), [3]);
+      expect(phone.session.bridgeOutboundSeq, 3);
+    });
+
     test('concurrent encrypts get unique contiguous seqs', () async {
       // Regression: two RPCs fired concurrently (e.g. project/list + agent/list)
       // must not read the same phoneOutboundSeq and emit a duplicate seq, which
