@@ -1,10 +1,12 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 
 /// Capabilities a bridge agent advertises (`agent/list`).
 class AgentCapabilities extends Equatable {
   /// Creates an [AgentCapabilities].
   const AgentCapabilities({
-    this.planMode = false,
+    this.accessModes = const [],
+    this.defaultAccessMode,
     this.streaming = false,
     this.approvals = false,
     this.forking = false,
@@ -20,7 +22,8 @@ class AgentCapabilities extends Equatable {
   /// the bridge has not reported an agent's real capabilities yet, so the UI
   /// never hides a control spuriously (e.g. while offline).
   const AgentCapabilities.permissive()
-      : planMode = true,
+      : accessModes = ApprovalMode.values,
+        defaultAccessMode = ApprovalMode.fullAccess,
         streaming = true,
         approvals = true,
         forking = true,
@@ -34,7 +37,13 @@ class AgentCapabilities extends Equatable {
   /// Reconstructs capabilities from a JSON map (tolerant).
   factory AgentCapabilities.fromJson(Map<String, dynamic> json) =>
       AgentCapabilities(
-        planMode: json['planMode'] == true,
+        accessModes: [
+          if (json['accessModes'] is List)
+            for (final name in json['accessModes'] as List)
+              if (ApprovalMode.fromName(name) case final ApprovalMode mode)
+                mode,
+        ],
+        defaultAccessMode: ApprovalMode.fromName(json['defaultAccessMode']),
         streaming: json['streaming'] == true,
         approvals: json['approvals'] == true,
         forking: json['forking'] == true,
@@ -46,8 +55,25 @@ class AgentCapabilities extends Equatable {
         steering: json['steering'] == true,
       );
 
-  /// Whether the agent supports a planning mode.
-  final bool planMode;
+  /// The access modes the agent can honor, in the order they are listed;
+  /// empty when it offers none (no selector — it runs as configured).
+  final List<ApprovalMode> accessModes;
+
+  /// The mode a conversation runs in when it has none, or has one the agent
+  /// does not offer.
+  final ApprovalMode? defaultAccessMode;
+
+  /// The mode a conversation stored as [stored] actually runs in: [stored]
+  /// when the agent offers it, else its default; null when it offers none.
+  /// The same rule the bridge applies before a turn (`effectiveAccessMode`).
+  ApprovalMode? effectiveAccessMode(ApprovalMode? stored) {
+    if (accessModes.isEmpty) return null;
+    if (stored != null && accessModes.contains(stored)) return stored;
+    final fallback = defaultAccessMode;
+    return fallback != null && accessModes.contains(fallback)
+        ? fallback
+        : accessModes.first;
+  }
 
   /// Whether the agent streams responses.
   final bool streaming;
@@ -87,7 +113,8 @@ class AgentCapabilities extends Equatable {
   @override
   List<Object?> get props => [
         steering,
-        planMode,
+        accessModes,
+        defaultAccessMode,
         streaming,
         approvals,
         forking,

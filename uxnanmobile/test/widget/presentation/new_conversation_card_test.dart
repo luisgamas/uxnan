@@ -8,6 +8,7 @@ import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -46,7 +47,7 @@ Widget _wrap({
                 displayName: 'Codex',
                 available: true,
                 capabilities: AgentCapabilities(
-                  planMode: true,
+                  accessModes: [ApprovalMode.plan],
                   streaming: true,
                   approvals: true,
                   images: true,
@@ -57,7 +58,7 @@ Widget _wrap({
                 displayName: 'Claude Code',
                 available: true,
                 capabilities: AgentCapabilities(
-                  planMode: true,
+                  accessModes: [ApprovalMode.plan],
                   forking: true,
                 ),
               ),

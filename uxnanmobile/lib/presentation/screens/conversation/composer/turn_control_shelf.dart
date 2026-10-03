@@ -4,6 +4,7 @@ import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
@@ -274,22 +275,13 @@ class _ApprovalControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final (label, icon, color) = switch (mode) {
-      ApprovalMode.requestApproval => (
-          l10n.approvalRequestTitle,
-          UxIcons.panTool,
-          UxnanColors.warning,
-        ),
-      ApprovalMode.approveForMe => (
-          l10n.approvalAutoTitle,
-          UxIcons.verifiedUser,
-          UxnanColors.success,
-        ),
-      ApprovalMode.fullAccess => (
-          l10n.approvalFullTitle,
-          UxIcons.lockOpen,
-          UxnanColors.error,
-        ),
+    final label = approvalModeTitle(l10n, mode);
+    final icon = approvalModeIcon(mode);
+    final color = switch (mode) {
+      ApprovalMode.requestApproval => UxnanColors.warning,
+      ApprovalMode.approveForMe => UxnanColors.success,
+      ApprovalMode.fullAccess => UxnanColors.error,
+      ApprovalMode.plan => UxnanColors.connecting,
     };
     return _ControlSurface(
       icon: icon,

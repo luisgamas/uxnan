@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The access sheet offers what the agent can do.** It lists only the modes
+  the conversation's agent can honor and adds **Plan only** where the agent
+  has it. A conversation whose mode its agent no longer offers shows a notice
+  above the composer, with the mode it runs in now — tap it to choose another.
+  A new conversation starts in its agent's default mode, which the PC sets.
+
 ### Fixed
 
 - **An approval or a question shows once, even when it arrives twice.** One
