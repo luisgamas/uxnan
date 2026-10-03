@@ -658,6 +658,13 @@ fn paths_home() -> String {
 /// Leave the SSH session that started us: a new session (so its hang-up does
 /// not reach us), SIGHUP ignored.
 ///
+/// On Windows the leaving is done at creation (`attach`: detached, its own
+/// process group, out of the session's job). What is done here is undoing the
+/// one thing a new process group carries with it: **Ctrl+C ignored**, a flag
+/// every process it starts inherits. Left alone, Ctrl+C in a host terminal
+/// interrupted nothing — not a dev server, not a command, not an agent. The
+/// daemon has no console, so it receives no Ctrl+C itself either way.
+///
 /// The umask is left as the account has it. Every terminal inherits this
 /// process's, and a file made in one must come out as it would in any SSH
 /// session; the daemon's own files get their modes explicitly instead
@@ -669,6 +676,13 @@ pub fn detach_from_session() {
         // exists; failure leaves us attached, which `attach` notices.
         libc::setsid();
         libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
+    #[cfg(windows)]
+    unsafe {
+        // SAFETY: a documented call on our own process. A null handler with
+        // FALSE restores normal Ctrl+C processing, and that is inherited by
+        // the terminals this daemon starts.
+        windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0);
     }
 }
 

@@ -1625,7 +1625,11 @@ remotos y se crea con `FIRST_PIPE_INSTANCE` (un segundo daemon encuentra el nomb
 ocupado). `attach` lo arranca fuera del *job* de la sesion SSH
 (`CREATE_BREAKAWAY_FROM_JOB`, desacoplado): Win32-OpenSSH termina el job de una sesion
 al cerrarla. Si el job no permite salir, el daemon arranca igual y el log dice que
-termina con la sesion. El candado de build es `LockFileEx`; el archivo de endpoint,
+termina con la sesion. Un grupo de procesos nuevo nace con **Ctrl+C ignorado**, y
+eso lo heredan sus hijos: el daemon lo restituye al arrancar
+(`SetConsoleCtrlHandler(NULL, FALSE)`), o Ctrl+C no interrumpiria nada en una
+terminal del host. Lo encontro la sonda de capa 3 en el host Windows de CI. El
+candado de build es `LockFileEx`; el archivo de endpoint,
 el formato de los reporters `.cmd`. Probado en CI (`windows-ssh-host`: el runner
 alcanza su propio OpenSSH Server) con la suite de terminales en vivo — `cmd` como
 shell, y ConPTY pidiendo la posicion del cursor (`ESC[6n`) antes de dibujar, que

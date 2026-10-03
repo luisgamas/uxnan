@@ -25,7 +25,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the host's terminals, whichever build it is, so an update never strands them,
   and the builds no engine runs from any more are removed from the host. On
   Windows the engine listens on a pipe only your account can open and is
-  started outside the SSH session, so closing it does not end your terminals.
+  started outside the SSH session, so closing it does not end your terminals;
+  Ctrl+C still interrupts what runs in them.
   A host the engine cannot run on (no build for it, a `noexec` home) keeps
   plain-channel terminals, which end with the connection.
 - **An agent on a host shows its state as precisely as one here.** Connecting
