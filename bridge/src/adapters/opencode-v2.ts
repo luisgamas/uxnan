@@ -56,6 +56,13 @@ import type { SpawnFn } from './spawn.js';
  */
 const GATED_ACTIONS = ['shell', 'edit', 'webfetch', 'external_directory'] as const;
 
+/** The session rules for a policy: every gated action, on any resource. */
+function permissionRules(
+  permission: OpenCodePermissionPolicy,
+): { action: string; resource: string; effect: OpenCodePermissionPolicy }[] {
+  return GATED_ACTIONS.map((action) => ({ action, resource: '*', effect: permission }));
+}
+
 /** How long `models()` waits for a freshly booted server to load its catalog. */
 const MODELS_WAIT_MS = 10_000;
 const MODELS_POLL_MS = 400;
@@ -512,16 +519,19 @@ export class OpenCodeV2Server implements IOpenCodeServer {
       ...(opts.title !== undefined ? { title: opts.title } : {}),
       location: { directory: this.#cwd },
       ...(opts.model ? { model: modelRef(opts.model, opts.variant) } : {}),
-      permissions: GATED_ACTIONS.map((action) => ({
-        action,
-        resource: '*',
-        effect: opts.permission,
-      })),
+      permissions: permissionRules(opts.permission),
     });
     const id = res.data?.id;
     if (!id) throw new Error('opencode did not return a session id');
     if (opts.model) this.#sessionModel.set(id, modelKey(opts.model, opts.variant));
     return id;
+  }
+
+  async setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void> {
+    // `PATCH /api/session/:id { permissions }` replaces the rules (2.0.19).
+    await this.#serve.request('PATCH', `/api/session/${encodeURIComponent(sessionId)}`, {
+      permissions: permissionRules(permission),
+    });
   }
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {

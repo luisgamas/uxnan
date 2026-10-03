@@ -171,7 +171,15 @@ class IncomingMessageProcessor {
     bool beforeText = false,
   }) {
     if (content is Map) {
-      final blockId = content['blockId'];
+      // An approval or a question is one request whatever copy of it arrives,
+      // so one stored before requests carried a `blockId` is keyed by its own
+      // id: a second copy replaces the first instead of showing a second card.
+      final blockId = content['blockId'] ??
+          switch (content['type']) {
+            'approval' => content['approvalId'],
+            'question' => content['questionId'],
+            _ => null,
+          };
       return ContentBlockEvent(
         turnId: turnId,
         threadId: threadId,

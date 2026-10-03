@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`blockId` on `ApprovalRequestBlock` and `QuestionRequestBlock`**,
+  optional: the request's own id (`approvalId` / `questionId`) as its
+  `LiveBlock` id, so a second copy of the same request — the stored one a
+  client just reloaded, then the live one — replaces the first in place.
 
 ## [0.0.28-alpha.20260930] - 20260930
 ### Added

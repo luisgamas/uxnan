@@ -662,7 +662,7 @@ interface TurnSendParams {
 interface QuestionOption { label: string; description?: string }
 interface QuestionItem { question: string; header?: string; options: QuestionOption[]; multiple?: boolean }
 // content block que el bridge emite (stream/content/block) cuando el agente pregunta:
-interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[] }
+interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[]; blockId?: string /* = questionId */ }
 // respuesta del telefono en turn/send: answers[i] = labels elegidas para questions[i]
 interface QuestionResponse { questionId: string; answers: string[][] }
 ```
@@ -834,9 +834,16 @@ interface ApprovalRequestBlock {
   action: string;             // descripcion legible de la accion propuesta
   risk?: 'low' | 'medium' | 'high';
   detail?: string;            // detalle adicional opcional
+  blockId?: string;           // = approvalId (LiveBlock): una segunda copia reemplaza a la primera
 }
 // Viajado como `stream/content/block` (NO como notificacion dedicada), para
-// que persista con el turno y sobreviva a un `turn/list` re-sync.
+// que persista con el turno y sobreviva a un `turn/list` re-sync. El bridge
+// guarda el bloque ANTES de notificarlo, asi que un cliente que recarga el
+// turno en ese intervalo recibe la copia guardada y despues la viva: el
+// `blockId` (el propio id de la solicitud, tambien en `QuestionRequestBlock`)
+// hace que la segunda reemplace a la primera en vez de mostrarse dos veces.
+// Un bloque guardado antes de llevar `blockId` se identifica igual, por su
+// `approvalId` / `questionId`, en desktop y en el telefono.
 ```
 
 **`MessageContent`** (tipos polimorficos soportados; ver `02a` §6.2):

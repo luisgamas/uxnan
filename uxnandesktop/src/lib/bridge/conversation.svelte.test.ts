@@ -201,6 +201,20 @@ describe('Conversation', () => {
     expect(c.openRequests).toEqual([]);
   });
 
+  it('keeps an approval delivered twice as one open request', () => {
+    const { c } = conversation();
+    c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
+    c.apply(note('stream/turn/started', { turnId: 'x' }));
+    // A bridge older than `blockId` on requests, then one that sends it: the
+    // second copy of each (a reload racing the live block) replaces the first.
+    const old = { type: 'approval', approvalId: 'ap', action: 'Allow external_directory: /tmp/*' };
+    const now = { ...old, approvalId: 'ap2', blockId: 'ap2' };
+    for (const content of [old, old, now, now]) {
+      c.apply(note('stream/content/block', { turnId: 'x', messageId: 'x-a', content }));
+    }
+    expect(c.openRequests.map((r) => r.approvalId)).toEqual(['ap', 'ap2']);
+  });
+
   it('pages back with an offset cursor and never duplicates a turn', async () => {
     const call = vi.fn(async () => ({ turns: [turn('o1', 'old'), turn('a', 'dup')], total: 40 }) as never);
     const { c } = conversation(call);

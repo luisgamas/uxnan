@@ -46,6 +46,13 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
  */
 const GATED_PERMISSIONS = ['edit', 'bash', 'webfetch', 'external_directory'] as const;
 
+/** The session rules for a policy: every gated permission, on any pattern. */
+function permissionRules(
+  action: OpenCodePermissionPolicy,
+): { permission: string; pattern: string; action: OpenCodePermissionPolicy }[] {
+  return GATED_PERMISSIONS.map((permission) => ({ permission, pattern: '**', action }));
+}
+
 /** Per-session bookkeeping the V1 bus needs to tell text from reasoning. */
 interface SessionState {
   /** messageID → role, from `message.updated`. */
@@ -528,14 +535,17 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   }): Promise<string> {
     const res = await this.#serve.request<{ id?: string }>('POST', '/session', {
       ...(opts.title !== undefined ? { title: opts.title } : {}),
-      permission: GATED_PERMISSIONS.map((permission) => ({
-        permission,
-        pattern: '**',
-        action: opts.permission,
-      })),
+      permission: permissionRules(opts.permission),
     });
     if (!res.id) throw new Error('opencode did not return a session id');
     return res.id;
+  }
+
+  async setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void> {
+    // `PATCH /session/:id { permission }` replaces the rules (1.18.34).
+    await this.#serve.request('PATCH', `/session/${encodeURIComponent(sessionId)}`, {
+      permission: permissionRules(permission),
+    });
   }
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
