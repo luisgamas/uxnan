@@ -376,18 +376,33 @@ mod table_tests {
 
     #[test]
     fn a_table_finds_the_agent_running_under_a_root_and_forgets_it_once_gone() {
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
+        // The root is a shell of this test's own, standing in for a terminal's:
+        // the test process itself is a poor root, since other tests running
+        // beside this one spawn stand-ins named like agents under it. `& wait`
+        // keeps the shell from exec-ing into `sleep`, so the agent is a child.
+        let mut shell = std::process::Command::new("sh")
+            .args(["-c", "sleep 30 & wait"])
             .spawn()
             .unwrap();
-        let root = std::process::id();
+        let root = shell.id();
         let commands = vec!["sleep".to_string()];
         let mut table = Table::default();
-        table.refresh();
-        assert_eq!(table.agent_of(root, &commands).as_deref(), Some("sleep"));
+        let mut found = None;
+        for _ in 0..50 {
+            table.refresh();
+            found = table.agent_of(root, &commands);
+            if found.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(found.as_deref(), Some("sleep"));
         assert_eq!(table.agent_of(root, &["claude".to_string()]), None);
-        child.kill().unwrap();
-        child.wait().unwrap();
+        let _ = std::process::Command::new("pkill")
+            .args(["-P", &root.to_string()])
+            .status();
+        shell.kill().unwrap();
+        shell.wait().unwrap();
         table.refresh();
         assert_eq!(table.agent_of(root, &commands), None);
     }
