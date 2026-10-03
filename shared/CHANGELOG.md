@@ -4,6 +4,11 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Where the PC listens now.** `BridgeSettings.hosts`: the bridge's live
+  `host:port` list (LAN + Tailscale), read-only for clients and kept current as
+  the PC changes networks.
 
 ## [0.0.30-alpha.20261003] - 20261003
 ### Added

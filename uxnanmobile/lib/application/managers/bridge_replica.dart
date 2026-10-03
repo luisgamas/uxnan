@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/phone_name_manager.dart';
@@ -27,8 +28,10 @@ import 'package:uxnan/domain/value_objects/rpc_message.dart';
 /// kept converged (architecture/02a §5.8.17).
 ///
 /// It is the one writer of what the PC's shared settings say about the PC
-/// record the phone keeps: its name and its relay (`BridgeSettings.relay`), so
-/// a PC paired on the LAN is reachable from anywhere once it has a relay.
+/// record the phone keeps: its name, its relay (`BridgeSettings.relay`), so a
+/// PC paired on the LAN is reachable from anywhere once it has a relay, and
+/// where it listens for a direct connection (`BridgeSettings.hosts`), so a PC
+/// that joined another network since pairing is still reached directly.
 ///
 /// The bridge numbers every change with one global revision. This replica
 /// remembers the last one applied per PC and asks `sync/changes { since }`:
@@ -58,7 +61,9 @@ class BridgeReplica {
     ActionOutbox? outbox,
     PhoneNameManager? phoneName,
     ITrustedDeviceRepository? pcs,
+    void Function(String deviceId)? onHostsChanged,
   })  : _repository = repository,
+        _onHostsChanged = onHostsChanged,
         _phoneName = phoneName,
         _pcs = pcs,
         _threads = threadManager,
@@ -76,6 +81,7 @@ class BridgeReplica {
   final ActionOutbox? _outbox;
   final PhoneNameManager? _phoneName;
   final ITrustedDeviceRepository? _pcs;
+  final void Function(String deviceId)? _onHostsChanged;
   late final StreamSubscription<DomainEvent> _eventsSub;
   StreamSubscription<ConnectionPhase>? _phaseSub;
 
@@ -293,6 +299,8 @@ class BridgeReplica {
     final (carriesRelay, relay) =
         IncomingMessageProcessor.relayOfSettings(settings);
     if (carriesRelay) await _adoptRelay(deviceId, relay);
+    final hosts = IncomingMessageProcessor.hostsOfSettings(settings);
+    if (hosts != null) await _adoptHosts(deviceId, hosts);
     _applyDevices(changes['devices']);
     _presence.add(ClientPresence.listFromJson(changes['clients']));
     final storeId = changes['storeId'];
@@ -387,11 +395,13 @@ class BridgeReplica {
           :final rev,
           :final carriesRelay,
           :final relay,
+          :final hosts,
         ):
         unawaited(
           _whenAdmitted(deviceId, rev, () async {
             if (name != null) await _adoptPcName(deviceId, name);
             if (carriesRelay) await _adoptRelay(deviceId, relay);
+            if (hosts != null) await _adoptHosts(deviceId, hosts);
             _home.add(home);
             final cursor = _cursor;
             if (cursor != null) {
@@ -540,6 +550,22 @@ class BridgeReplica {
     final pc = await pcs.getDevice(deviceId);
     if (pc == null || pc.relay == relay) return;
     await pcs.recordRelay(deviceId, relay);
+  }
+
+  /// Stores [hosts] as where the PC [deviceId] listens for a direct
+  /// connection — replacing, never adding to, what was kept (the addresses of
+  /// a network the PC has left only cost the next dial a timeout). When they
+  /// changed, the session hears it ([_onHostsChanged]) so a phone that fell
+  /// back to the relay can try the PC's new address at once.
+  Future<void> _adoptHosts(String deviceId, List<String> hosts) async {
+    final pcs = _pcs;
+    if (pcs == null) return;
+    final pc = await pcs.getDevice(deviceId);
+    if (pc == null || const ListEquality<String>().equals(pc.hosts, hosts)) {
+      return;
+    }
+    await pcs.recordHosts(deviceId, hosts);
+    _onHostsChanged?.call(deviceId);
   }
 
   void _applyDevices(Object? json) {

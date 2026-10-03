@@ -340,6 +340,11 @@ export {
 } from './transport/session-handler.js';
 export { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 export {
+  NETWORK_POLL_MS,
+  NetworkWatcher,
+  type NetworkWatcherOptions,
+} from './transport/network-watcher.js';
+export {
   RelayService,
   normalizeRelayUrl,
   type RelayServiceOptions,

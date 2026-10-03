@@ -137,12 +137,29 @@ connected to live bridge data, validated on-device against a real bridge.
   direct:** on a network change (`NetworkChangeMonitor`, `connectivity_plus`)
   or a resume, a session on the relay dials the PC's direct hosts once and
   moves there when one answers, keeping the relay session live until the
-  direct handshake completes (`SessionCoordinator._tryDirectRoute`). A PC
+  direct handshake completes (`SessionCoordinator._tryDirectRoute`).
+  **The PC is followed across networks:** `BridgeReplica` replaces the PC
+  record's direct addresses with the bridge's live `BridgeSettings.hosts`
+  (absent field = an older bridge, kept; empty = LAN off, stored) and tells
+  the session, which tries them from the relay (debounced, single-flight with
+  one follow-up). On a Wi-Fi/Ethernet network `DirectTransportSelector` also
+  looks for the PC by mDNS (`MdnsLanBridgeFinder` over
+  `BridgeDiscoveryService`, TXT `id` = `macDeviceId`, ≤ 2.5 s, only during a
+  dial) and races what it reveals with the stored addresses. A direct
+  address only wins once the E2EE handshake over it succeeds (run inside the
+  selection, one candidate at a time, stored before announced); one that
+  fails is skipped and the same attempt goes on to the next and then the
+  relay, so a LAN spoofer cannot keep the phone off its relay
+  (`RelayReason.directHandshakeFailed`, not shown). When the browse saw the
+  PC but nothing answered, PC details says why it is on the relay
+  (`RelayReason.sameNetworkUnreachable`). A PC
   reached on the LAN/Tailscale with no relay (or one switched off) shows a
   dismissible *set up / turn on remote access* card on its home card
   (`RemoteAccessHintCard`, dismissal remembered per PC). Covered by
   `session_coordinator_test` (*route and the way back home*),
-  `network_change_monitor_test`, `connection_route_test`,
+  `transport_selector_test` (*looking for the PC on the local network*),
+  `lan_bridge_finder_test`, `bridge_replica_names_test` (*where the PC
+  listens*), `network_change_monitor_test`, `connection_route_test`,
   `transport_badge_test`, `my_devices_screen_test`, `pc_details_screen_test`,
   `threads_list_test` and `connect_failure_text_test`. **Not yet
   device-verified:** the relay → LAN move on a real phone walking into the
@@ -532,6 +549,24 @@ shipping.
       turns from Relay to LAN without the conversation dropping; with the
       relay off, leave the network and read the "remote access is off"
       reason; tap the home card's *Set up* / *Turn on* hint and close it.
+
+- [ ] **The PC followed across networks — on-device verification.** Hosts
+      convergence (`BridgeSettings.hosts` → `TrustedDevice.hosts`), the
+      relay → direct try when they change, the mDNS look-up in
+      `DirectTransportSelector` and the *same Wi-Fi, but the PC didn't
+      answer* line in PC details are unit/widget tested against fakes in the
+      `shared/` and `mdns-advertiser.ts` shapes (render:
+      `~/Pictures/Uxnan/relay-ui-review/smart-route/`). Remaining, on a real
+      phone (the maintainer's A55) with a bridge that publishes `hosts`:
+      (1) a phone paired on one network, the PC moved to another and the
+      phone on the PC's new Wi-Fi — it must land on LAN without re-pairing;
+      (2) with the app open on the relay, move the PC to the phone's Wi-Fi
+      and watch it go direct within ~20 s (bridge poll 15 s + debounce);
+      (3) a guest/isolated Wi-Fi where the PC is announced but unreachable —
+      the reason line shows; (4) cellular only — no mDNS browse (logcat
+      `NsdManager` quiet); (5) that Android's `NsdManager` resolves the
+      service within the 2.5 s window on a cold browse (if not, widen
+      `mdnsWindow` in `DirectTransportSelector`).
 
 - [ ] **Replica mirror — on-device verification with Uxnan Desktop.** The
       replica, project registry, start folder, presence line and origin mark are

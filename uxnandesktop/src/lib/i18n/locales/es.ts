@@ -2701,6 +2701,12 @@ export const es: Record<MessageKey, string> = {
   "relay.indicatorOffHint": "Apagado: los teléfonos emparejados solo llegan a este equipo en la misma red o por Tailscale.",
   "relay.indicatorConnectingHint": "El bridge se está conectando a tu relay.",
   "relay.indicatorPhones": "Teléfonos a través de él",
+  "relay.indicatorStandby": "Listo",
+  "relay.indicatorInUse": "En uso",
+  "relay.indicatorStandbyTooltip": "Relay · Listo — ningún teléfono lo está usando (los teléfonos en esta red se conectan directamente)",
+  "relay.indicatorInUseOne": "Relay · En uso por {n} teléfono",
+  "relay.indicatorInUseOther": "Relay · En uso por {n} teléfonos",
+  "relay.indicatorPhonesNone": "Ningún teléfono lo está usando. Los teléfonos en la misma red o por Tailscale se conectan directamente.",
   "relay.indicatorSettings": "Ajustes de acceso remoto",
   // Cómo llega cada teléfono conectado al bridge (`route` de la presencia)
   "route.lan": "LAN",

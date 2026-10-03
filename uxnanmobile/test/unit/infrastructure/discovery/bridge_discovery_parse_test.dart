@@ -123,4 +123,48 @@ void main() {
     expect(bridge, isNotNull);
     expect(bridge!.name, 'pc.local');
   });
+
+  group('what a paired phone may dial', () {
+    test('every resolved IPv4 and the TXT hint, the chosen host first', () {
+      final bridge = parseDiscoveredBridge(
+        name: 'Studio',
+        host: 'Studio.local',
+        port: 19850,
+        addresses: [
+          InternetAddress('192.168.100.140'),
+          InternetAddress('100.76.97.16'),
+          InternetAddress('fe80::1'),
+        ],
+        txt: {
+          'id': _txt('mac-abc'),
+          'port': _txt('19850'),
+          'addr': _txt('10.0.0.4'),
+        },
+      )!;
+      expect(bridge.addresses, ['192.168.100.140', '100.76.97.16', '10.0.0.4']);
+      expect(bridge.directHosts, [
+        '192.168.100.140:19850',
+        '100.76.97.16:19850',
+        '10.0.0.4:19850',
+      ]);
+    });
+
+    test('never a name to resolve, nor a public address', () {
+      final bridge = parseDiscoveredBridge(
+        name: 'Studio',
+        host: 'Studio.local',
+        port: 19850,
+        addresses: [InternetAddress('8.8.8.8'), InternetAddress('10.1.2.3')],
+        txt: {'addr': _txt('evil.example.com')},
+      )!;
+      expect(bridge.addresses, ['10.1.2.3']);
+
+      final unresolved = parseDiscoveredBridge(
+        name: 'Studio',
+        host: 'Studio.local',
+        port: 19850,
+      )!;
+      expect(unresolved.addresses, isEmpty);
+    });
+  });
 }

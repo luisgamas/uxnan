@@ -1,6 +1,10 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.2.1 | **Fecha:** 2026-10-03 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.2.2 | **Fecha:** 2026-10-03 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.2.2):** `BridgeSettings.hosts` — the bridge's live
+> `host:port` list, read-only for clients and kept current as the PC changes
+> networks. No new method.
 >
 > **Executive summary (1.2.1):** `ConnectionRoute = 'lan' | 'tailscale' |
 > 'relay'` — how a phone reaches the bridge — on `ConnectedPhone.route` and
@@ -293,7 +297,7 @@ project/rename          -> { projectId, name } (vacio restaura el nombre de la c
 **Sincronizacion, ajustes y dispositivos compartidos (5)** (`02a` §5.8.17):
 ```
 sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients, devices }. `devices`: todos los telefonos emparejados, siempre completos. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
-settings/get            -> BridgeSettings { home, name, relay }. `relay`: `RelayEndpoint { url, routingId, enabled }` o `null` — de solo lectura aqui: cambia por `relay/*`, nunca por `settings/set` (02a §5.8.17, §5.10)
+settings/get            -> BridgeSettings { home, name, relay, hosts }. `hosts`: `host:port` donde escucha el bridge ahora (LAN + Tailscale), de solo lectura, se actualiza al cambiar de red (02a §5.8.17). `relay`: `RelayEndpoint { url, routingId, enabled }` o `null` — de solo lectura aqui: cambia por `relay/*`, nunca por `settings/set` (02a §5.8.17, §5.10)
 settings/set            -> { home?, name?, ageMs? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal). `name`: como llaman todos los clientes a este PC (por defecto, el nombre de la maquina; vacio lo restaura; 80 caracteres). `ageMs`: un cambio hecho sin conexion; cada ajuste se aplica solo si nadie lo decidio despues
 device/describe         -> DeviceDescribeParams { name, nameAgeMs?, model?, platform?, osVersion?, appVersion? } -> DeviceDescription { device, nameAgeMs? }. Solo un telefono, sobre si mismo, al conectarse: su nombre por defecto (el modelo) aplica mientras nadie lo haya nombrado; uno elegido por su dueño (`nameAgeMs`) gana si es la decision mas reciente. La respuesta trae el nombre vigente y hace cuanto se decidio, para que el telefono adopte uno puesto en otro cliente
 device/rename           -> { deviceId, name, ageMs? } -> TrustedDevice. Cualquier cliente nombra un telefono; vacio vuelve al nombre del telefono. Gana la decision mas reciente

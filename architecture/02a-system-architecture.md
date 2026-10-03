@@ -1,10 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.6.1
+> **Version:** 1.6.2
 > **Fecha:** 2026-10-03
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.6.2):** the relay is the last resort. The bridge
+> publishes where it listens **now** — `BridgeSettings.hosts`, its live
+> `host:port` list (LAN + Tailscale; no virtual or link-local adapter) — and
+> follows the PC across networks (interfaces checked every 15 s; a change takes
+> a settings revision and re-announces mDNS). A phone stores it, over the relay
+> too, and moves to the new direct address; when its stored addresses fail it
+> finds its PC on the local network by mDNS (TXT `id`) before using the relay.
+> Before this, a PC's addresses only travelled in the pairing QR, so a phone
+> kept dialling the pairing day's network and fell back to the relay right next
+> to its PC (§5.8.17, §5.9.3).
 
 > **Executive summary (1.6.1):** found on a real phone switching from mobile
 > data to Wi-Fi. The bridge now closes a phone connection that has received
@@ -3103,6 +3114,16 @@ bridge (`relay/*`, §5.10), nunca `settings/set`. Viaja en `sync/changes` y
 `stream/settings/updated` como los otros, asi que un telefono emparejado en la
 LAN aprende el relay y puede salir de casa sin volver a emparejar.
 
+**Direcciones vivas.** El cuarto ajuste compartido es `hosts`
+(`BridgeSettings.hosts`: `host:port` de cada direccion LAN y Tailscale donde
+escucha el servidor LAN; vacio si la LAN esta apagada), tambien de solo
+lectura y nunca guardado en disco: es un hecho vivo. `NetworkWatcher` relee
+las interfaces cada 15 s (descarta adaptadores virtuales —Docker, VM, WSL— y
+direcciones link-local `169.254.x.x`); si cambian, `setHosts` sube la revision
+y lo anuncia, y el anuncio mDNS se rehace con las direcciones nuevas. El QR toma
+sus `hosts` de aqui. Asi un telefono emparejado en otra red aprende, incluso por
+el relay, donde esta su PC ahora.
+
 **Nombres compartidos.** El PC y cada telefono tienen un nombre que ven todos
 los clientes. El del PC es el ajuste `name` (`settings/set`; por defecto el
 nombre de la maquina; `uxnan-bridge config set name`): es el que viaja en el QR,
@@ -3583,8 +3604,21 @@ emparejado en la LAN es alcanzable fuera de casa sin volver a emparejar. Los
 codigos de cierre del relay llegan como `RelayException` tipada (PC apagado,
 telefono no emparejado / revocado, relay lleno) — §5.10.
 
+**Orden de seleccion (1.6.2).** Cada intento dialea en paralelo las
+direcciones guardadas (`TrustedDevice.hosts`, que `BridgeReplica` reemplaza con
+`BridgeSettings.hosts`) y, solo con Wi-Fi/Ethernet, busca al PC por mDNS
+(`_uxnan._tcp`, TXT `id` = `macDeviceId`, maximo 2,5 s, nunca en segundo plano).
+Un socket abierto es solo un candidato: los handshakes E2EE corren uno a la vez
+(8 s cada uno), primero las direcciones guardadas y al final las anunciadas por
+mDNS (no estan firmadas). Un candidato cuyo handshake falla (otra identidad,
+error de protocolo, silencio) se cierra y no se reintenta en ese intento; si no
+queda ninguno, el mismo intento sigue por el relay (`RelayReason.directHandshakeFailed`),
+de modo que nada en la red local puede dejar al telefono fuera de su relay. Si
+mDNS vio al PC pero ninguna direccion respondio, el telefono lo dice
+(`RelayReason.sameNetworkUnreachable`: la red puede aislar dispositivos).
+
 **Volver a la via directa.** Si el telefono esta conectado por el relay y
-cambia de red (o vuelve al primer plano), marca una sola vez las direcciones
+cambia de red, vuelve al primer plano o recibe direcciones nuevas del PC, marca una sola vez las direcciones
 directas que anuncia el PC (`selectDirect`, 2 s por direccion, sin tocar el
 relay); si una responde, corre el handshake sobre ella con la sesion del relay
 aun viva y la confirma como un cambio validado — el bridge cierra entonces el

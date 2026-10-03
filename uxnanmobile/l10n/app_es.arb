@@ -1156,5 +1156,6 @@
   "relaySetupDeploy": "Desplegar relay",
   "relaySetupDeploying": "Desplegando…",
   "relaySetupDeployingHint": "Puede tardar hasta un minuto. Mantén la app abierta.",
-  "relaySetupDone": "Tu relay está listo."
+  "relaySetupDone": "Tu relay está listo.",
+  "pcRelaySameNetworkUnreachable": "En la misma Wi-Fi, pero la PC no respondió directamente (la red puede aislar los dispositivos): usando tu relay."
 }

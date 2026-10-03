@@ -1,7 +1,7 @@
 <script lang="ts">
   // Status-bar relay indicator: how the user's own relay stands, at a glance —
-  // the cloud icon tinted like the backend indicator (green connected, amber
-  // connecting, red can't connect, muted off) — and a popover with the detail:
+  // the cloud icon tinted like the backend indicator (amber connecting, red
+  // can't connect, muted off) — and a popover with the detail:
   // the state and the bridge's own words when it failed, the relay's address,
   // the phones reaching this computer through it, its version against the one
   // the bridge ships, and the way into Settings → Remote access.
@@ -11,6 +11,13 @@
   // bridge, a bridge too old for `relay/*`, or no relay set up. The bridge row
   // in the sidebar already says whether the bridge itself is up, and Settings
   // → Remote access is where a relay is set up in the first place.
+  //
+  // Connected is two looks, because a relay can be up and carry nothing: phones
+  // on the same network or over Tailscale reach the bridge directly. Standing by
+  // (no phone on it, by the relay's own `connectedPhones`) is as quiet as off —
+  // a muted icon, "Ready" — and only a relay actually carrying phones lights up
+  // green, with their count beside the icon (the shape the orchestration count
+  // has), so a lit cloud always means "a phone is using your relay right now".
   //
   // A client, never a second copy: it reads the one relay replica (`relay`) and
   // the one presence replica (`chat.clients`), and every change — updating the
@@ -42,14 +49,36 @@
   const endpoint = $derived(status?.endpoint ?? null);
   const shown = $derived(!!status && !!endpoint);
 
-  const TONES: Record<RelayConnectionState, { dot: StatusTone; icon: string }> = {
-    connected: { dot: "ok", icon: "text-green-600 dark:text-green-400" },
+  /** The relay's own count of phones on it; the names come from presence,
+   *  which says per phone how it is connected. */
+  const phoneCount = $derived(status?.connectedPhones ?? 0);
+
+  /** What the indicator shows: the bridge's state, with `connected` split by
+   *  whether any phone is actually on the relay. */
+  type RelayLook = Exclude<RelayConnectionState, "connected"> | "standby" | "inUse";
+  const LOOKS: Record<RelayLook, { dot: StatusTone; icon: string }> = {
+    inUse: { dot: "ok", icon: "text-green-600 dark:text-green-400" },
+    // Healthy (the popover's dot says so) but carrying nothing: no tint.
+    standby: { dot: "ok", icon: "" },
     connecting: { dot: "busy", icon: "text-amber-600 dark:text-amber-400" },
     error: { dot: "error", icon: "text-destructive" },
     off: { dot: "off", icon: "" },
   };
-  const tone = $derived(TONES[status?.state ?? "off"]);
-  const stateLabel = $derived(i18n.t(`relay.state.${status?.state ?? "off"}`));
+  const look = $derived<RelayLook>(
+    status?.state === "connected"
+      ? phoneCount > 0
+        ? "inUse"
+        : "standby"
+      : (status?.state ?? "off"),
+  );
+  const tone = $derived(LOOKS[look]);
+  const stateLabel = $derived(
+    look === "inUse"
+      ? i18n.t("relay.indicatorInUse")
+      : look === "standby"
+        ? i18n.t("relay.indicatorStandby")
+        : i18n.t(`relay.state.${look}`),
+  );
 
   const updateAvailable = $derived(relayUpdateAvailable(status));
   const customOutdated = $derived(
@@ -58,9 +87,6 @@
       status.deployedVersion !== status.bundledVersion,
   );
 
-  /** The relay's own count of phones on it; the names come from presence,
-   *  which says per phone how it is connected. */
-  const phoneCount = $derived(status?.connectedPhones ?? 0);
   const relayPhones = $derived(
     chat.clients
       .filter((c) => c.kind === "phone" && c.route === "relay")
@@ -70,13 +96,13 @@
       })),
   );
 
-  const triggerLabel = $derived.by(() => {
-    const base = i18n.t("relay.indicator", { state: stateLabel });
-    if (status?.state === "connected" && phoneCount > 0) {
-      return `${base} · ${i18n.plural(phoneCount, "relay.phonesOne", "relay.phonesOther")}`;
-    }
-    return base;
-  });
+  const triggerLabel = $derived(
+    look === "inUse"
+      ? i18n.plural(phoneCount, "relay.indicatorInUseOne", "relay.indicatorInUseOther")
+      : look === "standby"
+        ? i18n.t("relay.indicatorStandbyTooltip")
+        : i18n.t("relay.indicator", { state: stateLabel }),
+  );
 
   let open = $state(false);
   let triggerRef = $state<HTMLButtonElement | null>(null);
@@ -134,16 +160,22 @@
           bind:ref={triggerRef}
           {...tp}
           class={cn(
-            shell.statusBarAction,
+            look === "inUse" ? shell.statusBarItem : shell.statusBarAction,
             "relative text-muted-foreground hover:bg-accent hover:text-accent-foreground",
           )}
           aria-label={triggerLabel}
           data-relay-state={status.state}
+          data-relay-look={look}
         >
           <Icon
             icon={CloudServerIcon}
             class={cn(iconSize.action, tone.icon, status.state === "connecting" && "animate-pulse")}
           />
+          {#if look === "inUse"}
+            <span class={cn("font-medium tabular-nums", tone.icon)} data-relay-count>
+              {phoneCount}
+            </span>
+          {/if}
           {#if updateAvailable}
             <span
               class="absolute right-1 top-1 size-1.5 rounded-full bg-primary ring-1 ring-background"
@@ -223,7 +255,7 @@
               {/each}
             </ul>
           {:else if phoneCount === 0}
-            <p class={text.meta}>{i18n.t("relay.phonesNone")}</p>
+            <p class={text.meta}>{i18n.t("relay.indicatorPhonesNone")}</p>
           {/if}
         </div>
       {/if}

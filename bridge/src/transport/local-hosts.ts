@@ -55,10 +55,21 @@ export function localIPv4s(ifaces: InterfaceMap = networkInterfaces()): string[]
     for (const info of infos ?? []) {
       // Node 18+ may report `family` as the string 'IPv4' or the number 4.
       const isIPv4 = info.family === 'IPv4' || (info.family as unknown) === 4;
-      if (isIPv4 && !info.internal && info.address) addrs.add(info.address);
+      if (isIPv4 && !info.internal && info.address && !isLinkLocal(info.address)) {
+        addrs.add(info.address);
+      }
     }
   }
   return [...addrs].sort();
+}
+
+/**
+ * `169.254.0.0/16`: what an interface gives itself when DHCP fails. Another
+ * device can almost never reach it, so advertising it only costs a phone a
+ * timeout.
+ */
+function isLinkLocal(address: string): boolean {
+  return address.startsWith('169.254.');
 }
 
 /** Build `host:port` strings from the non-internal IPv4 addresses in `ifaces`. */

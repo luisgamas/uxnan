@@ -6325,6 +6325,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your relay is ready.'**
   String get relaySetupDone;
+
+  /// One line under the route badge in PC details when the phone is on the relay although it saw the PC on its own Wi-Fi (mDNS) and none of the PC's addresses answered.
+  ///
+  /// In en, this message translates to:
+  /// **'On the same Wi-Fi, but the PC didn\'t answer directly (the network may isolate devices) — using your relay.'**
+  String get pcRelaySameNetworkUnreachable;
 }
 
 class _AppLocalizationsDelegate

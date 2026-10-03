@@ -34,7 +34,7 @@ the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridg
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,780 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,785 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1035,8 +1035,9 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       phone reaching this computer through it from another network.
 - [ ] **Visual approval and a live run of the status-bar relay indicator and
       the per-phone route labels.** Built: `RelayStatusButton.svelte` (hidden
-      until a relay is set up; state, `lastError`, address, phones on the relay,
-      version and the way to Remote access) and `ConnectionRouteLabel.svelte`
+      until a relay is set up; state — connected split into a quiet *standing
+      by* and a lit, counted *in use* — `lastError`, address, phones on the
+      relay, version and the way to Remote access) and `ConnectionRouteLabel.svelte`
       (*LAN* / *Tailscale* / *Relay* from presence `route`, in Settings →
       Phones and the Bridge window), with component tests; screenshots rendered
       from the frontend only. Still owed: the maintainer's review, then a run

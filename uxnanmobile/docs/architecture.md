@@ -56,8 +56,10 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
 - `infrastructure/transport/` — `WebSocketTransport`, `SecureTransportLayer`
   (handshake), `SecureChannel` (AES-256-GCM + seq/replay), `RequestCorrelator`,
   `BackoffCalculator`, `OutboundMessageBuffer`, and how a PC is reached:
-  `DirectTransportSelector` races the PC's direct LAN/Tailscale hosts and only
-  then dials the PC's own relay through `RelayClient` (`relay_protocol.dart`
+  `DirectTransportSelector` races the PC's direct LAN/Tailscale hosts — and,
+  on a local network, what an mDNS look-up reveals (see *Following the PC
+  across networks* below) — and only then dials the PC's own relay through
+  `RelayClient` (`relay_protocol.dart`
   mirrors `shared/src/relay/protocol.ts`). The relay client answers the
   relay's challenge with the phone's identity key, waits for `ready`, and
   hands back the socket — the E2EE handshake runs over it exactly as over a
@@ -85,6 +87,52 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   one registers; that close is expected, not a reason to reconnect. If no host
   answers, or the handshake fails, nothing changes. A direct session on a
   network change is only re-verified (`bridge/status`).
+- **Following the PC across networks.** The direct addresses
+  (`TrustedDevice.hosts`) start as the pairing QR's and are then written only
+  by `BridgeReplica` from the bridge's live `BridgeSettings.hosts`
+  (`sync/changes`, `stream/settings/updated`; parsed by
+  `IncomingMessageProcessor.hostsOfSettings`): the list is **replaced**,
+  never appended to; a field that is absent (a bridge older than it) or
+  malformed changes nothing; a present, empty list means the PC's LAN server
+  is off and is stored as such (`ITrustedDeviceRepository.recordHosts`). When
+  they change the replica calls `SessionCoordinator.handlePcAddressesChanged`,
+  and a session on the relay to that PC tries them after a 1 s debounce.
+  Every try reads the stored addresses first (`_withStoredRoutes`, also used
+  before every dial) and is single-flight: asked again while one runs, it
+  runs at most one more after it, so a flapping network never stacks tries,
+  and a failed try never touches the working relay session.
+- **Selection order and timing** (`DirectTransportSelector`): (1) every
+  stored address is dialed at once, each bounded by `directTimeout` (2 s), so
+  an unreachable Tailscale address never delays a reachable LAN one; (2) at
+  the same time — only for a PC with stored addresses, and only when
+  `NetworkChangeMonitor.isOnLocalNetwork()` says Wi-Fi or Ethernet — a
+  `MdnsLanBridgeFinder` look-up (the same `BridgeDiscoveryService` the
+  pairing sheet uses, `_uxnan._tcp`) runs for at most `mdnsWindow` (2.5 s),
+  keeping only the service whose TXT `id` is the PC's `macDeviceId`, and each
+  local IPv4 literal it reveals (`DiscoveredBridge.directHosts`) joins the
+  same attempt; (3) a socket that opens is only a candidate: the caller's
+  `TransportSecurer` (the E2EE handshake, `SessionCoordinator._secureOver`)
+  runs over one candidate at a time, bounded by `directHandshakeTimeout`
+  (8 s) — stored candidates first, an announced one only once no stored
+  address is still being dialed or waiting (an mDNS announcement is
+  unsigned); (4) the first handshake to succeed wins, every other transport
+  is closed and the browse cancelled; a candidate whose handshake fails
+  (wrong identity, protocol error, silence) is closed and never retried in
+  that attempt; (5) only when no candidate passed and the browse is over is
+  the relay dialed — in the same attempt — and secured the same way. With no
+  relay on, the attempt ends with the last handshake error (or `noRoute` when
+  nothing answered) and the reconnect loop's usual backoff applies, so a
+  spoofer on the LAN can neither keep the phone off its relay nor make it
+  retry in a loop. The upgrade from the relay (`selectDirect`) runs the same
+  candidates and keeps the relay session whatever they do. Discovered addresses are never stored — once connected the
+  bridge publishes where it listens. When the browse saw the PC but nothing
+  answered, the selection carries `RelayReason.sameNetworkUnreachable`, and
+  when a direct address answered but failed its handshake,
+  `RelayReason.directHandshakeFailed` (recorded, never shown);
+  `SessionCoordinator.relayReason` (→ `relayReasonProvider`) holds it while
+  the route is the relay, and PC details shows one line under the route
+  badge. Worst case before the relay: about 2.5 s with nothing announced,
+  up to 4.5 s when the PC is announced late and does not answer.
 - Each PC record (`TrustedDevice.relay`, a `RelayEndpoint`) is written only
   by `BridgeReplica`, from the bridge's shared settings (`sync/changes`,
   `stream/settings/updated`), and re-read by `SessionCoordinator` before

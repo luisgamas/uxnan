@@ -62,6 +62,13 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
   }
 
   @override
+  Future<void> recordHosts(String macDeviceId, List<String> hosts) async {
+    await (_db.update(_db.trustedDevicesTable)
+          ..where((d) => d.macDeviceId.equals(macDeviceId)))
+        .write(TrustedDevicesTableCompanion(hosts: Value(_encodeHosts(hosts))));
+  }
+
+  @override
   Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
     await (_db.update(_db.trustedDevicesTable)
           ..where((d) => d.macDeviceId.equals(macDeviceId)))

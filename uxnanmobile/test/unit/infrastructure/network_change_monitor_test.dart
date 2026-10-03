@@ -67,4 +67,40 @@ void main() {
     await waitSettle();
     expect(events, 1);
   });
+
+  group('isOnLocalNetwork — where a PC can be looked for by mDNS', () {
+    Future<bool> onLocal(List<ConnectivityResult> current) =>
+        ConnectivityNetworkChangeMonitor(
+          onChanged: () => const Stream.empty(),
+          current: () async => current,
+        ).isOnLocalNetwork();
+
+    test('Wi-Fi and Ethernet are local, with or without mobile data beside',
+        () async {
+      expect(await onLocal([ConnectivityResult.wifi]), isTrue);
+      expect(await onLocal([ConnectivityResult.ethernet]), isTrue);
+      expect(
+        await onLocal([ConnectivityResult.mobile, ConnectivityResult.wifi]),
+        isTrue,
+      );
+    });
+
+    test('cellular alone, a VPN over it, or nothing is not', () async {
+      expect(await onLocal([ConnectivityResult.mobile]), isFalse);
+      expect(
+        await onLocal([ConnectivityResult.mobile, ConnectivityResult.vpn]),
+        isFalse,
+      );
+      expect(await onLocal([ConnectivityResult.none]), isFalse);
+      expect(await onLocal(const []), isFalse);
+    });
+
+    test('a platform that cannot say is not local', () async {
+      final monitor = ConnectivityNetworkChangeMonitor(
+        onChanged: () => const Stream.empty(),
+        current: () async => throw StateError('no plugin'),
+      );
+      expect(await monitor.isOnLocalNetwork(), isFalse);
+    });
+  });
 }

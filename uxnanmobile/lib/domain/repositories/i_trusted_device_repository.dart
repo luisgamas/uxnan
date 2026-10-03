@@ -30,6 +30,13 @@ abstract class ITrustedDeviceRepository {
   /// the PC's bridge shares (`BridgeSettings.relay`).
   Future<void> recordRelay(String macDeviceId, RelayEndpoint? relay);
 
+  /// Replaces the direct `host:port` addresses this phone dials for the PC
+  /// [macDeviceId] with [hosts] (empty: the PC listens for no direct
+  /// connection). Written by pairing (the QR) and afterwards only from what
+  /// the PC's bridge shares (`BridgeSettings.hosts`), so the list follows the
+  /// PC across networks instead of staying where it was paired.
+  Future<void> recordHosts(String macDeviceId, List<String> hosts);
+
   /// Records that the PC [macDeviceId] was last reached at [at].
   Future<void> recordLastSeen(String macDeviceId, DateTime at);
 

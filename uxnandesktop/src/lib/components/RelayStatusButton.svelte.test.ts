@@ -1,6 +1,8 @@
 /**
  * The status bar's relay indicator: hidden until a relay is set up, its icon
- * says the state at a glance, and its popover gives the detail — the bridge's
+ * says the state at a glance — and, once connected, whether any phone is
+ * actually going through it (standing by is quiet; in use is lit and counted)
+ * — and its popover gives the detail — the bridge's
  * own words when it failed, the address, the phones on the relay (by name,
  * from presence), the version, and the way into Settings → Remote access,
  * where every change (an update included) is made.
@@ -90,7 +92,7 @@ describe("RelayStatusButton", () => {
   });
 
   it.each([
-    ["connected", "Relay · Connected"],
+    ["connected", "Relay · Ready — no phone is using it (phones on this network connect directly)"],
     ["connecting", "Relay · Connecting…"],
     ["error", "Relay · Can't connect"],
     ["off", "Relay · Off"],
@@ -99,6 +101,73 @@ describe("RelayStatusButton", () => {
     const { screen } = mountWithProviders(RelayStatusButton);
     const trigger = screen.getByRole("button", { name: label });
     expect(trigger.getAttribute("data-relay-state")).toBe(state);
+  });
+
+  it("stands by quietly when connected with no phone on it", async () => {
+    const { screen, user } = mountWithProviders(RelayStatusButton);
+    const trigger = screen.getByRole("button", {
+      name: "Relay · Ready — no phone is using it (phones on this network connect directly)",
+    });
+    expect(trigger.getAttribute("data-relay-look")).toBe("standby");
+    // Muted like off: no green on the icon, and no count beside it.
+    expect(trigger.querySelector(".text-green-600")).toBeNull();
+    expect(trigger.querySelector("[data-relay-count]")).toBeNull();
+
+    await openPopover(screen, user);
+    const text = popoverText();
+    expect(text).toContain("Ready");
+    expect(text).not.toContain("In use");
+    expect(text).toContain(
+      "No phone is using it. Phones on the same network or over Tailscale connect directly.",
+    );
+  });
+
+  it.each([
+    [1, "Relay · Carrying 1 phone"],
+    [2, "Relay · Carrying 2 phones"],
+  ] as const)("lights up and counts when %i phone(s) go through it", async (n, label) => {
+    relay.status = relayStatus({ connectedPhones: n });
+    const { screen, user } = mountWithProviders(RelayStatusButton);
+    const trigger = screen.getByRole("button", { name: label });
+    expect(trigger.getAttribute("data-relay-look")).toBe("inUse");
+    expect(trigger.querySelector(".text-green-600")).not.toBeNull();
+    expect(trigger.querySelector("[data-relay-count]")?.textContent?.trim()).toBe(String(n));
+
+    await openPopover(screen, user);
+    const text = popoverText();
+    expect(text).toContain("In use");
+    expect(text).not.toContain("connect directly");
+  });
+
+  it("keeps the connecting, error and off looks unlit and uncounted", () => {
+    for (const state of ["connecting", "error", "off"] as const) {
+      relay.status = relayStatus({ state, connectedPhones: 0 });
+      const { screen } = mountWithProviders(RelayStatusButton);
+      const trigger = screen.getByRole("button");
+      expect(trigger.getAttribute("data-relay-look")).toBe(state);
+      expect(trigger.querySelector("[data-relay-count]")).toBeNull();
+      screen.unmount();
+    }
+  });
+
+  it("says it in Spanish too", async () => {
+    const language = app.settings.language;
+    app.settings.language = "es";
+    try {
+      const standby = mountWithProviders(RelayStatusButton);
+      expect(
+        standby.screen.getByRole("button", {
+          name: "Relay · Listo — ningún teléfono lo está usando (los teléfonos en esta red se conectan directamente)",
+        }),
+      ).toBeTruthy();
+      standby.screen.unmount();
+
+      relay.status = relayStatus({ connectedPhones: 2 });
+      const inUse = mountWithProviders(RelayStatusButton);
+      expect(inUse.screen.getByRole("button", { name: "Relay · En uso por 2 teléfonos" })).toBeTruthy();
+    } finally {
+      app.settings.language = language;
+    }
   });
 
   it("counts the phones on the relay on the trigger and names them in the popover", async () => {
@@ -113,7 +182,7 @@ describe("RelayStatusButton", () => {
       { id: "local:x", kind: "desktop", name: "MacBook", since: 1 },
     ];
     const { screen, user } = mountWithProviders(RelayStatusButton);
-    expect(screen.getByRole("button", { name: "Relay · Connected · 1 phone connected through it" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Relay · Carrying 1 phone" })).toBeTruthy();
 
     await openPopover(screen, user);
     const text = popoverText();
@@ -130,7 +199,7 @@ describe("RelayStatusButton", () => {
   it("says no phone is on it when none is", async () => {
     const { screen, user } = mountWithProviders(RelayStatusButton);
     await openPopover(screen, user);
-    expect(popoverText()).toContain("No phone is using it right now");
+    expect(popoverText()).toContain("No phone is using it.");
   });
 
   it("shows the bridge's own words when the relay cannot connect", async () => {
