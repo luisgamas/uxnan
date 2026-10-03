@@ -201,6 +201,26 @@ describe('Conversation', () => {
     expect(c.openRequests).toEqual([]);
   });
 
+  it("never lets a page that left before the first message's turn take it away", async () => {
+    // A brand-new conversation reads its first page as the first message is
+    // sent; the bridge creates the turn and says so before that page arrives.
+    const first = turn('x', 'hello', 'streaming');
+    let answerFirst!: (page: TurnList) => void;
+    const call = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<TurnList>((r) => (answerFirst = r)))
+      .mockResolvedValueOnce({ turns: [first], total: 1, activeTurnId: 'x' } satisfies TurnList);
+    const c = new Conversation('t1', call as never);
+    const loading = c.load();
+    c.apply(note('stream/turn/created', { turn: first }));
+    c.apply(note('stream/turn/started', { turnId: 'x' }));
+    answerFirst({ turns: [], total: 0 }); // the bridge as it was before the turn
+    await loading;
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(c.turns.map((t) => t.id)).toEqual(['x']);
+    expect(c.activeTurnId).toBe('x');
+  });
+
   it('keeps an approval delivered twice as one open request', () => {
     const { c } = conversation();
     c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
