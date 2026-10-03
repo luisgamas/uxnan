@@ -46,6 +46,7 @@
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
   import PortsStatusButton from "$lib/components/PortsStatusButton.svelte";
+  import RelayStatusButton from "$lib/components/RelayStatusButton.svelte";
   import WorktreeCleanupNotice from "$lib/components/WorktreeCleanupNotice.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
@@ -473,6 +474,9 @@
 
       <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
       <UsageStatusButton />
+
+      <!-- The user's relay (icon + popover; hidden until a relay is set up) -->
+      <RelayStatusButton />
 
       <!-- Backend status (icon + live popover; also holds GitHub's passive
            notifications + rate-limit readout) -->

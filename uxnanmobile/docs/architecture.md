@@ -62,7 +62,29 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   relay's challenge with the phone's identity key, waits for `ready`, and
   hands back the socket — the E2EE handshake runs over it exactly as over a
   direct one. A refusal is a `RelayException` naming why (`RelayFailure`, one
-  per relay close code).
+  per relay close code); no direct host answering with no relay switched on
+  is a `TransportException` of kind `noRoute`.
+- **The route** of the live channel (`ConnectionRoute`: `lan`, `tailscale`,
+  `relay` — `domain/enums/connection_route.dart`, mirroring
+  `shared/src/models/session.ts`, including `isTailscaleAddress`) is
+  classified once, by `SessionCoordinator`, from the endpoint the channel
+  settled on (`connectedRouteStream` → `connectedRouteProvider`). Every badge,
+  the connection log's relay/direct split and the remote-access hint read it;
+  nothing else classifies an endpoint.
+- **Back home is back to direct.** `NetworkChangeMonitor`
+  (`infrastructure/transport/network_change_monitor.dart`, over
+  `connectivity_plus`, settled for 2 s) tells `SessionCoordinator
+  .handleNetworkChange` when the phone moves to another network; `resume()`
+  does the same on foreground. While the route is the relay and the PC
+  advertises direct hosts, the coordinator dials them once
+  (`TransportSelector.selectDirect`, the selector's 2 s per-host timeout).
+  If one answers it runs the handshake over it while the relay session stays
+  live (new requests wait in the buffer), skips the bridge frames the relay
+  already delivered (`SecureChannel.skipInboundThrough`), and commits it like
+  a validated switch. The bridge closes the relay connection when the direct
+  one registers; that close is expected, not a reason to reconnect. If no host
+  answers, or the handshake fails, nothing changes. A direct session on a
+  network change is only re-verified (`bridge/status`).
 - Each PC record (`TrustedDevice.relay`, a `RelayEndpoint`) is written only
   by `BridgeReplica`, from the bridge's shared settings (`sync/changes`,
   `stream/settings/updated`), and re-read by `SessionCoordinator` before
@@ -81,8 +103,10 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   E2EE request and is cleared when the call returns — never stored on the
   phone. Why the relay refused a connection reaches the UI as
   `ConnectionRecoveryState.lastRelayFailure` (the reconnect loop) or the
-  thrown `RelayException` (a Connect action); `connect_failure_text.dart` is
-  the one place that turns either into words.
+  thrown `RelayException` (a Connect action), and "no route from this network"
+  as `lastTransportFailure == noRoute` or the thrown `noRoute` exception;
+  `connect_failure_text.dart` is the one place that turns any of them into
+  words (`connectFailureText`, `recoveryFailureText`).
 - `infrastructure/storage/local_database.dart` — the drift schema + migrations.
 - `infrastructure/storage/secure_store.dart` — OS-backed secrets. Android backup
   rules exclude the plugin's encrypted preference files; iOS uses a non-migrating
@@ -243,8 +267,16 @@ must not trigger.
 Each PC card is an identity row (glyph with a status dot · name · address · a
 labelled last-connection line · overflow menu) over a row of `NeBadge`s —
 connection, and a live one when agents are working — with Connect and the
-conversation count on the bottom row. Status and network path share one badge via `networkKindLabel`, the same
-mapping `TransportBadge` uses, so the two cannot drift apart. The counts come
+conversation count on the bottom row. Status and route share one badge,
+`ConnectionStatusBadge` (`widgets/transport_badge.dart`) — the same one the
+PC's details wear, and the same label/icon mapping (`connectionRouteLabel`,
+`connectionRouteIcon`) the drawer's `TransportBadge` uses, so none of them can
+drift apart. The connected card also carries `RemoteAccessHintCard`
+(`screens/devices/remote_access_hint.dart`) while the phone reaches the PC on
+the LAN or Tailscale and the PC has no relay or has it off
+(`remoteAccessHintProvider`): *Set up* opens the relay setup page, *Turn on*
+sends `relay/set`, and closing it hides it for that PC for good
+(`RemoteAccessHintStore`). The counts come
 from the local thread cache (`deviceThreadCountProvider`,
 `deviceWorkingCountProvider`, both on `deviceThreadsProvider`), so they describe
 a PC the phone is not currently connected to. Those providers count only threads **explicitly tagged** with that
@@ -261,10 +293,9 @@ the file.
 Connection feedback stays scoped to the actual PC card, and says only what is
 known:
 
-- A live session's connection badge names the classified network path (`LAN`,
-  `Tailscale`, `Direct`, `Relay`) derived from the winning endpoint — falling
-  back to a plain "Connected" when the path is not classified yet, never to an
-  empty badge.
+- A live session's connection badge names its route (`LAN`, `Tailscale`,
+  `Relay`, each with its own glyph) — falling back to a plain "Connected" when
+  the route is not known yet, never to an empty badge.
 - A PC whose attempt is in flight reads `Detecting…`. The path is deliberately
   withheld until the channel is live, because it is not known yet.
 - A disconnected PC reads `Disconnected`, and only its own card's Connect button

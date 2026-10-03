@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.30-alpha.20261003] - 20261003
+### Added
+
+- **How a phone is connected.** `ConnectionRoute` (`lan` | `tailscale` |
+  `relay`) on `ConnectedPhone.route` and `ClientPresence.route` (phones only;
+  absent on an older bridge), with `isTailscaleAddress()` and `directRoute()` to
+  tell a tailnet address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) from the LAN.
+
 ## [0.0.29-alpha.20261003] - 20261003
 ### Changed
 

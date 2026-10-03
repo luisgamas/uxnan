@@ -13,6 +13,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
+import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
 import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
@@ -137,6 +138,84 @@ Future<void> main() async {
     // Settings once would leave an app that can never be closed with back.
     expect(claims.last, isFalse);
   });
+
+  testWidgets("back from a PC's statistics returns to the overview",
+      (tester) async {
+    // Reported from a phone: overview → a PC's statistics → back closed the
+    // app, while the app bar's arrow went back.
+    await pump(tester, width: 390);
+    final context = tester.element(find.byType(MyDevicesScreen));
+    unawaited(PcDetailsScreen.push(context, 'pc-1'));
+    await settle(tester);
+
+    expect(find.byType(PcDetailsScreen), findsOneWidget);
+    expect(claims.last, isTrue, reason: 'statistics handed back to the OS');
+
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+
+    expect(find.byType(PcDetailsScreen), findsNothing);
+    expect(find.byType(MyDevicesScreen), findsOneWidget);
+    expect(exits, isEmpty);
+  });
+
+  for (final start in [AppRoutes.devices, AppRoutes.profile]) {
+    testWidgets("back from a PC's statistics opened from $start",
+        (tester) async {
+      final router = await pump(tester, width: 390);
+      unawaited(router.push(start));
+      await settle(tester);
+      final host = start == AppRoutes.devices
+          ? find.byType(MyDevicesScreen).last
+          : find.byType(Scaffold).last;
+      unawaited(PcDetailsScreen.push(tester.element(host), 'pc-1'));
+      await settle(tester);
+      expect(find.byType(PcDetailsScreen), findsOneWidget);
+      expect(claims.last, isTrue, reason: 'statistics handed back to the OS');
+
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.byType(PcDetailsScreen), findsNothing);
+      expect(exits, isEmpty);
+    });
+  }
+
+  for (final deep in [false, true]) {
+    testWidgets(
+        'back closes a sheet opened over '
+        '${deep ? 'a stacked screen' : 'the overview'}', (tester) async {
+      // Reported from a phone: back over a conversation's sheet went back a
+      // screen and left the sheet open. Sheets open on the root navigator,
+      // above the shell; back must close what is on top first.
+      final router = await pump(tester, width: 390);
+      if (deep) {
+        unawaited(router.push(AppRoutes.deviceArchived('x')));
+        await settle(tester);
+      }
+      final context = tester.element(find.byType(Scaffold).last);
+      unawaited(
+        showModalBottomSheet<void>(
+          context: context,
+          useRootNavigator: true,
+          builder: (_) => const SizedBox(height: 200, child: Text('SHEET')),
+        ),
+      );
+      await settle(tester);
+      expect(find.text('SHEET'), findsOneWidget);
+      final screens = router.routerDelegate.currentConfiguration.uri.toString();
+
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+
+      expect(find.text('SHEET'), findsNothing, reason: 'the sheet stayed open');
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        screens,
+        reason: 'back went back a screen under the sheet',
+      );
+      expect(exits, isEmpty, reason: 'back over a sheet left the app');
+    });
+  }
 
   testWidgets('back at the overview leaves the app', (tester) async {
     await pump(tester, width: 390);

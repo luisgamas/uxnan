@@ -138,6 +138,28 @@ describe("BridgeDialog", () => {
     expect(row("A55 de Luis").textContent).toContain("Connected");
     expect(row("Old phone").textContent).toContain("Not connected");
     expect(row("MacBook").textContent).toContain("Connected");
+    // An older bridge sends no route: the row says nothing about one.
+    expect(row("A55 de Luis").querySelector("[data-route]")).toBeNull();
+  });
+
+  it("says how each connected phone reaches the bridge", async () => {
+    on();
+    chat.devices = [
+      { deviceId: "a", displayName: "A55 de Luis", publicKey: "k", pairedAt: 1 },
+      { deviceId: "b", displayName: "Work iPhone", publicKey: "k", pairedAt: 2 },
+    ];
+    chat.clients = [
+      { id: "a", kind: "phone", name: "A55 de Luis", since: 1, route: "tailscale" },
+      { id: "b", kind: "phone", name: "Work iPhone", since: 1, route: "relay" },
+    ];
+    const { screen } = mountWithProviders(BridgeDialog, {
+      props: { open: true },
+      commands: { bridge_pairing_qr: qr },
+    });
+    await until(() => screen.queryByText("Devices") !== null);
+    const row = (name: string) => screen.getByText(name).closest("li")!;
+    expect(row("A55 de Luis").querySelector("[data-route]")?.textContent?.trim()).toBe("Tailscale");
+    expect(row("Work iPhone").querySelector("[data-route]")?.textContent?.trim()).toBe("Relay");
   });
 
   it("offers a newer bridge and asks the bridge to update itself", async () => {

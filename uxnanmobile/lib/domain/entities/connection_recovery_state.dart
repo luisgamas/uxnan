@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
 
 /// Observable state of the automatic reconnection process.
 ///
@@ -16,6 +17,7 @@ class ConnectionRecoveryState extends Equatable {
     this.lastConnectedAt,
     this.lastErrorMessage,
     this.lastRelayFailure,
+    this.lastTransportFailure,
     this.requiresManualIntervention = false,
   });
 
@@ -44,6 +46,12 @@ class ConnectionRecoveryState extends Equatable {
   /// or the connection is back, so the UI can say why while it waits.
   final RelayFailure? lastRelayFailure;
 
+  /// The kind of transport failure the last attempt ended in, when it was one
+  /// — [TransportErrorKind.noRoute] says no direct host answered and the PC
+  /// has no relay on, which the UI words as "turn on remote access". Same
+  /// lifetime as [lastRelayFailure].
+  final TransportErrorKind? lastTransportFailure;
+
   /// Whether [maxAttempts] was exceeded and the user must intervene.
   final bool requiresManualIntervention;
 
@@ -56,6 +64,7 @@ class ConnectionRecoveryState extends Equatable {
     DateTime? lastConnectedAt,
     String? lastErrorMessage,
     RelayFailure? lastRelayFailure,
+    TransportErrorKind? lastTransportFailure,
     bool? requiresManualIntervention,
   }) {
     return ConnectionRecoveryState(
@@ -66,6 +75,7 @@ class ConnectionRecoveryState extends Equatable {
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       lastErrorMessage: lastErrorMessage ?? this.lastErrorMessage,
       lastRelayFailure: lastRelayFailure ?? this.lastRelayFailure,
+      lastTransportFailure: lastTransportFailure ?? this.lastTransportFailure,
       requiresManualIntervention:
           requiresManualIntervention ?? this.requiresManualIntervention,
     );
@@ -80,6 +90,7 @@ class ConnectionRecoveryState extends Equatable {
         lastConnectedAt,
         lastErrorMessage,
         lastRelayFailure,
+        lastTransportFailure,
         requiresManualIntervention,
       ];
 }

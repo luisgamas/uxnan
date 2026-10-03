@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
   LOCAL_CONTROL_FILE,
+  directRoute,
   StreamNotification,
   isDesktopClientId,
   localReceiverId,
@@ -149,6 +150,8 @@ export interface StartBridgeOptions {
   relayFetch?: FetchLike;
   /** `false` never opens the relay's control socket (tests that fake Cloudflare). */
   relayConnect?: boolean;
+  /** Close a phone connection after this long without a frame (tests). */
+  sessionIdleTimeoutMs?: number;
 }
 
 export interface Bridge {
@@ -731,8 +734,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         deviceState,
         trustStore,
         displayName: settings.get().name,
-        transport: 'relay',
+        route: 'relay',
         isPairingArmed: () => pairingCodeService.isArmed(),
+        ...(options.sessionIdleTimeoutMs !== undefined
+          ? { idleTimeoutMs: options.sessionIdleTimeoutMs }
+          : {}),
       }),
     bundle: { read: readRelayBundle, version: bundledRelayVersion() },
     logger,
@@ -792,20 +798,23 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (lanHandle) return { port: lanHandle.port };
       lanHandle = await startLanServer({
         port: config.lanPort,
-        onConnection: (io) => {
+        onConnection: (io, remoteAddress) => {
           void handleSecureConnection({
             io,
+            route: directRoute(remoteAddress),
             ctx: context,
             router,
             deviceState,
             trustStore,
             displayName: settings.get().name,
-            transport: 'direct',
             // Consent gate for first-time enrollment (architecture/02a §5.9.1):
             // a qr_bootstrap is only accepted while the operator recently showed
             // the QR/code (see generatePairingQr/currentPairingCode above).
             // trusted_reconnect never consults this.
             isPairingArmed: () => pairingCodeService.isArmed(),
+            ...(options.sessionIdleTimeoutMs !== undefined
+              ? { idleTimeoutMs: options.sessionIdleTimeoutMs }
+              : {}),
           });
         },
         // Manual-code pairing: trade a code shown on the PC for the pairing payload.

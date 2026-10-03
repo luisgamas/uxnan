@@ -27,7 +27,8 @@ export interface HookApprovalResult {
 export interface LanServerOptions {
   port: number;
   host?: string;
-  onConnection: (io: MessageIO) => void;
+  /** A phone connected from [remoteAddress] (its IP, as the socket reports it). */
+  onConnection: (io: MessageIO, remoteAddress: string) => void;
   /**
    * Optional handler for `GET /pair/resolve?code=…` (manual-code pairing). Given
    * the submitted code and the client IP, returns the HTTP status + JSON body.
@@ -51,7 +52,9 @@ export function startLanServer(options: LanServerOptions): Promise<LanServerHand
   return new Promise((resolve, reject) => {
     const httpServer = createServer((req, res) => handleHttp(req, res, options));
     const wss = new WebSocketServer({ server: httpServer });
-    wss.on('connection', (ws: WebSocket) => options.onConnection(wsToMessageIO(ws)));
+    wss.on('connection', (ws: WebSocket, req: IncomingMessage) =>
+      options.onConnection(wsToMessageIO(ws), req.socket.remoteAddress ?? ''),
+    );
 
     const onError = (err: Error): void => reject(err);
     httpServer.once('error', onError);

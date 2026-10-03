@@ -1,6 +1,11 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.2.0 | **Fecha:** 2026-10-02 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.2.1 | **Fecha:** 2026-10-03 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.2.1):** `ConnectionRoute = 'lan' | 'tailscale' |
+> 'relay'` — how a phone reaches the bridge — on `ConnectedPhone.route` and
+> `ClientPresence.route` (phones only; absent on an older bridge), with the
+> shared helpers `isTailscaleAddress` / `directRoute`. No new method.
 >
 > **Executive summary (1.2.0):** the user's own relay (`02a` §5.10). Seven
 > methods — `relay/status`, `relay/setup`, `relay/use`, `relay/set`,
@@ -354,7 +359,7 @@ bridge/pairingCode               -> PairingCode { code, expiresInMs }  el codigo
                                     vigente, con la ventana de pairing abierta (lo que imprime
                                     `uxnan-bridge code`). Solo por el canal de control local: a un
                                     telefono se le rechaza con AuthenticationRequired
-bridge/connectedPhones           -> lista de telefonos conectados
+bridge/connectedPhones           -> lista de telefonos conectados (cada uno con `route`: lan | tailscale | relay)
 bridge/disconnectPhone           -> desconectar un telefono
 bridge/trustedDevices            -> lista de dispositivos de confianza
 bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
@@ -508,7 +513,7 @@ stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, sk
 stream/project/updated      -> ProjectUpdatedParams { project }                             (NUEVO 2026-09, §5.8.17)
 stream/project/removed      -> ProjectRemovedParams { projectId, rev }                      (NUEVO 2026-09)
 stream/settings/updated     -> SettingsUpdatedParams { settings, rev }                      (NUEVO 2026-09)
-stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev)
+stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev; un telefono lleva `route`)
 stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
 stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 stream/bridge/updated       -> BridgeUpdatedParams  { update: BridgeUpdate }                (NUEVO 2026-09; la actualizacion del propio bridge: se publico una version, empezo o fallo — 02a §5.8.18)

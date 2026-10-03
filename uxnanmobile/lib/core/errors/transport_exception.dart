@@ -25,6 +25,12 @@ enum TransportErrorKind {
   /// The underlying socket could not be opened or was closed unexpectedly.
   connection,
 
+  /// No direct host of the PC answered and the PC has no relay switched on,
+  /// so from the network the phone is on there is no way to the PC at all.
+  /// Distinct from [connection] because the person can do something about it:
+  /// turn on remote access on the PC, or connect from the PC's network.
+  noRoute,
+
   /// The E2EE handshake did not complete successfully.
   handshake,
 

@@ -40,6 +40,9 @@ test('a phone connects over the real LAN WebSocket and runs encrypted RPC', asyn
   const phone = await FakePhone.connect(wsToMessageIO(ws), { sessionId });
   const status = await phone.request('bridge/status');
   assert.ok('result' in status);
+  // Reached from 127.0.0.1: the local network, and every client sees it so.
+  assert.equal(bridge.context.sessions.list()[0]?.route, 'lan');
+  assert.equal(bridge.context.presence.list().find((c) => c.kind === 'phone')?.route, 'lan');
 
   phone.close();
   await bridge.stop();

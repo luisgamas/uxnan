@@ -37,7 +37,7 @@
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import RefreshIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
   import { bridge, bridgeErrorText } from "$lib/bridge/client.svelte";
-  import { relay, relayUpdateAvailable } from "$lib/bridge/relay.svelte";
+  import { REMOTE_ACCESS_ANCHOR, relay, relayUpdateAvailable } from "$lib/bridge/relay.svelte";
   import { toast } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
@@ -204,7 +204,7 @@
   }
 </script>
 
-<SettingsSection title={i18n.t("relay.title")} description={i18n.t("relay.desc")}>
+<SettingsSection id={REMOTE_ACCESS_ANCHOR} title={i18n.t("relay.title")} description={i18n.t("relay.desc")}>
   <div class="divide-y divide-border/60">
     {#if blocked}
       <SettingsRow description={blocked} />

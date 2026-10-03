@@ -24,10 +24,6 @@
   "@connectionRelay": {
     "description": "Transport indicator: the live connection runs over the PC's own relay."
   },
-  "connectionDirect": "Direct",
-  "@connectionDirect": {
-    "description": "Transport indicator: the live connection is a direct LAN/Tailscale link."
-  },
   "transportLan": "LAN",
   "@transportLan": {
     "description": "Network-path badge: the live connection is a direct address on the same local network (Wi-Fi/Ethernet) as the PC."
@@ -2047,6 +2043,20 @@
   "@relayFailureFull": {"description": "Connection error: the relay refused because too many phones are connected."},
   "relayFailureUnreachable": "Can't reach your relay.",
   "@relayFailureUnreachable": {"description": "Connection error: the user's relay could not be reached or answered something unexpected."},
+  "deviceNoRemoteRoute": "Can't reach {device} from this network: its remote access is off. Turn it on from the PC — or from here, the next time you're on the same network.",
+  "@deviceNoRemoteRoute": {"description": "Connection error: no direct host of the PC answered and the PC has no relay (or it is switched off), so nothing can reach it from the phone's current network.", "placeholders": {"device": {"type": "String"}}},
+  "remoteAccessHintTitle": "Reach this PC away from home",
+  "@remoteAccessHintTitle": {"description": "Title of the dismissible hint on a directly connected PC's card when the PC has no remote access (no relay, or relay off)."},
+  "remoteAccessHintSetUpBody": "Set up remote access to keep reaching this PC away from home.",
+  "@remoteAccessHintSetUpBody": {"description": "Hint body: the PC has no relay yet."},
+  "remoteAccessHintTurnOnBody": "Remote access is off on this PC. Turn it on to keep reaching it away from home.",
+  "@remoteAccessHintTurnOnBody": {"description": "Hint body: the PC has a relay, but it is switched off."},
+  "remoteAccessHintSetUpAction": "Set up",
+  "@remoteAccessHintSetUpAction": {"description": "Hint action: opens the relay setup page."},
+  "remoteAccessHintTurnOnAction": "Turn on",
+  "@remoteAccessHintTurnOnAction": {"description": "Hint action: switches the PC's relay on."},
+  "remoteAccessHintDismiss": "Don't suggest again",
+  "@remoteAccessHintDismiss": {"description": "Tooltip of the hint's close button; hides the hint for this PC for good."},
   "remoteAccessTitle": "Remote access",
   "@remoteAccessTitle": {"description": "PC details section: how phones reach this PC from other networks."},
   "remoteAccessIntro": "Three ways to reach this PC from your phone:",

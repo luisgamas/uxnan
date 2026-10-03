@@ -159,10 +159,10 @@ class _DeviceHeader extends ConsumerWidget {
 
     final connected = ref.watch(connectedDeviceProvider).value;
     final online = connected?.macDeviceId == current.macDeviceId;
-    // The app already classifies the live path once, correctly (it can tell
-    // LAN from Tailscale, which `bridge/status` cannot). Re-deriving it here
-    // would be a second answer to the same question.
-    final kind = ref.watch(networkKindProvider);
+    // The session classifies the live route once (LAN, Tailscale or the
+    // relay). Re-deriving it here would be a second answer to the same
+    // question. Only asked while this PC is the live one.
+    final route = online ? ref.watch(connectedRouteProvider).value : null;
 
     // The whole row is the PC switcher: the chosen PC, and a chevron down that
     // says a menu drops from it. It is
@@ -208,7 +208,7 @@ class _DeviceHeader extends ConsumerWidget {
                         ),
                         if (online) ...[
                           const SizedBox(height: 2),
-                          TransportBadge(kind: kind, dense: true),
+                          TransportBadge(route: route, dense: true),
                         ],
                       ],
                     ),

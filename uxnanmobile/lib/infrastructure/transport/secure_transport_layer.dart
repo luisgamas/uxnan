@@ -338,6 +338,20 @@ class SecureChannel {
     );
   }
 
+  /// Counts every bridge envelope up to [seq] as already applied, so they are
+  /// refused as replays from here on. A no-op when this channel is already
+  /// past [seq].
+  ///
+  /// For a session that replaces one still delivering: the bridge replays to
+  /// the new channel everything after the sequence the phone advertised, and
+  /// the old channel may have delivered some of those while the new handshake
+  /// ran — applying them twice would duplicate them.
+  void skipInboundThrough(int seq) {
+    if (seq <= _lastInboundSeq) return;
+    _lastInboundSeq = seq;
+    _session = _session.withBridgeSeq(seq);
+  }
+
   /// Decrypts an inbound [envelope], enforcing session and replay checks.
   Future<Uint8List> decrypt(SecureEnvelope envelope) async {
     if (envelope.sessionId != _session.sessionId) {

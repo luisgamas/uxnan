@@ -6,7 +6,7 @@ publish_to: 'none'
 # version: <build-name>+<build-number>
 # The build-number is Play's versionCode and must strictly increase. The previous
 # release used 20260724, so today's calendar date is already greater.
-version: 0.0.37-alpha.20261003+20261004
+version: 0.0.38-alpha.20261003+20261005
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -85,6 +85,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   mocktail: ^1.0.0 # test doubles
+  stream_channel: ^2.1.4 # fake WebSocket channels in transport tests
   very_good_analysis: ^7.0.0 # lint ruleset (see analysis_options.yaml)
 
 flutter:

@@ -1,6 +1,6 @@
 {
   "name": "uxnan-bridge",
-  "version": "0.0.44-alpha.20261003",
+  "version": "0.0.45-alpha.20261003",
   "description": "Uxnan Bridge — local control-plane daemon connecting the Uxnan mobile app to the developer's PC over E2EE.",
   "license": "MPL-2.0",
   "author": "Luis Donaldo Gamas Vazquez",

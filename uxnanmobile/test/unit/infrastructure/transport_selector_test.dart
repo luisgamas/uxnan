@@ -239,7 +239,13 @@ void main() {
         () => selector(
           () => _FakeTransport((_) async => throw StateError('unreachable')),
         ).select(_device(relay: null, hosts: const ['192.168.1.5:8765'])),
-        throwsA(isA<TransportException>()),
+        throwsA(
+          isA<TransportException>().having(
+            (e) => e.kind,
+            'kind',
+            TransportErrorKind.noRoute,
+          ),
+        ),
       );
     });
 
@@ -258,7 +264,13 @@ void main() {
           created.add(t);
           return t;
         }).select(_device(relay: off, hosts: const ['192.168.1.5:8765'])),
-        throwsA(isA<TransportException>()),
+        throwsA(
+          isA<TransportException>().having(
+            (e) => e.kind,
+            'kind',
+            TransportErrorKind.noRoute,
+          ),
+        ),
       );
       expect(created.map((t) => t.connectedUrl), ['ws://192.168.1.5:8765']);
     });
@@ -267,6 +279,49 @@ void main() {
       final transport = await selector(() => _FakeTransport((_) async {}))
           .select(_device()) as _FakeTransport;
       expect(transport.connectedUrl, _relayPhoneUrl);
+    });
+
+    test('selectDirect returns a direct host and never dials the relay',
+        () async {
+      final created = <_FakeTransport>[];
+      final transport = await selector(() {
+        final t = _FakeTransport((_) async {});
+        created.add(t);
+        return t;
+      }).selectDirect(_device(hosts: const ['192.168.1.5:8765']));
+
+      expect(transport?.connectedUrl, 'ws://192.168.1.5:8765');
+      expect(created.map((t) => t.connectedUrl), ['ws://192.168.1.5:8765']);
+    });
+
+    test('selectDirect answers null when no direct host answers', () async {
+      final created = <_FakeTransport>[];
+      final transport = await selector(
+        () {
+          final t = _FakeTransport((url) async {
+            if (url.startsWith('ws://')) throw StateError('unreachable');
+          });
+          created.add(t);
+          return t;
+        },
+      ).selectDirect(_device(hosts: const ['192.168.1.5:8765']));
+
+      expect(transport, isNull);
+      // The relay was never dialed, and the failed host was let go.
+      expect(created, hasLength(1));
+      expect(created.single.disconnected, isTrue);
+    });
+
+    test('selectDirect answers null for a PC with no direct hosts', () async {
+      final created = <_FakeTransport>[];
+      final transport = await selector(() {
+        final t = _FakeTransport((_) async {});
+        created.add(t);
+        return t;
+      }).selectDirect(_device());
+
+      expect(transport, isNull);
+      expect(created, isEmpty);
     });
 
     test('leaves an explicit ws:// host scheme untouched', () async {
