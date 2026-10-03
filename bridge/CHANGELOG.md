@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.46-alpha.20261003] - 20261003
 ### Fixed
 
 - **A phone no longer uses the relay right next to its PC after the PC changed
