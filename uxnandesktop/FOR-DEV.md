@@ -1021,6 +1021,19 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 - [ ] Fork and "session info" (the agent's native session id, for resuming it
       from its own CLI) in the chat header's menu — the phone offers both.
 
+### Remote access (the user's own relay)
+- [ ] **Visual approval and a live run of Settings → Bridge & mobile → Remote
+      access.** Built: the section (`RelaySettings.svelte`), the setup dialog
+      (`RelaySetupDialog.svelte`), the shared token field
+      (`RelayTokenField.svelte`) and the one replica of the relay
+      (`$lib/bridge/relay.svelte.ts`, fed by `relay/status` on every connect and
+      `stream/relay/updated`), with component and store tests. Still owed: the
+      maintainer's visual review of the proposal (screenshots rendered from the
+      frontend only), and a run in `npm run tauri dev` against a bridge that
+      ships `relay/*` — a real deploy into a Cloudflare account, update,
+      new address and remove (with and without a remembered token) — then a
+      phone reaching this computer through it from another network.
+
 ### Terminal-launched sessions
 - [ ] **A live view of a terminal's session on the phone while it runs.** The
       hand-off is built (holds, Continue as chat, Continue here, Open in

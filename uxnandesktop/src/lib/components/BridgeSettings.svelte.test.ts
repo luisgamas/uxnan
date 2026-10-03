@@ -77,7 +77,7 @@ describe("BridgeSettings", () => {
 
   it("lists every paired phone and renames one in place", async () => {
     bridge.applyStatus({ state: "connected", bridgeVersion: "1", instanceId: "i", managed: false });
-    chat.settings = { home: "/Users/me", name: "Studio" };
+    chat.settings = { home: "/Users/me", name: "Studio", relay: null };
     chat.devices = [
       {
         deviceId: "p1",
