@@ -42,7 +42,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///   the filesystem did, so an error reads the same as on the app's machine.
 /// - 11: which agent each terminal runs — `WatchAgents`, `Event::Agent`.
 /// - 12: what this machine listens on — `Ports` → `Reply::Value`.
-pub const PROTOCOL: u32 = 12;
+/// - 13: its folders, for the project picker — `Browse` → `Reply::Value`.
+pub const PROTOCOL: u32 = 13;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -300,6 +301,12 @@ pub enum Call {
     /// The TCP ports this machine listens on (`ports::listening`), answered as
     /// [`Reply::Value`] — a `Vec` of the engine's `ports::ListeningPort`.
     Ports,
+    /// The sub-folders of `path` (the home when `None`), for the project
+    /// picker — the engine's `browse::DirListing`, in forward slashes, as
+    /// [`Reply::Value`].
+    Browse {
+        path: Option<String>,
+    },
     /// The last turn's prompt and reply from the transcript an agent's report
     /// named — read here, where the file is, and only if it is a transcript of
     /// that agent's own.

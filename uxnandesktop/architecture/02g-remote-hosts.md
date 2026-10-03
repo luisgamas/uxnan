@@ -144,7 +144,7 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.5 | sesiones vivas y su superficie de comandos | implementado |
 | §5.6 | inventario del host | implementado |
 | §5.7 | terminal remota, keepalive y caidas | implementado |
-| §5.8 | explorar carpetas, por SFTP | implementado |
+| §5.8 | explorar carpetas, por el motor | `browse` en el motor |
 | §5.9 | un proyecto que vive en el host | implementado |
 | §5.10 | ficheros del host, servidos por su motor | `commands::machine_for`, `uxnan-host/src/files.rs`, `fsRouter.ts` |
 | §5.10b | git del host, servido por su motor | `uxnan-host/src/repo.rs`, `agent_socket.rs` |
@@ -627,37 +627,17 @@ desconectar el host hace que la terminal reporte salida.
 
 ## 5.8 Explorar carpetas del host — IMPLEMENTADO
 
-`src-tauri/src/ssh/browse.rs`. **Por SFTP, igual que el arbol de ficheros — no
-preguntandole a un shell.** Antes se mandaba un script y se parseaba la
-respuesta: POSIX primero y PowerShell de reserva, o sea que un host con
-PowerShell pagaba **dos** comandos remotos por cada clic, y cada uno arranca una
-shell con su perfil en la otra maquina.
+**Lo lista el motor del host** (`Call::Browse`, protocolo 13) con el mismo
+`browse::browse_dirs` que lista las carpetas de esta maquina, y devuelve las rutas
+en la forma con barras normales en que la app guarda las de un host (`C:/Users/…`
+en un Windows). La insignia de repositorio es el mismo `.git` existe que aqui, y
+el listado avisa cuando se corta (`truncated`, 500 carpetas).
 
-Medido, que es lo que decidio el cambio:
-
-| | |
-|---|---|
-| Listar una carpeta **por shell** | 336 ms (contra el `sshd` de esta maquina, con `cmd`) |
-| La misma carpeta **por SFTP** | **6,6 ms** |
-| Un `exec` en el host real del usuario (§5.3) | **2.109 ms** — y eran dos por clic |
-| Insignia de repo: 63 carpetas, una a una | 44 ms |
-| Las mismas 63 **a la vez** | **3,3 ms** |
-
-Esa ultima fila es la que hace viable la insignia: las peticiones SFTP
-**se encauzan en el unico canal**, asi que el listado cuesta un viaje de ida y
-vuelta, no uno por carpeta. Y no consume canales extra (§5.3, `MaxSessions`),
-porque van todas por la sesion que ya esta abierta.
-
-**Detalle que solo aparecio corriendolo:** un host Windows contesta
-`realpath(".")` con `/C:/Users/gamas`. Correcto dentro del protocolo —ahi todo
-cuelga de `/`— e inutilizable fuera: esa cadena se guarda como ruta del proyecto,
-se teclea en una terminal de esa maquina y se le pasa a su git, y ninguno la
-acepta. Se le quita la barra (`strip_sftp_drive_root`), con sus tests.
-
-**Lo que se pierde:** un host con el subsistema `sftp` deshabilitado ya no se
-puede explorar. Es una configuracion rara y el arbol de ficheros ya dependia de
-SFTP, asi que ese host tampoco servia para gran cosa; se dice claro en vez de
-mantener dos implementaciones del mismo listado.
+Antes iba por SFTP (`ssh/browse.rs`, borrado), que ya habia sustituido a un
+script por la shell del host: 336 ms por listado por shell frente a 6,6 ms por
+SFTP en loopback, y ~2,1 s por `exec` en un host real. El motor lo resuelve en una
+llamada sobre su canal, sin un segundo listado que mantener. Un host donde el motor
+no corre no tiene selector, igual que no tiene ficheros de proyecto (§5.10).
 
 **Solo directorios.** Un proyecto es una carpeta; mandar miles de ficheros que
 nadie va a elegir es gastar bytes y segundos en ruido. Un listado que hubo que
@@ -866,9 +846,7 @@ proyecto de `ssh/sftp.rs`).
 contestan que los ficheros de ese host los sirve su motor y que alli no corre. Un
 host asi conserva sus terminales por un canal simple (§5.16, *Hosts donde el
 motor no corre*). SFTP sigue existiendo solo para lo que tiene que llegar
-**antes** que el motor o sin el: instalar el propio motor, el selector de
-carpetas (§5.8) y los bytes que mueve la mitad de git que aun va por comandos
-(§5.10b, §5.10c).
+**antes** que el motor: instalarlo.
 
 **El fencing sigue en el backend** (`02a` §2.9). Toda mutacion sobre un host
 —guardar, crear, renombrar, duplicar, borrar— lleva la expectativa (maquina +

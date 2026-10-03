@@ -88,7 +88,7 @@ pub struct AppState {
     /// on the connection that host already has, so keeping it costs nothing while
     /// re-opening one per listing would cost a round trip each time. Dropped with
     /// the session — and replaced, without being asked, whenever the host ends
-    /// the channel under it (`commands::with_sftp`).
+    /// the channel under it (`commands::sftp_for`).
     pub ssh_sftp: Arc<
         tokio::sync::Mutex<
             std::collections::HashMap<String, std::sync::Arc<crate::ssh::sftp::RemoteFiles>>,

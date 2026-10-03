@@ -919,6 +919,19 @@ impl HostEngine {
         }
     }
 
+    /// The sub-folders of `path` on the host (its home when `None`), for the
+    /// project picker — listed there by its engine.
+    pub async fn browse(
+        &self,
+        path: Option<String>,
+    ) -> Result<uxnan_workspace_engine::browse::DirListing, AppError> {
+        self.needs(13, "list its folders")?;
+        match self.request(Call::Browse { path }, None).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a folder listing", &other)),
+        }
+    }
+
     /// The TCP ports the host listens on, read there by its engine.
     pub async fn ports(
         &self,

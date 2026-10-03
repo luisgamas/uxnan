@@ -78,9 +78,9 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,068 backend tests**
-in total — 735 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 222 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 29 in
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,062 backend tests**
+in total — 726 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 225 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 29 in
 `uxnan-host` (24 against the real daemon over its socket — among them a project's
 files listed, saved and searched on the host, its git read, staged and
 committed there, its worktrees made and removed there, and which agent a terminal runs
@@ -93,8 +93,8 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,015 of which run everywhere; the other 53 are ignored probes that need something real to talk to
-(45 live SSH probes — 41 against a real `sshd`, one of which idles for five
+`tests/` — 1,014 of which run everywhere; the other 48 are ignored probes that need something real to talk to
+(40 live SSH probes — 37 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -116,8 +116,9 @@ holding a key the host authorizes for its own account), pushes from the host
 over SSH with the agent the connection forwards, before and after a reconnect,
 after a push with no agent has failed — and one more hears the host engine say
 which agent a terminal there runs, and when it ends — and one more has the
-engine list what that host listens on, its own `sshd` among it —
-plus **4 against a Linux host in a container**;
+engine list what that host listens on, its own `sshd` among it, and list its
+folders for the picker with their repository badges —
+plus **3 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
 
@@ -180,12 +181,11 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The four tests walk what still runs through the host's own shell and SFTP:
-password authentication, the shell classification, the inventory probe, the
-folder picker with its repository badge, and **what the host does when it runs
-out of channels** (held open until it refuses, then the message has to name the
+The three tests walk what still runs through the host's own shell:
+password authentication, the shell classification, the inventory probe, and
+**what the host does when it runs out of channels** (held open until it refuses, then the message has to name the
 number *it* enforced — this is what caught the off-by-one and the asynchronous
-release). A project's files and git are the host engine's now, so they are
+release). A project's files, git and folders are the host engine's now, so they are
 proven where the engine is: against the real daemon over its socket on every CI
 platform (`crates/uxnan-host/tests/daemon.rs`), and over SSH by the engine's live
 probes (`ssh::terminals::tests::live`, which the Windows CI lane runs and any

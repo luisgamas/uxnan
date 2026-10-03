@@ -1062,6 +1062,52 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS; writes a scratch folder in that host's home"]
+        async fn the_hosts_folders_are_listed_by_its_engine_for_the_picker() {
+            use uxnan_host_protocol::FsCall;
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            // No path is the home, as the picker opens.
+            let home = engine.browse(None).await.expect("the home");
+            assert!(home.parent.is_some(), "a home has somewhere to go up to");
+            assert!(
+                !home.path.contains('\\'),
+                "a host's paths are forward-slashed"
+            );
+            // A folder with `.git` is badged; one without is not.
+            let root: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.path.clone(),
+                    path: format!(".uxnan-live-browse-{}/repo/.git", std::process::id()),
+                })
+                .await
+                .unwrap();
+            let scratch = root.trim_end_matches("/repo/.git").to_string();
+            let _: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: scratch.clone(),
+                    path: "plain".into(),
+                })
+                .await
+                .unwrap();
+            let listed = engine.browse(Some(scratch.clone())).await.unwrap();
+            let badge = |name: &str| {
+                listed
+                    .entries
+                    .iter()
+                    .find(|e| e.name == name)
+                    .map(|e| e.is_repo)
+            };
+            assert_eq!(badge("repo"), Some(true), "{listed:?}");
+            assert_eq!(badge("plain"), Some(false), "{listed:?}");
+            let () = engine.fs(FsCall::Delete { path: scratch }).await.unwrap();
+            println!("live: {alias} engine listed {} for the picker", home.path);
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host whose sshd listens on 22"]
         async fn the_hosts_ports_are_read_by_its_engine() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

@@ -115,43 +115,6 @@ async fn posix_host_reports_its_inventory() {
 
 #[tokio::test]
 #[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
-async fn posix_host_browses_and_badges_a_repository() {
-    let (conn, _) = host_or_skip!();
-    let files = super::sftp::open(&conn).await.expect("an SFTP session");
-
-    let listing = super::browse::list_dirs(&files, "")
-        .await
-        .expect("the home");
-    println!(
-        "linux: {} has {:?}",
-        listing.path,
-        listing
-            .entries
-            .iter()
-            .map(|d| (&d.name, d.is_repo))
-            .collect::<Vec<_>>()
-    );
-
-    let repo = listing
-        .entries
-        .iter()
-        .find(|d| d.name == "project")
-        .expect("the repository is in the listing");
-    assert!(repo.is_repo, "a folder with .git is a repository");
-
-    let plain = listing
-        .entries
-        .iter()
-        .find(|d| d.name == "plain-folder")
-        .expect("the plain folder is in the listing");
-    assert!(!plain.is_repo, "a folder without .git is not");
-
-    // Home has a parent on POSIX (`/home`), which is what "up" needs.
-    assert_eq!(listing.parent.as_deref(), Some("/home"));
-}
-
-#[tokio::test]
-#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
 async fn posix_host_says_how_many_channels_it_allows_when_it_runs_out() {
     let (conn, _) = host_or_skip!();
 

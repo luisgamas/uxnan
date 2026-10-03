@@ -13,6 +13,7 @@
 
 pub mod agent_hooks;
 pub mod agentstop;
+pub mod browse;
 pub mod codex_trust;
 pub mod error;
 pub mod fs;

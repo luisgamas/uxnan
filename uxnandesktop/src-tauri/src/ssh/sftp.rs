@@ -1,11 +1,9 @@
 //! Files on a host, over SFTP — for what has to reach a host **before** its
 //! engine runs there, or without one.
 //!
-//! A project's files are the host engine's (`commands::machine_for`): it lists,
-//! saves and searches with the code this app runs on its own disk. What is left
-//! here is what cannot wait for that: putting the engine on the host in the
-//! first place, the folder picker that adds a project, and the bytes the
-//! command-driven git half moves in and out of a host.
+//! A project — its files, git, worktrees, the folder picker — is the host
+//! engine's (`commands::machine_for`). What is left here is the one thing that
+//! cannot wait for it: putting the engine on the host in the first place.
 //!
 //! **Why SFTP and not commands.** Everything else this layer sends to a host has
 //! to survive whatever shell that machine starts, because its owner switches
@@ -23,7 +21,7 @@
 //! failures are classified: [`SftpFailure::Gone`] says *ask again on a new
 //! session*, [`SftpFailure::Refused`] is the host's own answer and must be
 //! shown as-is. Callers that hold a cached session act on the difference
-//! (`commands::with_sftp`).
+//! (`commands::sftp_for`).
 
 use std::io;
 use std::pin::Pin;
@@ -33,12 +31,10 @@ use std::task::{Context, Poll};
 
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::FileType;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::conn::Connection;
 use crate::error::AppError;
-use crate::fs::FsEntry;
 
 /// Why an SFTP call failed, split by what the caller can do about it.
 #[derive(Debug)]
@@ -125,14 +121,6 @@ impl RemoteFiles {
         // We ended it, so there is nothing to observe: record it as the fact it
         // is rather than waiting for the write half to notice.
         self.alive.store(false, Ordering::Relaxed);
-    }
-
-    /// Claim a session is fine when it is not — the state a host leaves behind
-    /// when it ends a channel between two clicks, which is the case the retry in
-    /// `commands::with_sftp` exists for and the only way to reach it on purpose.
-    #[cfg(test)]
-    pub fn pretend_usable(&self) {
-        self.alive.store(true, Ordering::Relaxed);
     }
 }
 
@@ -298,53 +286,6 @@ fn join(dir: &str, name: &str) -> String {
 }
 
 impl RemoteFiles {
-    /// List a directory on the host.
-    ///
-    /// Hidden entries are kept: this is a project tree, and `.github`, `.env`
-    /// and `.gitignore` are exactly the files someone opens a tree to find.
-    /// Sorting matches the local layer — directories first, then
-    /// case-insensitive by name — so the same folder does not reorder itself
-    /// when it happens to live elsewhere.
-    pub async fn list_dir(&self, path: &str) -> Result<Vec<FsEntry>, SftpFailure> {
-        let dir = normalize(path);
-        let mut entries: Vec<FsEntry> = Vec::new();
-        let read = self
-            .session
-            .read_dir(&dir)
-            .await
-            .map_err(|e| self.failed(&format!("could not list {dir} on that host"), e))?;
-        for item in read {
-            let name = item.file_name();
-            if name == "." || name == ".." {
-                continue;
-            }
-            // A symlink to a directory is a directory to anyone browsing.
-            let is_dir = match item.file_type() {
-                FileType::Dir => true,
-                FileType::Symlink => self
-                    .session
-                    .metadata(join(&dir, &name))
-                    .await
-                    .map(|m| m.is_dir())
-                    .unwrap_or(false),
-                _ => false,
-            };
-            entries.push(FsEntry {
-                path: join(&dir, &name),
-                name,
-                is_dir,
-                // Only git can answer this, and git on a host is its own work.
-                ignored: false,
-            });
-        }
-        entries.sort_by(|a, b| {
-            b.is_dir
-                .cmp(&a.is_dir)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
-        Ok(entries)
-    }
-
     /// Rename an entry within its folder, answering the new path.
     ///
     /// **SFTP v3 cannot rename onto an existing path** (the atomic-overwrite
@@ -544,60 +485,6 @@ impl RemoteFiles {
 mod tests {
     use super::*;
 
-    /// Against the sshd of this machine: list a directory and read a file back.
-    ///
-    /// The point of the test is *portability*, not plumbing: SFTP is a subsystem,
-    /// so this same code path runs identically on a host whose shell is cmd,
-    /// PowerShell, WSL or Git Bash — the thing that broke every other approach.
-    #[tokio::test]
-    #[ignore = "needs a local sshd that authorizes a key in the agent"]
-    async fn sftp_live_lists_a_folder() {
-        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
-        use crate::ssh::conn::{connect, Endpoint, Handshake};
-        use crate::ssh::hostkey;
-
-        let user = std::env::var("UXNAN_SSH_TEST_USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .expect("a username");
-        let endpoint = Endpoint::new("127.0.0.1", 22);
-        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
-            panic!("expected an unknown host");
-        };
-        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
-        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
-            panic!("the recorded key should verify");
-        };
-        match authenticate(&mut conn, &user, &[Credential::Agent])
-            .await
-            .unwrap()
-        {
-            AuthOutcome::Success { .. } => {}
-            other => panic!("authenticate with the agent first: {other:?}"),
-        }
-
-        let sftp = open(&conn).await.expect("an SFTP session");
-
-        // A directory this repository is checked out in, so the listing has
-        // known contents and the paths can be opened again.
-        let here = std::env::current_dir().expect("cwd");
-        let dir = here.to_string_lossy().replace('\\', "/");
-        let entries = sftp.list_dir(&dir).await.expect("a listing");
-        println!("live: {} entries under {dir}", entries.len());
-        assert!(!entries.is_empty(), "a source directory is not empty");
-        assert!(
-            entries
-                .iter()
-                .all(|e| e.path.starts_with(&dir) && !e.path.contains('\\')),
-            "paths must come back absolute and forward-slashed"
-        );
-        // Directories sort first, as the local tree does.
-        let first_file = entries.iter().position(|e| !e.is_dir);
-        let last_dir = entries.iter().rposition(|e| e.is_dir);
-        if let (Some(f), Some(d)) = (first_file, last_dir) {
-            assert!(d < f, "directories come first");
-        }
-    }
-
     /// The failure the user hit: the panel wedged on `session closed` while the
     /// host's terminals kept working, because a dead session stayed cached.
     ///
@@ -631,23 +518,20 @@ mod tests {
             other => panic!("authenticate with the agent first: {other:?}"),
         }
 
-        let here = std::env::current_dir().expect("cwd");
-        let dir = here.to_string_lossy().replace('\\', "/");
-
         let sftp = open(&conn).await.expect("an SFTP session");
-        sftp.list_dir(&dir).await.expect("the first listing works");
+        sftp.home().await.expect("the first request works");
         assert!(sftp.usable(), "a session in use is not dead");
 
         // End it, and the app knows without having to ask the wire.
         sftp.close().await;
         assert!(!sftp.usable(), "a session that ended is not usable");
 
-        match sftp.list_dir(&dir).await {
+        match sftp.home().await {
             Err(SftpFailure::Gone(message)) => println!("live: classified as gone — {message}"),
             Err(SftpFailure::Refused(e)) => {
                 panic!("a dead session must not read as the host's answer: {e}")
             }
-            Ok(_) => panic!("a closed session cannot list anything"),
+            Ok(_) => panic!("a closed session cannot answer anything"),
         }
 
         // And the connection is untouched: a new session works, which is exactly
@@ -655,10 +539,10 @@ mod tests {
         let fresh = open(&conn)
             .await
             .expect("the connection still opens channels");
-        assert!(
-            !fresh.list_dir(&dir).await.expect("a listing").is_empty(),
-            "a fresh session on the same connection lists again"
-        );
+        fresh
+            .home()
+            .await
+            .expect("a fresh session on the same connection answers again");
     }
 
     #[test]

@@ -2503,18 +2503,23 @@ pub async fn ssh_host_inventory(
 }
 
 /// List the directories inside `path` on a connected host, for the picker that
-/// adds a project living there. An empty `path` starts at that machine's home.
+/// adds a project living there — listed by its engine, with the code that lists
+/// this machine's. An empty `path` starts at that machine's home.
 #[tauri::command]
 pub async fn ssh_browse_dirs(
+    app: AppHandle,
     state: State<'_, AppState>,
     host_id: String,
     path: String,
-) -> Result<ssh::browse::RemoteListing, CommandError> {
-    let dir = path.as_str();
-    with_sftp(&state, &host_id, |session| async move {
-        ssh::browse::list_dirs(&session, dir).await
-    })
-    .await
+) -> Result<crate::browse::DirListing, CommandError> {
+    let path = path.trim();
+    let path = (!path.is_empty()).then(|| path.to_string());
+    match machine_for(&app, &state, Some(&format!("ssh:{host_id}")), None).await? {
+        Machine::Host(engine) => engine.browse(path).await.map_err(CommandError::from),
+        Machine::Here => Err(CommandError::from(AppError::Invalid(format!(
+            "{host_id} is not a host"
+        )))),
+    }
 }
 
 /// Register a folder that lives on a host as a project.
@@ -2524,6 +2529,7 @@ pub async fn ssh_browse_dirs(
 /// path on two machines is two projects rather than one.
 #[tauri::command]
 pub async fn ssh_repo_add(
+    app: AppHandle,
     state: State<'_, AppState>,
     host_id: String,
     path: String,
@@ -2537,16 +2543,15 @@ pub async fn ssh_repo_add(
     let target = TargetId::Ssh(host_id.clone());
     // Ask the host whether this is a git repository, the same question the local
     // path asks — a plain folder is a valid project too, it just has no branches.
-    let is_git = {
-        let folder = path.as_str();
-        // Never a reason to refuse the project: `is_git_repo` answers `false`
-        // when it could not look, and a session that is not there is the same
-        // kind of "could not look".
-        with_sftp(&state, &host_id, |session| async move {
-            Ok(ssh::browse::is_git_repo(&session, folder).await)
-        })
-        .await
-        .unwrap_or(false)
+    // Never a reason to refuse the project: a host that could not be asked
+    // answers "not a repository", the same as one whose folder is not.
+    let is_git = match connected_engine(&app, &state, &host_id).await {
+        Some(engine) => engine
+            .git::<git::RepoStatus>(GitCall::Status { path: path.clone() })
+            .await
+            .map(|status| status.is_repo)
+            .unwrap_or(false),
+        None => false,
     };
 
     let mut data = state.data.write().await;
@@ -2636,63 +2641,6 @@ async fn sftp_for(
         .await
         .insert(host_id.to_string(), std::sync::Arc::clone(&session));
     Ok(session)
-}
-
-/// Run one file operation on a host, on a session that is allowed to have died.
-///
-/// The cached session is a channel, and a channel ends on its own schedule — the
-/// host's `sftp-server` exits, or it is closed under us — while the connection
-/// carries on. That is not hypothetical: it left the file panel reading
-/// `session closed` on every folder, permanently, next to terminals on the same
-/// host that were perfectly happy, because each terminal opens its own channel
-/// and this one was cached forever.
-///
-/// So a session that turns out to be gone is dropped and the work is done once
-/// more on a fresh one. Only that failure is retried ([`ssh::sftp::SftpFailure`]):
-/// what the *host* answered — no such path, no permission — is the user's to
-/// see, and asking a second time would only make them wait for the same no.
-///
-/// The retry covers the gap [`sftp_for`] cannot: a session that was fine when it
-/// was handed out and ended while the request was in the air.
-async fn with_sftp<T, F, Fut>(
-    state: &AppState,
-    host_id: &str,
-    operation: F,
-) -> Result<T, CommandError>
-where
-    F: Fn(std::sync::Arc<ssh::sftp::RemoteFiles>) -> Fut,
-    Fut: std::future::Future<Output = Result<T, ssh::sftp::SftpFailure>>,
-{
-    let session = sftp_for(state, host_id).await?;
-    match operation(std::sync::Arc::clone(&session)).await {
-        Ok(value) => return Ok(value),
-        Err(ssh::sftp::SftpFailure::Refused(error)) => return Err(CommandError::from(error)),
-        Err(ssh::sftp::SftpFailure::Gone(message)) => {
-            crate::diagnostics::log(
-                crate::diagnostics::Level::Info,
-                "ssh-files",
-                &format!("the file session on {host_id} had ended ({message}); opening another"),
-            );
-        }
-    }
-
-    // Drop *this* session, not whatever is cached now: another call may already
-    // have replaced it, and evicting that one would send both of us round again.
-    {
-        let mut cached = state.ssh_sftp.lock().await;
-        if cached
-            .get(host_id)
-            .is_some_and(|current| std::sync::Arc::ptr_eq(current, &session))
-        {
-            cached.remove(host_id);
-        }
-    }
-    drop(session);
-
-    let fresh = sftp_for(state, host_id).await?;
-    operation(fresh)
-        .await
-        .map_err(|failure| CommandError::from(AppError::from(failure)))
 }
 
 /// A host's live connection, cloned out of the registry.
@@ -6197,7 +6145,6 @@ mod tests {
     /// It has to be live: what makes a session unusable is its channel ending,
     /// and no fake can produce the library's own behavior when it does.
     mod remote_files {
-        use super::super::with_sftp;
         use crate::persistence::PersistenceManager;
         use crate::ssh;
         use crate::state::AppState;
@@ -6243,32 +6190,6 @@ mod tests {
             (dir, state)
         }
 
-        fn here() -> String {
-            std::env::current_dir()
-                .expect("cwd")
-                .to_string_lossy()
-                .replace('\\', "/")
-        }
-
-        /// Cache a session that has ended, and list a folder on it.
-        async fn cache_a_dead_session(state: &AppState) -> Arc<ssh::sftp::RemoteFiles> {
-            let dead = {
-                let sessions = state.ssh_sessions.read().await;
-                Arc::new(
-                    ssh::sftp::open(sessions.get(HOST).unwrap())
-                        .await
-                        .expect("an SFTP session"),
-                )
-            };
-            dead.close().await;
-            state
-                .ssh_sftp
-                .lock()
-                .await
-                .insert(HOST.to_string(), Arc::clone(&dead));
-            dead
-        }
-
         /// The freeze the user hit: adding a second host and connecting it left
         /// Settings spinning, and removing it spun too.
         ///
@@ -6309,79 +6230,6 @@ mod tests {
             );
             let _ = slow.await;
             println!("live: the write took {waited:?} with a command in flight");
-        }
-
-        #[tokio::test]
-        #[ignore = "needs a local sshd that authorizes a key in the agent"]
-        async fn a_dead_file_session_is_replaced_rather_than_reported() {
-            let (_dir, state) = state_with_a_live_host().await;
-            let listed = here();
-            // Borrowed, not moved: the operation is run twice, so it has to be
-            // callable twice — the same reason the commands pass a `&str`.
-            let dir = listed.as_str();
-
-            let dead = cache_a_dead_session(&state).await;
-
-            let entries = with_sftp(&state, HOST, |session| async move {
-                session.list_dir(dir).await
-            })
-            .await
-            .expect("the listing recovers on a new session");
-            assert!(!entries.is_empty(), "a source directory is not empty");
-
-            // And the dead one is gone from the cache, or the next call would
-            // pay for the same discovery all over again.
-            let cached = state.ssh_sftp.lock().await;
-            let current = cached.get(HOST).expect("a session is cached again");
-            assert!(
-                !Arc::ptr_eq(current, &dead),
-                "the replacement must be cached, not the corpse"
-            );
-        }
-
-        /// The same recovery, one step later: a session that still *claims* to be
-        /// usable and is not — which is what a host leaves behind when it ends a
-        /// channel between two clicks, and the only case the check in `sftp_for`
-        /// cannot catch before the request goes out.
-        #[tokio::test]
-        #[ignore = "needs a local sshd that authorizes a key in the agent"]
-        async fn a_session_that_dies_unnoticed_is_retried_not_reported() {
-            let (_dir, state) = state_with_a_live_host().await;
-            let listed = here();
-            let dir = listed.as_str();
-
-            let dead = cache_a_dead_session(&state).await;
-            dead.pretend_usable();
-
-            let entries = with_sftp(&state, HOST, |session| async move {
-                session.list_dir(dir).await
-            })
-            .await
-            .expect("the retry lists it");
-            assert!(!entries.is_empty(), "a source directory is not empty");
-        }
-
-        #[tokio::test]
-        #[ignore = "needs a local sshd that authorizes a key in the agent"]
-        async fn what_the_host_refuses_is_reported_on_the_first_ask() {
-            let (_dir, state) = state_with_a_live_host().await;
-            let absent = format!("{}/no-such-folder-9d2f", here());
-            let missing = absent.as_str();
-
-            let error = with_sftp(&state, HOST, |session| async move {
-                session.list_dir(missing).await
-            })
-            .await
-            .expect_err("a folder that is not there cannot be listed");
-            println!("live: refused with {}", error.message);
-
-            // The session it used is still cached: the host answered, so there
-            // was nothing wrong with the channel and nothing to open again.
-            let cached = state.ssh_sftp.lock().await;
-            assert!(
-                cached.contains_key(HOST),
-                "a refusal must not throw away a working session"
-            );
         }
     }
 }

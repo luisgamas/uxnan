@@ -214,9 +214,9 @@ change to this layer (`docs/testing.md`). Windows is what this is developed
 against day to day. macOS should work — it takes the same POSIX path Linux does —
 but nobody has run it, and this page will say so until someone has.
 
-A project's files and git are served by the **host engine** (below); the folder picker
-and installing the engine itself go over **SFTP**, a subsystem, so they behave
-identically everywhere. What still needs a shell
+A project's files, git and the folder picker are served by the **host engine**
+(below); installing the engine itself goes over **SFTP**, a subsystem, so it
+behaves identically everywhere. What still needs a shell
 (asking what is installed, and which ports it listens on) is sent in the dialect
 **the host itself reported** when it connected, never in one guessed from what it claims to be:
 
@@ -255,16 +255,16 @@ asks for `pwsh` first and falls back to Windows PowerShell. To read one back whi
 Settings → **Hosts** → the host → **Add a project**. The picker is the one you
 already use for local projects — address bar, ↑/↓ navigation, repository badges,
 a per-row **Add**, `Ctrl`/`⌘`+`Enter` to add the folder you are in — pointed at
-the other machine. Two differences, both real rather than cosmetic:
+the other machine. What is particular to a host:
 
-- **Navigation is as quick as the file tree**, because it goes the same way: over
-  SFTP, not by asking the host's shell to list a folder. The picker does not
-  watch the folder it shows — the refresh button is the reload.
+- **Navigation is as quick as the file tree**, because it goes the same way:
+  the host engine lists the folder there, with the code that lists this
+  machine's. The picker does not watch the folder it shows — the refresh button
+  is the reload.
 - **A very large folder comes back cut**, and the picker says so rather than
   quietly showing the first few hundred entries.
-- **A host with the `sftp` subsystem disabled cannot be browsed.** The file tree
-  already required it, so such a host was of little use anyway; it is said here
-  rather than discovered.
+- **A host where the engine cannot run cannot be browsed**, as it has no
+  project files either; its terminals still work.
 
 The project is registered against the host it lives on, so the same absolute path
 on two machines is two different projects, and mutations verify they are acting on
