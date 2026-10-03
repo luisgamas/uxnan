@@ -148,10 +148,15 @@ jobs:
       - name: Check the relay Worker ships inside the bridge
         if: steps.meta.outputs.ws == 'bridge'
         run: |
-          # npm may print more than one JSON value here (the pack report plus a
-          # notice object), so read them all and keep the one listing files.
+          # The report's shape varies across npm releases (a bare array, or keyed
+          # by workspace), so find the file list wherever it sits.
           files=$(npm pack --dry-run --json -w bridge 2>/dev/null \
-            | jq -rs '[.[] | if type == "array" then .[] else . end | select(has("files"))][0].files[].path')
+            | jq -rs '[.. | objects | select((.files | type) == "array")][0].files[].path' || true)
+          if [ -z "$files" ]; then
+            echo "::error::could not read the file list from npm pack; it printed:"
+            npm pack --dry-run --json -w bridge 2>&1 | head -c 1500
+            exit 1
+          fi
           for f in dist/relay-worker/uxnan-relay.js dist/relay-worker/meta.json; do
             grep -qxF "$f" <<<"$files" || { echo "::error::$f is missing from the uxnan-bridge package"; exit 1; }
           done
