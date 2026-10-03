@@ -29,8 +29,7 @@
   import ChatComposer from "./ChatComposer.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
-  import { chat, sessionKey } from "$lib/bridge/chat.svelte";
-  import { bridge } from "$lib/bridge/client.svelte";
+  import { sessionKey, useChat } from "$lib/bridge/chat.svelte";
   import type { AgentSessionSummary } from "$shared/models/agent-session";
   import { toast } from "$lib/toast";
   import { bridgeAgentForCommand, bridgeAgentLogo } from "$lib/bridge/agents";
@@ -43,6 +42,9 @@
   import { chat as chatTokens, focus, icon, row, text } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
+  // The replica — and the bridge — of the machine this chat is on.
+  const chat = useChat();
+  const bridge = chat.client;
 
   const agents = $derived(chat.agents);
   let agentId = $state<string | undefined>(undefined);

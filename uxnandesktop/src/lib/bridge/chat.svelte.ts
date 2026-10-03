@@ -14,7 +14,7 @@
 // never changes (another CLI cannot continue a native session); its model can
 // (`thread/setModel`), and every client sees it.
 
-import { untrack } from 'svelte';
+import { getContext, setContext, untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import type { AccessMode, Thread, TurnList } from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
@@ -125,6 +125,11 @@ export class ChatStore {
   /** The machine whose bridge this replicates. */
   get target(): TargetId {
     return this.#client.target;
+  }
+
+  /** The bridge this replicates — for a component that calls it directly. */
+  get client(): BridgeClientStore {
+    return this.#client;
   }
 
   constructor(client: BridgeClientStore, seenStore?: SeenStore) {
@@ -727,6 +732,31 @@ export function chatStatusesAt(
 ): { status: ChatActivity; at: number }[] {
   const store = !target || isLocalTarget(target) ? chat : hostChats.get(target);
   return store?.statusesAt(path) ?? [];
+}
+
+/** What one thread on the machine `target` names is doing — `idle` when that
+ *  machine has no replica. Like {@link chatStatusesAt}, never creates one. */
+export function chatStatusOf(
+  target: TargetId | null | undefined,
+  threadId: string | undefined,
+): ChatActivity {
+  const store = !target || isLocalTarget(target) ? chat : hostChats.get(target);
+  return threadId && store ? store.activity.of(threadId) : 'idle';
+}
+
+const CHAT_CONTEXT = Symbol('uxnan.chat');
+
+/** Make `store` the replica every chat component below reads — a chat tab's
+ *  pane provides the one of the machine its thread lives on. */
+export function provideChat(store: ChatStore): ChatStore {
+  setContext(CHAT_CONTEXT, store);
+  return store;
+}
+
+/** The replica this component is under: its chat tab's machine's, or this
+ *  machine's when nothing provided one (the sidebar, the launcher). */
+export function useChat(): ChatStore {
+  return getContext<ChatStore | undefined>(CHAT_CONTEXT) ?? chat;
 }
 
 /** Every replica that exists — this machine's first. */

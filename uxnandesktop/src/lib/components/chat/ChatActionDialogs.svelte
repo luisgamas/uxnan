@@ -5,7 +5,7 @@
   // actions (`chatActionsFor`) only sets `chatActionUi`.
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatOfThread } from "$lib/bridge/chat.svelte";
   import { chatActionUi } from "$lib/bridge/chatActions.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
   import { errorMessage } from "$lib/toast";
@@ -19,6 +19,7 @@
           id: `rename:${chatActionUi.renaming.id}`,
           title: chatActionUi.renaming.title,
           cwd: chatActionUi.renaming.cwd ?? "",
+          target: chatOfThread(chatActionUi.renaming.id).target,
           threadId: chatActionUi.renaming.id,
         }
       : null,
@@ -37,7 +38,8 @@
     const target = chatActionUi.deleting;
     if (!target) return true;
     try {
-      await chat.remove(target.id);
+      // The replica that holds it — this machine's, or a host's own bridge.
+      await chatOfThread(target.id).remove(target.id);
       chatActionUi.deleting = null;
       return true;
     } catch (err) {

@@ -29,7 +29,7 @@
   import ChatWorkGroup from "./ChatWorkGroup.svelte";
   import ChatImages from "./ChatImages.svelte";
   import ChatFiles from "./ChatFiles.svelte";
-  import { chat as chatStore } from "$lib/bridge/chat.svelte";
+  import { useChat } from "$lib/bridge/chat.svelte";
   import {
     assistantOf,
     userAttachments,
@@ -65,6 +65,8 @@
      *  (that turn's `continuedIn` is this one): its run went on here. */
     joinedRun?: boolean;
   } = $props();
+  // The replica of the machine this chat is on (its pane provides it).
+  const chatStore = useChat();
 
   const prompt = $derived(userText(turn));
   /** The images the user sent with the message, kept by the bridge. */

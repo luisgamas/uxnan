@@ -35,7 +35,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 30 in `uxnan-host` (2
 integration), of which 50 are ignored probes that need something real to talk to
 (42 live SSH probes — 39 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,828 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,829 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1164,11 +1164,11 @@ already written for the day phase 2 below lands — nothing to relax then.
          (`a_hosts_own_bridge_answers_through_the_engine`). Owed, in order:
          (a) **the chat for a host project** — the plumbing is done (one
          store and replica per machine: `bridges.for`, `chatFor`,
-         `chatStatusesAt`, chat tabs with a `target`); left is the UI: lifting
+         `chatStatusesAt`, chat tabs with a `target`, the pane providing its
+         machine's replica to the chat components); left is the UI: lifting
          the local-only gates (`projects.openChatAt`, `AgentSpace`,
          `RowActionsMenu`, `LauncherMenu`, `LauncherDialog`, control
-         `chat/open`), the chat components taking their store from the tab's
-         target, a host variant of `ChatBridgeGate`, and the terminal → chat
+         `chat/open`), a host variant of `ChatBridgeGate`, and the terminal → chat
          hand-off for host tabs (`terminalSessions.svelte.ts`) — the
          maintainer reviews it first;
          (b) **installing the bridge on a host** through the desktop — decide
@@ -1768,7 +1768,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,070 Rust + 1,828 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,070 Rust + 1,829 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

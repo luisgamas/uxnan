@@ -498,8 +498,11 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   `bridge:host-status` / `bridge:host-notification` events) and its own
   `ChatStore` (`chatFor(target)`), with seen marks and outbox kept apart
   (`hostSeenStore`, `outboxKey`). A chat tab carries the `target` its thread
-  lives on. Reads from derived values use `chatStatusesAt(target, path)`, which
-  never creates a replica. The chat UI does not offer host projects yet
+  lives on, and its pane provides that machine's replica to every chat
+  component below it (`provideChat` / `useChat`); outside a pane, actions find
+  the replica by thread (`chatOfThread`). Reads from derived values use
+  `chatStatusesAt(target, path)` / `chatStatusOf(target, threadId)`, which
+  never create a replica. The chat UI does not offer host projects yet
   (`02g` §5.18).
 - **Streaming performance.** Deltas are coalesced per render window
   (`streamCoalesceWindow`: 16–100 ms by reply length) and a reply renders as

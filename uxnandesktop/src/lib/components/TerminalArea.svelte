@@ -43,7 +43,7 @@
   import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
   import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
   import ChatPane from "$lib/components/chat/ChatPane.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatStatusOf } from "$lib/bridge/chat.svelte";
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
@@ -679,7 +679,7 @@
                           <!-- Same state glyph as a terminal agent's tab while the
                                chat's agent works or waits on you; the chat mark
                                otherwise. -->
-                          {@const chatStatus = chat.activity.of(t.threadId)}
+                          {@const chatStatus = chatStatusOf(t.target, t.threadId)}
                           {#if chatStatus !== "idle"}
                             <AgentStatusIndicator status={chatStatus} />
                           {:else}

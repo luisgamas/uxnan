@@ -9,7 +9,7 @@
 // **delete** removes it for every device, after a confirmation that says so.
 
 import type { Thread } from '$shared/models/thread';
-import { chat } from './chat.svelte';
+import { chatOfThread } from './chat.svelte';
 import { toastError } from '$lib/toast';
 
 export type ChatActionId = 'open' | 'rename' | 'archive' | 'unarchive' | 'delete';
@@ -37,10 +37,10 @@ class ChatActionUi {
         this.renaming = thread;
         return;
       case 'archive':
-        void chat.archive(thread.id).catch(toastError);
+        void chatOfThread(thread.id).archive(thread.id).catch(toastError);
         return;
       case 'unarchive':
-        void chat.unarchive(thread.id).catch(toastError);
+        void chatOfThread(thread.id).unarchive(thread.id).catch(toastError);
         return;
       case 'delete':
         this.deleting = thread;

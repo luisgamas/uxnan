@@ -40,7 +40,7 @@
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
-  import { chat, sessionKey } from "$lib/bridge/chat.svelte";
+  import { sessionKey, useChat } from "$lib/bridge/chat.svelte";
   import { terminalSessions } from "$lib/state/terminalSessions.svelte";
   import { usage } from "$lib/state/usage.svelte";
   import { usageProviderForAgent } from "$lib/usageCatalog";
@@ -70,6 +70,8 @@
     cwd: string;
     active: boolean;
   } = $props();
+  // The replica of the machine this chat is on (its pane provides it).
+  const chat = useChat();
 
 
   // Created (and loaded) once, when the pane mounts — never inside a
