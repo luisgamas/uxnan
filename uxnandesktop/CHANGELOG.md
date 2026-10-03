@@ -4,6 +4,16 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The relay indicator says whether a phone is actually using it.** A relay
+  that is connected but carrying no phone — phones on the same network or over
+  Tailscale connect directly — now looks quiet: a muted cloud and *Ready — no
+  phone is using it* on hover. Only a relay carrying phones lights up green,
+  with how many beside the icon (*Carrying 2 phones*). The popover says *Ready*
+  or *In use*, and with no phone on the relay it explains that nearby phones
+  connect directly. Connecting, can't connect, off and the update dot are
+  unchanged.
 
 ## [0.0.74] - 20261003
 ### Fixed

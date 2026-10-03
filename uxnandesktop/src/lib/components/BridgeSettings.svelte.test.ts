@@ -77,7 +77,7 @@ describe("BridgeSettings", () => {
 
   it("lists every paired phone and renames one in place", async () => {
     bridge.applyStatus({ state: "connected", bridgeVersion: "1", instanceId: "i", managed: false });
-    chat.settings = { home: "/Users/me", name: "Studio", relay: null };
+    chat.settings = { home: "/Users/me", name: "Studio", relay: null, hosts: [] };
     chat.devices = [
       {
         deviceId: "p1",
@@ -121,7 +121,7 @@ describe("BridgeSettings", () => {
 
   it("says how each connected phone reaches the bridge", () => {
     bridge.applyStatus({ state: "connected", bridgeVersion: "1", instanceId: "i", managed: false });
-    chat.settings = { home: "/Users/me", name: "Studio", relay: null };
+    chat.settings = { home: "/Users/me", name: "Studio", relay: null, hosts: [] };
     chat.devices = [
       { deviceId: "p1", displayName: "Pixel 9", publicKey: "k", pairedAt: 1 },
       { deviceId: "p2", displayName: "Work iPhone", publicKey: "k", pairedAt: 1 },
