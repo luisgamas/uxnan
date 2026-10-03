@@ -12,12 +12,15 @@
 //! Unix only: on Windows the forwarded agent is a named pipe with no such
 //! indirection, and Win32-OpenSSH does not forward one to a server anyway.
 
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
 const VAR: &str = "SSH_AUTH_SOCK";
 
 /// The stable path, in the run folder only this account can open.
-pub fn stable_path() -> PathBuf {
+#[cfg(unix)]
+fn stable_path() -> PathBuf {
     crate::paths::run_dir().join("agent.sock")
 }
 
