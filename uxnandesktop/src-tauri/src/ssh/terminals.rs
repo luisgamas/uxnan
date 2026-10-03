@@ -997,14 +997,25 @@ mod tests {
         }
 
         #[tokio::test]
-        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a POSIX host"]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn the_agent_a_host_terminal_runs_reaches_this_side() {
+            use crate::ssh::shellkind::ShellKind;
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
                 panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
             };
             let terminals = EngineTerminals::default();
             let conn = connect(&alias).await;
+            let shell = crate::ssh::shellkind::classify(&conn).await;
             let engine = engine(&conn).await;
+            // A stand-in named like an agent, as the terminal's foreground job:
+            // what detection reads is the process's name. POSIX renames it in
+            // place; Windows runs a copy of `PING.EXE` called `claude.exe`.
+            let stand_in: &[u8] = match shell {
+                ShellKind::Posix => b"(exec -a claude sleep 20)\r",
+                ShellKind::Cmd => b"copy /y %SystemRoot%\\System32\\PING.EXE %TEMP%\\claude.exe >nul & %TEMP%\\claude.exe -n 30 127.0.0.1 >nul\r",
+                ShellKind::PowerShell => b"Copy-Item $env:SystemRoot\\System32\\PING.EXE $env:TEMP\\claude.exe -Force; & $env:TEMP\\claude.exe -n 30 127.0.0.1 | Out-Null\r",
+                ShellKind::Unknown => panic!("{alias}: a shell that could not be named"),
+            };
             let (heard_tx, mut heard) = tokio::sync::mpsc::unbounded_channel();
             engine.set_on_agent(Box::new(move |session, command| {
                 let _ = heard_tx.send((session, command));
@@ -1032,13 +1043,8 @@ mod tests {
                 .await
                 .unwrap();
             answer_cursor_query(&terminals, &engine, "tab-agent", &seen).await;
-            // A stand-in named like an agent, as the terminal's foreground job.
             terminals
-                .write(
-                    Some(&engine),
-                    "tab-agent",
-                    b"(exec -a claude sleep 20)\r".to_vec(),
-                )
+                .write(Some(&engine), "tab-agent", stand_in.to_vec())
                 .await
                 .unwrap();
             let wait = std::time::Duration::from_secs(15);
