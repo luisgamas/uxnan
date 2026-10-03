@@ -492,6 +492,15 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   `timeline.ts` (pure: grouping a turn's parts into work groups, splitting the
   closing answer, work summaries, changed files, durations) and
   `streamingMarkdown.ts` (the phone's streaming split and render window).
+- **One store and one replica per machine with a bridge.** `bridge` / `chat` are
+  this machine's; a connected host whose account runs its own bridge gets its
+  own `BridgeClientStore` (`bridges.for("ssh:<id>")`, fed by the
+  `bridge:host-status` / `bridge:host-notification` events) and its own
+  `ChatStore` (`chatFor(target)`), with seen marks and outbox kept apart
+  (`hostSeenStore`, `outboxKey`). A chat tab carries the `target` its thread
+  lives on. Reads from derived values use `chatStatusesAt(target, path)`, which
+  never creates a replica. The chat UI does not offer host projects yet
+  (`02g` §5.18).
 - **Streaming performance.** Deltas are coalesced per render window
   (`streamCoalesceWindow`: 16–100 ms by reply length) and a reply renders as
   settled Markdown chunks, one `MarkdownView` each, so only the chunk being

@@ -88,8 +88,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   runs `uxnan-bridge`, the desktop now holds a link to it — its record read by
   the host engine, its socket carried by an SSH channel to that host's
   loopback, so no port is opened anywhere. It follows the host's connection,
-  and looks again every 30 seconds while there is none. The chat does not show
-  a host's conversations yet; this is the connection it will use.
+  and looks again every 30 seconds while there is none. The window keeps a
+  separate replica of each host bridge's conversations — its own unsent
+  messages and seen marks, and chat tabs that name the machine — so nothing of
+  one machine's chats mixes into another's. The chat does not offer a host's
+  projects yet; this is what it will use.
 - **You can see which machine a terminal is on.** A terminal tab on a host
   carries a small badge with the host's name and a dot for how it stands, and
   its title dims while the host is away. A host project's card in the sidebar

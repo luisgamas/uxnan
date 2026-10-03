@@ -48,23 +48,33 @@ const SEEN_KEY = 'uxnan.chat.seen';
  * chat's other client-only state (`outbox`): the bridge owns the
  * conversations, this holds only which of them this desktop has looked at.
  */
-export const localSeenStore: SeenStore = {
-  load() {
-    try {
-      const raw = localStorage.getItem(SEEN_KEY);
-      return raw ? parseSeenMarks(JSON.parse(raw)) : null;
-    } catch {
-      return null;
-    }
-  },
-  save(marks) {
-    try {
-      localStorage.setItem(SEEN_KEY, JSON.stringify(marks));
-    } catch {
-      /* storage unavailable: the marks live in memory only */
-    }
-  },
-};
+export const localSeenStore: SeenStore = seenStoreAt(SEEN_KEY);
+
+/** The marks of a host's own bridge, kept apart from this machine's: the
+ *  baseline is "by that bridge's clock", and a different machine's clock. */
+export function hostSeenStore(target: string): SeenStore {
+  return seenStoreAt(`${SEEN_KEY}.${target}`);
+}
+
+function seenStoreAt(key: string): SeenStore {
+  return {
+    load() {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? parseSeenMarks(JSON.parse(raw)) : null;
+      } catch {
+        return null;
+      }
+    },
+    save(marks) {
+      try {
+        localStorage.setItem(key, JSON.stringify(marks));
+      } catch {
+        /* storage unavailable: the marks live in memory only */
+      }
+    },
+  };
+}
 
 /** Stored marks, validated (`null` when they are not marks at all). */
 export function parseSeenMarks(value: unknown): SeenMarks | null {

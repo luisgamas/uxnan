@@ -60,7 +60,7 @@ import {
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
-import { chat } from "$lib/bridge/chat.svelte";
+import { chatStatusesAt } from "$lib/bridge/chat.svelte";
 import {
   resolveCommandCwd,
   substituteTokens,
@@ -505,7 +505,7 @@ class ProjectsStore {
       for (const p of paths) {
         const s = mostUrgentStatus([
           ...terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
-          ...chat.statusesAt(p).map((c) => c.status),
+          ...chatStatusesAt(repo.target, p).map((c) => c.status),
         ]);
         if (s === "waiting" || s === "blocked") n += 1;
       }
@@ -544,7 +544,7 @@ class ProjectsStore {
    *  comparators read, aggregated across the agents running in it. */
   private workspaceMeta(path: string, name: string): SortMeta {
     const tabs = terminals.agentTabs(path);
-    const chats = chat.statusesAt(path);
+    const chats = chatStatusesAt(this.targetForPath(path), path);
     const status = mostUrgentStatus([
       ...tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
       ...chats.map((c) => c.status),

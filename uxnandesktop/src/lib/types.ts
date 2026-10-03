@@ -1646,6 +1646,8 @@ export type SavedTab =
       title: string;
       customTitle?: string;
       cwd: string;
+      /** The machine whose bridge holds the conversation; absent = this one. */
+      target?: TargetId;
       /** The bridge thread; absent while the tab still shows the new-chat setup. */
       threadId?: string;
       /** Agent preselected for a chat not started yet (bridge `AgentId`). */

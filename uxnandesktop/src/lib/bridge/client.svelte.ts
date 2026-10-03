@@ -1,13 +1,20 @@
-// The window's side of the bridge connection (`bridgeclient` in Rust).
+// The window's side of the bridge connections (`bridgeclient` in Rust).
 //
-// The backend owns the socket and the token; this store only mirrors the
-// connection status (`bridge:status`), fans the bridge's JSON-RPC
-// notifications (`bridge:notification`) out to whoever listens, and calls
-// methods through the one `bridge_call` command. Architecture/02a §5.8.15.
+// The backend owns the sockets and the tokens; a store only mirrors one
+// bridge's connection status, fans its JSON-RPC notifications out to whoever
+// listens, and calls its methods through the one `bridge_call` command.
+// Architecture/02a §5.8.15.
+//
+// There is one store per machine with a bridge: this one's (`bridge`), and the
+// own bridge of each connected host that runs one (`bridges.for("ssh:<id>")`,
+// `02g` §5.18). The local store hears `bridge:status` / `bridge:notification`;
+// the hosts' arrive together as `bridge:host-status` / `bridge:host-notification`
+// and the registry hands each to its host's store.
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { BridgeClientStatus } from '$lib/types';
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from '$lib/target';
 
 /** A JSON-RPC notification as the bridge sent it. */
 export interface BridgeNotification {
@@ -72,6 +79,8 @@ export function isNotification(value: unknown): value is BridgeNotification {
 }
 
 export class BridgeClientStore {
+  /** The machine whose bridge this is. */
+  readonly target: TargetId;
   status = $state<BridgeClientStatus>({ state: 'off' });
   connected = $derived(this.status.state === 'connected');
 
@@ -79,9 +88,14 @@ export class BridgeClientStore {
   #connectedListeners = new Set<ConnectedListener>();
   #started = false;
 
-  /** Hydrate the status and subscribe to the backend's events (once). */
+  constructor(target: TargetId = LOCAL_TARGET) {
+    this.target = target;
+  }
+
+  /** Hydrate the status and subscribe to the backend's events (once). This
+   *  machine's bridge only: a host's store is fed by {@link BridgeRegistry}. */
   async start(): Promise<void> {
-    if (this.#started) return;
+    if (this.#started || !isLocalTarget(this.target)) return;
     this.#started = true;
     try {
       await listen<BridgeClientStatus>('bridge:status', (e) => this.applyStatus(e.payload));
@@ -123,7 +137,12 @@ export class BridgeClientStore {
   /** Call a bridge method. Throws {@link BridgeCallError}. */
   async call<T = unknown>(method: string, params?: unknown): Promise<T> {
     try {
-      return await invoke<T>('bridge_call', { method, params: params ?? null });
+      return await invoke<T>(
+        'bridge_call',
+        isLocalTarget(this.target)
+          ? { method, params: params ?? null }
+          : { method, params: params ?? null, target: this.target },
+      );
     } catch (err) {
       throw asCallError(err);
     }
@@ -131,8 +150,10 @@ export class BridgeClientStore {
 
   /** Try to connect now instead of waiting out the backoff. */
   async retry(): Promise<void> {
+    const host = sshHostId(this.target);
     try {
-      await invoke('bridge_client_retry');
+      if (host) await invoke('bridge_host_retry', { hostId: host });
+      else await invoke('bridge_client_retry');
     } catch {
       /* no backend */
     }
@@ -140,3 +161,72 @@ export class BridgeClientStore {
 }
 
 export const bridge = new BridgeClientStore();
+
+/** One host bridge's status, as `bridge:host-status` carries it. */
+interface HostStatus {
+  hostId: string;
+  status: BridgeClientStatus;
+}
+
+/** Every bridge the window knows: this machine's, and each host's own. */
+export class BridgeRegistry {
+  readonly local: BridgeClientStore;
+  // Plain maps on purpose: a store is created on first ask, which a derived
+  // value may do; only each store's own status is reactive.
+  readonly #hosts = new Map<string, BridgeClientStore>();
+  readonly #createdListeners = new Set<(store: BridgeClientStore) => void>();
+  #started = false;
+
+  constructor(local: BridgeClientStore) {
+    this.local = local;
+  }
+
+  /** The bridge of the machine `target` names (this one's when unset). */
+  for(target: TargetId | null | undefined): BridgeClientStore {
+    const host = sshHostId(target);
+    if (!host) return this.local;
+    let store = this.#hosts.get(host);
+    if (!store) {
+      store = new BridgeClientStore(`ssh:${host}`);
+      this.#hosts.set(host, store);
+      for (const listener of this.#createdListeners) listener(store);
+    }
+    return store;
+  }
+
+  /** The host stores known so far. */
+  hosts(): BridgeClientStore[] {
+    return [...this.#hosts.values()];
+  }
+
+  /** Hear about every host store as it is created (and the ones already
+   *  there), so whatever replicates a bridge can attach to it. */
+  onHostStore(listener: (store: BridgeClientStore) => void): () => void {
+    this.#createdListeners.add(listener);
+    for (const store of this.#hosts.values()) listener(store);
+    return () => this.#createdListeners.delete(listener);
+  }
+
+  /** Subscribe to the hosts' events and hydrate their statuses (once). */
+  async start(): Promise<void> {
+    if (this.#started) return;
+    this.#started = true;
+    try {
+      await listen<HostStatus>('bridge:host-status', (e) => this.#applyHost(e.payload));
+      await listen<{ hostId?: unknown; message?: unknown }>('bridge:host-notification', (e) => {
+        const host = e.payload?.hostId;
+        if (typeof host === 'string' && host) this.for(`ssh:${host}`).dispatch(e.payload.message);
+      });
+      for (const status of await invoke<HostStatus[]>('bridge_hosts_status')) this.#applyHost(status);
+    } catch {
+      // No backend (plain web preview): no hosts.
+    }
+  }
+
+  #applyHost(payload: HostStatus | null | undefined): void {
+    if (!payload || typeof payload.hostId !== 'string' || !payload.hostId || !payload.status) return;
+    this.for(`ssh:${payload.hostId}`).applyStatus(payload.status);
+  }
+}
+
+export const bridges = new BridgeRegistry(bridge);

@@ -48,11 +48,12 @@ import type {
   ThreadDeletedParams,
   ThreadUpdatedParams,
 } from '$shared/jsonrpc/notifications';
-import { bridge, type BridgeClientStore, type BridgeNotification } from './client.svelte';
+import { bridge, bridges, type BridgeClientStore, type BridgeNotification } from './client.svelte';
+import { isLocalTarget, type TargetId } from '$lib/target';
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
-import { writeOutbox, type SendRequest } from './outbox';
-import { ThreadActivity, type ChatActivity, type SeenStore } from './activity.svelte';
+import { outboxKey, writeOutbox, type SendRequest } from './outbox';
+import { hostSeenStore, ThreadActivity, type ChatActivity, type SeenStore } from './activity.svelte';
 
 /** How a session is known across agents: `agentId:sessionId`. */
 export function sessionKey(agentId: string, sessionId: string): string {
@@ -120,6 +121,11 @@ export class ChatStore {
   /** Images of user messages already fetched (`attachment`), by thread and id. */
   readonly #attachments = new Map<string, Promise<string>>();
   #started = false;
+
+  /** The machine whose bridge this replicates. */
+  get target(): TargetId {
+    return this.#client.target;
+  }
 
   constructor(client: BridgeClientStore, seenStore?: SeenStore) {
     this.#client = client;
@@ -393,8 +399,10 @@ export class ChatStore {
   conversation(threadId: string): Conversation {
     let conversation = this.#conversations.get(threadId);
     if (!conversation) {
-      conversation = new Conversation(threadId, (method, params) =>
-        this.#client.call(method, params),
+      conversation = new Conversation(
+        threadId,
+        (method, params) => this.#client.call(method, params),
+        outboxKey(this.target, threadId),
       );
       this.#conversations.set(threadId, conversation);
       if (this.#client.connected) void conversation.load();
@@ -594,7 +602,7 @@ export class ChatStore {
   #forgetUnsent(threadId: string): void {
     const open = this.#conversations.get(threadId);
     if (open) open.forgetPending();
-    else writeOutbox(threadId, []);
+    else writeOutbox(outboxKey(this.target, threadId), []);
   }
 
   /**
@@ -691,3 +699,43 @@ export class ChatStore {
 }
 
 export const chat = new ChatStore(bridge);
+
+/** A replica per host bridge, created with its store and started at once so
+ *  it converges the moment that bridge connects. */
+const hostChats = new Map<string, ChatStore>();
+bridges.onHostStore((client) => {
+  if (hostChats.has(client.target)) return;
+  const store = new ChatStore(client, hostSeenStore(client.target));
+  hostChats.set(client.target, store);
+  store.start();
+});
+
+/** The conversations of the machine `target` names: this one's bridge, or a
+ *  host's own (`02g` §5.18). */
+export function chatFor(target: TargetId | null | undefined): ChatStore {
+  if (!target || isLocalTarget(target)) return chat;
+  bridges.for(target);
+  return hostChats.get(target) ?? chat;
+}
+
+/** What the conversations in `path` on the machine `target` names are doing.
+ *  Never creates a replica (it is read from derived values): a host whose
+ *  bridge has not been heard from has none, and so no conversations. */
+export function chatStatusesAt(
+  target: TargetId | null | undefined,
+  path: string,
+): { status: ChatActivity; at: number }[] {
+  const store = !target || isLocalTarget(target) ? chat : hostChats.get(target);
+  return store?.statusesAt(path) ?? [];
+}
+
+/** Every replica that exists — this machine's first. */
+export function allChats(): ChatStore[] {
+  return [chat, ...hostChats.values()];
+}
+
+/** The replica that holds `threadId`, if any does. */
+export function chatOfThread(threadId: string, target?: TargetId | null): ChatStore {
+  if (target) return chatFor(target);
+  return allChats().find((c) => c.threads.has(threadId)) ?? chat;
+}
