@@ -853,6 +853,137 @@ mod tests {
             println!("live: {alias} engine served a project's git in {root}");
         }
 
+        /// `connect`, with `ForwardAgent` on and `agent` as the connection's
+        /// own `IdentityAgent` — the one it authenticates with and forwards.
+        async fn connect_forwarding(alias: &str, agent: &str) -> Arc<crate::ssh::conn::Connection> {
+            let host = SshHost {
+                id: "live".into(),
+                label: alias.into(),
+                config_host: Some(alias.into()),
+                hostname: String::new(),
+                port: 22,
+                user: String::new(),
+                identity_files: vec![],
+                identity_agent: None,
+                identities_only: false,
+                forward_agent: true,
+                proxy_command: None,
+                proxy_jump: None,
+                source: SshHostSource::SshConfig,
+                needs_prompt: false,
+            };
+            let mut route = route_for(&host).await.unwrap();
+            let target = route.hops.last_mut().unwrap();
+            target.resolved.forward_agent = true;
+            target.resolved.identity_agent = Some(agent.to_string());
+            match Dial::new(route)
+                .run(&|_| crate::ssh::auth::Secrets::default())
+                .await
+                .unwrap()
+            {
+                Step::Ready(ready) => Arc::new(ready.connection),
+                _ => panic!("could not reach {alias} silently"),
+            }
+        }
+
+        /// A push from the host signs with the agent the **latest** connection
+        /// forwards — the one the person is using now, not the one the engine
+        /// happened to be started under, whose socket ends with it.
+        ///
+        /// The remote is the host itself over SSH, in a scratch folder, with a
+        /// `known_hosts` of its own there: nothing of the account's `~/.ssh` is
+        /// read or written. A push with no agent must fail first, so a key the
+        /// host already holds cannot be what makes the later pushes pass.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_AGENT (an agent holding a key that host authorizes for its own account); writes a scratch repository in its home"]
+        async fn a_push_from_the_host_uses_the_agent_the_latest_connection_forwards() {
+            use uxnan_host_protocol::GitCall;
+            let (Ok(alias), Ok(agent)) = (
+                std::env::var("UXNAN_SSH_TEST_ALIAS"),
+                std::env::var("UXNAN_SSH_TEST_AGENT"),
+            ) else {
+                panic!("set UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_AGENT");
+            };
+            let run = |conn: Arc<crate::ssh::conn::Connection>, line: String| async move {
+                conn.exec(&line).await.expect("the host runs it")
+            };
+
+            let conn = connect_forwarding(&alias, &agent).await;
+            let first = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let dir = format!("{home}/.uxnan-live-push-{}", std::process::id());
+            let work = format!("{dir}/work");
+            let who = run(Arc::clone(&conn), "whoami".into()).await.stdout;
+            let ssh_command = format!(
+                "ssh -F /dev/null -o UserKnownHostsFile={dir}/known_hosts \
+                 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+                 -o PasswordAuthentication=no -o IdentityFile=/dev/null"
+            );
+            let setup = format!(
+                "set -e; mkdir -p {dir}; git init -q --bare {dir}/bare.git; \
+                 git init -q -b main {work}; cd {work}; \
+                 git config user.name Uxnan; git config user.email live@uxnan.invalid; \
+                 git config commit.gpgsign false; git config core.sshCommand '{ssh_command}'; \
+                 git remote add origin ssh://{}@127.0.0.1{dir}/bare.git; \
+                 git config branch.main.remote origin; git config branch.main.merge refs/heads/main; \
+                 echo one > a.txt; git add a.txt; git commit -qm one",
+                who.trim()
+            );
+            let out = run(Arc::clone(&conn), format!("sh -c \"{}\"", setup.replace('"', "\\\""))).await;
+            assert_eq!(out.exit_code, Some(0), "setup: {}", out.stderr);
+
+            // Without an agent there is nothing to sign with.
+            let bare = run(
+                Arc::clone(&conn),
+                format!("cd {work} && env -u SSH_AUTH_SOCK git push --dry-run 2>&1"),
+            )
+            .await;
+            assert_ne!(bare.exit_code, Some(0), "pushed with no agent: {}", bare.stdout);
+
+            let () = first
+                .git(GitCall::Push { path: work.clone() })
+                .await
+                .expect("a push signed by the forwarded agent");
+            let count = |conn: Arc<crate::ssh::conn::Connection>| {
+                let dir = dir.clone();
+                async move {
+                    run(conn, format!("git --git-dir {dir}/bare.git rev-list --count main"))
+                        .await
+                        .stdout
+                        .trim()
+                        .to_string()
+                }
+            };
+            assert_eq!(count(Arc::clone(&conn)).await, "1");
+
+            // The connection the engine was reached through goes, and with it
+            // its forwarded socket; a new one comes.
+            drop(first);
+            drop(conn);
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let conn = connect_forwarding(&alias, &agent).await;
+            let second = engine(&conn).await;
+            let out = run(
+                Arc::clone(&conn),
+                format!("cd {work} && echo two >> a.txt && git commit -qam two"),
+            )
+            .await;
+            assert_eq!(out.exit_code, Some(0), "{}", out.stderr);
+            let () = second
+                .git(GitCall::Push { path: work.clone() })
+                .await
+                .expect("a push through the new connection's agent");
+            assert_eq!(count(Arc::clone(&conn)).await, "2");
+
+            let _ = run(Arc::clone(&conn), format!("rm -rf {dir}")).await;
+            println!("live: {alias} pushed twice with the forwarded agent, across a reconnect");
+        }
+
         #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {

@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,065 Rust tests (743 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 212
+`docs/chat.md`). 1,066 Rust tests (744 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 212
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 28 in `uxnan-host` (23 against the daemon itself) + 45
-integration), of which 51 are ignored probes that need something real to talk to
-(43 live SSH probes — 39 against a real `sshd` and 4 against a **Linux host in a
+integration), of which 52 are ignored probes that need something real to talk to
+(44 live SSH probes — 40 against a real `sshd` and 4 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,804 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -1157,11 +1157,6 @@ already written for the day phase 2 below lands — nothing to relax then.
          sweeps this machine's worktree roots — stale scan, prune, the
          cleanup notice and its sizes (`worktreeclean.rs`) — still looks only
          here. A host's managed root needs the same sweep through the engine.
-      5. **Forwarded agent, live.** Engine processes follow the latest
-         connection's agent through `~/.uxnan/host/run/agent.sock`
-         (`uxnan-host/src/agent_socket.rs`, unit-tested); not yet proven by a
-         real `git push` over SSH from a host with `ForwardAgent` on, across a
-         reconnect.
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
       1. *Builds and packages on all three platforms, with no extra toolchain for
@@ -1762,7 +1757,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,065 Rust + 1,804 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,066 Rust + 1,804 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

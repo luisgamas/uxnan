@@ -1016,7 +1016,11 @@ primera reconexion. Cada `attach` apunta una ruta estable del directorio `run`
 (`agent.sock`) al socket de **su** conexion, y el motor da esa ruta a todo lo que
 arranca —su git y sus terminales—: lo que corre alli usa el agente de la ultima
 conexion, como lo haria una terminal abierta por ella (`uxnan-host/src/agent_socket.rs`).
-Solo Unix; en Windows el agente reenviado no tiene esa indireccion.
+Solo Unix; en Windows el agente reenviado no tiene esa indireccion. **Probado en
+vivo** contra un servidor Linux real: un push por SSH desde el host firmado con el
+agente reenviado, dos veces —antes y despues de cortar y volver a conectar—, tras
+comprobar que sin agente el mismo push falla
+(`a_push_from_the_host_uses_the_agent_the_latest_connection_forwards`).
 
 **Un fichero remoto se guarda en su maquina, o no se guarda.** Guardar pasaba por
 el filesystem local: con la ruta de un host eso falla — o, peor, escribe un
