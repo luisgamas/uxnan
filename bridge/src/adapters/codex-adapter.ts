@@ -106,9 +106,8 @@ import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
-  buildReplyResult,
+  approvalReply,
   describeServerRequest,
-  decisionToReply,
   type ApprovalKind,
   type PendingCodexApproval,
 } from './codex-approval.js';
@@ -1377,11 +1376,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!this.#onApprovalRequest) {
       // No bridge callback wired (unit test, or a caller that didn't pass
       // `onApprovalRequest`): default to denying to fail safe.
-      return buildReplyResult(draft.kind, decisionToReply('reject'));
+      return approvalReply(draft, 'reject');
     }
     const run = this.#currentRun();
     if (!run) {
-      return buildReplyResult(draft.kind, decisionToReply('reject'));
+      return approvalReply(draft, 'reject');
     }
     const approvalId = `codex-${run.turnId}-${(this.#approvalSeq += 1)}`;
     this.#pendingApprovals.set(approvalId, {
@@ -1395,7 +1394,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           setTimeout(() => resolve('reject'), APPROVAL_TIMEOUT_MS),
         ),
       ]);
-      return buildReplyResult(draft.kind, decisionToReply(decision));
+      return approvalReply(draft, decision);
     } finally {
       this.#pendingApprovals.delete(approvalId);
     }

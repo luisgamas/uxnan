@@ -1169,7 +1169,7 @@ test('CodexAdapter cancelTurn sends turn/interrupt and emits turn_aborted', asyn
   assert.equal(interrupt.params.turnId, 'codex-turn-1');
 });
 
-test('CodexAdapter routes commandExecution requestApproval to the bridge and replies with approved', async () => {
+test('CodexAdapter routes commandExecution requestApproval to the bridge and replies with accept', async () => {
   let approvalCall:
     | { threadId: string; toolName: string; input: Record<string, unknown> }
     | undefined;
@@ -1189,12 +1189,13 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
       jsonrpc: '2.0',
       id: 77,
       method: 'item/commandExecution/requestApproval',
+      // The v2 shape (codex-cli 0.157.1 schema): the command is one string.
       params: {
-        conversationId: '019codex-thread-aaaa-bbbb-cccccccccccc',
-        callId: 'call-1',
-        command: ['ls', '-la'],
+        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        turnId: 'codex-turn-1',
+        itemId: 'call-1',
+        command: 'ls -la',
         cwd: 'C:/tmp',
-        parsedCmd: [{ type: 'list_files', cmd: 'ls -la' }],
       },
     }),
   ]);
@@ -1204,7 +1205,9 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
     const handler = (msg: any) => {
       if (msg.id === 77) {
         // The reply to our server request
-        assert.equal(msg.result?.decision, 'approved');
+        // A v2 request takes a v2 decision; `approved` is ignored and Codex
+        // asks again.
+        assert.equal(msg.result?.decision, 'accept');
         resolve();
       }
     };
@@ -1224,7 +1227,7 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
   await done;
 });
 
-test('CodexAdapter routes fileChange requestApproval to the bridge and replies with approved_for_session on approveSession', async () => {
+test('CodexAdapter routes fileChange requestApproval to the bridge and replies with acceptForSession on approveSession', async () => {
   const { adapter, server } = setup({
     onApprovalRequest: async () => 'approveSession',
   });
@@ -1238,9 +1241,10 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
       id: 88,
       method: 'item/fileChange/requestApproval',
       params: {
-        conversationId: '019codex-thread-aaaa-bbbb-cccccccccccc',
-        callId: 'patch-1',
-        fileChanges: { 'a.txt': { type: 'update', unified_diff: '@@ -1 +1 @@\n-old\n+new\n' } },
+        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        turnId: 'codex-turn-1',
+        itemId: 'patch-1',
+        reason: 'write outside the workspace',
       },
     }),
   ]);
@@ -1248,7 +1252,7 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
   await new Promise<void>((resolve) => {
     const handler = (msg: any) => {
       if (msg.id === 88) {
-        assert.equal(msg.result?.decision, 'approved_for_session');
+        assert.equal(msg.result?.decision, 'acceptForSession');
         resolve();
       }
     };
