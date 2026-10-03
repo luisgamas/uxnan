@@ -8,6 +8,16 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Reading and writing project files, and searching them (`fs`): the same crates
+# and versions the app used for it.
+tokio = { version = "1", features = ["fs", "rt", "io-util"] }
+ignore = "0.4"
+globset = "0.4"
+regex = "1"
+base64 = "0.22"
+# What git ignores, for the file tree (`git`): libgit2 without its network
+# transports, statically linked — it builds for every host target.
+git2 = { version = "0.20", default-features = false }
 # The control surface's header and variable names an agent identifies itself
 # with (`mcp_launch`).
 uxnan-control-protocol = { path = "../control-protocol" }
@@ -42,5 +52,6 @@ sysinfo = "0.33"
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }

@@ -1605,23 +1605,7 @@ pub struct ImageDiff {
     pub new: Option<ImageData>,
 }
 
-/// MIME type for a file with a known image extension, else `None` (the frontend
-/// only requests image diffs for recognised extensions, but we double-check).
-pub fn image_mime(file: &str) -> Option<&'static str> {
-    let ext = file.rsplit('.').next()?.to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "ico" => "image/x-icon",
-        "svg" => "image/svg+xml",
-        "avif" => "image/avif",
-        "tif" | "tiff" => "image/tiff",
-        _ => return None,
-    })
-}
+pub use crate::fs::image_mime;
 
 /// Raw stdout bytes of a git command (no UTF-8 lossy conversion), for reading
 /// binary blobs. Routes through `wsl.exe` for WSL repos like [`git`].

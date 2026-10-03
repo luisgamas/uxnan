@@ -6809,15 +6809,21 @@ dependencies = [
 name = "uxnan-workspace-engine"
 version = "0.0.72"
 dependencies = [
+ "base64 0.22.1",
+ "git2",
+ "globset",
  "hex",
+ "ignore",
  "notify",
  "notify-debouncer-full",
  "portable-pty",
+ "regex",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sysinfo",
  "tempfile",
+ "tokio",
  "toml_edit 0.22.27",
  "uuid",
  "uxnan-control-protocol",

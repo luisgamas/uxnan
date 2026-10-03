@@ -536,7 +536,8 @@ impl RemoteFiles {
         dir: &str,
         rel: &'a str,
     ) -> Result<(String, &'a str), SftpFailure> {
-        let segments = crate::fs::split_new_entry_path(rel).map_err(SftpFailure::Refused)?;
+        let segments =
+            crate::fs::split_new_entry_path(rel).map_err(|e| SftpFailure::Refused(e.into()))?;
         let base = normalize(dir);
         let meta = self
             .session
@@ -576,7 +577,8 @@ impl RemoteFiles {
     /// after the direct attempt has failed.
     pub async fn rename(&self, path: &str, new_name: &str) -> Result<String, SftpFailure> {
         let source = normalize(path);
-        let name = crate::fs::validate_bare_name(new_name).map_err(SftpFailure::Refused)?;
+        let name =
+            crate::fs::validate_bare_name(new_name).map_err(|e| SftpFailure::Refused(e.into()))?;
         let parent = parent_of(&source).ok_or_else(|| {
             SftpFailure::Refused(AppError::Invalid(format!("{source} has no parent folder")))
         })?;
