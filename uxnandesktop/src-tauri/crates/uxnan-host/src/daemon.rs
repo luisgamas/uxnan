@@ -194,7 +194,7 @@ impl Daemon {
             }
             _ => (None, Vec::new()),
         };
-        let home = paths_home();
+        let home = crate::paths_home();
         let cwd = cwd.filter(|c| !c.is_empty()).unwrap_or(home);
         let agent_id = env
             .iter()
@@ -335,6 +335,18 @@ impl Daemon {
         }
         shared.viewers.insert(viewer_id, viewer.clone());
         true
+    }
+
+    /// Where this daemon's live terminals stand — what the cleanup must never
+    /// take away from under them.
+    fn terminal_folders(&self) -> Vec<String> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.alive.load(Ordering::SeqCst))
+            .map(|s| s.cwd.clone())
+            .collect()
     }
 
     /// The terminals to look at for agents, and the commands to look for —
@@ -594,7 +606,8 @@ impl Daemon {
             | Call::Fs(_)
             | Call::Git(_)
             | Call::Ports
-            | Call::Browse { .. } => Outcome::Error {
+            | Call::Browse { .. }
+            | Call::Cleanup(_) => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -649,12 +662,6 @@ impl Daemon {
     }
 }
 
-fn paths_home() -> String {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| "/".to_string())
-}
-
 /// Leave the SSH session that started us: a new session (so its hang-up does
 /// not reach us), SIGHUP ignored.
 ///
@@ -704,6 +711,7 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
         }
     });
     let daemon = Arc::new(Daemon::new());
+    tokio::spawn(crate::cleanup::sweep_leftovers());
     log::line(&format!(
         "daemon {} started (protocol {PROTOCOL}, epoch {})",
         env!("CARGO_PKG_VERSION"),
@@ -1019,6 +1027,14 @@ where
                                         .map(uxnan_workspace_engine::browse::DirListing::forward_slashed)
                                         .and_then(crate::files::value);
                                     let outcome = crate::files::outcome(found);
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Cleanup(call) }) => {
+                                let answer = viewer.clone();
+                                let busy = daemon.terminal_folders();
+                                tokio::spawn(async move {
+                                    let outcome = crate::cleanup::serve(call, busy).await;
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
                             }

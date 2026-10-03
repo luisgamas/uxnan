@@ -1126,6 +1126,108 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and git there; writes under that host's ~/uxnan and removes only what it made"]
+        async fn a_hosts_old_worktrees_are_cleaned_up_by_its_engine() {
+            use crate::worktreeclean::{CleanupCandidate, CleanupOutcome};
+            use uxnan_host_protocol::{CleanupCall, FsCall};
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = engine.browse(None).await.unwrap();
+            let had_uxnan = home.entries.iter().any(|e| e.name == "uxnan");
+            // A repository of the test's own, and a leftover folder git does
+            // not own in its group under the host's managed root.
+            let scratch: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.path.clone(),
+                    path: format!(".uxnan-live-clean-{}", std::process::id()),
+                })
+                .await
+                .unwrap();
+            let repo = format!("{scratch}/repo");
+            let out = conn
+                .exec(&format!("git init -q {repo}"))
+                .await
+                .expect("git runs there");
+            assert_eq!(out.exit_code, Some(0), "{}", out.stderr);
+            let group = format!(
+                "{}/uxnan/worktrees/live-clean-{}",
+                home.path,
+                std::process::id()
+            );
+            let stray: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.path.clone(),
+                    path: format!(
+                        "{}/stray",
+                        group.trim_start_matches(&format!("{}/", home.path))
+                    ),
+                })
+                .await
+                .unwrap();
+            let marker: String = engine
+                .fs(FsCall::CreateFile {
+                    dir: group.clone(),
+                    path: crate::worktreeloc::MARKER_FILE.into(),
+                })
+                .await
+                .unwrap();
+            let () = engine
+                .fs(FsCall::Write {
+                    path: marker,
+                    content: repo.clone(),
+                })
+                .await
+                .unwrap();
+
+            let found: Vec<CleanupCandidate> = engine
+                .cleanup(CleanupCall::Scan {
+                    roots: vec![],
+                    projects: vec![repo.clone()],
+                })
+                .await
+                .expect("the host scans its own root");
+            let ours = found
+                .iter()
+                .find(|c| c.path == stray)
+                .unwrap_or_else(|| panic!("{stray} not among {found:?}"));
+            assert_eq!(
+                serde_json::to_value(ours.kind).unwrap(),
+                serde_json::json!("orphaned")
+            );
+            let outcome: CleanupOutcome = engine
+                .cleanup(CleanupCall::Remove {
+                    roots: vec![],
+                    projects: vec![repo.clone()],
+                    paths: vec![stray.clone()],
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                outcome.removed,
+                vec![stray.clone()],
+                "{:?}",
+                outcome.refused
+            );
+
+            // Only what this test made goes.
+            let () = engine.fs(FsCall::Delete { path: scratch }).await.unwrap();
+            if !had_uxnan {
+                let () = engine
+                    .fs(FsCall::Delete {
+                        path: format!("{}/uxnan", home.path),
+                    })
+                    .await
+                    .unwrap();
+            } else {
+                let _ = engine.fs::<()>(FsCall::Delete { path: group }).await;
+            }
+            println!("live: {alias} engine cleaned up a leftover worktree folder there");
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host whose sshd listens on 22"]
         async fn the_hosts_ports_are_read_by_its_engine() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

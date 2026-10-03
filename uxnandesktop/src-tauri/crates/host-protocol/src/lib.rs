@@ -43,7 +43,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 11: which agent each terminal runs — `WatchAgents`, `Event::Agent`.
 /// - 12: what this machine listens on — `Ports` → `Reply::Value`.
 /// - 13: its folders, for the project picker — `Browse` → `Reply::Value`.
-pub const PROTOCOL: u32 = 13;
+/// - 14: worktree upkeep in its managed roots — `Cleanup`.
+pub const PROTOCOL: u32 = 14;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -307,6 +308,9 @@ pub enum Call {
     Browse {
         path: Option<String>,
     },
+    /// Worktree upkeep in this machine's managed roots (`worktreeclean`),
+    /// answered as [`Reply::Value`].
+    Cleanup(CleanupCall),
     /// The last turn's prompt and reply from the transcript an agent's report
     /// named — read here, where the file is, and only if it is a transcript of
     /// that agent's own.
@@ -340,6 +344,28 @@ pub enum Call {
     /// workspace engine's own `git` — answered as [`Reply::Value`] in that
     /// module's shapes.
     Git(GitCall),
+}
+
+/// What [`Call::Cleanup`] asks. The daemon adds its own roots — its account's
+/// managed worktree root and clone folder — and refuses what its terminals
+/// have open; the caller adds what only it knows: the projects it lists here
+/// (`projects`) and the custom roots they name (`roots`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum CleanupCall {
+    /// What can be cleaned up, and what is blocked and why.
+    Scan {
+        roots: Vec<String>,
+        projects: Vec<String>,
+    },
+    /// Size on disk of each path, in order.
+    Sizes { paths: Vec<String> },
+    /// Remove `paths`, each re-verified against a fresh scan first.
+    Remove {
+        roots: Vec<String>,
+        projects: Vec<String>,
+        paths: Vec<String>,
+    },
 }
 
 /// What [`Call::Git`] asks. Every `path` is a worktree on the host.

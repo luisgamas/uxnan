@@ -1646,3 +1646,87 @@ async fn the_agent_a_terminal_runs_is_said_as_it_changes_and_to_who_comes_back()
     assert_eq!(next_agent(&mut client).await, (session, None));
     assert_eq!(next_agent(&mut back).await, (session, None));
 }
+
+#[tokio::test]
+async fn a_hosts_old_worktrees_are_found_and_removed_there_but_never_one_in_use() {
+    use uxnan_host_protocol::CleanupCall;
+    use uxnan_workspace_engine::worktreeloc::{repo_key, MARKER_FILE};
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    // The account's own managed root, where this host's worktrees live.
+    // As the account's HOME spells it — what both its terminals and the
+    // cleanup's roots start from.
+    let home = daemon.user_home();
+    let repo_dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(repo_dir.path()).unwrap();
+    git_here(&repo, &["init", "-q", "-b", "main"]);
+    let repo = repo.display().to_string().replace('\\', "/");
+    let group = home.join("uxnan/worktrees").join(repo_key(&repo));
+    std::fs::create_dir_all(&group).unwrap();
+    std::fs::write(group.join(MARKER_FILE), &repo).unwrap();
+    // Two leftovers git does not own; a terminal stands in the second.
+    let stray = group.join("stray");
+    let held = group.join("held");
+    std::fs::create_dir_all(&stray).unwrap();
+    std::fs::create_dir_all(&held).unwrap();
+    let held_path = held.display().to_string().replace('\\', "/");
+    let opened = client
+        .call(Call::Open {
+            cols: 80,
+            rows: 24,
+            cwd: Some(held_path.clone()),
+            command: Some(vec!["sh".into()]),
+            env: vec![],
+            label: "tab-held".into(),
+        })
+        .await;
+    assert!(matches!(opened, Outcome::Ok { .. }), "{opened:?}");
+
+    let call = |op: CleanupCall| Call::Cleanup(op);
+    let Outcome::Ok {
+        reply: Reply::Value { value: found },
+    } = client
+        .call(call(CleanupCall::Scan {
+            roots: vec![],
+            projects: vec![repo.clone()],
+        }))
+        .await
+    else {
+        panic!("the scan answers");
+    };
+    let kind_of = |name: &str| {
+        found
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .map(|c| c["kind"].as_str().unwrap().to_string())
+    };
+    assert_eq!(kind_of("stray").as_deref(), Some("orphaned"), "{found}");
+    assert_eq!(kind_of("held").as_deref(), Some("blocked"), "{found}");
+
+    let stray_path = stray.display().to_string().replace('\\', "/");
+    let Outcome::Ok {
+        reply: Reply::Value { value: outcome },
+    } = client
+        .call(call(CleanupCall::Remove {
+            roots: vec![],
+            projects: vec![repo.clone()],
+            paths: vec![stray_path.clone(), held_path.clone()],
+        }))
+        .await
+    else {
+        panic!("the removal answers");
+    };
+    assert_eq!(
+        outcome["removed"],
+        serde_json::json!([stray_path]),
+        "{outcome}"
+    );
+    assert_eq!(outcome["refused"][0]["path"], held_path, "{outcome}");
+    assert!(!stray.exists());
+    assert!(
+        held.exists(),
+        "a folder a terminal stands in is never taken"
+    );
+}

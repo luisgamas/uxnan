@@ -43,6 +43,9 @@ serde_json = "1"
 toml_edit = "0.22"
 sha2 = "0.10"
 hex = "0.4"
+# A unique name for a worktree moved aside before it is deleted
+# (`worktreeclean`). The same crate and version the app uses.
+uuid = { version = "1", features = ["v4"] }
 # The process table: which agent a terminal runs (`procscan`) and ending it
 # (`agentstop`). The same crate and version the app uses.
 sysinfo = "0.33"

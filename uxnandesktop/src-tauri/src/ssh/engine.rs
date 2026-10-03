@@ -919,6 +919,18 @@ impl HostEngine {
         }
     }
 
+    /// Worktree upkeep in the host's managed roots, by its engine there.
+    pub async fn cleanup<T: serde::de::DeserializeOwned>(
+        &self,
+        call: uxnan_host_protocol::CleanupCall,
+    ) -> Result<T, AppError> {
+        self.needs(14, "clean up its worktrees")?;
+        match self.request(Call::Cleanup(call), None).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a cleanup answer", &other)),
+        }
+    }
+
     /// The sub-folders of `path` on the host (its home when `None`), for the
     /// project picker — listed there by its engine.
     pub async fn browse(

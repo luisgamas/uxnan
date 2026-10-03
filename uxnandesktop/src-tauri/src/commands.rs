@@ -20,7 +20,7 @@ use crate::state::{AppState, HookServerInfo};
 use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 use crate::worktreeclean;
 use crate::worktreeloc::{self, Resolved};
-use uxnan_host_protocol::{FsCall, GitCall};
+use uxnan_host_protocol::{CleanupCall, FsCall, GitCall};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -3288,9 +3288,12 @@ pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
     let (global, overrides) = {
         let data = state.data.read().await;
         let settings = data.settings.worktrees.clone();
+        // A host project's own root is a folder on that host, its engine's to
+        // clean (`host_cleanup_scope`), never one on this machine.
         let overrides: Vec<String> = data
             .repos
             .iter()
+            .filter(|r| r.target.is_local())
             .filter_map(|r| r.worktree_root.clone())
             .collect();
         (settings, overrides)
@@ -3463,7 +3466,8 @@ fn repos_root() -> String {
         .unwrap_or_default()
 }
 
-/// The paths of the repositories currently registered as projects. A worktree
+/// The paths of the repositories currently registered as projects on this
+/// machine (a host's are its engine's, `host_cleanup_scope`). A worktree
 /// under a managed root whose repository is not among them belongs to a project
 /// the user closed — removing one touches nothing on disk, so its worktrees stay
 /// behind, and this is what lets the cleanup see them.
@@ -3474,22 +3478,53 @@ async fn project_paths(state: &AppState) -> Vec<String> {
         .await
         .repos
         .iter()
+        .filter(|r| r.target.is_local())
         .map(|r| r.path.clone())
         .collect()
 }
 
-/// Worktrees inside the managed folder that can be cleaned up, plus the ones
-/// blocked by uncommitted work (listed, never removable). Read-only.
+/// What a host adds to its own managed roots for the cleanup: the paths of its
+/// projects here, and the custom roots they name.
+async fn host_cleanup_scope(state: &AppState, host_id: &str) -> (Vec<String>, Vec<String>) {
+    let data = state.data.read().await;
+    let mine = data
+        .repos
+        .iter()
+        .filter(|r| r.target.ssh_host_id() == Some(host_id));
+    let projects = mine.clone().map(|r| r.path.clone()).collect();
+    let roots = mine.filter_map(|r| r.worktree_root.clone()).collect();
+    (roots, projects)
+}
+
+/// Worktrees inside the managed folders of the machine `target` names that can
+/// be cleaned up, plus the ones blocked by uncommitted work (listed, never
+/// removable). Read-only. On a host its engine scans its own roots with the
+/// same rules.
 #[tauri::command]
 pub async fn worktree_cleanup_scan(
+    app: AppHandle,
     state: State<'_, AppState>,
+    target: Option<String>,
 ) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
-    let roots = managed_roots(&state).await;
-    let projects = project_paths(&state).await;
-    let busy = state.pty.live_cwds();
-    let mut found = worktreeclean::scan(&roots, &projects, &busy).await;
-    found.extend(worktreeclean::scan_clones(&repos_root(), &projects, &busy).await);
-    Ok(found)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => {
+            let roots = managed_roots(&state).await;
+            let projects = project_paths(&state).await;
+            let busy = state.pty.live_cwds();
+            Ok(worktreeclean::scan_all(&roots, &repos_root(), &projects, &busy).await)
+        }
+        Machine::Host(engine) => {
+            let host = target
+                .as_deref()
+                .and_then(|t| t.strip_prefix("ssh:"))
+                .unwrap_or("");
+            let (roots, projects) = host_cleanup_scope(&state, host).await;
+            engine
+                .cleanup(CleanupCall::Scan { roots, projects })
+                .await
+                .map_err(CommandError::from)
+        }
+    }
 }
 
 /// Size on disk of each given worktree, in bytes, in the order asked.
@@ -3498,26 +3533,62 @@ pub async fn worktree_cleanup_scan(
 /// far more than every git query in the scan combined, so the list appears
 /// immediately and the sizes fill in.
 #[tauri::command]
-pub async fn worktree_cleanup_sizes(paths: Vec<String>) -> Result<Vec<u64>, CommandError> {
-    let mut sizes = Vec::with_capacity(paths.len());
-    for path in paths {
-        sizes.push(worktreeclean::dir_size(path).await);
-    }
-    Ok(sizes)
-}
-
-/// Remove the given worktrees. Every path is re-verified against a fresh scan —
-/// inside a managed root, still disposable, still clean — so a stale list can
-/// never delete the wrong folder.
-#[tauri::command]
-pub async fn worktree_cleanup_remove(
+pub async fn worktree_cleanup_sizes(
+    app: AppHandle,
     state: State<'_, AppState>,
     paths: Vec<String>,
+    target: Option<String>,
+) -> Result<Vec<u64>, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => {
+            let mut sizes = Vec::with_capacity(paths.len());
+            for path in paths {
+                sizes.push(worktreeclean::dir_size(path).await);
+            }
+            Ok(sizes)
+        }
+        Machine::Host(engine) => engine
+            .cleanup(CleanupCall::Sizes { paths })
+            .await
+            .map_err(CommandError::from),
+    }
+}
+
+/// Remove the given worktrees, on the machine `target` names. Every path is
+/// re-verified against a fresh scan — inside a managed root, still disposable,
+/// still clean — so a stale list can never delete the wrong folder. Fenced on
+/// a host, like every other change there.
+#[tauri::command]
+pub async fn worktree_cleanup_remove(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
 ) -> Result<worktreeclean::CleanupOutcome, CommandError> {
-    let roots = managed_roots(&state).await;
-    let projects = project_paths(&state).await;
-    let busy = state.pty.live_cwds();
-    Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &busy, &paths).await)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => {
+            let roots = managed_roots(&state).await;
+            let projects = project_paths(&state).await;
+            let busy = state.pty.live_cwds();
+            Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &busy, &paths).await)
+        }
+        Machine::Host(engine) => {
+            let host = target
+                .as_deref()
+                .and_then(|t| t.strip_prefix("ssh:"))
+                .unwrap_or("");
+            let (roots, projects) = host_cleanup_scope(&state, host).await;
+            engine
+                .cleanup(CleanupCall::Remove {
+                    roots,
+                    projects,
+                    paths,
+                })
+                .await
+                .map_err(CommandError::from)
+        }
+    }
 }
 
 /// Create a worktree in the given repo. Two modes:

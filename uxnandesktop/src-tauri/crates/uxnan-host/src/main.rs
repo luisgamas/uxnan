@@ -17,6 +17,7 @@
 mod agent_socket;
 mod agents;
 mod attach;
+mod cleanup;
 mod daemon;
 mod endpoint;
 mod files;
@@ -86,6 +87,13 @@ fn run<F: std::future::Future<Output = std::io::Result<()>>>(future: F) -> i32 {
             1
         }
     }
+}
+
+/// The account's home, as its terminals see it.
+fn paths_home() -> String {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| "/".to_string())
 }
 
 fn version_json() -> String {

@@ -1180,6 +1180,17 @@ deje nada cerrado a medias.
 el daemon real; el sondeo en vivo del motor crea y quita uno en el host del job
 `windows-ssh-host`.
 
+**La limpieza de worktrees viejos tambien es del host** (`Call::Cleanup`,
+protocolo 14). El motor corre alli el mismo `worktreeclean` que la app corre aqui
+—movido al motor de trabajo—, sobre las raices de esa cuenta: su
+`~/uxnan/worktrees`, su `~/uxnan/repos` y las raices propias de los proyectos de
+ese host, que la app le pasa junto con sus rutas. Las mismas pruebas de que algo es
+desechable, la misma re-verificacion al quitar, el mismo paso por la papelera de la
+raiz; y nunca toca una carpeta en la que esta una terminal suya. Al arrancar, el
+daemon termina de borrar lo que una ejecucion anterior dejo a medias, como hace la
+app. Quitar va cercado. Probado contra el daemon real y en vivo contra un host
+Linux (`a_hosts_old_worktrees_are_cleaned_up_by_its_engine`).
+
 ## 5.10f Avisar de una sesion caida — IMPLEMENTADO (fase 3, sexta parte)
 
 `commands.rs` (`watch_session`, evento `ssh:session-ended`) + `hosts.svelte.ts`.
