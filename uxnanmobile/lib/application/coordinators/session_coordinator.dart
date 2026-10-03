@@ -776,8 +776,10 @@ class SessionCoordinator {
     final previous = _transport;
     _transport = transport;
     _channel = channel;
+    // The old connection is let go, not waited on: after a network change it
+    // may be dead, and the new session must not hang on its goodbye.
     if (previous != null && !identical(previous, transport)) {
-      await previous.disconnect().catchError((_) {});
+      unawaited(previous.disconnect().catchError((_) {}));
     }
     _connectionPhase.add(ConnectionPhase.syncing);
     _startReceiving(transport);

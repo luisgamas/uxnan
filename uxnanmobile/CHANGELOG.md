@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Switching from mobile data to Wi-Fi no longer leaves the app stuck on
+  "Connecting…".** The new connection waited for the old one to say goodbye,
+  and a connection that died with its network never does. The new session now
+  starts at once, and closing any connection waits for its goodbye at most 2 s.
 
 ## [0.0.37-alpha.20261003+20261004] - 20261003
 ### Changed
