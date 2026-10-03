@@ -46,3 +46,18 @@ test('validateE2EEnvelope rejects a negative seq', () => {
   });
   assert.ok(!result.valid);
 });
+
+test('validatePairingPayloadSchema accepts the relay object and rejects a bare URL', async () => {
+  const { validatePairingPayloadSchema, PAIRING_QR_VERSION } = await import('../src/index.js');
+  const base = {
+    v: PAIRING_QR_VERSION,
+    sessionId: 's',
+    macDeviceId: 'm',
+    macIdentityPublicKey: 'k',
+    expiresAt: 1,
+    displayName: 'PC',
+  };
+  const relay = { url: 'wss://r.example.workers.dev', routingId: 'a'.repeat(32) };
+  assert.ok(validatePairingPayloadSchema({ ...base, relay }).valid);
+  assert.ok(!validatePairingPayloadSchema({ ...base, relay: relay.url }).valid);
+});

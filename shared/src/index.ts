@@ -27,6 +27,9 @@ export * from './agents/one-shot.js';
 // Local control channel (desktop ↔ bridge on the same machine)
 export * from './local-control/local-control.js';
 
+// Relay (the user's own relay: control frames before the blind pipe)
+export * from './relay/protocol.js';
+
 // Version
 export * from './version/compare.js';
 
@@ -48,6 +51,7 @@ export * from './models/tool.js';
 export * from './models/usage.js';
 export * from './models/metrics.js';
 export * from './models/agent-session.js';
+export * from './models/relay.js';
 
 // Validators
 export * from './validators/validate.js';

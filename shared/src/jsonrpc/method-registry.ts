@@ -109,6 +109,14 @@ export const METHOD_NAMES = [
   'bridge/removeTrustedDevice',
   'bridge/update',
   'bridge/checkForUpdate',
+  // The user's own relay (the bridge deploys and drives it)
+  'relay/status',
+  'relay/setup',
+  'relay/use',
+  'relay/set',
+  'relay/update',
+  'relay/rotate',
+  'relay/remove',
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach',
   'desktop/detach',

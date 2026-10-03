@@ -68,6 +68,8 @@ export const StreamNotification = {
    * would answer now (idempotent).
    */
   BridgeUpdated: 'stream/bridge/updated',
+  /** The relay's state changed (set up, connected, dropped, removed). */
+  RelayUpdated: 'stream/relay/updated',
   /**
    * A session's hold changed: a desktop terminal took it, its agent started or
    * stopped working, or the terminal let it go (`hold` absent).
