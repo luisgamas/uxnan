@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.30-alpha.20261003] - 20261003
 ### Added
 
 - **How a phone is connected.** `ConnectionRoute` (`lan` | `tailscale` |
