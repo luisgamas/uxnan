@@ -1103,7 +1103,19 @@ mod tests {
             };
             assert_eq!(badge("repo"), Some(true), "{listed:?}");
             assert_eq!(badge("plain"), Some(false), "{listed:?}");
-            let () = engine.fs(FsCall::Delete { path: scratch }).await.unwrap();
+            let () = engine
+                .fs(FsCall::Delete {
+                    path: scratch.clone(),
+                })
+                .await
+                .unwrap();
+            // A project folder that went away is the host's filesystem saying no —
+            // what marks the project missing (`repos_missing`).
+            let gone = engine
+                .browse(Some(scratch))
+                .await
+                .expect_err("it was deleted");
+            assert!(matches!(gone, crate::error::AppError::Io(_)), "{gone:?}");
             println!("live: {alias} engine listed {} for the picker", home.path);
         }
 

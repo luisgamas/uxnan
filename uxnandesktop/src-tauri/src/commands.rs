@@ -3327,13 +3327,12 @@ pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
 /// polling git and `gh` against a path that is not there produces nothing but
 /// errors — and never removes it. Removing stays the user's call.
 ///
-/// **A project on a host is never reported here.** This asks *this* machine's
-/// filesystem, and a host's absolute path is not a question it can answer: the
-/// folder is on the other machine. Asked anyway, it marked a perfectly healthy
-/// remote project as missing — and marked its neighbour as fine only because
-/// that host happened to be this same machine, which is worse, because the
-/// warning then looks selective rather than broken. Reporting a host's folder
-/// as gone needs asking the host (`FOR-DEV.md`).
+/// **A project on a host is asked of that host's engine**, when one runs there
+/// — this machine's filesystem cannot answer for another one's path (asked
+/// anyway, it once marked a healthy remote project missing). Only the host's
+/// own filesystem saying the folder is not there marks it; a host that is not
+/// connected, or does not answer, leaves its projects unmarked: unknown is
+/// shown as present. No engine is started just to ask.
 #[tauri::command]
 pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
     let repos: Vec<(String, TargetId, String)> = state
@@ -3344,11 +3343,27 @@ pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, Co
         .iter()
         .map(|r| (r.id.clone(), r.target.clone(), r.path.clone()))
         .collect();
-    Ok(repos
-        .into_iter()
-        .filter(|(_, target, path)| missing_locally(target, path))
-        .map(|(id, _, _)| id)
-        .collect())
+    let mut missing = Vec::new();
+    for (id, target, path) in repos {
+        let gone = match target.ssh_host_id() {
+            Some(host) => match state.ssh_engines.live(host).await {
+                Some(engine) => missing_on_host(engine.browse(Some(path)).await),
+                None => false,
+            },
+            None => missing_locally(&target, &path),
+        };
+        if gone {
+            missing.push(id);
+        }
+    }
+    Ok(missing)
+}
+
+/// Whether a host's answer about a project folder says it is not there: only
+/// that host's filesystem refusing it (no such folder) counts — a connection
+/// that dropped or an engine that did not answer in time is not a verdict.
+fn missing_on_host<T>(answer: Result<T, AppError>) -> bool {
+    matches!(answer, Err(AppError::Io(_)) | Err(AppError::NotFound(_)))
 }
 
 /// Whether *this* machine can say the folder is not there.
@@ -5723,6 +5738,26 @@ mod tests {
         term_buffers_path, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
+
+    /// A host's project is marked missing only on that host's own word: its
+    /// filesystem refusing the folder. A dropped link or a slow engine is not a
+    /// verdict, and marking on it would hide a working project behind a warning.
+    #[test]
+    fn a_hosts_folder_is_missing_only_when_its_filesystem_says_so() {
+        use crate::error::AppError;
+        let io = AppError::Io(std::io::Error::other("No such file or directory"));
+        assert!(super::missing_on_host::<()>(Err(io)));
+        assert!(super::missing_on_host::<()>(Err(AppError::NotFound(
+            "x".into()
+        ))));
+        assert!(!super::missing_on_host(Ok(())));
+        assert!(!super::missing_on_host::<()>(Err(AppError::NotConnected(
+            "h1".into()
+        ))));
+        assert!(!super::missing_on_host::<()>(Err(AppError::Invalid(
+            "the host engine did not answer in time".into()
+        ))));
+    }
 
     /// A file call goes where its target says, and nowhere else: this machine
     /// for none or `local`, and a host that is not connected is refused rather

@@ -1176,6 +1176,16 @@ impl Engines {
             .cloned()
     }
 
+    /// The live engine of `host_id`, if one runs — never started for the ask.
+    pub async fn live(&self, host_id: &str) -> Option<Arc<HostEngine>> {
+        self.engines
+            .lock()
+            .await
+            .get(host_id)
+            .filter(|e| e.is_alive())
+            .cloned()
+    }
+
     /// Every live engine, of every connected host.
     pub async fn all(&self) -> Vec<Arc<HostEngine>> {
         self.engines

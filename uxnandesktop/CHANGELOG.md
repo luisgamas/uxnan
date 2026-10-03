@@ -86,6 +86,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A host project whose folder is gone says so.** With its host connected,
+  the project is asked of the host engine, and marked missing — like a local
+  one — only when that machine's filesystem says the folder is not there. A
+  host that is offline leaves its projects as they were.
 - **The folder picker for a host is the host engine's.** Adding a project
   that lives on a host lists its folders through the engine, with the code
   that lists this machine's; a very large folder still says it was cut. SFTP

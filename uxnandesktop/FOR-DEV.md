@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,062 Rust tests (726 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 225
+`docs/chat.md`). 1,063 Rust tests (727 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 225
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 29 in `uxnan-host` (24 against the daemon itself) + 45
 integration), of which 48 are ignored probes that need something real to talk to
 (40 live SSH probes — 37 against a real `sshd` and 3 against a **Linux host in a
@@ -1202,15 +1202,6 @@ already written for the day phase 2 below lands — nothing to relax then.
          `ssh-keygen -lf` byte for byte. Point any host at it with
          `UXNAN_SSH_TEST_HOST=<host[:port]>`.
       5. Idle cost of an open connection, measured with `npm run bench`.
-- [ ] **Say when a *host's* project folder is gone.** `repos_missing` now only
-      answers for local projects — this machine's filesystem cannot speak for
-      another one, and asking it anyway put a "folder is missing" warning on a
-      perfectly healthy remote project. So a host's project is never marked,
-      which is honest but incomplete: a folder really deleted on the host looks
-      fine until something fails. Asking the host is one call to its engine per
-      remote project on a connected host, with "not connected" reported as
-      unknown rather than missing — the disconnected state has its own
-      indicator already.
 **Landed from phase 3:** a host's files — listing (git-ignored entries marked),
 opening, **saving** (atomic, keeping the file's mode, fenced) and **previewing**
 an image or PDF — served by its engine with the app's own file code, on one set
@@ -1751,7 +1742,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,062 Rust + 1,804 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,063 Rust + 1,804 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

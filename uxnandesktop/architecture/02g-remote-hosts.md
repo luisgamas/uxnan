@@ -861,6 +861,12 @@ host no tiene papelera que la app pueda usar, asi que alli el motor desenlaza
 (`fs::delete_permanently`, con la misma guarda contra la raiz del filesystem que
 la papelera local) y el dialogo dice cual de las dos va a pasar.
 
+**Una carpeta de proyecto que ya no esta.** `repos_missing` pregunta al motor del
+host —si ya corre; no se arranca solo para esto— por la carpeta de cada proyecto
+de ese host, y lo marca como falta, igual que uno local, solo cuando el sistema de
+ficheros de esa maquina dice que no existe. Un host sin conexion, o un motor que no
+contesta a tiempo, no es un veredicto: sus proyectos se quedan como estaban.
+
 **Lo que se probo en vivo.** `a_projects_files_are_served_by_the_hosts_engine`
 (en `ssh::terminals::tests::live`, que el job `windows-ssh-host` de CI ejecuta
 contra un `sshd` real): crear una carpeta y un fichero con su padre intercalado,
