@@ -1,6 +1,6 @@
 {
   "name": "uxnan-relay",
-  "version": "0.0.2-alpha.20260720",
+  "version": "0.0.3-alpha.20261003",
   "private": true,
   "description": "Uxnan Relay — a Cloudflare Worker each user deploys into their own account; pairs a phone with its bridge across networks and forwards opaque E2EE frames.",
   "license": "MPL-2.0",
