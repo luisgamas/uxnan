@@ -36,6 +36,7 @@ export async function callRunningBridge(
   state: DaemonState,
   method: string,
   params: unknown,
+  options: { timeoutMs?: number } = {},
 ): Promise<{ result: unknown } | undefined> {
   const discovery = await readDiscoveryFile(state.pathFor(LOCAL_CONTROL_FILE));
   if (!discovery) return undefined;
@@ -46,7 +47,7 @@ export async function callRunningBridge(
     const timer = setTimeout(() => {
       ws.terminate();
       reject(new Error('the running bridge did not answer'));
-    }, CALL_TIMEOUT_MS);
+    }, options.timeoutMs ?? CALL_TIMEOUT_MS);
     const finish = (fn: () => void): void => {
       clearTimeout(timer);
       ws.close();

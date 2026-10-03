@@ -58,9 +58,9 @@ agent turn ends ─► bridge (PushService.onTurnEnd)
 
 ### Do I need the relay?
 
-The relay is **optional and self-hosted** (`relayEnabled` defaults to `false` —
-a fresh install is LAN/Tailscale-direct with no hosting). How that interacts with
-notifications:
+No. The relay is **optional** — your own, deployed by the bridge into your
+Cloudflare account (`uxnan-bridge relay setup`); a fresh install has none and is
+LAN/Tailscale-direct. How that interacts with notifications:
 
 | Notification | Needs the relay? | Why |
 |---|---|---|

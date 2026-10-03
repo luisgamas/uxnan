@@ -5,8 +5,62 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Your own relay, deployed and run by the bridge.** For a phone on another
+  network without a VPN, the bridge deploys the relay Worker it ships
+  (`dist/relay-worker/`) into the user's own Cloudflare account through the
+  REST API — `workers.dev` subdomain check, upload with the `RELAY` Durable
+  Object binding and `UXNAN_HOST_KEYS` (its own public key added, other PCs'
+  kept), the SQLite class migration on the first deploy only, `workers.dev`
+  enabled — and waits for `wss://uxnan-relay.<subdomain>.workers.dev` to
+  answer. Several PCs share one Worker by key; removing the last one deletes
+  it. `RelayService` (`relay/relay-service.ts`) is the single owner of the
+  relay; `RelayHost` (`relay/relay-host.ts`) keeps one control socket open
+  (signed challenge, the trusted phones' keys, a keepalive every 30 s,
+  reconnect backoff 2 s → 60 s) and opens one channel per phone when the relay
+  dials, running the same `handleSecureConnection` as the LAN on each.
+- **Seven methods, open to every client:** `relay/status`, `relay/setup`,
+  `relay/use`, `relay/set` (with `ageMs`: a decision made offline applies only
+  if nobody decided later), `relay/update`, `relay/rotate`, `relay/remove`
+  (`deleteWorker` takes this PC off the Worker); and the notification
+  `stream/relay/updated`. A phone can set the relay up without the desktop —
+  the token travels inside the E2EE channel and is never echoed back.
+- **`uxnan-bridge relay status | setup --account <id> [--remember] |
+  use <wss-url> | enable | disable | update [--remember] | rotate |
+  remove [--delete-worker]`**, which talk to the running daemon. The token is
+  read from the terminal without echo (or piped stdin) — never an argument.
+- **The pairing window opens a relay ticket.** Showing the QR or the code also
+  hands the relay the SHA-256 of a fresh one-time ticket for the window's
+  length; the QR carries the ticket, so a phone that is not on the PC's
+  network can pair through the relay.
+- `start` connects to the relay when one is set up and enabled
+  (`Bridge.startRelay()`), and says which relay it uses.
+
+### Changed
+
+- **Config: `relay` replaces `relayUrl` / `relayEnabled`.** The optional
+  `relay: { url, routingId, enabled }` in `daemon-config.json` is set only by
+  `relay/*` and shared with every client as `BridgeSettings.relay` (through
+  `settings/get`, `sync/changes` and `stream/settings/updated`), so a phone
+  paired on the LAN reaches the PC from any network without pairing again. The
+  retired keys are dropped when the config is read. How the relay was set up
+  is kept in `~/.uxnan/relay.json`.
+- **Pairing QR v3:** `relay` is `{ url, routingId, ticket? }`, present only
+  while a relay is set up and enabled.
+- Plain `ws://` relay URLs are accepted only for `localhost` / `127.0.0.1`.
+
 ### Security
 
+- **The pairing window now gates the relay path too.** A first-time
+  (`qr_bootstrap`) handshake through the relay is refused outside the
+  operator-opened pairing window, as on the LAN; before, the relay path was
+  gated only by its session id.
+- **A Cloudflare token is never stored unless the user asks.** It is used for
+  the call and dropped; `remember` keeps it in the system keyring
+  (`relay.cloudflare-token`), never in a file. It never appears in a response,
+  a notification or an error (Cloudflare's text is shown without it), and the
+  log redaction now also masks `apiToken`.
 - **The phone's push token no longer reaches the relay.** A bridge without a
   Firebase service account — or with the relay enabled — sent the token to the
   relay (`POST /push/register`, at the default relay URL `wss://relay.uxnan.io`
@@ -26,6 +80,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   takes `relayUrl` / `fetchFn`, registrations no longer keep a
   `notificationSecret`, and `push-state.json` entries without a push token are
   dropped when the bridge loads them.
+- **The old relay client:** `connectRelayAsMac` (`transport/relay-client.ts`,
+  the `x-role: mac` / `x-session-id` connection to a shared relay URL),
+  `Bridge.connectRelay(sessionId)`, its one-phone serve loop and
+  `nextRelayBackoff` (with `relay-backoff.test.ts`). The bridge's relay is now
+  the user's own, served by `RelayService` / `RelayHost`.
 
 ## [0.0.43-alpha.20261002] - 20261002
 ### Fixed

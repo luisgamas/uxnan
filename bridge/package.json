@@ -12,6 +12,7 @@
   },
   "files": [
     "dist/src",
+    "dist/relay-worker",
     "scripts"
   ],
   "engines": {
@@ -23,11 +24,11 @@
     "directory": "bridge"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node tools/copy-relay-worker.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
+    "test": "tsc && node tools/copy-relay-worker.mjs && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
     "start": "node dist/src/cli.js start",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@uxnan/shared": "*",
