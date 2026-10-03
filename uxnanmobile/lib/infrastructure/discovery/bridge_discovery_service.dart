@@ -15,12 +15,17 @@ import 'package:uxnan/domain/entities/discovered_bridge.dart';
 /// Best-effort and self-healing: a platform that doesn't support discovery, a
 /// denied permission, or any native error degrades to an empty stream (manual
 /// host entry stays the fallback) — it never throws to the UI.
+///
+/// The one mDNS layer of the app: the pairing sheet browses through it while
+/// it is open, and [MdnsLanBridgeFinder] through it for a bounded moment while
+/// a paired PC is being dialed.
 class BridgeDiscoveryService {
   /// The DNS-SD service type the bridge advertises (see the bridge's
   /// `transport/mdns-advertiser.ts`).
   static const String serviceType = '_uxnan._tcp';
 
   Discovery? _discovery;
+  bool _disposed = false;
   final StreamController<List<DiscoveredBridge>> _controller =
       StreamController<List<DiscoveredBridge>>.broadcast();
 
@@ -31,12 +36,18 @@ class BridgeDiscoveryService {
   /// Starts discovery. Idempotent. Resolves each service to v4 addresses so a
   /// reachable host is known even when the TXT `addr` hint is missing.
   Future<void> start() async {
-    if (_discovery != null) return;
+    if (_discovery != null || _disposed) return;
     try {
       final discovery = await startDiscovery(
         serviceType,
         ipLookupType: IpLookupType.v4,
       );
+      if (_disposed) {
+        // Disposed while the platform was starting the browse: stop it here,
+        // or it would run on with nobody to stop it.
+        await stopDiscovery(discovery).catchError((Object _) {});
+        return;
+      }
       _discovery = discovery;
       discovery.addListener(_emit);
       _emit();
@@ -64,6 +75,7 @@ class BridgeDiscoveryService {
 
   /// Stops discovery and releases the stream. Safe to call more than once.
   Future<void> dispose() async {
+    _disposed = true;
     final discovery = _discovery;
     _discovery = null;
     if (discovery != null) {
@@ -75,6 +87,68 @@ class BridgeDiscoveryService {
       }
     }
     if (!_controller.isClosed) await _controller.close();
+  }
+}
+
+/// Looks for one paired PC on the local network, for a bounded moment.
+// ignore: one_member_abstracts — a DI seam (tests supply their own sightings).
+abstract class LanBridgeFinder {
+  /// Emits every sighting of the bridge whose TXT `id` is [deviceId] for at
+  /// most [window], then completes. Cancelling the subscription stops the
+  /// browse at once. Never errors: a platform that cannot browse simply sees
+  /// nothing.
+  Stream<DiscoveredBridge> find(String deviceId, {required Duration window});
+}
+
+/// [LanBridgeFinder] over [BridgeDiscoveryService]: a fresh browse per call,
+/// stopped when the window closes or the listener cancels — nothing browses
+/// in the background. A service advertising another PC's id (another Uxnan
+/// PC on the same network) is never emitted.
+class MdnsLanBridgeFinder implements LanBridgeFinder {
+  /// Creates a finder. [createService] defaults to a real
+  /// [BridgeDiscoveryService]; tests inject one that reports their own.
+  MdnsLanBridgeFinder({BridgeDiscoveryService Function()? createService})
+      : _createService = createService ?? BridgeDiscoveryService.new;
+
+  final BridgeDiscoveryService Function() _createService;
+
+  @override
+  Stream<DiscoveredBridge> find(String deviceId, {required Duration window}) {
+    BridgeDiscoveryService? service;
+    StreamSubscription<List<DiscoveredBridge>>? sightings;
+    Timer? deadline;
+    late final StreamController<DiscoveredBridge> controller;
+
+    Future<void> stop() async {
+      deadline?.cancel();
+      deadline = null;
+      final running = service;
+      service = null;
+      await sightings?.cancel();
+      sightings = null;
+      if (running != null) await running.dispose();
+    }
+
+    controller = StreamController<DiscoveredBridge>(
+      onListen: () {
+        final browse = _createService();
+        service = browse;
+        sightings = browse.bridges.listen((bridges) {
+          for (final bridge in bridges) {
+            if (bridge.deviceId == deviceId && !controller.isClosed) {
+              controller.add(bridge);
+            }
+          }
+        });
+        deadline = Timer(window, () async {
+          await stop();
+          if (!controller.isClosed) await controller.close();
+        });
+        unawaited(browse.start());
+      },
+      onCancel: stop,
+    );
+    return controller.stream;
   }
 }
 
@@ -131,11 +205,24 @@ DiscoveredBridge? parseDiscoveredBridge({
   }
   final display =
       (name != null && name.trim().isNotEmpty) ? name.trim() : resolvedHost;
+  // What a paired phone may dial: the chosen host, every resolved IPv4 and
+  // the TXT hint, each only as a literal on a network the phone could share
+  // with the PC — never a name to resolve, never a public address.
+  final dialable = <String>{
+    for (final candidate in [
+      resolvedHost,
+      for (final a in addresses)
+        if (a.type == InternetAddressType.IPv4) a.address,
+      if (trustedTxtAddr != null) trustedTxtAddr,
+    ])
+      if (isLocalAddressLiteral(candidate)) candidate,
+  };
   return DiscoveredBridge(
     name: display,
     host: resolvedHost,
     port: resolvedPort,
     deviceId: _txtValue(txt, 'id'),
+    addresses: List.unmodifiable(dialable),
   );
 }
 

@@ -37,9 +37,11 @@ class TrustedDevice extends Equatable {
   /// LAN stays reachable away from it.
   final RelayEndpoint? relay;
 
-  /// Direct `host:port` addresses (LAN / Tailscale `100.x`) advertised in the
-  /// pairing QR. The transport selector tries these before [relay]. May be
-  /// empty (relay-only device).
+  /// Direct `host:port` addresses (LAN / Tailscale `100.x`) where the PC
+  /// listens: first from the pairing QR, then kept current from the bridge's
+  /// shared settings (`BridgeSettings.hosts`) as the PC changes networks. The
+  /// transport selector tries these before [relay]. May be empty (the PC
+  /// listens for no direct connection).
   final List<String> hosts;
 
   /// Session id established during pairing.

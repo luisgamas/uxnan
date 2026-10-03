@@ -316,6 +316,7 @@ class SettingsUpdatedEvent extends DomainEvent {
     this.rev,
     this.carriesRelay = false,
     this.relay,
+    this.hosts,
   });
 
   /// The start folder new projects are explored from.
@@ -335,8 +336,14 @@ class SettingsUpdatedEvent extends DomainEvent {
   /// The PC's relay (`BridgeSettings.relay`), when [carriesRelay].
   final RelayEndpoint? relay;
 
+  /// Where the PC listens for a direct connection right now
+  /// (`BridgeSettings.hosts`), or `null` when the settings said nothing about
+  /// it (an older bridge) — what the phone knows then stands. Empty means the
+  /// PC listens for none.
+  final List<String>? hosts;
+
   @override
-  List<Object?> get props => [home, name, rev, carriesRelay, relay];
+  List<Object?> get props => [home, name, rev, carriesRelay, relay, hosts];
 }
 
 /// Who is connected to the PC's bridge changed (`stream/presence/updated`):

@@ -8,6 +8,7 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
+import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
@@ -145,13 +146,15 @@ void main() {
   });
 
   group('the header names how the phone reaches the PC', () {
-    Widget screen(ConnectionRoute? route) => ProviderScope(
+    Widget screen(ConnectionRoute? route, {RelayReason? reason}) =>
+        ProviderScope(
           overrides: [
             trustedDevicesProvider
                 .overrideWith((ref) => Stream.value([_device('mac-1')])),
             connectedDeviceProvider
                 .overrideWith((ref) => Stream.value(_device('mac-1'))),
             connectedRouteProvider.overrideWith((ref) => Stream.value(route)),
+            relayReasonProvider.overrideWith((ref) => Stream.value(reason)),
             bridgeStatusProvider.overrideWith((ref) async => null),
             bridgeHomeProvider.overrideWith((ref) => Stream.value(null)),
             pcMetricsProvider.overrideWith((ref, id) async => _metrics()),
@@ -198,5 +201,39 @@ void main() {
         expect(find.text('Direct'), findsNothing);
       });
     }
+
+    const sameNetwork = "On the same Wi-Fi, but the PC didn't answer directly "
+        '(the network may isolate devices) — using your relay.';
+
+    testWidgets('on the relay with the PC seen right here, it says why',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = const Size(1200, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        screen(
+          ConnectionRoute.relay,
+          reason: RelayReason.sameNetworkUnreachable,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(sameNetwork), findsOneWidget);
+    });
+
+    testWidgets('on the relay away from home there is nothing to explain',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = const Size(1200, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(screen(ConnectionRoute.relay));
+      await tester.pumpAndSettle();
+      expect(find.text(sameNetwork), findsNothing);
+    });
   });
 }

@@ -5,14 +5,20 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 /// Tells the session when the phone moved to another network (joined a Wi-Fi,
 /// left it for mobile data, …), so it can look for a better path to the PC
-/// than the one it holds (`SessionCoordinator.handleNetworkChange`).
-// ignore: one_member_abstracts — a DI seam (tests supply a controller).
+/// than the one it holds (`SessionCoordinator.handleNetworkChange`), and says
+/// whether it is on a local network at all — the only kind on which a PC can
+/// be looked for by mDNS (`DirectTransportSelector`).
 abstract class NetworkChangeMonitor {
   /// One event per settled change of the phone's networks. Never emits for
   /// the network the phone is on when listening starts, nor for losing every
   /// network (nothing new can be reached then; the live session's heartbeat
   /// notices the loss on its own).
   Stream<void> get changes;
+
+  /// Whether the phone is on a Wi-Fi or Ethernet network right now — a
+  /// network a PC could share with it. False on cellular alone (a VPN over
+  /// it included), offline, or when the platform cannot say.
+  Future<bool> isOnLocalNetwork();
 }
 
 /// [NetworkChangeMonitor] over `connectivity_plus`.
@@ -45,6 +51,18 @@ class ConnectivityNetworkChangeMonitor implements NetworkChangeMonitor {
 
   @override
   Stream<void> get changes => _controller.stream;
+
+  @override
+  Future<bool> isOnLocalNetwork() async {
+    try {
+      final results = await _current();
+      return results.any(
+        (r) => r == ConnectivityResult.wifi || r == ConnectivityResult.ethernet,
+      );
+    } on Object {
+      return false;
+    }
+  }
 
   Future<void> _start() async {
     try {
