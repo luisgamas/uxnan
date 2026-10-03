@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,063 Rust tests (765 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 189
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 27 in `uxnan-host` (22 against the daemon itself) + 45
+`docs/chat.md`). 1,065 Rust tests (743 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 212
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 28 in `uxnan-host` (23 against the daemon itself) + 45
 integration), of which 51 are ignored probes that need something real to talk to
 (43 live SSH probes — 39 against a real `sshd` and 4 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests; and on Windows 1 real-scheduler probe) + 1,787 frontend Vitest tests across two
+GitHub tests; and on Windows 1 real-scheduler probe) + 1,788 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -94,7 +94,7 @@ Continue as chat / Open in terminal, holds and the sessions list — is built
   (with a friendly auto-name generator) or **checking out any existing local /
   remote branch** into an isolated worktree — plus an **optional custom location**
   (editable path + an in-app folder browser). **Where a new worktree lands** is
-  decided once, in `src-tauri/src/worktreeloc.rs`: by default the managed root
+  decided once, in `crates/workspace-engine/src/worktreeloc.rs`: by default the managed root
   `~/uxnan/worktrees/<project>/<branch>`, switchable in **Settings → Git** to the
   legacy `<project>--<branch>` sibling or to a root of the user's own, and
   overridable per project. Branch names are folded into folder names valid on
@@ -1142,12 +1142,11 @@ already written for the day phase 2 below lands — nothing to relax then.
          sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
          own bridge, plan phase F8. (Its tools — the control surface's MCP
          server and the integrated browser — reach it through the engine.)
-      4. **Worktrees on a host.** A host's project files and git are the
-         engine's now (`02g` §5.10, §5.10b — protocols 9 and 10), but a host
-         project still exposes one root: listing, creating and removing its
-         worktrees needs the engine's worktree half (`git::list_worktrees`,
-         `add_worktree`, `remove_worktree`, and where `worktreeloc` places
-         one there) behind the same `machine_for` dispatch.
+      4. **Worktree upkeep on a host.** Listing, creating and removing a host
+         project's worktrees is the engine's (`02g` §5.10i); the upkeep that
+         sweeps this machine's worktree roots — stale scan, prune, the
+         cleanup notice and its sizes (`worktreeclean.rs`) — still looks only
+         here. A host's managed root needs the same sweep through the engine.
       5. **Forwarded agent, live.** Engine processes follow the latest
          connection's agent through `~/.uxnan/host/run/agent.sock`
          (`uxnan-host/src/agent_socket.rs`, unit-tested); not yet proven by a
@@ -1284,7 +1283,8 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
       `src/lib/gitRouter.ts`), and the folder is **watched there** so the
       panels refresh by themselves (`02g` §5.10, §5.16). What is left is
       **GitHub**, which reads this machine's repository and its `gh` sign-in,
-      and worktrees (backend item above). Spec: `02g` §5.10–§5.11, §5.16.
+      and the worktree upkeep sweep (backend item above). Spec: `02g`
+      §5.10–§5.11, §5.16.
 
       **The lesson this item keeps earning:** a call that does not *look* like a
       file read is where the routing gets forgotten. The preview pane asked this
@@ -1752,7 +1752,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,063 Rust + 1,787 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,065 Rust + 1,788 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

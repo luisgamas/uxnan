@@ -18,7 +18,7 @@ use crate::Error;
 
 /// A worktree as reported by `git worktree list --porcelain`. Includes worktrees
 /// created by the ADE *and* any created externally (e.g. by a CLI agent).
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeEntry {
     pub path: String,
@@ -32,7 +32,7 @@ pub struct WorktreeEntry {
 /// field defaults to `false`: **removing a worktree touches only the worktree**
 /// unless the user explicitly opts in (spec §2.3). Local and remote deletion are
 /// independent; `force_local` upgrades a refused safe delete to a forced one.
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BranchCleanup {
     /// Delete the local branch (safe `git branch -d`, upgraded to `-D` only when
@@ -48,7 +48,7 @@ pub struct BranchCleanup {
 /// happened. The worktree itself is always removed on success; these flags only
 /// describe the **opt-in** branch cleanup requested via [`BranchCleanup`] (spec
 /// §2.3). When nothing was opted into, every flag stays `false`.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveOutcome {
     /// The local branch was deleted (a safe `-d`, a forced `-D`, or a `-D` after
@@ -758,6 +758,33 @@ pub async fn status_with_summary(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     Ok((files, status, head))
+}
+
+/// A repository's branches and the default base, for the new-worktree dialog.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchList {
+    /// Local branch names (the base picker + the "existing branch" picker).
+    pub branches: Vec<String>,
+    /// Branches that exist on `origin`, short-named (`origin/main` → `main`),
+    /// so a remote-only branch can be checked out into a fresh worktree. Empty
+    /// when the repository has no remote.
+    pub remote_branches: Vec<String>,
+    /// The base ref the dialog preselects (remote HEAD → main → master → HEAD).
+    pub default_base: String,
+}
+
+/// Read a repository's [`BranchList`]. A repository with no remote simply has
+/// no remote branches; that never fails the dialog.
+pub async fn branch_list(repo_path: &str) -> Result<BranchList, Error> {
+    let branches = list_branches(repo_path).await?;
+    let remote_branches = list_remote_branches(repo_path).await.unwrap_or_default();
+    let default_base = default_base(repo_path).await;
+    Ok(BranchList {
+        branches,
+        remote_branches,
+        default_base,
+    })
 }
 
 /// Everything the Changes panel draws about a worktree, in one answer: the
@@ -1755,15 +1782,6 @@ pub fn ignored_flags(dir: &str, paths: &[String]) -> Vec<bool> {
 mod tests {
     use super::*;
 
-    /// A temp path as git reports it: macOS resolves `/var` to `/private/var`
-    /// and a Windows runner hands out 8.3 short names, neither of which git
-    /// echoes back, so a comparison against git's own output needs this form.
-    fn canonical_temp(path: &Path) -> String {
-        let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let text = resolved.to_string_lossy().replace('\\', "/");
-        text.strip_prefix("//?/").unwrap_or(&text).to_string()
-    }
-
     /// `<parent>/<repo>--<name>`: a worktree beside the repository, where the
     /// app's sibling layout puts one.
     fn sibling(repo_path: &str, name: &str) -> String {
@@ -1810,7 +1828,7 @@ mod tests {
     #[tokio::test]
     async fn stale_worktrees_are_the_ones_git_lists_but_disk_does_not_have() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let alive = sibling(&repo_path, "alive");
@@ -1857,7 +1875,7 @@ mod tests {
     #[tokio::test]
     async fn identity_reads_the_configured_author_and_version() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // `init_repo` sets the author LOCALLY. The identity is deliberately read
@@ -2110,7 +2128,7 @@ mod tests {
     #[tokio::test]
     async fn a_review_and_a_row_read_the_repository_in_one_answer_each() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
 
@@ -2136,7 +2154,7 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_keeps_branch_by_default() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // A feature worktree — even a fully-merged branch stays untouched when no
@@ -2167,7 +2185,7 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_deletes_squash_merged_branch_when_requested() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // A feature worktree with its own commit.
@@ -2202,7 +2220,7 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_keeps_unmerged_branch_unless_forced() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "wip");
@@ -2232,7 +2250,7 @@ mod tests {
     #[tokio::test]
     async fn branch_integrated_sees_a_merged_branch() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "feature");
@@ -2260,7 +2278,7 @@ mod tests {
         // The case plain ancestry misses: the base carries the same net diff as a
         // single commit, so no commit of the branch is an ancestor of it.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "squashed");
@@ -2289,7 +2307,7 @@ mod tests {
         // yes about it. It showed the "landed" chip next to genuinely merged
         // branches.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "untouched");
@@ -2315,7 +2333,7 @@ mod tests {
         // the same commit. One did the work, the other never started. Only the
         // reflog — which records where each branch began — tells them apart.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "did-the-work");
@@ -2352,7 +2370,7 @@ mod tests {
         // ancestry says yes — and the batch close would then have offered to
         // delete the workspace that had just been set up.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "brand-new");
@@ -2384,7 +2402,7 @@ mod tests {
     async fn branch_integrated_never_reports_the_base_itself() {
         // Guard against inviting the user to close the branch everything lands on.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         assert!(!branch_integrated(&repo_path, "main").await);
@@ -2405,7 +2423,7 @@ mod tests {
         // ("cannot delete branch ... checked out at ...") and the contract under
         // test is the reporting, not the cause.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "side");
@@ -2439,7 +2457,7 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_force_deletes_unmerged_local_branch() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let wt = sibling(&repo_path, "wip");
@@ -2516,7 +2534,7 @@ mod tests {
     #[tokio::test]
     async fn image_diff_reports_old_and_new_for_working_change() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // Commit an "image" file (arbitrary bytes — image_diff treats it opaquely).
@@ -2539,7 +2557,7 @@ mod tests {
     #[tokio::test]
     async fn image_diff_has_no_old_for_untracked_added_file() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         // A brand-new, never-committed image → no old side, new from disk.
         std::fs::write(format!("{repo_path}/new.png"), [7u8, 7, 7]).unwrap();
@@ -2578,7 +2596,7 @@ mod tests {
     #[tokio::test]
     async fn stage_and_unstage_file_roundtrip() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
@@ -2606,7 +2624,7 @@ mod tests {
     #[tokio::test]
     async fn stage_all_and_unstage_all() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
@@ -2647,7 +2665,7 @@ mod tests {
     #[tokio::test]
     async fn discard_tracked_file_restores_head() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nedited\n").unwrap();
@@ -2670,7 +2688,7 @@ mod tests {
     #[tokio::test]
     async fn discard_untracked_file_deletes_it() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let junk = format!("{repo_path}/junk.txt");
@@ -2695,7 +2713,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_stage_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2722,7 +2740,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_unstage_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2748,7 +2766,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_discard_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2774,7 +2792,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_invalid_patch_errors() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         match apply_patch(&repo_path, "not a patch\n", false, false).await {
@@ -2788,7 +2806,7 @@ mod tests {
     #[tokio::test]
     async fn commit_creates_commit_with_message() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nchange\n").unwrap();
@@ -2813,7 +2831,7 @@ mod tests {
     #[tokio::test]
     async fn commit_amend_rewrites_head() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nfirst\n").unwrap();
@@ -2843,7 +2861,7 @@ mod tests {
     #[tokio::test]
     async fn commit_sign_off_appends_trailer() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nsigned\n").unwrap();
@@ -2862,7 +2880,7 @@ mod tests {
     #[tokio::test]
     async fn commit_nothing_staged_errors() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = canonical_temp(repo.path());
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // Nothing staged (and no amend) → git commit fails, surfaced as an error.

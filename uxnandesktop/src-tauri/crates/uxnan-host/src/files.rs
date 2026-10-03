@@ -45,7 +45,7 @@ pub fn value<T: Serialize>(answer: T) -> Result<serde_json::Value, Error> {
     serde_json::to_value(answer).map_err(Error::from)
 }
 
-fn parsed<T: serde::de::DeserializeOwned>(raw: serde_json::Value) -> Result<T, Error> {
+pub fn parsed<T: serde::de::DeserializeOwned>(raw: serde_json::Value) -> Result<T, Error> {
     serde_json::from_value(raw).map_err(Error::from)
 }
 

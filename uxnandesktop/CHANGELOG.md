@@ -86,6 +86,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **Worktrees on a host.** A project that lives on a host now lists, creates
+  and removes its worktrees like a local one — new or existing branch, base,
+  an optional folder of your own, and the same optional branch cleanup — done
+  by the host engine with the same placement rules. They land under the host's
+  own `~/uxnan/worktrees` (the global custom root is a folder on this machine,
+  so only a project's own root applies there), and creating or removing is
+  refused while the host is disconnected.
 - **A host's git is run by its engine.** Changes, History and a project's row
   on a host now run the same git code there that they run on this machine,
   through the host engine, instead of commands sent through the host's shell:

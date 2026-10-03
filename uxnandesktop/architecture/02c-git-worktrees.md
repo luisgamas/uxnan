@@ -88,7 +88,7 @@ una **ubicación opcional**:
   (`git worktree add <ruta> <rama>`); una **remota-solo** (`origin/<rama>` sin
   contraparte local) obtiene una rama local con tracking
   (`git worktree add --track -b <rama> <ruta> origin/<rama>`).
-- **Ubicación**: la decide el backend (`worktreeloc.rs`) a partir de los ajustes,
+- **Ubicación**: la decide el motor de trabajo (`crates/workspace-engine/src/worktreeloc.rs`, el mismo en un host) a partir de los ajustes,
   y el formulario solo la **previsualiza** pidiéndosela (`worktree_preview_path`).
   El usuario puede además **editar la ruta** o **explorar** hasta una carpeta
   padre (con el explorador in-app compartido) para esa creación concreta; una

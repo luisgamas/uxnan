@@ -151,6 +151,7 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.10c | Cambios e Historial del host | el motor, `gitRouter.ts` |
 | §5.10d | Crear/renombrar/duplicar/borrar en el host | el motor, `fsRouter.ts` |
 | §5.10e | Buscar en el proyecto del host | el motor, `fsRouter.ts` |
+| §5.10i | Worktrees del host | `worktreeloc` en el motor, `services::worktree` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.10g | Presupuesto de canales | `ssh/conn.rs` |
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
@@ -726,12 +727,11 @@ en que maquina vive el proyecto y que si funciona hoy. El modo de fallo que
 sustituye es peor que un panel vacio — una carpeta del mismo nombre **aqui**
 contesta a todas esas preguntas, con aplomo y sobre otro repositorio.
 
-Ficheros y rama **ya no estan en esa lista**: van por SFTP (§5.10) y por git en el
-host (§5.10b). `worktree_list` sigue devolviendo **un** espacio para un proyecto
-remoto —no hay worktrees remotos todavia— pero su rama ahora se lee alli, y
-cuando el host no puede contestar la fila dice "rama sin leer" en vez de
-`(detached)`: eso ultimo seria afirmar algo sobre un repositorio que nadie
-abrio.
+Ficheros, rama y worktrees **ya no estan en esa lista**: los sirve el motor del
+host (§5.10, §5.10b, §5.10i). Cuando el host no puede contestar, `worktree_list`
+devuelve **un** espacio —la carpeta del proyecto— y la fila dice "rama sin leer"
+en vez de `(detached)`: eso ultimo seria afirmar algo sobre un repositorio que
+nadie abrio.
 
 **El contador de terminales y los agentes de la tarjeta comparan claves**, no
 rutas. Comparando rutas, un proyecto del host contaba cero.
@@ -1163,6 +1163,34 @@ descartado. Tenia dos limites que el motor quita: una carpeta que no era
 repositorio no se podia buscar, y los offsets del resaltado se recalculaban aqui
 porque `git grep` informa de lineas y no de columnas. Ahora la respuesta es la
 misma funcion en las dos maquinas.
+
+## 5.10i Worktrees del host — IMPLEMENTADO, por el motor
+
+Un proyecto del host tiene sus worktrees como uno de aqui: la barra lateral los
+lista, el dialogo crea uno nuevo (rama nueva o existente, base, carpeta propia
+opcional) y se quitan con la misma limpieza opcional de ramas. Todo lo ejecuta el
+motor alli (`GitCall::{Worktrees, Branches, WorktreeLocation, AddWorktree,
+RemoveWorktree, BranchIntegrated}`) con **la misma funcion** que la app usa aqui:
+la politica de ubicacion (`worktreeloc`, con su raiz gestionada, la marca de grupo
+y el sufijo libre) y la creacion (`worktreeloc::create`) se movieron al motor de
+trabajo, asi que `services::worktree::create` es una sola implementacion para las
+dos maquinas.
+
+**Donde cae.** La raiz gestionada es la del host (`<home del host>/uxnan/worktrees`).
+La raiz personalizada **global** de Ajustes es una carpeta de **esta** maquina, asi
+que en un host no se aplica; la raiz propia de un proyecto (una ruta de ese host)
+si. El modo `sibling` coloca la carpeta junto al repositorio, alli.
+
+**Cercado.** Crear y quitar son mutaciones: llevan la expectativa con la
+generacion de la conexion que el usuario mira (`projects.liveExpectation`), y el
+backend la comprueba en `machine_for` antes de mandar nada. Con el host caido no
+se envia nada: el dialogo dice que no hay conexion. Quitar decide el cercado
+**antes** de cerrar las terminales del worktree, para que un host que se fue no
+deje nada cerrado a medias.
+
+**Probado.** `a_projects_worktrees_are_listed_made_and_removed_on_the_host` contra
+el daemon real; el sondeo en vivo del motor crea y quita uno en el host del job
+`windows-ssh-host`.
 
 ## 5.10f Avisar de una sesion caida — IMPLEMENTADO (fase 3, sexta parte)
 
@@ -1780,7 +1808,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan pasar su sesion a un chat (bridge del host) y Windows |
-| 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **Hecha**, servida por el motor del host desde F4 del plan 037: ficheros (§5.10, leer, **guardar** y **previsualizar**), worktrees (§5.10i: listar, crear, quitar), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador (Linux, macOS y Windows); faltan los recursos remotos |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

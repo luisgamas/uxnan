@@ -599,8 +599,12 @@ export function worktreeList(repoId: string): Promise<WorktreeEntry[]> {
 /** Whether `branch` already landed in its repo's default base — merged outright
  *  or squashed. Read-only: the same check the removal runs on its way to a safe
  *  delete, asked without deleting anything. */
-export function branchIntegrated(path: string, branch: string): Promise<boolean> {
-  return invoke<boolean>('branch_integrated', { path, branch });
+export function branchIntegrated(
+  path: string,
+  branch: string,
+  target?: TargetId | null,
+): Promise<boolean> {
+  return invoke<boolean>('branch_integrated', { path, branch, target: target ?? null });
 }
 
 // --- Remote hosts (SSH) ----------------------------------------------------

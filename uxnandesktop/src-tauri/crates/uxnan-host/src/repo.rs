@@ -8,10 +8,10 @@
 //! the person holds where the app runs, as a push from a terminal here does.
 
 use uxnan_host_protocol::{GitCall, Outcome};
-use uxnan_workspace_engine::git;
 use uxnan_workspace_engine::Error;
+use uxnan_workspace_engine::{git, worktreeloc};
 
-use crate::files::{outcome, value};
+use crate::files::{outcome, parsed, value};
 
 /// Answer one `Git` call.
 pub async fn serve(call: GitCall) -> Outcome {
@@ -65,5 +65,38 @@ async fn run(call: GitCall) -> Result<serde_json::Value, Error> {
         }
         GitCall::Push { path } => value(git::push(&path).await?),
         GitCall::Pull { path } => value(git::pull(&path).await?),
+        GitCall::Worktrees { path } => value(git::list_worktrees(&path).await?),
+        GitCall::Branches { path } => value(git::branch_list(&path).await?),
+        GitCall::WorktreeLocation {
+            path,
+            branch,
+            mode,
+            root,
+        } => {
+            let resolved =
+                worktreeloc::resolve(&path, &branch, parsed(mode)?, root.as_deref()).await?;
+            value(resolved.path)
+        }
+        GitCall::AddWorktree {
+            path,
+            spec,
+            mode,
+            root,
+        } => {
+            value(worktreeloc::create(&path, parsed(spec)?, parsed(mode)?, root.as_deref()).await?)
+        }
+        GitCall::RemoveWorktree {
+            path,
+            worktree,
+            branch,
+            force,
+            cleanup,
+        } => value(
+            git::remove_worktree(&path, &worktree, branch.as_deref(), force, parsed(cleanup)?)
+                .await?,
+        ),
+        GitCall::BranchIntegrated { path, branch } => {
+            value(git::is_git_repo(&path).await && git::branch_integrated(&path, &branch).await)
+        }
     }
 }

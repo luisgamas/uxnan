@@ -78,12 +78,12 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,063 backend tests**
-in total — 765 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 189 in `uxnan-workspace-engine` (its git and libgit2 fast path among them), 5 in `uxnan-host-protocol`, 27 in
-`uxnan-host` (22 against the real daemon over its socket — among them a project's
-files listed, saved and searched on the host and its git read, staged and
-committed there, an agent's
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,065 backend tests**
+in total — 743 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 212 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 28 in
+`uxnan-host` (23 against the real daemon over its socket — among them a project's
+files listed, saved and searched on the host, its git read, staged and
+committed there, and its worktrees made and removed there, an agent's
 report sent by the real reporter script reaching only its own terminal, and the
 hooks wired into a temporary `HOME`, and a daemon run from a build folder
 removing the old builds nothing runs from, and a viewer that starts empty
@@ -92,7 +92,7 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,012 of which run everywhere; the other 51 are ignored probes that need something real to talk to
+`tests/` — 1,014 of which run everywhere; the other 51 are ignored probes that need something real to talk to
 (43 live SSH probes — 39 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
@@ -109,7 +109,8 @@ host's own Claude Code once and hears its hooks — and one more has that Claude
 call this app's `uxnan_status` tool through the engine and print the tab the
 call was answered as, and two more have the engine serve a project there — its files (create, save,
 list, duplicate, rename, search by name and content, delete) and its git
-(review, stage, commit, log, the row's branch, git's own refusal) —
+(review, stage, commit, log, the row's branch, a worktree made and removed,
+git's own refusal) —
 plus **4 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
@@ -310,7 +311,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,787 tests** across both
+ships in every build and is never shown). **1,788 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

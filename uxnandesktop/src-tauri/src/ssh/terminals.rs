@@ -806,6 +806,33 @@ mod tests {
                 .unwrap();
             assert_eq!(row.branch.as_deref(), Some("main"));
             assert_eq!(row.status.dirty, 0);
+            // A worktree beside it, made and removed there.
+            let made: crate::git::WorktreeEntry = engine
+                .git(GitCall::AddWorktree {
+                    path: root.clone(),
+                    spec: serde_json::json!({ "branch": "live-wt" }),
+                    mode: serde_json::json!("sibling"),
+                    root: None,
+                })
+                .await
+                .expect("a worktree there");
+            assert!(made.path.ends_with("--live-wt"), "{made:?}");
+            let listed: Vec<crate::git::WorktreeEntry> = engine
+                .git(GitCall::Worktrees { path: root.clone() })
+                .await
+                .unwrap();
+            assert_eq!(listed.len(), 2, "{listed:?}");
+            let _: crate::git::RemoveOutcome = engine
+                .git(GitCall::RemoveWorktree {
+                    path: root.clone(),
+                    worktree: made.path.clone(),
+                    branch: Some("live-wt".into()),
+                    force: false,
+                    cleanup: serde_json::json!({ "deleteLocal": true }),
+                })
+                .await
+                .expect("the worktree removed");
+
             // What git refuses arrives as git's own error.
             let refused = engine
                 .git::<()>(GitCall::Stage {

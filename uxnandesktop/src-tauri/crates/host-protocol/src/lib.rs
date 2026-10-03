@@ -36,7 +36,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 9: a project's files — `Fs` (list, read, save, create, rename, delete,
 ///   duplicate, and search by name and by content).
 /// - 10: a project's git — `Git` (the review, the row's status, diffs, the log,
-///   staging, discarding, applying a patch, committing, fetch/push/pull);
+///   staging, discarding, applying a patch, committing, fetch/push/pull, and
+///   its worktrees: list, branches, where a new one goes, create, remove);
 ///   `ErrorCode::Git` for what git itself refused and `ErrorCode::Io` for what
 ///   the filesystem did, so an error reads the same as on the app's machine.
 pub const PROTOCOL: u32 = 10;
@@ -408,6 +409,44 @@ pub enum GitCall {
     },
     Pull {
         path: String,
+    },
+    /// The repository's worktrees, as `git worktree list` names them.
+    Worktrees {
+        path: String,
+    },
+    /// `git::BranchList`: local and remote branches and the default base.
+    Branches {
+        path: String,
+    },
+    /// Where a new worktree for `branch` would go, by `worktreeloc`'s layout
+    /// (`mode` as it serializes) under `root` or this machine's managed root.
+    /// Read-only.
+    WorktreeLocation {
+        path: String,
+        branch: String,
+        mode: serde_json::Value,
+        root: Option<String>,
+    },
+    /// Create a worktree (`worktreeloc::create`; `spec` is its `CreateSpec`).
+    AddWorktree {
+        path: String,
+        spec: serde_json::Value,
+        mode: serde_json::Value,
+        root: Option<String>,
+    },
+    /// Remove a worktree (`git::remove_worktree`; `cleanup` is its
+    /// `BranchCleanup`), answering its `RemoveOutcome`.
+    RemoveWorktree {
+        path: String,
+        worktree: String,
+        branch: Option<String>,
+        force: bool,
+        cleanup: serde_json::Value,
+    },
+    /// Whether `branch` already landed in the default base.
+    BranchIntegrated {
+        path: String,
+        branch: String,
     },
 }
 

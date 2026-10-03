@@ -69,7 +69,6 @@ mod which;
 mod winproc;
 mod worktreeclean;
 mod worktreeloc;
-mod wsl;
 mod zero;
 
 use std::sync::atomic::Ordering;

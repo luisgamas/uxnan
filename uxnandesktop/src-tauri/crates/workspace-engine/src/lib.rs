@@ -25,6 +25,7 @@ pub mod screen;
 pub mod transcript;
 pub mod watch;
 pub mod winproc;
+pub mod worktreeloc;
 pub mod wsl;
 
 pub use error::Error;

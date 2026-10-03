@@ -1493,3 +1493,87 @@ async fn a_projects_git_is_read_staged_and_committed_on_the_host() {
         "first\n"
     );
 }
+
+#[tokio::test]
+async fn a_projects_worktrees_are_listed_made_and_removed_on_the_host() {
+    use uxnan_host_protocol::GitCall;
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let base = tempfile::tempdir().unwrap();
+    // As git names it: macOS resolves `/var` to `/private/var`.
+    let base_path = std::fs::canonicalize(base.path()).unwrap();
+    let repo = base_path.join("app");
+    std::fs::create_dir(&repo).unwrap();
+    git_here(&repo, &["init", "-q", "-b", "main"]);
+    git_here(&repo, &["config", "user.name", "Uxnan Test"]);
+    git_here(&repo, &["config", "user.email", "test@uxnan.invalid"]);
+    git_here(&repo, &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+    git_here(&repo, &["add", "-A"]);
+    git_here(&repo, &["commit", "-q", "-m", "first"]);
+    let root = repo.display().to_string();
+    let worktrees_root = base_path.join("wt").display().to_string();
+
+    let branches = git_call(&mut client, GitCall::Branches { path: root.clone() }).await;
+    assert_eq!(
+        branches["branches"],
+        serde_json::json!(["main"]),
+        "{branches}"
+    );
+    assert_eq!(branches["defaultBase"], "main");
+
+    // Where it would go, by this machine's layout and the root it was given.
+    let preview = git_call(
+        &mut client,
+        GitCall::WorktreeLocation {
+            path: root.clone(),
+            branch: "feature/x".into(),
+            mode: serde_json::json!("custom"),
+            root: Some(worktrees_root.clone()),
+        },
+    )
+    .await;
+    assert_eq!(preview, format!("{worktrees_root}/app/feature-x"));
+
+    let created = git_call(
+        &mut client,
+        GitCall::AddWorktree {
+            path: root.clone(),
+            spec: serde_json::json!({ "branch": "feature/x" }),
+            mode: serde_json::json!("custom"),
+            root: Some(worktrees_root.clone()),
+        },
+    )
+    .await;
+    assert_eq!(created["path"], preview, "{created}");
+    assert_eq!(created["branch"], "feature/x");
+
+    let listed = git_call(&mut client, GitCall::Worktrees { path: root.clone() }).await;
+    assert_eq!(listed.as_array().unwrap().len(), 2, "{listed}");
+    // A branch that never moved has not landed anywhere.
+    let finished = git_call(
+        &mut client,
+        GitCall::BranchIntegrated {
+            path: preview.as_str().unwrap().to_string(),
+            branch: "feature/x".into(),
+        },
+    )
+    .await;
+    assert_eq!(finished, false);
+
+    let outcome = git_call(
+        &mut client,
+        GitCall::RemoveWorktree {
+            path: root.clone(),
+            worktree: preview.as_str().unwrap().to_string(),
+            branch: Some("feature/x".into()),
+            force: false,
+            cleanup: serde_json::json!({}),
+        },
+    )
+    .await;
+    assert!(outcome.is_object(), "{outcome}");
+    let listed = git_call(&mut client, GitCall::Worktrees { path: root.clone() }).await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+    assert!(!std::path::Path::new(preview.as_str().unwrap()).exists());
+}

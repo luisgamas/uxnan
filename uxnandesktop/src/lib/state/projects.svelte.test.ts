@@ -7,6 +7,7 @@ import { app } from '$lib/state/app.svelte';
 import { hosts } from '$lib/state/hosts.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
 import { fileTree } from '$lib/state/fileTree.svelte';
+import { sessions } from '$lib/state/sessions.svelte';
 import { LOCAL_TARGET } from '$lib/target';
 import type { WorktreeEntry } from '$lib/types';
 
@@ -177,6 +178,38 @@ describe('a project that lives on a host', () => {
     // The store is a singleton: leaving one test's tabs behind would let the
     // next one inherit a machine from a terminal it never opened.
     terminals.root = null;
+  });
+
+  it("creates a worktree on the host, fenced to the connection the user sees", async () => {
+    sessions.replace([{ hostId: 'h1', generation: 6, label: 'gamas' }]);
+    const created: WorktreeEntry = {
+      path: 'C:/Users/gamas/uxnan/worktrees/sample/feature',
+      branch: 'feature',
+      head: 'abc',
+      isMain: false,
+    };
+    const backend = installFakeBackend({
+      worktree_create: () => created,
+      worktree_list: () => [REMOTE_MAIN, created],
+      git_repo_status: () => ({ branch: 'feature', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
+    });
+
+    expect(await projects.createWorktree(REMOTE_ID, 'feature', { agentId: null })).toBe(true);
+    expect(backend.lastCallTo('worktree_create')?.args).toMatchObject({
+      repoId: REMOTE_ID,
+      branch: 'feature',
+      expect: { targetId: 'ssh:h1', generation: 6 },
+    });
+    // The new worktree is the host's, not this machine's.
+    expect(projects.targetForPath(created.path)).toBe('ssh:h1');
+
+    // With the host gone, nothing is sent: a zero would be an expectation
+    // nobody issued.
+    sessions.replace([]);
+    backend.clearCalls();
+    expect(await projects.createWorktree(REMOTE_ID, 'other', { agentId: null })).toBe(false);
+    expect(backend.lastCallTo('worktree_create')).toBeUndefined();
+    expect(projects.error).toMatch(/no live connection/);
   });
 
   it('keeps the file tree on the machine its root is on', () => {

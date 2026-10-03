@@ -297,7 +297,7 @@ async fn run(
     if !cwd.trim().is_empty() {
         // FOR-DEV: a `\\wsl$` worktree here runs the Windows CLI against the 9P
         // share (slow). Route WSL worktrees through `wsl.exe -d <distro>` with the
-        // in-distro CLI (see `crate::wsl` + `git.rs`'s WSL path). See FOR-DEV.md.
+        // in-distro CLI (see the engine's `wsl` + `git`'s WSL path). See FOR-DEV.md.
         cmd.current_dir(cwd);
     }
 

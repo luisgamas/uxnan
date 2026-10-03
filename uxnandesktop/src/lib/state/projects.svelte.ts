@@ -54,6 +54,7 @@ import {
   LOCAL_TARGET,
   sshHostId,
   targetOf,
+  type TargetExpectation,
   type TargetId,
 } from "$lib/target";
 import { registerFlush } from "$lib/state/flushRegistry";
@@ -90,6 +91,22 @@ import { buildReviewGroups, type ReviewGroup, type ReviewPr } from "$lib/sidebar
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
+import { sessions } from "$lib/state/sessions.svelte";
+
+/** The expectation a project mutation is fenced with: this machine's, or for a
+ *  project on a host, the connection the user is looking at now. Thrown rather
+ *  than sent with a zero when that host is not connected — an expectation
+ *  nobody issued would be refused after a round trip, or satisfied by
+ *  accident. */
+function liveExpectation(target: TargetId | null | undefined): TargetExpectation {
+  const host = sshHostId(target);
+  if (!host) return expectation(target);
+  const generation = sessions.generationOf(host);
+  if (generation === undefined) {
+    throw new Error(`no live connection to ${host} to act against`);
+  }
+  return expectation(target, generation);
+}
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -1037,7 +1054,7 @@ class ProjectsStore {
         if (!shouldCheckIntegration(this.#completionInputs(w))) continue;
         this.#integrationInFlight.add(w.path);
         try {
-          this.#integrated[w.path] = await branchIntegrated(w.path, w.branch);
+          this.#integrated[w.path] = await branchIntegrated(w.path, w.branch, targetOf(repo.target));
         } catch {
           // A repo we can't read is not "finished" — leave it unasked so a later
           // sweep retries instead of freezing a wrong verdict into the panel.
@@ -1306,7 +1323,7 @@ class ProjectsStore {
         path: options.path,
         // Fence the write to the machine this project lives on, as it was when
         // the dialog opened: creating a worktree writes to disk.
-        expect: expectation(app.repos.find((r) => r.id === repoId)?.target),
+        expect: liveExpectation(app.repos.find((r) => r.id === repoId)?.target),
       });
       await this.adoptWorktree(repoId, created, options.agentId);
       return true;
@@ -1391,6 +1408,11 @@ class ProjectsStore {
   ): Promise<boolean> {
     this.error = null;
     try {
+      // The most destructive command in the app: fence it to the machine the
+      // user was actually looking at when they confirmed — decided before any
+      // terminal is touched, so a host that just dropped refuses with nothing
+      // closed.
+      const expect = liveExpectation(app.repos.find((r) => r.id === row.repoId)?.target);
       // Kill the worktree's terminals/agents FIRST: on Windows a process whose
       // working directory is inside the worktree holds the folder open and
       // blocks git from deleting it (which left half-removed worktrees before).
@@ -1404,9 +1426,7 @@ class ProjectsStore {
         row.branch,
         force,
         cleanup,
-        // The most destructive command in the app: fence it to the machine the
-        // user was actually looking at when they confirmed.
-        expectation(app.repos.find((r) => r.id === row.repoId)?.target),
+        expect,
       );
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.

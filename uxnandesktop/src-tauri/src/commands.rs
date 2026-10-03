@@ -3164,37 +3164,33 @@ async fn repo_location_of(
         .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
 }
 
-/// Resolve a repo for a **mutating** command, refusing the call when the target
-/// the caller prepared for is no longer the target the work would run on.
-///
-/// Every destructive repo-bound command goes through here rather than
-/// [`repo_path_of`], so "which machine does this run on" is answered once, in
-/// one place, instead of being re-derived (and eventually forgotten) per command.
-/// See `target::check` for why a missing expectation only ever authorizes local.
-async fn repo_path_for_mutation(
-    state: &AppState,
-    repo_id: &str,
-    expect: Option<&TargetExpectation>,
-) -> Result<String, CommandError> {
-    let (path, actual) = repo_location_of(state, repo_id).await?;
-    // Only local targets exist today, so the live generation is the local
-    // constant; the SSH connection registry supplies the real one in phase 1.
-    target::check(expect, &actual, LOCAL_GENERATION).map_err(CommandError::from)?;
-    Ok(path)
+/// A registered project, cloned out of the store.
+async fn repo_data_of(state: &AppState, repo_id: &str) -> Result<RepoData, CommandError> {
+    state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .find(|r| r.id == repo_id)
+        .cloned()
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
 }
 
-/// A repo's branches plus the resolved default base, for the new-worktree dialog.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BranchList {
-    /// Local branch names (the base picker + the "existing branch" picker).
-    pub branches: Vec<String>,
-    /// Branches that exist on `origin`, short-named (`origin/main` → `main`).
-    /// Powers the "existing branch" mode so a remote-only branch can be checked
-    /// out into a fresh worktree. Empty when the repo has no remote.
-    pub remote_branches: Vec<String>,
-    /// The base ref the dialog should preselect (remote HEAD → main → master → HEAD).
-    pub default_base: String,
+/// A repo's path and the machine it is on, for a project command. With
+/// `fence`, the call is a **mutation** and is refused when the target the
+/// caller prepared it for is no longer the one the work would run on — every
+/// destructive repo-bound command goes through here, so "which machine does
+/// this run on" is answered once (`machine_for`, `target::check`).
+async fn repo_machine<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    repo_id: &str,
+    fence: Option<Option<&TargetExpectation>>,
+) -> Result<(String, Machine), CommandError> {
+    let (path, target) = repo_location_of(state, repo_id).await?;
+    let machine = machine_for(app, state, Some(&target.to_string()), fence).await?;
+    Ok((path, machine))
 }
 
 /// List a repo's local + remote branches and the resolved default base ref.
@@ -3202,23 +3198,17 @@ pub struct BranchList {
 /// picker (check out any local/remote branch) when creating a worktree.
 #[tauri::command]
 pub async fn branch_list(
+    app: AppHandle,
     state: State<'_, AppState>,
     repo_id: String,
-) -> Result<BranchList, CommandError> {
-    let repo_path = repo_path_of(&state, &repo_id).await?;
-    let branches = git::list_branches(&repo_path)
-        .await
-        .map_err(CommandError::from)?;
-    // A repo with no remote simply has no remote branches — don't fail the dialog.
-    let remote_branches = git::list_remote_branches(&repo_path)
-        .await
-        .unwrap_or_default();
-    let default_base = git::default_base(&repo_path).await;
-    Ok(BranchList {
-        branches,
-        remote_branches,
-        default_base,
-    })
+) -> Result<git::BranchList, CommandError> {
+    match repo_machine(&app, &state, &repo_id, None).await? {
+        (path, Machine::Here) => git::branch_list(&path).await.map_err(CommandError::from),
+        (path, Machine::Host(engine)) => engine
+            .git(GitCall::Branches { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Where a new worktree of `repo_id` for `branch` goes: the control service's
@@ -3259,6 +3249,7 @@ pub async fn git_identity() -> Result<git::GitIdentity, CommandError> {
 /// group, so it is safe to call while the user is still typing the branch name.
 #[tauri::command]
 pub async fn worktree_preview_path(
+    app: AppHandle,
     state: State<'_, AppState>,
     repo_id: String,
     branch: String,
@@ -3267,12 +3258,25 @@ pub async fn worktree_preview_path(
     if branch.is_empty() {
         return Ok(String::new());
     }
-    let repo_path = repo_path_of(&state, &repo_id).await?;
-    Ok(
-        resolve_worktree_location(&state, &repo_id, &repo_path, &branch)
+    match repo_machine(&app, &state, &repo_id, None).await? {
+        (path, Machine::Here) => Ok(resolve_worktree_location(&state, &repo_id, &path, &branch)
             .await?
-            .path,
-    )
+            .path),
+        (path, Machine::Host(engine)) => {
+            let repo = repo_data_of(&state, &repo_id).await?;
+            let (mode, root) =
+                crate::control::services::worktree::location_policy(&state, &repo).await;
+            engine
+                .git(GitCall::WorktreeLocation {
+                    path,
+                    branch,
+                    mode: serde_json::to_value(mode).map_err(AppError::Serde)?,
+                    root,
+                })
+                .await
+                .map_err(CommandError::from)
+        }
+    }
 }
 
 /// Set (or clear, with `None`/blank) a project's own managed-worktree root, so a
@@ -3560,15 +3564,8 @@ pub async fn worktree_create(
     // machine this is, which only the window carries. The creation itself is
     // the control service's, shared with `worktree/create`.
     let state = app.state::<AppState>();
-    repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
-    let repo = {
-        let data = state.data.read().await;
-        data.repos
-            .iter()
-            .find(|r| r.id == repo_id)
-            .cloned()
-            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
-    };
+    repo_machine(&app, &state, &repo_id, Some(expect.as_ref())).await?;
+    let repo = repo_data_of(&state, &repo_id).await?;
     crate::control::services::worktree::create(
         &app,
         &repo,
@@ -3595,7 +3592,9 @@ pub async fn worktree_create(
 /// can delete branches — so an expectation that no longer matches aborts before
 /// any git process starts.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn worktree_remove(
+    app: AppHandle,
     state: State<'_, AppState>,
     repo_id: String,
     path: String,
@@ -3604,16 +3603,24 @@ pub async fn worktree_remove(
     cleanup: Option<git::BranchCleanup>,
     expect: Option<TargetExpectation>,
 ) -> Result<git::RemoveOutcome, CommandError> {
-    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
-    git::remove_worktree(
-        &repo_path,
-        &path,
-        branch.as_deref(),
-        force,
-        cleanup.unwrap_or_default(),
-    )
-    .await
-    .map_err(CommandError::from)
+    let cleanup = cleanup.unwrap_or_default();
+    match repo_machine(&app, &state, &repo_id, Some(expect.as_ref())).await? {
+        (repo_path, Machine::Here) => {
+            git::remove_worktree(&repo_path, &path, branch.as_deref(), force, cleanup)
+                .await
+                .map_err(CommandError::from)
+        }
+        (repo_path, Machine::Host(engine)) => engine
+            .git(GitCall::RemoveWorktree {
+                path: repo_path,
+                worktree: path,
+                branch,
+                force,
+                cleanup: serde_json::to_value(cleanup).map_err(AppError::Serde)?,
+            })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// List a repo's worktrees (ADE-created and ones made externally by agents).
@@ -3656,11 +3663,29 @@ pub async fn worktree_list(
 /// A detached worktree (no branch) is never "finished" — there is no branch to
 /// have landed anywhere.
 #[tauri::command]
-pub async fn branch_integrated(path: String, branch: String) -> Result<bool, CommandError> {
-    if branch.trim().is_empty() || !git::is_git_repo(&path).await {
+pub async fn branch_integrated(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    branch: String,
+    target: Option<String>,
+) -> Result<bool, CommandError> {
+    let branch = branch.trim().to_string();
+    if branch.is_empty() {
         return Ok(false);
     }
-    Ok(git::branch_integrated(&path, branch.trim()).await)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => {
+            if !git::is_git_repo(&path).await {
+                return Ok(false);
+            }
+            Ok(git::branch_integrated(&path, &branch).await)
+        }
+        Machine::Host(engine) => engine
+            .git(GitCall::BranchIntegrated { path, branch })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// List a directory's sub-folders (flagging git repos) for the in-app project
@@ -3698,7 +3723,14 @@ async fn machine_for<R: tauri::Runtime>(
     fence: Option<Option<&TargetExpectation>>,
 ) -> Result<Machine, CommandError> {
     let host = match target.filter(|t| !t.is_empty()).map(TargetId::parse) {
-        None | Some(Ok(TargetId::Local)) => return Ok(Machine::Here),
+        None | Some(Ok(TargetId::Local)) => {
+            // A mutation prepared for another machine never runs here.
+            if let Some(expect) = fence {
+                target::check(expect, &TargetId::Local, LOCAL_GENERATION)
+                    .map_err(CommandError::from)?;
+            }
+            return Ok(Machine::Here);
+        }
         Some(Ok(TargetId::Ssh(host))) => host,
         Some(Ok(other)) => {
             return Err(CommandError::from(AppError::Invalid(format!(
