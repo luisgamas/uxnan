@@ -283,17 +283,18 @@ test('ZeroAdapter routes session/request_permission → approval → reply optio
   await done;
 });
 
-test('ZeroAdapter auto-approves without the phone under approveForMe', async () => {
+test('approve for me runs Zero in auto, and what Zero still asks goes to the person', async () => {
   let called = 0;
   const { adapter, server } = setup({
     onApprovalRequest: () => {
       called += 1;
-      return Promise.resolve('reject');
+      return Promise.resolve('approve');
     },
   });
   const done = collect(adapter);
   server.handle((m) => {
     if (m.method !== 'session/prompt') return;
+    // In `auto` Zero asks only before what it judges risky.
     server.requestPermission(7, { toolCallId: 't', title: 'exec', kind: 'execute' }, [
       { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
     ]);
@@ -301,10 +302,27 @@ test('ZeroAdapter auto-approves without the phone under approveForMe', async () 
   });
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'approveForMe' });
   await done;
-  assert.equal(called, 0); // phone never consulted
+  assert.equal(called, 1, 'the person answers what Zero would not decide alone');
   const reply = server.sent.find((m) => m.id === 7 && m.result?.outcome);
   assert.deepEqual(reply.result.outcome, { outcome: 'selected', optionId: 'allow' });
   assert.ok(server.sent.some((m) => m.method === 'session/set_mode' && m.params.modeId === 'auto'));
+});
+
+test('plan only runs Zero in its plan mode', async () => {
+  const { adapter, server } = setup();
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'plan it', accessMode: 'plan' });
+  await done;
+  assert.ok(server.sent.some((m) => m.method === 'session/set_mode' && m.params.modeId === 'plan'));
+});
+
+test('Zero offers no full access: its sandbox cannot be lifted over ACP', () => {
+  const { adapter } = setup();
+  assert.deepEqual(adapter.capabilities.accessModes, ['requestApproval', 'approveForMe', 'plan']);
+  assert.equal(adapter.capabilities.defaultAccessMode, 'approveForMe');
 });
 
 test('ZeroAdapter emits a plan block from a plan update', async () => {

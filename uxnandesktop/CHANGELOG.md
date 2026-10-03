@@ -18,6 +18,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the key it must list. Without a bridge, or with one too old for it, the
   section stays visible and says why.
 
+### Changed
+
+- **The access menu offers what the agent can do.** It lists only the modes
+  the conversation's agent can honor, adds **Plan only** where the agent has
+  it, and is hidden for an agent with none. A conversation whose mode its agent
+  no longer offers says so above the composer, with the mode it runs in now.
+  The modes read the same as on the phone: *Request approval*, *Approve for
+  me*, *Full access*, *Plan only*. A new conversation starts in its agent's
+  default mode, which the bridge sets.
+
+### Fixed
+
+- **An approval always shows its card above the composer.** When the same
+  approval reached the app twice — a reload of the turn racing the live
+  request — the duplicate broke the card above the composer, leaving only a
+  "Waiting for you" line in the conversation and nothing to answer it with.
+  A request is now one card whatever copies of it arrive.
+
 ## [0.0.72] - 20261002
 ### Changed
 

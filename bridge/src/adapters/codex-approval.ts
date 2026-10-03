@@ -9,8 +9,9 @@
  * the legacy ones. Every one of them is routed through this module:
  *
  *  v2 (current):
- *    - `item/commandExecution/requestApproval` (params: { command, parsedCmd, ... })
- *    - `item/fileChange/requestApproval`        (params: { fileChanges, grantRoot?, reason? })
+ *    - `item/commandExecution/requestApproval` (params: { command (a string), cwd, ... })
+ *    - `item/fileChange/requestApproval`        (params: { itemId, reason?, grantRoot? } —
+ *                                                the changes ride on the item itself)
  *    - `item/permissions/requestApproval`       (params: { reason, permissions })
  *    - `mcpServer/elicitation/request`           (params: { serverName, message, ... })
  *    - `item/tool/requestUserInput`             (params: { toolName, question, ... })
@@ -58,25 +59,6 @@ export interface PendingCodexApproval {
   descriptor: ApprovalDescriptor;
 }
 
-/** A JSON-RPC reply shape for a given approval kind. */
-export type ApprovalReply =
-  | { kind: 'approved' }
-  | { kind: 'approved_for_session' }
-  | { kind: 'denied' }
-  | { kind: 'abort' }
-  | { kind: 'timed_out' };
-
-/**
- * Map a user-facing decision onto the wire reply. `approveSession` becomes
- * `approved_for_session` (Codex caches the approval for the rest of the
- * session), `approve` → `approved`, `reject` → `denied`.
- */
-export function decisionToReply(decision: ApprovalDecision): ApprovalReply {
-  if (decision === 'approveSession') return { kind: 'approved_for_session' };
-  if (decision === 'reject') return { kind: 'denied' };
-  return { kind: 'approved' };
-}
-
 /**
  * Inspect a server request and pull out the kind + descriptor. Returns
  * `undefined` for methods the bridge does not treat as a gateable approval
@@ -108,25 +90,52 @@ export function describeServerRequest(
 }
 
 /**
- * Build the JSON-RPC `result` payload for a given kind + reply. The shape
- * differs per method: the v2 names use `{ decision: ... }` with a
- * `ReviewDecision` oneOf; the v1 names use the SAME `ReviewDecision` oneOf
- * directly. The bridge keeps it simple and only emits the string forms it
- * understands (Codex ignores unknown forms).
+ * The JSON-RPC `result` that answers an approval request with the person's
+ * [decision], in the shape that request's method expects (codex-cli 0.157.1
+ * schema). The v2 item approvals take `accept` / `acceptForSession` /
+ * `decline`; the legacy v1 names take the older `ReviewDecision` strings; a
+ * permissions request is answered by granting (or not) what it asked for; an
+ * MCP elicitation by its action. A reply in another method's shape is
+ * ignored by Codex, which then asks again — the loop "request approval" ran
+ * into before this kept them apart.
  */
-export function buildReplyResult(
-  _kind: ApprovalKind,
-  reply: ApprovalReply,
+export function approvalReply(
+  approval: Pick<PendingCodexApproval, 'kind' | 'descriptor'>,
+  decision: ApprovalDecision,
 ): Record<string, unknown> {
-  return { decision: reply.kind };
+  const approve = decision !== 'reject';
+  const forSession = decision === 'approveSession';
+  switch (approval.kind) {
+    case 'commandExecution':
+    case 'fileChange':
+      return { decision: forSession ? 'acceptForSession' : approve ? 'accept' : 'decline' };
+    case 'permissions':
+      return approve
+        ? {
+            permissions: approval.descriptor.input['permissions'] ?? {},
+            scope: forSession ? 'session' : 'turn',
+          }
+        : { permissions: {} };
+    case 'mcpElicitation':
+      return { action: approve ? 'accept' : 'decline', content: null };
+    case 'toolUserInput':
+      // Nothing to answer with but the person's yes or no: an empty answer set.
+      return { answers: {} };
+    case 'legacyExecCommand':
+    case 'legacyApplyPatch':
+      return { decision: forSession ? 'approved_for_session' : approve ? 'approved' : 'denied' };
+  }
 }
 
 function describeCommandExecution(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
-  // `command` is a string[] (argv); `parsedCmd` is a best-effort parse.
-  const command = Array.isArray(p['command'])
-    ? (p['command'] as unknown[]).filter((c): c is string => typeof c === 'string').join(' ')
-    : '';
+  // A string on the v2 protocol (codex-cli 0.157.1); argv on older builds.
+  const command =
+    typeof p['command'] === 'string'
+      ? p['command']
+      : Array.isArray(p['command'])
+        ? (p['command'] as unknown[]).filter((c): c is string => typeof c === 'string').join(' ')
+        : '';
   const detail =
     command ||
     (typeof p['reason'] === 'string' ? (p['reason'] as string) : 'codex wants to run a command');
@@ -147,9 +156,15 @@ function describeCommandExecution(params: unknown, id: number | string): Pending
 
 function describeFileChange(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
+  // v2 names only the item and why; the legacy shape listed the files.
   const fileChanges = asRecord(p['fileChanges']) ?? {};
   const paths = Object.keys(fileChanges);
-  const detail = paths.length > 0 ? paths.join(', ') : 'codex wants to edit files';
+  const reason = typeof p['reason'] === 'string' ? p['reason'] : undefined;
+  const grantRoot = typeof p['grantRoot'] === 'string' ? p['grantRoot'] : undefined;
+  const detail =
+    paths.length > 0
+      ? paths.join(', ')
+      : (reason ?? (grantRoot ? `write under ${grantRoot}` : 'codex wants to edit files'));
   return {
     kind: 'fileChange',
     serverRequestId: id,

@@ -162,7 +162,7 @@ thread/resume           -> abrir un thread existente: valida que exista y **no c
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion. Como `thread/setAccessMode`, es un **ajuste**: se propaga (`rev` nueva) pero no mueve `Thread.updatedAt`, que es cuando la conversacion se movio por ultima vez (turnos, historia, titulo, estado) y por el que toda lista ordena y fecha
 thread/rename           -> renombrar thread (devuelve el Thread actualizado; `titleSource: user`). El titulo provisional lo pone el bridge al guardar el primer turno y el generado tras un turno completado (`02a` §5.8.17); los clientes no renombran por su cuenta. Un `source: 'prompt'` nunca pisa un titulo `user` o `agent`. `ageMs?` (ms, 0..1 año): una accion hecha sin conexion y enviada ahora; se aplica solo si nadie renombro a mano despues (`02a` §5.8.17)
-thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio).
+thread/setAccessMode    -> persistir el modo de acceso por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess | plan). Devuelve el Thread actualizado; idempotente. **Rechaza (`-32602`) un modo que el agente del hilo no ofrece** (`AgentCapabilities.accessModes`). El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?`. `thread/start` guarda el modo por defecto del agente (`defaultAccessMode`): ningun cliente lo escribe. **Enforcement:** en cada `turn/send` el bridge resuelve el modo efectivo (`effectiveAccessMode`: el guardado si el agente lo ofrece, si no su defecto) y solo ese llega al adapter (`SendTurnOptions.accessMode`), que lo mapea a las banderas de su CLI en cada turno. Cada modo significa lo mismo en todos los agentes — requestApproval: toda accion con efecto espera a la persona; approveForMe: trabaja solo dentro del proyecto y lo que sale lo decide el revisor propio del CLI (o pregunta); fullAccess: sin preguntas ni sandbox; plan: lee y planifica, no escribe ni ejecuta. Mapeo verificado por CLI: `bridge/docs/agents.md` → *Access modes*.
 thread/archive          -> archivar thread (status -> archived, reversible). Antes de archivar, el bridge cancela el turno en vuelo, vacia la cola y libera el proceso residente que pi/Antigravity mantienen para el hilo (`AgentManager.closeThreadSession`); el id de sesion nativo se conserva, asi que desarchivar y enviar reanuda la misma sesion en un proceso nuevo
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns (misma liberacion previa que `thread/archive`)
@@ -712,7 +712,7 @@ interface TurnSendParams {
 interface QuestionOption { label: string; description?: string }
 interface QuestionItem { question: string; header?: string; options: QuestionOption[]; multiple?: boolean }
 // content block que el bridge emite (stream/content/block) cuando el agente pregunta:
-interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[] }
+interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[]; blockId?: string /* = questionId */ }
 // respuesta del telefono en turn/send: answers[i] = labels elegidas para questions[i]
 interface QuestionResponse { questionId: string; answers: string[][] }
 ```
@@ -798,7 +798,8 @@ type AgentModelOption =
 **`AgentCapabilities`** (de `agent/list`):
 ```typescript
 interface AgentCapabilities {
-  planMode: boolean;
+  accessModes?: AccessMode[];     // modos que el agente puede cumplir (vacio: sin selector)
+  defaultAccessMode?: AccessMode; // modo de un hilo nuevo o de uno con un modo retirado
   streaming: boolean;
   approvals: boolean;            // emite `approval` content blocks (opt-in)
   forking: boolean;
@@ -884,9 +885,16 @@ interface ApprovalRequestBlock {
   action: string;             // descripcion legible de la accion propuesta
   risk?: 'low' | 'medium' | 'high';
   detail?: string;            // detalle adicional opcional
+  blockId?: string;           // = approvalId (LiveBlock): una segunda copia reemplaza a la primera
 }
 // Viajado como `stream/content/block` (NO como notificacion dedicada), para
-// que persista con el turno y sobreviva a un `turn/list` re-sync.
+// que persista con el turno y sobreviva a un `turn/list` re-sync. El bridge
+// guarda el bloque ANTES de notificarlo, asi que un cliente que recarga el
+// turno en ese intervalo recibe la copia guardada y despues la viva: el
+// `blockId` (el propio id de la solicitud, tambien en `QuestionRequestBlock`)
+// hace que la segunda reemplace a la primera en vez de mostrarse dos veces.
+// Un bloque guardado antes de llevar `blockId` se identifica igual, por su
+// `approvalId` / `questionId`, en desktop y en el telefono.
 ```
 
 **`MessageContent`** (tipos polimorficos soportados; ver `02a` §6.2):

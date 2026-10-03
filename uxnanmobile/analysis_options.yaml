@@ -8,6 +8,9 @@ analyzer:
     - "**/*.freezed.dart"
     - "**/*.gen.dart"
     - "lib/l10n/**"
+    - build/**
+    - android/**
+    - ios/**
   errors:
     invalid_annotation_target: ignore # freezed generates this
     missing_required_param: error

@@ -327,7 +327,7 @@ connected to live bridge data, validated on-device against a real bridge.
   **independent voice → text**
   (`speech_to_text`) beside contextual Send/Stop; a collapsible turn-context
   icon shelf with a left-aligned 38 dp visual rhythm (48 dp touch targets) for
-  data-driven reasoning options and color-coded approval mode;
+  data-driven reasoning options and the access mode, listing only the modes the agent offers (with a notice when the conversation kept one it no longer offers);
   a compact in-turn circular **Agent responding…** cue; **image attachments**
   in an anchored two-row "+" menu (photo library — **multi-selection**, up to
   10 per message — / camera, downscaled to 2048 px / q85, image-only message
@@ -524,14 +524,6 @@ shipping.
       confirm the "Linked with Uxnan Desktop" line follows the desktop opening
       and closing. The screens are also pending the maintainer's visual review.
 
-- [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
-      now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
-      "per-turn access-mode enforcement"). Remaining: **Codex mid-thread re-apply**
-      — the posture is set at `thread/start`, so changing the access mode partway
-      through an existing Codex thread only affects threads started afterward
-      (tracked in `bridge/FOR-DEV.md`). pi/OpenCode can't gate tools (no headless
-      pre-tool channel), so they don't map `accessMode`. Verify the live behavior
-      per agent.
 - [ ] **Plan/to-do block per-agent on-device validation** — decode + render are
       done; the tool names/shapes are still ASSUMED for Codex/OpenCode/pi. Verify
       against a real turn per agent and adjust the mappers.

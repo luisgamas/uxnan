@@ -1446,6 +1446,18 @@ final agentCapabilitiesProvider =
   return const AgentCapabilities.permissive();
 });
 
+/// An agent's name as the bridge reports it (`agent/list`), or null while the
+/// list is unknown or the agent is not in it.
+final agentDisplayNameProvider =
+    Provider.family<String?, String>((ref, agentId) {
+  final agents = ref.watch(agentsProvider).value;
+  if (agents == null) return null;
+  for (final agent in agents) {
+    if (agent.agentId == agentId) return agent.displayName;
+  }
+  return null;
+});
+
 /// Holds the threadId of the conversation the user is currently viewing in the
 /// foreground (null when none). The conversation screen sets it while visible
 /// and clears it on leave/background; [pushRegistrarProvider] reads it to

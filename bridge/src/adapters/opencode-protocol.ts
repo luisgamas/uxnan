@@ -14,7 +14,7 @@
  * this: sessions, turns, the neutral {@link OpenCodeEvent}s, and normalized
  * history. Nothing above this line knows which version it is talking to.
  */
-import type { QuestionItem } from '@uxnan/shared';
+import type { AccessMode, QuestionItem } from '@uxnan/shared';
 import type { PlanStepBlock } from './content-blocks.js';
 
 /** An OpenCode major version the bridge speaks. */
@@ -28,7 +28,19 @@ export type PermissionReply = 'once' | 'always' | 'reject';
  * outside the project) ask first or just run. Each protocol maps it onto its
  * own permission keys.
  */
-export type OpenCodePermissionPolicy = 'ask' | 'allow';
+/** What a session's rule does with one gated action. */
+export type OpenCodeEffect = 'allow' | 'ask' | 'deny';
+
+/**
+ * The session's permission rules: the effect for each gated action (on any
+ * resource). `shell` is `bash` on OpenCode 1.x.
+ */
+export interface OpenCodePermissionPolicy {
+  edit: OpenCodeEffect;
+  shell: OpenCodeEffect;
+  webfetch: OpenCodeEffect;
+  external_directory: OpenCodeEffect;
+}
 
 /** A `provider/model` id, split the way both protocols want it. */
 export interface OpenCodeModelRef {
@@ -37,12 +49,23 @@ export interface OpenCodeModelRef {
 }
 
 /** What a turn asks for: the text, and optionally a model and its variant. */
+/**
+ * OpenCode's own primary agents: `build` works, `plan` reads and plans and
+ * changes nothing. "Plan only" runs on `plan` — the native way, which keeps
+ * OpenCode's free models available (a session whose rules deny tools is
+ * refused by them: "free tier can only be used from within OpenCode",
+ * measured on 2.0.19).
+ */
+export type OpenCodeAgent = 'build' | 'plan';
+
 export interface OpenCodePrompt {
   text: string;
   /** Split from a `provider/model` id; absent = the session's current model. */
   model?: OpenCodeModelRef;
   /** The model variant (OpenCode's reasoning knob). */
   variant?: string;
+  /** The primary agent this turn runs on. */
+  agent: OpenCodeAgent;
 }
 
 /**
@@ -68,6 +91,8 @@ export interface OpenCodeCommandRun {
   /** Split from a `provider/model` id; absent = the session's current model. */
   model?: OpenCodeModelRef;
   variant?: string;
+  /** The primary agent the command runs on. */
+  agent: OpenCodeAgent;
 }
 
 /** A model the CLI offers, with its context window when it reports one. */
@@ -188,6 +213,12 @@ export interface IOpenCodeServer {
     variant?: string;
   }): Promise<string>;
   /**
+   * Replace a session's permission rules: the policy a session asks under is
+   * the one it was created with until this changes it, so a conversation whose
+   * access mode changed carries it here before its next turn.
+   */
+  setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void>;
+  /**
    * Whether the server knows a session — the store it serves is the CLI's own,
    * so a session started in a terminal is known too. False only when the
    * server says it does not exist; throws when it cannot say.
@@ -233,11 +264,27 @@ export interface IOpenCodeServer {
 }
 
 /** The session's permission policy for a thread's access mode. */
-export function permissionPolicyFor(accessMode: string | undefined): OpenCodePermissionPolicy {
-  // `approveForMe`/`fullAccess` run gated tools without asking; everything else
-  // (the default and an explicit `requestApproval`) asks — surfacing an approval
-  // card is why the bridge drives the server at all.
-  return accessMode === 'approveForMe' || accessMode === 'fullAccess' ? 'allow' : 'ask';
+export function permissionPolicyFor(accessMode: AccessMode | undefined): OpenCodePermissionPolicy {
+  switch (accessMode) {
+    case 'requestApproval':
+    case 'plan':
+      // Every action with a side effect waits for the person — for "plan
+      // only" a backstop: its `plan` agent changes nothing on its own.
+      return { edit: 'ask', shell: 'ask', webfetch: 'ask', external_directory: 'ask' };
+    case 'approveForMe':
+      // Works on its own inside the project; file tools reaching beyond it,
+      // and the web, ask. (A shell command is not checked by the paths it
+      // names: OpenCode gates `external_directory` on its file tools.)
+      return { edit: 'allow', shell: 'allow', webfetch: 'ask', external_directory: 'ask' };
+    case 'fullAccess':
+    case undefined:
+      return { edit: 'allow', shell: 'allow', webfetch: 'allow', external_directory: 'allow' };
+  }
+}
+
+/** The primary agent a turn in [accessMode] runs on. */
+export function agentFor(accessMode: AccessMode | undefined): OpenCodeAgent {
+  return accessMode === 'plan' ? 'plan' : 'build';
 }
 
 /**

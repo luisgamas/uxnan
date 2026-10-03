@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1029, shared 52, relay
+standalone). It builds clean and the suite is green (bridge 1030, shared 57, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -337,18 +337,9 @@ push validation (FOR-HUMAN).
       approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
       a headless entry point.
-- [ ] **OpenCode access-mode — mid-thread per-turn re-apply.** The thread's
-      `accessMode` is mapped to a permission ruleset and passed on `POST /session`
-      (`opencode-adapter.ts` `#rulesetFor`), so it governs an OpenCode thread from its
-      first turn. A mid-thread access-mode change does NOT recreate the session, so
-      the new posture only applies to threads started after the change. Resolve by
-      confirming whether `opencode serve` accepts a per-turn permission override
-      (or `PATCH /session/{id}`), or recreate the session when the mode changes.
-      (Codex no longer has this caveat: every turn re-attaches with
-      `thread/resume`, which carries the current posture.)
 - [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
       session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
-      app-server already remembers `approved_for_session`); a per-turn allow-list so
+      app-server already remembers `acceptForSession`); a per-turn allow-list so
       repeated identical tools aren't re-prompted; document that the Claude
       hook URL needs the LAN port resolved (handled by the lazy `url()` after
       `startLan`, but worth a note).

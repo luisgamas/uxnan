@@ -29,6 +29,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import type {
+  AccessMode,
   AgentCapabilities,
   AgentCommand,
   AgentConfig,
@@ -69,7 +70,6 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 const APPROVAL_HOOK_TIMEOUT_SECONDS = 1800;
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
-  planMode: true,
   streaming: true,
   approvals: true,
   forking: true,
@@ -198,12 +198,29 @@ export function claudeTakesEffort(modelId: string): boolean {
 }
 
 /**
- * Headless permission posture passed to the CLI:
- *  - `default`           → no flag (tools needing approval are auto-denied headless);
- *  - `acceptEdits`       → `--permission-mode acceptEdits` (file edits auto-apply);
- *  - `bypassPermissions` → `--dangerously-skip-permissions` (all tools run).
+ * How each access mode runs on `claude -p` (verified on claude 2.1.287):
+ *  - `requestApproval` → the `PreToolUse` hook asks the person for every tool,
+ *    with `--permission-mode default` (headless `-p` consults the hook only
+ *    then). Offered only when the bridge can serve the hook.
+ *  - `approveForMe`    → `--permission-mode auto`: tools run under Claude's own
+ *    reviewer, which declines what it judges unsafe. Not every model has it
+ *    (haiku starts in `default` instead, which declines anything needing
+ *    approval) — the turn says so when the CLI reports another mode.
+ *  - `fullAccess`      → `--dangerously-skip-permissions`.
+ *  - `plan`            → `--permission-mode plan`: reads and plans, changes nothing.
  */
-export type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
+const CLAUDE_MODE_FLAGS: Record<Exclude<AccessMode, 'requestApproval'>, string[]> = {
+  approveForMe: ['--permission-mode', 'auto'],
+  fullAccess: ['--dangerously-skip-permissions'],
+  plan: ['--permission-mode', 'plan'],
+};
+/** The `permissionMode` `system/init` reports for each mode it was asked for. */
+const CLAUDE_REPORTED_MODE: Record<AccessMode, string> = {
+  requestApproval: 'default',
+  approveForMe: 'auto',
+  fullAccess: 'bypassPermissions',
+  plan: 'plan',
+};
 
 /** An explicit, concrete model to add to the picker beyond the stable aliases. */
 export interface ClaudeModelSpec {
@@ -231,18 +248,11 @@ export interface ClaudeCodeAdapterOptions {
    * the aliases keep tracking "latest". Deduplicated against the aliases by id.
    */
   pinnedModels?: ClaudeModelSpec[];
-  /** Headless permission posture (default `acceptEdits`). */
-  permissionMode?: ClaudePermissionMode;
-  /**
-   * Opt-in interactive approvals: inject a `PreToolUse` hook (via `--settings`)
-   * so every tool round-trips to the bridge for the user's approval. Requires
-   * {@link approvalHook} to be set and resolvable (the bridge's local endpoint).
-   */
-  interactiveApprovals?: boolean;
   /**
    * The local approval-hook endpoint + token + the path to the shipped hook
-   * script. `url()` is lazy because the LAN port is known only after the server
-   * starts; it returns `undefined` until then (the turn runs without the hook).
+   * script — what lets `requestApproval` ask the person. Without it the mode is
+   * not offered. `url()` is lazy because the LAN port is known only after the
+   * server starts; a turn that asks before then fails rather than run unasked.
    */
   approvalHook?: { token: string; scriptPath: string; url: () => string | undefined };
   /** Injected spawn function for the one-shot path (tests). */
@@ -337,6 +347,8 @@ export interface ClaudeEvent {
    */
   /** `system/init` `terminal_slash_commands`: commands only its TUI runs. */
   terminalCommands?: string[];
+  /** Only for `init`: the permission mode the CLI says it runs in. */
+  permissionMode?: string;
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
   /** Only set for `result`: the CLI's error messages, when it failed before
@@ -450,10 +462,13 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       const terminalCommands = Array.isArray(parsed['terminal_slash_commands'])
         ? parsed['terminal_slash_commands'].filter((c): c is string => typeof c === 'string')
         : undefined;
+      const permissionMode =
+        typeof parsed['permissionMode'] === 'string' ? parsed['permissionMode'] : undefined;
       return {
         kind: 'init',
         ...base,
         ...(model !== undefined ? { model } : {}),
+        ...(permissionMode !== undefined ? { permissionMode } : {}),
         ...(terminalCommands !== undefined ? { terminalCommands } : {}),
       };
     }
@@ -574,14 +589,12 @@ export function claudeDesktopMcpConfig(mcpUrl: string): string {
 
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'claude-code';
-  readonly capabilities = CLAUDE_CAPABILITIES;
+  readonly capabilities: AgentCapabilities;
 
   readonly #binaryPath: string;
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #pinnedModels: ClaudeModelSpec[];
-  readonly #permissionMode: ClaudePermissionMode;
-  readonly #interactiveApprovals: boolean;
   readonly #approvalHook:
     | { token: string; scriptPath: string; url: () => string | undefined }
     | undefined;
@@ -617,9 +630,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
-    this.#permissionMode = options.permissionMode ?? 'acceptEdits';
-    this.#interactiveApprovals = options.interactiveApprovals ?? false;
     this.#approvalHook = options.approvalHook;
+    // Asking first needs the hook's endpoint; every other mode is a flag.
+    this.capabilities = {
+      ...CLAUDE_CAPABILITIES,
+      accessModes: [
+        ...(options.approvalHook !== undefined ? (['requestApproval'] as const) : []),
+        'approveForMe',
+        'fullAccess',
+        'plan',
+      ],
+      defaultAccessMode: 'fullAccess',
+    };
     this.#spawn = options.spawnFn ?? defaultSpawn;
     this.#wakeGraceMs = options.wakeGraceMs ?? WAKE_GRACE_MS;
   }
@@ -648,27 +670,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const sessionId = this.nativeSessionId(threadId);
 
-    // The thread's persisted access mode (chosen on the phone) overrides the
-    // adapter's configured posture for THIS turn. Absent → unchanged behaviour.
-    const accessMode = options.accessMode;
-    // Interactive approvals: inject a PreToolUse hook (validated against claude
-    // 2.1.177) that round-trips each tool to the bridge for the user's decision.
-    // The hook stays in play for `requestApproval` (and when no mode is set);
-    // `approveForMe`/`fullAccess` explicitly bypass it so the agent isn't asked.
-    const hookConfigured = this.#interactiveApprovals && this.#approvalHook !== undefined;
-    const allowHook =
-      (accessMode === undefined || accessMode === 'requestApproval') && hookConfigured;
-    const hookUrl = allowHook ? this.#approvalHook!.url() : undefined;
-    const interactive = hookUrl !== undefined;
-    // The non-interactive permission posture: the access mode wins when set,
-    // else the configured default. `requestApproval` without a usable hook falls
-    // back to the configured posture (so the turn isn't denied wholesale).
-    const effectiveMode: ClaudePermissionMode =
-      accessMode === 'approveForMe'
-        ? 'acceptEdits'
-        : accessMode === 'fullAccess'
-          ? 'bypassPermissions'
-          : this.#permissionMode;
+    // The conversation's access mode, one this adapter declared (the bridge
+    // resolves anything else to the default before it gets here).
+    const accessMode: AccessMode = options.accessMode ?? 'fullAccess';
+    const hookUrl = accessMode === 'requestApproval' ? this.#approvalHook?.url() : undefined;
+    if (accessMode === 'requestApproval' && hookUrl === undefined) {
+      // Running it anyway would act without the approvals the person chose.
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: {
+          text: 'Claude Code cannot ask for approval yet: the bridge has no approval endpoint. Try again in a moment, or choose another access mode.',
+        },
+      });
+      return Promise.resolve();
+    }
 
     const args = [
       '-p',
@@ -691,7 +708,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // `result` ends this turn only once every message we wrote was read.
       '--replay-user-messages',
     ];
-    if (interactive) {
+    if (hookUrl !== undefined) {
       const settings = JSON.stringify({
         hooks: {
           PreToolUse: [
@@ -715,10 +732,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // (validated against claude 2.1.177: without it, headless `-p` doesn't
       // consult the hook and denies). The hook is then the gate.
       args.push('--settings', settings, '--permission-mode', 'default');
-    } else if (effectiveMode === 'acceptEdits') {
-      args.push('--permission-mode', 'acceptEdits');
-    } else if (effectiveMode === 'bypassPermissions') {
-      args.push('--dangerously-skip-permissions');
+    } else if (accessMode !== 'requestApproval') {
+      args.push(...CLAUDE_MODE_FLAGS[accessMode]);
     }
     if (model) args.push('--model', model);
     // Reasoning effort (low|medium|high|xhigh|max). Pass-through — the CLI
@@ -739,7 +754,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (desktop) args.push('--mcp-config', claudeDesktopMcpConfig(desktop.mcpUrl));
 
     const env: Record<string, string> = {
-      ...(interactive
+      ...(hookUrl !== undefined
         ? {
             UXNAN_HOOK_URL: hookUrl,
             UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
@@ -862,6 +877,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // envelope independently prevents a later non-streamed message from being
     // skipped merely because an earlier one streamed.
     let currentAssistantText = '';
+    // Whether this turn already said the CLI runs in another mode than asked.
+    let warnedMode = false;
     let sawModel = false;
     let resolvedModel: string | undefined;
     let errored = false;
@@ -1040,7 +1057,28 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             }),
           },
         });
-      } else if (event.kind === 'init' && event.model && !sawModel) {
+      } else if (
+        event.kind === 'init' &&
+        event.permissionMode !== undefined &&
+        event.permissionMode !== CLAUDE_REPORTED_MODE[accessMode] &&
+        !warnedMode
+      ) {
+        // The CLI started in another mode than the one asked for — `auto` on a
+        // model without Claude's reviewer (haiku) starts in `default`, which
+        // declines anything needing approval. Say it in the turn, once.
+        warnedMode = true;
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: warningBlock(
+              `Claude Code ran this turn in its "${event.permissionMode}" mode, not "${CLAUDE_REPORTED_MODE[accessMode]}"${accessMode === 'approveForMe' ? ' — automatic review is not available for this model' : ''}. Actions that needed approval were declined; choose another model or access mode.`,
+            ),
+          },
+        });
+      }
+      if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
         sawModel = true;

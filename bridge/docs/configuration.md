@@ -106,8 +106,7 @@ config is loaded.
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
 | `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by active agents that enumerate their own models (OpenCode, Codex, pi, Antigravity, Zero, Grok). |
-| `permissionMode` | Headless fallback posture for adapters that consume this config: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to Claude, Codex, pi and Antigravity. The per-thread `accessMode` is authoritative when the adapter supports it; OpenCode, Zero and Grok use their live protocol permission surfaces instead of this field. |
-| `interactiveApprovals` | Opt-in `PreToolUse` approvals for **Claude Code** (default false; requires `lanEnabled`). When true, every tool Claude runs prompts on the phone before execution. The CLI hook permits a 30-minute request, while the bridge's decision countdown is five connected minutes and then denies. It overrides Claude's fallback `permissionMode` while active. |
+| `permissionMode` | The posture of an agent that offers **no access modes** — pi and Antigravity: `acceptEdits`, `default` (read-only) or `bypassPermissions`. Every other agent runs in the conversation's access mode, chosen in the apps; see [agents.md → *Access modes*](./agents.md#access-modes). Claude Code's "request approval" needs `lanEnabled` (its approval hook calls the bridge's local HTTP endpoint). |
 
 ### Per-project agent/model pins (`projectAgents`)
 
@@ -138,7 +137,6 @@ reserved and not yet consumed.)
   "defaultAgent": "claude-code",
   "agents": {
     "claude-code": {
-      "permissionMode": "acceptEdits",
       "model": "opus",
       "models": [
         { "id": "claude-fable-5-1", "displayName": "Fable 5.1" },
@@ -151,7 +149,7 @@ reserved and not yet consumed.)
         "claude-haiku-4-5"
       ]
     },
-    "codex": { "permissionMode": "acceptEdits" },
+    "pi-agent": { "permissionMode": "acceptEdits" },
     "opencode": { "model": "provider/model" }
   },
   "projectAgents": [
@@ -164,7 +162,7 @@ reserved and not yet consumed.)
 With `browseRoots` set to `Documents`, the phone browses sub-folders under it,
 picks any directory as a thread's working dir, and starts an agent rooted there.
 The browse API cannot navigate above the root; note the **agent process** itself is
-only write-bounded by its `permissionMode` — see
+only write-bounded by the conversation's access mode — see
 [`../FOR-HUMAN.md`](../FOR-HUMAN.md) (browse root & agent scope).
 
 ## State files in `~/.uxnan/`

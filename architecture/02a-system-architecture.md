@@ -24,6 +24,15 @@
 > corrected (`SECURE_PROTOCOL_VERSION = 2`, `PAIRING_WINDOW_MS` = 5 min). The
 > old Node relay (`x-role` / `x-session-id`) is gone.
 
+> **Executive summary (1.5.9):** the access mode is a contract, not a
+> suggestion: each of `requestApproval`, `approveForMe`, `fullAccess` and the
+> new `plan` means the same on every agent; each agent declares the modes it
+> can honor (`AgentCapabilities.accessModes`, replacing `planMode`) and its
+> default; the bridge starts a conversation in that default, refuses a mode
+> the agent cannot keep, and runs a stored one it no longer offers as the
+> default, which both apps say. Per-CLI mapping, verified live, in
+> `bridge/docs/agents.md` → *Access modes* (02b `thread/setAccessMode`).
+
 > **Executive summary (1.5.8):** background push is delivered **only by the
 > bridge, straight to FCM** (§5.10.2). The relay push fallback is gone: the
 > relay has no `/push/*` endpoints, no token store and no state on disk, so it
@@ -367,7 +376,8 @@ interface IAgentAdapter {
 
 interface AgentCapabilities {
   // Fuente de verdad: shared/src/agents/agent-capabilities.ts (TypeScript).
-  planMode: boolean;               // agente soporta modo plan interactivo
+  accessModes?: AccessMode[];      // modos de acceso que el agente puede cumplir (02b thread/setAccessMode)
+  defaultAccessMode?: AccessMode;  // modo de un hilo nuevo o con un modo que el agente ya no ofrece
   streaming: boolean;              // emite deltas de tokens en streaming
   approvals: boolean;              // emite content blocks `approval` (gating de tools, opt-in por agente)
   forking: boolean;                // soporta forking / reanudar threads
@@ -384,7 +394,7 @@ interface AgentCapabilities {
 // contrato vigente es el de arriba.
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
-//   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; steer en turno; **`permission.asked` real approvals**)
+//   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; plan nativo vía `todo.updated`; steer en turno; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --input-format stream-json --output-format stream-json --replay-user-messages`; --resume; `steer` en turno; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation; `turn/steer` en turno)
 //   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)

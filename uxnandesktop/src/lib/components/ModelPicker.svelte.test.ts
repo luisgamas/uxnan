@@ -46,13 +46,27 @@ describe("ChatAccessMenu", () => {
   it("shows the thread's mode and changes it from the menu", async () => {
     const chosen: string[] = [];
     const { screen, user } = mountWithProviders(ChatAccessMenu, {
-      props: { value: "fullAccess", onChange: (m: string) => chosen.push(m) },
+      props: {
+        value: "fullAccess",
+        modes: ["requestApproval", "approveForMe", "fullAccess", "plan"],
+        onChange: (m: string) => chosen.push(m),
+      },
     });
     const trigger = screen.getByRole("button", { name: "Access mode" });
     expect(trigger.textContent).toContain("Full access");
     await user.click(trigger);
-    await user.click(await screen.findByText("Ask first"));
+    await user.click(await screen.findByText("Request approval"));
     await until(() => chosen.length === 1);
     expect(chosen).toEqual(["requestApproval"]);
+  });
+
+  it("lists only the modes the agent offers", async () => {
+    const { screen, user } = mountWithProviders(ChatAccessMenu, {
+      props: { value: "fullAccess", modes: ["approveForMe", "fullAccess"], onChange: () => undefined },
+    });
+    await user.click(screen.getByRole("button", { name: "Access mode" }));
+    await screen.findByText("Approve for me");
+    expect(screen.queryByText("Request approval")).toBeNull();
+    expect(screen.queryByText("Plan only")).toBeNull();
   });
 });

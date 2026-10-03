@@ -139,6 +139,40 @@ void main() {
       expect((event.content as ToolUseContent).running, isTrue);
     });
 
+    test('an approval or a question is keyed by its own id', () {
+      ContentBlockEvent classify(Map<String, dynamic> content) =>
+          processor.classify(
+            note('stream/content/block', {'turnId': 't1', 'content': content}),
+          ) as ContentBlockEvent;
+      // Stored before requests carried a `blockId`: a second copy (a reload
+      // racing the live block) must replace the first, not add a second card.
+      expect(
+        classify({
+          'type': 'approval',
+          'approvalId': 'ap1',
+          'action': 'Allow external_directory: /tmp/*',
+        }).blockId,
+        'ap1',
+      );
+      expect(
+        classify({
+          'type': 'question',
+          'questionId': 'q1',
+          'questions': <Object>[],
+        }).blockId,
+        'q1',
+      );
+      expect(
+        classify({
+          'type': 'approval',
+          'approvalId': 'ap2',
+          'blockId': 'ap2',
+          'action': 'Allow Bash',
+        }).blockId,
+        'ap2',
+      );
+    });
+
     test('stream/turn/completed', () {
       final event = processor.classify(
         note('stream/turn/completed', {'turnId': 't1'}),

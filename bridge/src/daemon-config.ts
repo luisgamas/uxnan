@@ -67,18 +67,10 @@ export interface AgentSettings {
    */
   models?: (string | AgentModelSpec)[];
   /**
-   * Headless fallback posture for Claude Code, Codex, pi and Antigravity.
-   * Per-thread `accessMode` wins where the adapter supports it. Ignored by
-   * OpenCode, Zero and Grok.
+   * The posture an agent with no access modes to choose from runs in — pi and
+   * Antigravity. Every other agent runs in the conversation's access mode.
    */
   permissionMode?: AgentPermissionMode;
-  /**
-   * Opt-in interactive tool approvals for Claude Code: inject a `PreToolUse`
-   * hook so every tool round-trips to the bridge and the user approves/rejects
-   * it on the phone (`turn/send { approvalResponse }`). Requires `lanEnabled`
-   * (the hook calls the bridge's local HTTP endpoint).
-   */
-  interactiveApprovals?: boolean;
 }
 
 export interface DaemonConfig {

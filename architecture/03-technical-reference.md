@@ -1213,7 +1213,7 @@ class MiAgenteAdapter extends BaseAgentAdapter {
     this.agentId = 'mi-agente';           // identificador unico
     this.displayName = 'Mi Agente CLI';
     this.capabilities = {
-      planMode: false,                    // ver shared/src/agents/agent-capabilities.ts
+      // accessModes / defaultAccessMode: ver shared/src/agents/agent-capabilities.ts
       streaming: true,
       approvals: false,
       forking: false,

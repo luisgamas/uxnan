@@ -315,6 +315,8 @@ export function approvalBlock(
   return {
     type: 'approval',
     approvalId,
+    // Its own id as the step id, so a request delivered twice settles in place.
+    blockId: approvalId,
     action,
     ...(opts.risk !== undefined ? { risk: opts.risk } : {}),
     ...(opts.detail !== undefined && opts.detail.length > 0 ? { detail: opts.detail } : {}),
@@ -328,7 +330,7 @@ export function approvalBlock(
  * uses to deliver the chosen answers back to the agent.
  */
 export function questionBlock(questionId: string, questions: QuestionItem[]): QuestionRequestBlock {
-  return { type: 'question', questionId, questions };
+  return { type: 'question', questionId, blockId: questionId, questions };
 }
 
 /** One step of an agent plan / to-do list, on the wire (matches Dart `PlanStep`). */

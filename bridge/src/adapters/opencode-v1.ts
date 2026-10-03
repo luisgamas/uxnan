@@ -32,6 +32,8 @@ import {
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
   type OpenCodeModelRef,
+  type OpenCodeAgent,
+  type OpenCodeEffect,
   type OpenCodePermissionPolicy,
   type OpenCodePrompt,
   type PermissionReply,
@@ -45,6 +47,18 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
  * freely, so plan mode and inspection don't flood the phone with cards.
  */
 const GATED_PERMISSIONS = ['edit', 'bash', 'webfetch', 'external_directory'] as const;
+
+/** The session rules for a policy: every gated permission, on any pattern. */
+function permissionRules(
+  policy: OpenCodePermissionPolicy,
+): { permission: string; pattern: string; action: OpenCodeEffect }[] {
+  return GATED_PERMISSIONS.map((permission) => ({
+    permission,
+    pattern: '**',
+    // 1.x calls the shell permission `bash`.
+    action: policy[permission === 'bash' ? 'shell' : permission],
+  }));
+}
 
 /** Per-session bookkeeping the V1 bus needs to tell text from reasoning. */
 interface SessionState {
@@ -528,18 +542,21 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   }): Promise<string> {
     const res = await this.#serve.request<{ id?: string }>('POST', '/session', {
       ...(opts.title !== undefined ? { title: opts.title } : {}),
-      permission: GATED_PERMISSIONS.map((permission) => ({
-        permission,
-        pattern: '**',
-        action: opts.permission,
-      })),
+      permission: permissionRules(opts.permission),
     });
     if (!res.id) throw new Error('opencode did not return a session id');
     return res.id;
   }
 
+  async setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void> {
+    // `PATCH /session/:id { permission }` replaces the rules (1.18.34).
+    await this.#serve.request('PATCH', `/session/${encodeURIComponent(sessionId)}`, {
+      permission: permissionRules(permission),
+    });
+  }
+
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
-    await this.#promptAsync(sessionId, prompt.text, prompt.model, prompt.variant);
+    await this.#promptAsync(sessionId, prompt.text, prompt.model, prompt.variant, prompt.agent);
   }
 
   /**
@@ -556,10 +573,13 @@ export class OpenCodeV1Server implements IOpenCodeServer {
     text: string,
     model?: OpenCodeModelRef,
     variant?: string,
+    agent?: OpenCodeAgent,
   ): Promise<void> {
     await this.#serve.request('POST', `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       ...(model !== undefined ? { model } : {}),
       ...(variant !== undefined ? { variant } : {}),
+      // 1.x takes the agent per prompt (1.18.34 `prompt_async` body).
+      ...(agent !== undefined ? { agent } : {}),
       parts: [{ type: 'text', text }],
     });
   }
@@ -587,6 +607,7 @@ export class OpenCodeV1Server implements IOpenCodeServer {
       arguments: run.args,
       ...(run.model ? { model: `${run.model.providerID}/${run.model.modelID}` } : {}),
       ...(run.variant !== undefined ? { variant: run.variant } : {}),
+      agent: run.agent,
     };
     void this.#serve
       .request('POST', `/session/${encodeURIComponent(sessionId)}/command`, body)

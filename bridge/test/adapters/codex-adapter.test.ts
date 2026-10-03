@@ -182,7 +182,6 @@ function setup(
       threadId: string,
       info: { toolName: string; input: Record<string, unknown> },
     ) => Promise<'approve' | 'reject' | 'approveSession'>;
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'interactive';
     defaultModel?: string;
     /** Make every `thread/resume` fail with this message (see the handover tests). */
     resumeError?: string;
@@ -221,7 +220,6 @@ function setup(
   const adapter = new CodexAdapter({
     binaryPath: 'codex',
     ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
-    ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
     ...(options.onApprovalRequest ? { onApprovalRequest: options.onApprovalRequest } : {}),
     spawnAppServer: () => server.spawn(),
   });
@@ -579,9 +577,9 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   // A person started this from their phone, so Codex classifies it like any
   // other human-started thread (its own clients all set this).
   assert.equal(threadStart.params.threadSource, 'user');
-  // Default permission mode is `interactive` → approvalPolicy on-request, sandbox workspace-write
-  assert.equal(threadStart.params.approvalPolicy, 'on-request');
-  assert.equal(threadStart.params.sandbox, 'workspace-write');
+  // No mode given → Codex's default access mode, full access.
+  assert.equal(threadStart.params.approvalPolicy, 'never');
+  assert.equal(threadStart.params.sandbox, 'danger-full-access');
 });
 
 test('CodexAdapter preserves commentary and final assistant items with boundaries', async () => {
@@ -1169,7 +1167,7 @@ test('CodexAdapter cancelTurn sends turn/interrupt and emits turn_aborted', asyn
   assert.equal(interrupt.params.turnId, 'codex-turn-1');
 });
 
-test('CodexAdapter routes commandExecution requestApproval to the bridge and replies with approved', async () => {
+test('CodexAdapter routes commandExecution requestApproval to the bridge and replies with accept', async () => {
   let approvalCall:
     | { threadId: string; toolName: string; input: Record<string, unknown> }
     | undefined;
@@ -1189,12 +1187,13 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
       jsonrpc: '2.0',
       id: 77,
       method: 'item/commandExecution/requestApproval',
+      // The v2 shape (codex-cli 0.157.1 schema): the command is one string.
       params: {
-        conversationId: '019codex-thread-aaaa-bbbb-cccccccccccc',
-        callId: 'call-1',
-        command: ['ls', '-la'],
+        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        turnId: 'codex-turn-1',
+        itemId: 'call-1',
+        command: 'ls -la',
         cwd: 'C:/tmp',
-        parsedCmd: [{ type: 'list_files', cmd: 'ls -la' }],
       },
     }),
   ]);
@@ -1204,7 +1203,9 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
     const handler = (msg: any) => {
       if (msg.id === 77) {
         // The reply to our server request
-        assert.equal(msg.result?.decision, 'approved');
+        // A v2 request takes a v2 decision; `approved` is ignored and Codex
+        // asks again.
+        assert.equal(msg.result?.decision, 'accept');
         resolve();
       }
     };
@@ -1224,7 +1225,7 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
   await done;
 });
 
-test('CodexAdapter routes fileChange requestApproval to the bridge and replies with approved_for_session on approveSession', async () => {
+test('CodexAdapter routes fileChange requestApproval to the bridge and replies with acceptForSession on approveSession', async () => {
   const { adapter, server } = setup({
     onApprovalRequest: async () => 'approveSession',
   });
@@ -1238,9 +1239,10 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
       id: 88,
       method: 'item/fileChange/requestApproval',
       params: {
-        conversationId: '019codex-thread-aaaa-bbbb-cccccccccccc',
-        callId: 'patch-1',
-        fileChanges: { 'a.txt': { type: 'update', unified_diff: '@@ -1 +1 @@\n-old\n+new\n' } },
+        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        turnId: 'codex-turn-1',
+        itemId: 'patch-1',
+        reason: 'write outside the workspace',
       },
     }),
   ]);
@@ -1248,7 +1250,7 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
   await new Promise<void>((resolve) => {
     const handler = (msg: any) => {
       if (msg.id === 88) {
-        assert.equal(msg.result?.decision, 'approved_for_session');
+        assert.equal(msg.result?.decision, 'acceptForSession');
         resolve();
       }
     };
@@ -1334,58 +1336,52 @@ test('CodexAdapter auto-denies unknown server requests (so the app-server does n
   await done;
 });
 
-test('CodexAdapter maps the permission posture to the right (approvalPolicy, sandbox) pair', async () => {
-  const cases = [
-    { mode: 'default' as const, approvalPolicy: 'untrusted', sandbox: 'read-only' },
-    { mode: 'acceptEdits' as const, approvalPolicy: 'never', sandbox: 'workspace-write' },
-    { mode: 'bypassPermissions' as const, approvalPolicy: 'never', sandbox: 'danger-full-access' },
-    { mode: 'interactive' as const, approvalPolicy: 'on-request', sandbox: 'workspace-write' },
-  ];
-  for (const { mode, approvalPolicy, sandbox } of cases) {
-    const { adapter, server } = setup({ permissionMode: mode });
-    const { done, until } = collect(adapter);
-    void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi' });
-    await waitForTurnStarted(until);
-    const threadStart = server.sent.find((m: any) => m.method === 'thread/start') as any;
-    assert.equal(threadStart?.params.approvalPolicy, approvalPolicy, `mode=${mode}`);
-    assert.equal(threadStart?.params.sandbox, sandbox, `mode=${mode}`);
-    // Wrap up the turn so the test is deterministic (await `done` per
-    // iteration so previous iteration's events don't leak into the next).
-    server.feed([
-      JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'turn/completed',
-        params: { turn: { status: 'completed' } },
-      }),
-    ]);
-    await done;
-  }
-});
-
-test('CodexAdapter: the thread access mode overrides the configured posture on thread/start', async () => {
-  // Configured posture is `default` (untrusted/read-only); the per-thread
-  // accessMode chosen on the phone must win for that thread's first turn.
+test('every access mode reaches thread/start and every turn/start with its policy, reviewer and sandbox', async () => {
   const cases = [
     {
       accessMode: 'requestApproval' as const,
-      approvalPolicy: 'on-request',
+      approvalPolicy: 'untrusted',
+      approvalsReviewer: 'user',
       sandbox: 'workspace-write',
+      sandboxPolicy: 'workspaceWrite',
     },
-    { accessMode: 'approveForMe' as const, approvalPolicy: 'never', sandbox: 'workspace-write' },
+    {
+      accessMode: 'approveForMe' as const,
+      approvalPolicy: 'on-request',
+      approvalsReviewer: 'auto_review',
+      sandbox: 'workspace-write',
+      sandboxPolicy: 'workspaceWrite',
+    },
     {
       accessMode: 'fullAccess' as const,
       approvalPolicy: 'never',
+      approvalsReviewer: 'user',
       sandbox: 'danger-full-access',
+      sandboxPolicy: 'dangerFullAccess',
+    },
+    {
+      accessMode: 'plan' as const,
+      approvalPolicy: 'never',
+      approvalsReviewer: 'user',
+      sandbox: 'read-only',
+      sandboxPolicy: 'readOnly',
     },
   ];
-  for (const { accessMode, approvalPolicy, sandbox } of cases) {
-    const { adapter, server } = setup({ permissionMode: 'default' });
+  for (const c of cases) {
+    const { adapter, server } = setup();
     const { done, until } = collect(adapter);
-    void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi', accessMode });
+    void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi', accessMode: c.accessMode });
     await waitForTurnStarted(until);
     const threadStart = server.sent.find((m: any) => m.method === 'thread/start') as any;
-    assert.equal(threadStart?.params.approvalPolicy, approvalPolicy, `accessMode=${accessMode}`);
-    assert.equal(threadStart?.params.sandbox, sandbox, `accessMode=${accessMode}`);
+    assert.equal(threadStart?.params.approvalPolicy, c.approvalPolicy, c.accessMode);
+    assert.equal(threadStart?.params.approvalsReviewer, c.approvalsReviewer, c.accessMode);
+    assert.equal(threadStart?.params.sandbox, c.sandbox, c.accessMode);
+    // Sent again on the turn itself, so an app-server still holding the
+    // thread from an earlier turn cannot keep the old mode.
+    const turnStart = server.sent.find((m: any) => m.method === 'turn/start') as any;
+    assert.equal(turnStart?.params.approvalPolicy, c.approvalPolicy, c.accessMode);
+    assert.equal(turnStart?.params.approvalsReviewer, c.approvalsReviewer, c.accessMode);
+    assert.deepEqual(turnStart?.params.sandboxPolicy, { type: c.sandboxPolicy }, c.accessMode);
     server.feed([
       JSON.stringify({
         jsonrpc: '2.0',
@@ -1395,24 +1391,6 @@ test('CodexAdapter: the thread access mode overrides the configured posture on t
     ]);
     await done;
   }
-});
-
-test('CodexAdapter: no accessMode keeps the configured posture on thread/start', async () => {
-  const { adapter, server } = setup({ permissionMode: 'default' });
-  const { done, until } = collect(adapter);
-  void adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'hi' });
-  await waitForTurnStarted(until);
-  const threadStart = server.sent.find((m: any) => m.method === 'thread/start') as any;
-  assert.equal(threadStart?.params.approvalPolicy, 'untrusted');
-  assert.equal(threadStart?.params.sandbox, 'read-only');
-  server.feed([
-    JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
-    }),
-  ]);
-  await done;
 });
 
 test('CodexAdapter emits turn_error when the app-server process dies mid-turn', async () => {

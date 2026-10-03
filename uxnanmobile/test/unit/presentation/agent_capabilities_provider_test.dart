@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 
 void main() {
@@ -58,7 +59,7 @@ void main() {
     final caps = container.read(agentCapabilitiesProvider('nope'));
     expect(caps.approvals, isTrue);
     expect(caps.images, isTrue);
-    expect(caps.planMode, isTrue);
+    expect(caps.accessModes, ApprovalMode.values);
     expect(caps.reportsContextUsage, isTrue);
   });
 }

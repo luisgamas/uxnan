@@ -34,7 +34,6 @@ test('ProcessAgentAdapter spawns a CLI and maps its stdio to stream events', asy
   const adapter = new ProcessAgentAdapter({
     agentId: 'echo',
     capabilities: {
-      planMode: false,
       streaming: true,
       approvals: false,
       forking: false,

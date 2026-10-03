@@ -4,6 +4,21 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Access modes are per agent.** `AccessMode` gains `plan` ("plan only");
+  `AgentCapabilities.accessModes` (the modes an agent can honor) and
+  `defaultAccessMode` replace `planMode`; `ACCESS_MODES` lists every mode and
+  `effectiveAccessMode(caps, stored)` is the one rule for which mode a
+  conversation runs in (its stored mode when offered, else the agent's
+  default).
+
+### Added
+
+- **`blockId` on `ApprovalRequestBlock` and `QuestionRequestBlock`**,
+  optional: the request's own id (`approvalId` / `questionId`) as its
+  `LiveBlock` id, so a second copy of the same request — the stored one a
+  client just reloaded, then the live one — replaces the first in place.
 
 ### Added
 

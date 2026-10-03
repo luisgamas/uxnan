@@ -426,25 +426,71 @@ test('ClaudeCodeAdapter surfaces an error result as turn_error', async () => {
   assert.equal((err?.data as { text: string }).text, 'boom');
 });
 
-test('ClaudeCodeAdapter maps the permission posture to the right CLI flag', async () => {
+test('every access mode runs on its own CLI flag, the same on every turn', async () => {
+  const hook = {
+    token: 't',
+    scriptPath: 'C:/h.cjs',
+    url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+  };
   const cases = [
-    { mode: 'acceptEdits' as const, hasPermFlag: true, hasBypass: false },
-    { mode: 'bypassPermissions' as const, hasPermFlag: false, hasBypass: true },
-    { mode: 'default' as const, hasPermFlag: false, hasBypass: false },
+    { accessMode: 'approveForMe' as const, flags: ['--permission-mode', 'auto'] },
+    { accessMode: 'fullAccess' as const, flags: ['--dangerously-skip-permissions'] },
+    { accessMode: 'plan' as const, flags: ['--permission-mode', 'plan'] },
   ];
-  for (const { mode, hasPermFlag, hasBypass } of cases) {
+  for (const { accessMode, flags } of cases) {
     const { spawnFn, last } = fakeSpawner();
-    const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', permissionMode: mode, spawnFn });
+    const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn, approvalHook: hook });
     const { done } = collect(adapter);
-    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode });
     last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
     await done;
-
     const args = last().args;
-    assert.equal(args.includes('--permission-mode'), hasPermFlag);
-    if (hasPermFlag) assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
-    assert.equal(args.includes('--dangerously-skip-permissions'), hasBypass);
+    const at = args.indexOf(flags[0]!);
+    assert.ok(at >= 0, `${accessMode} passes ${flags.join(' ')}`);
+    assert.deepEqual(args.slice(at, at + flags.length), flags);
+    // Only "request approval" asks the person, through the hook.
+    assert.equal(args.includes('--settings'), false, `${accessMode} carries no hook`);
   }
+});
+
+test('Claude Code offers "request approval" only when the bridge can serve its hook', () => {
+  const withHook = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
+  });
+  assert.deepEqual(withHook.capabilities.accessModes, [
+    'requestApproval',
+    'approveForMe',
+    'fullAccess',
+    'plan',
+  ]);
+  const without = new ClaudeCodeAdapter({ binaryPath: 'claude' });
+  assert.deepEqual(without.capabilities.accessModes, ['approveForMe', 'fullAccess', 'plan']);
+  assert.equal(without.capabilities.defaultAccessMode, 'fullAccess');
+});
+
+test('a turn the CLI runs in another mode than asked says so', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode: 'approveForMe' });
+  // Measured on claude 2.1.287: `--permission-mode auto` with haiku starts in
+  // `default`, which declines anything needing approval.
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s","model":"claude-haiku-4-5","permissionMode":"default"}',
+    '{"type":"system","subtype":"init","session_id":"s","permissionMode":"default"}',
+    '{"type":"result","subtype":"success","result":"ok","session_id":"s"}',
+  ]);
+  const events = await done;
+  const warnings = events.filter(
+    (e) =>
+      e.type === 'block' && (e.data as { content?: { kind?: string } }).content?.kind === 'warning',
+  );
+  assert.equal(warnings.length, 1, 'once per turn');
+  assert.match(
+    (warnings[0]?.data as { content: { text: string } }).content.text,
+    /"default" mode, not "auto" — automatic review is not available/,
+  );
 });
 
 test('ClaudeCodeAdapter passes the reasoning effort as --effort', async () => {
@@ -695,12 +741,11 @@ test('ClaudeCodeAdapter emits model_resolved from the init event', async () => {
   assert.equal((resolved?.data as { text: string }).text, 'claude-opus-4-8');
 });
 
-test('interactive approvals inject the PreToolUse hook (--settings + --permission-mode) and env', async () => {
+test('request approval injects the PreToolUse hook (--settings + --permission-mode) and env', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({
     binaryPath: 'claude',
     spawnFn,
-    interactiveApprovals: true,
     approvalHook: {
       token: 'tok-123',
       scriptPath: 'C:/Users/x/.uxnan/hooks/claude-approval-hook.cjs',
@@ -708,7 +753,12 @@ test('interactive approvals inject the PreToolUse hook (--settings + --permissio
     },
   });
   const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 'thread-1', turnId: 'u1', text: 'go' });
+  await adapter.sendTurn({
+    threadId: 'thread-1',
+    turnId: 'u1',
+    text: 'go',
+    accessMode: 'requestApproval',
+  });
   last().feed([
     '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
   ]);
@@ -727,120 +777,26 @@ test('interactive approvals inject the PreToolUse hook (--settings + --permissio
   assert.match(last().env?.UXNAN_HOOK_URL ?? '', /agent-hook\/approval/);
 });
 
-test('accessMode approveForMe forces acceptEdits and suppresses the hook', async () => {
-  const { spawnFn, last } = fakeSpawner();
+test('request approval before the hook endpoint exists fails the turn instead of running unasked', async () => {
+  const fake = fakeSpawner();
+  let spawned = 0;
+  const spawnFn: typeof fake.spawnFn = (...args) => {
+    spawned += 1;
+    return fake.spawnFn(...args);
+  };
   const adapter = new ClaudeCodeAdapter({
     binaryPath: 'claude',
     spawnFn,
-    // Even with interactive approvals configured, an explicit approveForMe must
-    // bypass the hook (the user chose not to be asked).
-    interactiveApprovals: true,
-    approvalHook: {
-      token: 't',
-      scriptPath: 'C:/h.cjs',
-      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
-    },
-  });
-  const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode: 'approveForMe' });
-  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
-  await done;
-
-  const args = last().args;
-  assert.equal(args.includes('--settings'), false);
-  assert.equal(args.includes('--permission-mode'), true);
-  assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
-  assert.equal(last().env, undefined);
-});
-
-test('accessMode fullAccess maps to --dangerously-skip-permissions, no hook', async () => {
-  const { spawnFn, last } = fakeSpawner();
-  const adapter = new ClaudeCodeAdapter({
-    binaryPath: 'claude',
-    spawnFn,
-    interactiveApprovals: true,
-    approvalHook: {
-      token: 't',
-      scriptPath: 'C:/h.cjs',
-      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
-    },
-  });
-  const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode: 'fullAccess' });
-  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
-  await done;
-
-  const args = last().args;
-  assert.equal(args.includes('--dangerously-skip-permissions'), true);
-  assert.equal(args.includes('--settings'), false);
-});
-
-test('accessMode requestApproval keeps the interactive hook in play', async () => {
-  const { spawnFn, last } = fakeSpawner();
-  const adapter = new ClaudeCodeAdapter({
-    binaryPath: 'claude',
-    spawnFn,
-    interactiveApprovals: true,
-    approvalHook: {
-      token: 'tok',
-      scriptPath: 'C:/Users/x/.uxnan/hooks/claude-approval-hook.cjs',
-      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
-    },
-  });
-  const { done } = collect(adapter);
-  await adapter.sendTurn({
-    threadId: 't1',
-    turnId: 'u1',
-    text: 'go',
-    accessMode: 'requestApproval',
-  });
-  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
-  await done;
-
-  const args = last().args;
-  assert.ok(args.includes('--settings'));
-  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
-  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 't1');
-});
-
-test('accessMode requestApproval without a hook falls back to the configured posture', async () => {
-  const { spawnFn, last } = fakeSpawner();
-  // No interactiveApprovals/hook → requestApproval can't route; it must NOT
-  // force `--permission-mode default` (which would deny headlessly) but fall
-  // back to the adapter's configured posture (acceptEdits default).
-  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
-  const { done } = collect(adapter);
-  await adapter.sendTurn({
-    threadId: 't1',
-    turnId: 'u1',
-    text: 'go',
-    accessMode: 'requestApproval',
-  });
-  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
-  await done;
-
-  const args = last().args;
-  assert.equal(args.includes('--settings'), false);
-  assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
-});
-
-test('interactive approvals stay off until the hook URL resolves (LAN not started)', async () => {
-  const { spawnFn, last } = fakeSpawner();
-  const adapter = new ClaudeCodeAdapter({
-    binaryPath: 'claude',
-    spawnFn,
-    interactiveApprovals: true,
     approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
   });
   const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'go' });
-  last().feed([
-    '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
-  ]);
-  await done;
-  // No hook injected, falls back to the normal (acceptEdits) one-shot path.
-  assert.equal(last().args.includes('--settings'), false);
-  assert.equal(last().env, undefined);
+  await adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'go', accessMode: 'requestApproval' });
+  const events = await done;
+  assert.equal(spawned, 0, 'nothing ran');
+  assert.match(
+    String((events.find((e) => e.type === 'turn_error')?.data as { text: string }).text),
+    /cannot ask for approval yet/,
+  );
 });
 
 test('parseClaudeLine surfaces subagent parentage and content-block boundaries', () => {

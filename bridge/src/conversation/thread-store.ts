@@ -217,6 +217,8 @@ export interface StartThreadInput {
   agentSessionId?: string;
   /** Who named it, when a name comes with it: the agent's own session title. */
   titleSource?: ThreadTitleSource;
+  /** The mode it starts in: its agent's default (`defaultAccessMode`). */
+  accessMode?: AccessMode;
 }
 
 /** Runtime config the AgentManager needs to drive a thread's turns. */
@@ -563,6 +565,7 @@ export class ThreadStore {
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         ...(input.origin !== undefined ? { origin: { ...input.origin } } : {}),
         ...(input.agentSessionId !== undefined ? { agentSessionId: input.agentSessionId } : {}),
+        ...(input.accessMode !== undefined ? { accessMode: input.accessMode } : {}),
       };
       threads.push(created);
       this.#ledger.revive('thread', created.id);

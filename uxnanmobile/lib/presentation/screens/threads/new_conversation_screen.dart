@@ -6,6 +6,7 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -1015,7 +1016,8 @@ List<(UxIconData, String)> _agentCapabilities(
   final c = agent.capabilities;
   return [
     if (c.streaming) (UxIcons.bolt, l10n.newThreadCapStreaming),
-    if (c.planMode) (UxIcons.checklistRtl, l10n.newThreadCapPlan),
+    if (c.accessModes.contains(ApprovalMode.plan))
+      (UxIcons.checklistRtl, l10n.newThreadCapPlan),
     if (c.approvals) (UxIcons.verifiedUser, l10n.newThreadCapApprovals),
     if (c.autonomous) (UxIcons.autoAwesome, l10n.newThreadCapAutonomous),
     if (c.forking) (UxIcons.callSplit, l10n.newThreadCapForking),

@@ -5,25 +5,43 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// Bottom sheet to choose how the agent's actions are approved (spec 02a —
-/// access modes). Returns the chosen [ApprovalMode] (or null if dismissed).
+/// The name of an access mode, as every surface of the app writes it.
+String approvalModeTitle(AppLocalizations l10n, ApprovalMode mode) =>
+    switch (mode) {
+      ApprovalMode.requestApproval => l10n.approvalRequestTitle,
+      ApprovalMode.approveForMe => l10n.approvalAutoTitle,
+      ApprovalMode.fullAccess => l10n.approvalFullTitle,
+      ApprovalMode.plan => l10n.approvalPlanTitle,
+    };
+
+/// Bottom sheet to choose how much the agent may do before it asks (spec 02a —
+/// access modes), listing only the modes the agent offers. Returns the chosen
+/// [ApprovalMode] (or null if dismissed).
 class ApprovalModeSheet extends StatelessWidget {
   /// Creates an [ApprovalModeSheet].
-  const ApprovalModeSheet({required this.current, super.key});
+  const ApprovalModeSheet({
+    required this.current,
+    required this.offered,
+    super.key,
+  });
 
-  /// The currently selected mode.
+  /// The mode the conversation runs in.
   final ApprovalMode current;
+
+  /// The modes its agent offers, in the order to list them.
+  final List<ApprovalMode> offered;
 
   /// Shows the sheet and resolves with the chosen mode.
   static Future<ApprovalMode?> show(
     BuildContext context,
     ApprovalMode current,
+    List<ApprovalMode> offered,
   ) {
     return showModalBottomSheet<ApprovalMode>(
       context: context,
       useRootNavigator: true,
       showDragHandle: true,
-      builder: (_) => ApprovalModeSheet(current: current),
+      builder: (_) => ApprovalModeSheet(current: current, offered: offered),
     );
   }
 
@@ -49,34 +67,33 @@ class ApprovalModeSheet extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
               child: Text(l10n.approvalQuestion, style: textTheme.titleSmall),
             ),
-            _ApprovalOption(
-              icon: UxIcons.panTool,
-              title: l10n.approvalRequestTitle,
-              body: l10n.approvalRequestBody,
-              selected: current == ApprovalMode.requestApproval,
-              onTap: () =>
-                  Navigator.of(context).pop(ApprovalMode.requestApproval),
-            ),
-            _ApprovalOption(
-              icon: UxIcons.verifiedUser,
-              title: l10n.approvalAutoTitle,
-              body: l10n.approvalAutoBody,
-              selected: current == ApprovalMode.approveForMe,
-              onTap: () => Navigator.of(context).pop(ApprovalMode.approveForMe),
-            ),
-            _ApprovalOption(
-              icon: UxIcons.public,
-              title: l10n.approvalFullTitle,
-              body: l10n.approvalFullBody,
-              selected: current == ApprovalMode.fullAccess,
-              onTap: () => Navigator.of(context).pop(ApprovalMode.fullAccess),
-            ),
+            for (final mode in offered)
+              _ApprovalOption(
+                icon: approvalModeIcon(mode),
+                title: approvalModeTitle(l10n, mode),
+                body: switch (mode) {
+                  ApprovalMode.requestApproval => l10n.approvalRequestBody,
+                  ApprovalMode.approveForMe => l10n.approvalAutoBody,
+                  ApprovalMode.fullAccess => l10n.approvalFullBody,
+                  ApprovalMode.plan => l10n.approvalPlanBody,
+                },
+                selected: current == mode,
+                onTap: () => Navigator.of(context).pop(mode),
+              ),
           ],
         ),
       ),
     );
   }
 }
+
+/// The glyph of an access mode, the same in the sheet and the composer shelf.
+UxIconData approvalModeIcon(ApprovalMode mode) => switch (mode) {
+      ApprovalMode.requestApproval => UxIcons.panTool,
+      ApprovalMode.approveForMe => UxIcons.verifiedUser,
+      ApprovalMode.fullAccess => UxIcons.lockOpen,
+      ApprovalMode.plan => UxIcons.checklistRtl,
+    };
 
 class _ApprovalOption extends StatelessWidget {
   const _ApprovalOption({
