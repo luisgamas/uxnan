@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The back gesture closes what is on top.** On Android 16, where back is
+  predictive for every app, the gesture could go back a screen under an open
+  sheet and leave the sheet up. Back now always reaches what is on top first —
+  a sheet, then the screen under it — the same as the back button.
 
 ## [0.0.37-alpha.20261003+20261004] - 20261003
 ### Changed

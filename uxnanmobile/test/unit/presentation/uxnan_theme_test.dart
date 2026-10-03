@@ -22,6 +22,22 @@ CustomTheme _testCustomTheme() {
 }
 
 void main() {
+  test('Android pages leave the back gesture to the router', () {
+    // A page that claims the predictive back gesture pops itself when it tops
+    // ITS navigator — under an open sheet, or under a page of another
+    // navigator — so back went back a screen and left the sheet open.
+    for (final brightness in Brightness.values) {
+      final theme = buildUxnanTheme(
+        brightness: brightness,
+        themeSource: ThemeSource.brand,
+      );
+      expect(
+        theme.pageTransitionsTheme.builders[TargetPlatform.android],
+        isA<FadeForwardsPageTransitionsBuilder>(),
+      );
+    }
+  });
+
   group('buildUxnanTheme — brand source (default baseline)', () {
     test('returns a complete, seed-derived brand light scheme', () {
       final theme = buildUxnanTheme(
