@@ -33,6 +33,7 @@
   import ChatImages from "./ChatImages.svelte";
   import ChatFiles from "./ChatFiles.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
+  import { effectiveAccessMode } from "$lib/bridge/accessMode";
   import type { TurnAttachment } from "$shared/models/workspace";
   import type { Turn } from "$shared/models/thread";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
@@ -231,7 +232,18 @@
     void chat.modelsFor(id).finally(() => (modelsLoading = false));
   });
 
-  const accessMode = $derived<AccessMode>(thread?.accessMode ?? "fullAccess");
+  // What the conversation runs in is its agent's say: the stored mode when the
+  // agent offers it, else its default — the rule the bridge applies before a
+  // turn (`effectiveAccessMode`). An agent that offers none shows no selector.
+  const agentCaps = $derived(agent?.capabilities);
+  const accessModes = $derived<AccessMode[]>(agentCaps?.accessModes ?? []);
+  const accessMode = $derived(agentCaps ? effectiveAccessMode(agentCaps, thread?.accessMode) : undefined);
+  /** A mode the conversation kept that its agent no longer offers. */
+  const retiredMode = $derived(
+    accessMode !== undefined && thread?.accessMode !== undefined && !accessModes.includes(thread.accessMode)
+      ? thread.accessMode
+      : undefined,
+  );
 
   /** The agent takes a message while it works (`capabilities.steering`). */
   const steers = $derived(chat.agent(thread?.agentId)?.capabilities?.steering === true);
@@ -626,6 +638,18 @@
           </Button>
         </div>
       {/if}
+      {#if retiredMode && accessMode && thread?.status !== "archived"}
+        <!-- The mode it kept is gone from its agent: say what it runs in now. -->
+        <div class="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <span class="min-w-0 flex-1">
+            {i18n.t("chat.accessRetired", {
+              agent: agent?.displayName ?? thread?.agentId ?? "",
+              retired: i18n.t(`chat.access.${retiredMode}`),
+              current: i18n.t(`chat.access.${accessMode}`),
+            })}
+          </span>
+        </div>
+      {/if}
       {#if hold && thread?.status !== "archived"}
         <!-- The session is open in a terminal: one writer at a time. -->
         <div class="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
@@ -749,7 +773,9 @@
           <RunOptionsPicker options={model?.options ?? []} bind:values={optionValues} />
         {/snippet}
         {#snippet trailing()}
-          <ChatAccessMenu value={accessMode} onChange={(mode) => void setAccess(mode)} />
+          {#if accessMode !== undefined}
+            <ChatAccessMenu value={accessMode} modes={accessModes} onChange={(mode) => void setAccess(mode)} />
+          {/if}
         {/snippet}
       </ChatComposer>
     </div>

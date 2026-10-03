@@ -313,4 +313,43 @@ describe("ChatConversation", () => {
     expect(screen.getByText("Continues below, with your next message")).toBeTruthy();
     expect(screen.getByText("Reached the agent while it was working")).toBeTruthy();
   });
+
+  // An agent stopped offering the mode a conversation kept: the chat says which
+  // one it runs in instead, and the menu lists only what the agent offers.
+  it("says when the agent no longer offers the conversation's access mode", async () => {
+    chat.agents = [
+      {
+        agentId: "codex",
+        displayName: "Codex",
+        available: true,
+        capabilities: {
+          streaming: true,
+          approvals: true,
+          forking: false,
+          images: false,
+          accessModes: ["approveForMe", "fullAccess"],
+          defaultAccessMode: "fullAccess",
+        },
+      },
+    ];
+    const { screen } = mount(chatTab());
+    chat.threads.set(THREAD, { ...chat.threads.get(THREAD)!, accessMode: "plan" });
+    await until(() => screen.queryByText(/Codex no longer offers Plan only/) !== null);
+    expect(screen.getByText(/This conversation runs in Full access/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Access mode" }).textContent).toContain("Full access");
+  });
+
+  it("shows no access menu for an agent that offers no mode", async () => {
+    chat.agents = [
+      {
+        agentId: "codex",
+        displayName: "Codex",
+        available: true,
+        capabilities: { streaming: true, approvals: false, forking: false, images: false },
+      },
+    ];
+    const { screen } = mount(chatTab());
+    await until(() => screen.queryByRole("textbox") !== null);
+    expect(screen.queryByRole("button", { name: "Access mode" })).toBeNull();
+  });
 });
