@@ -724,6 +724,108 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and git on that host; writes a scratch repository in its home"]
+        async fn a_projects_git_is_served_by_the_hosts_engine() {
+            use crate::git::{CommitInfo, RepoStatus, Review};
+            use uxnan_host_protocol::{FsCall, GitCall};
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let root: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.clone(),
+                    path: format!(".uxnan-live-git-{}", std::process::id()),
+                })
+                .await
+                .expect("a scratch folder");
+            // Set up the way a person would, in that machine's own shell: the
+            // one-word commands read the same in cmd, PowerShell and sh.
+            for args in [
+                "init -q -b main",
+                "config user.name Uxnan",
+                "config user.email live@uxnan.invalid",
+                "config commit.gpgsign false",
+            ] {
+                let out = conn
+                    .exec(&format!("git -C {root} {args}"))
+                    .await
+                    .expect("git runs there");
+                assert_eq!(out.exit_code, Some(0), "git {args}: {}", out.stderr);
+            }
+            let () = engine
+                .fs(FsCall::Write {
+                    path: format!("{root}/a.txt"),
+                    content: "one\n".into(),
+                })
+                .await
+                .unwrap();
+
+            let review: Review = engine
+                .git(GitCall::Review { path: root.clone() })
+                .await
+                .unwrap();
+            assert!(review.is_repo);
+            assert_eq!(review.files.len(), 1, "{review:?}");
+            let () = engine
+                .git(GitCall::Stage {
+                    path: root.clone(),
+                    file: "a.txt".into(),
+                })
+                .await
+                .unwrap();
+            let () = engine
+                .git(GitCall::Commit {
+                    path: root.clone(),
+                    message: "from the engine".into(),
+                    amend: false,
+                    sign_off: false,
+                })
+                .await
+                .expect("a commit there");
+            let log: Vec<CommitInfo> = engine
+                .git(GitCall::Log {
+                    path: root.clone(),
+                    limit: 5,
+                    skip: 0,
+                })
+                .await
+                .unwrap();
+            assert_eq!(log[0].subject, "from the engine");
+            let row: RepoStatus = engine
+                .git(GitCall::Status { path: root.clone() })
+                .await
+                .unwrap();
+            assert_eq!(row.branch.as_deref(), Some("main"));
+            assert_eq!(row.status.dirty, 0);
+            // What git refuses arrives as git's own error.
+            let refused = engine
+                .git::<()>(GitCall::Stage {
+                    path: root.clone(),
+                    file: "absent.txt".into(),
+                })
+                .await
+                .expect_err("git refuses a file it does not know");
+            assert!(
+                matches!(refused, crate::error::AppError::Git(_)),
+                "{refused:?}"
+            );
+
+            let () = engine
+                .fs(FsCall::Delete { path: root.clone() })
+                .await
+                .unwrap();
+            println!("live: {alias} engine served a project's git in {root}");
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

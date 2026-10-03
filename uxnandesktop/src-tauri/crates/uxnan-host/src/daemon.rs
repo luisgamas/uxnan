@@ -516,7 +516,8 @@ impl Daemon {
             | Call::HooksStatus
             | Call::SetHook { .. }
             | Call::HookConfig { .. }
-            | Call::Fs(_) => Outcome::Error {
+            | Call::Fs(_)
+            | Call::Git(_) => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -899,6 +900,13 @@ where
                                 let answer = viewer.clone();
                                 tokio::spawn(async move {
                                     let outcome = crate::files::serve(call).await;
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Git(call) }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let outcome = crate::repo::serve(call).await;
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
                             }

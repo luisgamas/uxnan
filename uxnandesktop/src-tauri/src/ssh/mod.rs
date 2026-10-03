@@ -29,7 +29,6 @@ pub mod conn;
 pub mod dial;
 pub mod engine;
 pub mod forward;
-pub mod git;
 pub mod hostkey;
 pub mod inventory;
 pub mod ports;

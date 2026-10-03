@@ -40,7 +40,7 @@ describe('projects.createGitHubWorktree', () => {
       const backend = installFakeBackend({
         [command]: () => created,
         worktree_list: () => [MAIN, created],
-        worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+        git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
       });
 
       const path = await projects.createGitHubWorktree(REPO_ID, kind, 42, branch, null);
@@ -81,7 +81,7 @@ describe('projects.createGitHubWorktree', () => {
     installFakeBackend({
       github_pr_checkout: () => created,
       worktree_list: () => [MAIN, created],
-      worktree_status: () => {
+      git_repo_status: () => {
         statusRequested = true;
         return new Promise(() => {});
       },
@@ -120,7 +120,7 @@ describe('a plain folder that became a repository', () => {
       repos_missing: () => [],
       repo_probe_git: () => NOW_GIT,
       worktree_list: () => [{ ...PLAIN_ENTRY, branch: 'main', head: 'abc123' }],
-      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+      git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
     });
 
     await projects.refreshWorktrees(true);
@@ -140,7 +140,7 @@ describe('a plain folder that became a repository', () => {
       repos_missing: () => [],
       repo_probe_git: () => null,
       worktree_list: () => [PLAIN_ENTRY],
-      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+      git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
     });
 
     await projects.refreshWorktrees(true);
@@ -453,18 +453,19 @@ describe('a project that lives on a host', () => {
     expect(fileTree.searchable).toBe(true);
   });
 
-  it("reads a host's git on the host, and never calls this machine's", async () => {
-    // Phase 3's second slice. Git has to be *run*, so it goes through the host's
-    // shell — the one it reported, with arguments quoted for it.
+  it("reads a host's git on the host, and never this machine's", async () => {
+    // The row names the machine; the host's engine runs git there. An answer
+    // for this machine's folder at the same path would be the wrong repository.
     const backend = installFakeBackend({
-      ssh_git_status: () => ({ branch: 'main', dirty: 3, ahead: 1, behind: 0, isRepo: true }),
-      worktree_status: () => ({ dirty: 99, ahead: 99, behind: 99 }),
+      git_repo_status: (args) =>
+        args.target === 'ssh:h1'
+          ? { branch: 'main', dirty: 3, ahead: 1, behind: 0, isRepo: true }
+          : { branch: 'main', dirty: 99, ahead: 99, behind: 99, isRepo: true },
     });
 
     await projects.refreshStatuses([REMOTE_PATH]);
 
-    expect(backend.lastCallTo('ssh_git_status')?.args).toEqual({ hostId: 'h1', path: REMOTE_PATH });
-    expect(backend.lastCallTo('worktree_status')).toBeUndefined();
+    expect(backend.lastCallTo('git_repo_status')?.args).toEqual({ path: REMOTE_PATH, target: 'ssh:h1' });
     expect(projects.status(REMOTE_PATH)).toEqual({ dirty: 3, ahead: 1, behind: 0 });
   });
 
@@ -473,7 +474,7 @@ describe('a project that lives on a host', () => {
     // all arrive as isRepo:false — and none of them means "no changes". Showing
     // zeroes there would be the same lie as a made-up branch.
     installFakeBackend({
-      ssh_git_status: () => ({ branch: null, dirty: 0, ahead: 0, behind: 0, isRepo: false }),
+      git_repo_status: () => ({ branch: null, dirty: 0, ahead: 0, behind: 0, isRepo: false }),
     });
     // Start from nothing known, so this asserts "never written" rather than
     // "overwritten" — a status already read stays put on a transient failure,

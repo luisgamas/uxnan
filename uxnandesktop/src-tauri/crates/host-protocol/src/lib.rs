@@ -35,7 +35,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 8: the agents' hooks one by one — `HooksStatus`, `SetHook`, `HookConfig`.
 /// - 9: a project's files — `Fs` (list, read, save, create, rename, delete,
 ///   duplicate, and search by name and by content).
-pub const PROTOCOL: u32 = 9;
+/// - 10: a project's git — `Git` (the review, the row's status, diffs, the log,
+///   staging, discarding, applying a patch, committing, fetch/push/pull);
+///   `ErrorCode::Git` for what git itself refused.
+pub const PROTOCOL: u32 = 10;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -313,6 +316,98 @@ pub enum Call {
     /// workspace engine's own `fs` — answered as [`Reply::Value`] in that
     /// module's shapes.
     Fs(FsCall),
+    /// Something asked of a project's git on this machine, with the
+    /// workspace engine's own `git` — answered as [`Reply::Value`] in that
+    /// module's shapes.
+    Git(GitCall),
+}
+
+/// What [`Call::Git`] asks. Every `path` is a worktree on the host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum GitCall {
+    /// `git::Review`: changed files, line counts, upstream distance, `HEAD`.
+    Review {
+        path: String,
+    },
+    /// `git::RepoStatus`: the branch and the row's counts.
+    Status {
+        path: String,
+    },
+    Diff {
+        path: String,
+        file: String,
+        staged: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    DiffHead {
+        path: String,
+        file: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    ImageDiff {
+        path: String,
+        file: String,
+        staged: bool,
+    },
+    /// Everything staged, as one diff — what a commit message is drafted from.
+    #[serde(rename_all = "camelCase")]
+    StagedDiff {
+        path: String,
+    },
+    Log {
+        path: String,
+        limit: u32,
+        skip: u32,
+    },
+    Show {
+        path: String,
+        hash: String,
+    },
+    Stage {
+        path: String,
+        file: String,
+    },
+    Unstage {
+        path: String,
+        file: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    StageAll {
+        path: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    UnstageAll {
+        path: String,
+    },
+    Discard {
+        path: String,
+        file: String,
+        untracked: bool,
+    },
+    Apply {
+        path: String,
+        patch: String,
+        cached: bool,
+        reverse: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    Commit {
+        path: String,
+        message: String,
+        amend: bool,
+        sign_off: bool,
+    },
+    /// Answers the refreshed `git::WorktreeStatus`.
+    Fetch {
+        path: String,
+    },
+    Push {
+        path: String,
+    },
+    Pull {
+        path: String,
+    },
 }
 
 /// What [`Call::Fs`] asks. The search filters and query are the engine's
@@ -388,6 +483,8 @@ pub enum ErrorCode {
     SpawnFailed,
     /// The call was malformed or not valid now.
     Invalid,
+    /// git itself refused or failed; the message is git's own.
+    Git,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -574,7 +671,7 @@ mod tests {
     fn versions_meet_in_the_overlap_of_two_windows() {
         assert_eq!(negotiate(1, 1), Some(1));
         // A newer client still talks to this daemon at the version both know.
-        assert_eq!(negotiate(1, 9), Some(PROTOCOL));
+        assert_eq!(negotiate(1, PROTOCOL + 5), Some(PROTOCOL));
         // One that has dropped everything this daemon speaks is refused.
         assert_eq!(negotiate(PROTOCOL + 1, PROTOCOL + 3), None);
     }

@@ -20,11 +20,10 @@ use crate::worktreeloc;
 /// The worktree list of one project, wherever it lives. This is the one
 /// implementation: the sidebar's `worktree_list` command delegates here.
 ///
-/// A project on a host is asked over its SSH session (its shell was identified
-/// when it connected, so the arguments are quoted for the shell that receives
-/// them); a host that could not be named, has no git, or holds a plain folder
-/// answers "not a repository" and the row says the branch was not read — never
-/// a branch this machine made up. A local plain folder lists its own folder with
+/// A project on a host is asked of that host's engine, which runs the same git
+/// there; a host that is not connected, has no engine, has no git, or holds a
+/// plain folder leaves the branch unread — never a branch this machine made
+/// up. A local plain folder lists its own folder with
 /// no branch. A local repository asks git.
 pub async fn list_of<R: tauri::Runtime>(
     app: &AppHandle<R>,
@@ -32,20 +31,14 @@ pub async fn list_of<R: tauri::Runtime>(
 ) -> Result<Vec<WorktreeEntry>, RpcError> {
     let state = app.state::<AppState>();
     if let Some(host_id) = repo.target.ssh_host_id() {
-        let shell = state
-            .ssh_shells
-            .read()
-            .await
-            .get(host_id)
-            .copied()
-            .unwrap_or_default();
-        let conn = state.ssh_sessions.read().await.get(host_id).cloned();
-        let branch = match conn {
-            Some(conn) => {
-                crate::ssh::git::status(&conn, shell, &repo.path)
-                    .await
-                    .branch
-            }
+        let branch = match crate::commands::connected_engine(app, &state, host_id).await {
+            Some(engine) => engine
+                .git::<git::RepoStatus>(uxnan_host_protocol::GitCall::Status {
+                    path: repo.path.clone(),
+                })
+                .await
+                .ok()
+                .and_then(|status| status.branch),
             None => None,
         };
         return Ok(vec![WorktreeEntry {

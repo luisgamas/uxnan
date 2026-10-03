@@ -668,6 +668,7 @@ impl HostEngine {
             Ok(Ok(Outcome::Error { code, message })) => Err(match code {
                 uxnan_host_protocol::ErrorCode::NotFound => AppError::NotFound(message),
                 uxnan_host_protocol::ErrorCode::Invalid => AppError::Invalid(message),
+                uxnan_host_protocol::ErrorCode::Git => AppError::Git(message),
                 uxnan_host_protocol::ErrorCode::SpawnFailed => AppError::Pty(message),
             }),
             Ok(Err(_)) => Err(AppError::NotConnected("the host engine".to_string())),
@@ -900,6 +901,19 @@ impl HostEngine {
         match self.request(Call::Fs(call), None).await? {
             Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
             other => Err(unexpected("a file call", &other)),
+        }
+    }
+
+    /// Something asked of a project's git on the host, by the engine's own
+    /// `git` there, answered in that module's shapes.
+    pub async fn git<T: serde::de::DeserializeOwned>(
+        &self,
+        call: uxnan_host_protocol::GitCall,
+    ) -> Result<T, AppError> {
+        self.needs(10, "serve a project's git")?;
+        match self.request(Call::Git(call), None).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a git call", &other)),
         }
     }
 

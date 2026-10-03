@@ -1348,3 +1348,137 @@ async fn a_projects_files_are_listed_saved_and_searched_on_the_host() {
         .await;
     assert!(matches!(missing, Outcome::Error { .. }), "{missing:?}");
 }
+
+async fn git_call(client: &mut Client, call: uxnan_host_protocol::GitCall) -> serde_json::Value {
+    match client.call(Call::Git(call)).await {
+        Outcome::Ok {
+            reply: Reply::Value { value },
+        } => value,
+        other => panic!("git call failed: {other:?}"),
+    }
+}
+
+/// `git` in `dir`, for setting a repository up the way a person would.
+fn git_here(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .status()
+        .expect("git runs");
+    assert!(status.success(), "git {args:?}");
+}
+
+#[tokio::test]
+async fn a_projects_git_is_read_staged_and_committed_on_the_host() {
+    use uxnan_host_protocol::GitCall;
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let project = tempfile::tempdir().unwrap();
+    let root = project.path().display().to_string();
+
+    // A plain folder answers "not a repository", never zeroes that read as clean.
+    let review = git_call(&mut client, GitCall::Review { path: root.clone() }).await;
+    assert_eq!(review["isRepo"], false);
+    let status = git_call(&mut client, GitCall::Status { path: root.clone() }).await;
+    assert_eq!(status["isRepo"], false);
+
+    git_here(project.path(), &["init", "-q", "-b", "main"]);
+    git_here(project.path(), &["config", "user.name", "Uxnan Test"]);
+    git_here(
+        project.path(),
+        &["config", "user.email", "test@uxnan.invalid"],
+    );
+    git_here(project.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(project.path().join("a.txt"), "first\n").unwrap();
+    git_call(
+        &mut client,
+        GitCall::Stage {
+            path: root.clone(),
+            file: "a.txt".into(),
+        },
+    )
+    .await;
+    git_call(
+        &mut client,
+        GitCall::Commit {
+            path: root.clone(),
+            message: "  the first commit\n".into(),
+            amend: false,
+            sign_off: false,
+        },
+    )
+    .await;
+    let log = git_call(
+        &mut client,
+        GitCall::Log {
+            path: root.clone(),
+            limit: 10,
+            skip: 0,
+        },
+    )
+    .await;
+    assert_eq!(log[0]["subject"], "the first commit", "{log}");
+
+    std::fs::write(project.path().join("a.txt"), "first\nsecond\n").unwrap();
+    let review = git_call(&mut client, GitCall::Review { path: root.clone() }).await;
+    assert_eq!(review["isRepo"], true);
+    assert_eq!(review["files"][0]["path"], "a.txt", "{review}");
+    assert_eq!(review["numstat"][0]["added"], 1, "{review}");
+    assert!(review["head"].as_str().is_some_and(|h| h.len() >= 7));
+    let status = git_call(&mut client, GitCall::Status { path: root.clone() }).await;
+    assert_eq!(status["branch"], "main");
+    assert_eq!(status["dirty"], 1);
+    let diff = git_call(
+        &mut client,
+        GitCall::Diff {
+            path: root.clone(),
+            file: "a.txt".into(),
+            staged: false,
+        },
+    )
+    .await;
+    assert!(diff.as_str().unwrap().contains("+second"), "{diff}");
+
+    // An empty message is the caller's mistake; a file git does not know is
+    // git's own no, in its words.
+    let Outcome::Error { code, .. } = client
+        .call(Call::Git(GitCall::Commit {
+            path: root.clone(),
+            message: "  ".into(),
+            amend: false,
+            sign_off: false,
+        }))
+        .await
+    else {
+        panic!("an empty commit message is refused");
+    };
+    assert_eq!(code, uxnan_host_protocol::ErrorCode::Invalid);
+    let Outcome::Error { code, message } = client
+        .call(Call::Git(GitCall::Stage {
+            path: root.clone(),
+            file: "absent.txt".into(),
+        }))
+        .await
+    else {
+        panic!("staging a file that is not there is refused");
+    };
+    assert_eq!(code, uxnan_host_protocol::ErrorCode::Git, "{message}");
+    assert!(message.contains("absent.txt"), "{message}");
+
+    git_call(
+        &mut client,
+        GitCall::Discard {
+            path: root.clone(),
+            file: "a.txt".into(),
+            untracked: false,
+        },
+    )
+    .await;
+    let review = git_call(&mut client, GitCall::Review { path: root.clone() }).await;
+    assert_eq!(review["files"], serde_json::json!([]), "{review}");
+    assert_eq!(
+        std::fs::read_to_string(project.path().join("a.txt")).unwrap(),
+        "first\n"
+    );
+}

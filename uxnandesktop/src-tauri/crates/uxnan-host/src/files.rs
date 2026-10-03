@@ -12,21 +12,34 @@ use uxnan_workspace_engine::Error;
 
 /// Answer one `Fs` call.
 pub async fn serve(call: FsCall) -> Outcome {
-    match run(call).await {
+    outcome(run(call).await)
+}
+
+/// An engine answer as the protocol carries it: the value, or the error with
+/// the code the app maps back to its own (`NotFound`, git's own refusal, or
+/// a call that cannot be done as asked).
+pub fn outcome(result: Result<serde_json::Value, Error>) -> Outcome {
+    match result {
         Ok(value) => Outcome::Ok {
             reply: Reply::Value { value },
         },
         Err(e) => Outcome::Error {
             code: match e {
                 Error::NotFound(_) => ErrorCode::NotFound,
+                Error::Git(_) => ErrorCode::Git,
                 _ => ErrorCode::Invalid,
             },
-            message: e.to_string(),
+            message: match e {
+                // git's own words, without the engine's prefix: the app shows
+                // them as it shows a local git error.
+                Error::Git(m) => m,
+                other => other.to_string(),
+            },
         },
     }
 }
 
-fn value<T: Serialize>(answer: T) -> Result<serde_json::Value, Error> {
+pub fn value<T: Serialize>(answer: T) -> Result<serde_json::Value, Error> {
     serde_json::to_value(answer).map_err(Error::from)
 }
 

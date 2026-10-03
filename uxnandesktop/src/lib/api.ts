@@ -34,8 +34,8 @@ import type {
   FsEntry,
   ListeningPort,
   SshConfigAlias,
-  SshGitReview,
-  SshGitStatus,
+  GitReview,
+  RepoStatus,
   SshConnectReport,
   SshHostInventory,
   SshHost,
@@ -596,11 +596,6 @@ export function worktreeList(repoId: string): Promise<WorktreeEntry[]> {
   return invoke<WorktreeEntry[]>('worktree_list', { repoId });
 }
 
-/** Summarize a worktree's working-tree status (dirty count + ahead/behind). */
-export function worktreeStatus(path: string): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('worktree_status', { path });
-}
-
 /** Whether `branch` already landed in its repo's default base — merged outright
  *  or squashed. Read-only: the same check the removal runs on its way to a safe
  *  delete, asked without deleting anything. */
@@ -691,186 +686,6 @@ export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
  *  that machine's home — only it knows where that is. */
 export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
   return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
-}
-
-/** A worktree's git state **on a host**: branch plus changed/ahead/behind.
- *
- *  Runs git there through the shell that machine reported, with every argument
- *  quoted for it. `isRepo: false` covers "not a repository", "no git installed"
- *  and "the shell could not be named" — all of which the UI must render as *not
- *  read*, never as "no changes". */
-export function sshGitStatus(hostId: string, path: string): Promise<SshGitStatus> {
-  return invoke<SshGitStatus>('ssh_git_status', { hostId, path });
-}
-
-/** Everything the Changes tab needs about a worktree on a host, in **one** round
- *  trip: HEAD, ahead/behind, the changed files and their line counts.
- *
- *  One call rather than the local layer's four because each one costs a shell
- *  start on that machine — measured at ~2s on a real host — and the panel asks
- *  for all of them at once. `isRepo: false` means *not read*, never "clean". */
-export function sshGitReview(hostId: string, path: string): Promise<SshGitReview> {
-  return invoke<SshGitReview>('ssh_git_review', { hostId, path });
-}
-
-/** A file's unified diff on a host, staged or unstaged. */
-export function sshGitDiff(
-  hostId: string,
-  path: string,
-  file: string,
-  staged: boolean,
-): Promise<string> {
-  return invoke<string>('ssh_git_diff', { hostId, path, file, staged });
-}
-
-/** A file's diff against HEAD on a host — the editor's change gutter. Not the
- *  same question as `sshGitDiff`: the gutter marks every line that differs from
- *  the committed file, so staging a hunk must not clear it. */
-export function sshGitDiffHead(hostId: string, path: string, file: string): Promise<string> {
-  return invoke<string>('ssh_git_diff_head', { hostId, path, file });
-}
-
-/** Draft a commit message for a project on a host: the diff is read there, the
- *  agent runs here (its CLI and credentials are this machine's). */
-export function sshGitGenerateCommitMessage(hostId: string, path: string): Promise<string> {
-  return invoke<string>('ssh_git_generate_commit_message', { hostId, path });
-}
-
-/** Before/after versions of an **image** on a host, for the visual diff.
- *
- *  The committed side is read with `git show` keeping its bytes as bytes (the
- *  text path would turn a PNG into replacement characters), and the working-tree
- *  side over SFTP. Nothing has to be installed on the host to encode it. */
-export function sshGitImageDiff(
-  hostId: string,
-  path: string,
-  file: string,
-  staged: boolean,
-): Promise<ImageDiff> {
-  return invoke<ImageDiff>('ssh_git_image_diff', { hostId, path, file, staged });
-}
-
-/** A host worktree's history, newest first. Same shape as the local log, so the
- *  History tab and the branch graph render either machine unchanged. */
-export function sshGitLog(
-  hostId: string,
-  path: string,
-  limit: number,
-  skip: number,
-): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>('ssh_git_log', { hostId, path, limit, skip });
-}
-
-/** One commit's patch, on a host. */
-export function sshGitShow(hostId: string, path: string, hash: string): Promise<string> {
-  return invoke<string>('ssh_git_show', { hostId, path, hash });
-}
-
-/** Stage a file on a host. Fenced like every mutation: `expect` names the
- *  machine and connection the user was looking at, and the backend refuses
- *  before anything is sent when that no longer holds. */
-export function sshGitStage(
-  hostId: string,
-  path: string,
-  file: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_stage', { hostId, path, file, expect: expect ?? null });
-}
-
-export function sshGitUnstage(
-  hostId: string,
-  path: string,
-  file: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_unstage', { hostId, path, file, expect: expect ?? null });
-}
-
-export function sshGitStageAll(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_stage_all', { hostId, path, expect: expect ?? null });
-}
-
-export function sshGitUnstageAll(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_unstage_all', { hostId, path, expect: expect ?? null });
-}
-
-/** Throw a file's changes away on a host — the one action here that cannot be
- *  undone, and the reason the fence exists at all. */
-export function sshGitDiscard(
-  hostId: string,
-  path: string,
-  file: string,
-  untracked: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_discard', {
-    hostId,
-    path,
-    file,
-    untracked,
-    expect: expect ?? null,
-  });
-}
-
-/** Apply a patch on a host — the per-hunk stage/unstage/discard. The patch
- *  travels over SFTP, never through that machine's shell. */
-export function sshGitApply(
-  hostId: string,
-  path: string,
-  patch: string,
-  cached: boolean,
-  reverse: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_apply', {
-    hostId,
-    path,
-    patch,
-    cached,
-    reverse,
-    expect: expect ?? null,
-  });
-}
-
-/** Commit on a host. The message travels over SFTP for the same reason: a
- *  multi-line message with quotes in it must never be quoted for a shell. */
-export function sshGitCommit(
-  hostId: string,
-  path: string,
-  message: string,
-  amend: boolean,
-  signOff: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_commit', {
-    hostId,
-    path,
-    message,
-    amend,
-    signOff,
-    expect: expect ?? null,
-  });
-}
-
-/** Fetch, push or pull **on the host**, answering the worktree's new distance
- *  from its upstream. The credentials are that machine's own — the project lives
- *  there, so its remote is reachable from there. */
-export function sshGitSync(
-  hostId: string,
-  path: string,
-  action: 'fetch' | 'push' | 'pull',
-  expect?: TargetExpectation,
-): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('ssh_git_sync', { hostId, path, action, expect: expect ?? null });
 }
 
 /** Ask a host what TCP ports it is listening on, right now.
@@ -1291,58 +1106,111 @@ export function fsSetWatch(path: string | null, target?: TargetId | null): Promi
   return invoke('fs_set_watch', { path, target: target ?? null });
 }
 
+// --- Git status, diffs & staging (right-panel review) ----------------------
+//
+// Every call names the machine its worktree is on: `target` is this one when
+// absent, or a host, whose engine runs the same git there. A mutation on a host
+// carries `expect` and is refused when it no longer holds; `$lib/gitRouter`
+// is the one caller that builds those.
+
 /** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
  *  Empty for a clean or untracked file. */
-export function gitDiffHead(path: string, file: string): Promise<string> {
-  return invoke<string>('git_diff_head', { path, file });
+export function gitDiffHead(path: string, file: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_diff_head', { path, file, target: target ?? null });
 }
 
-// --- Git status, diffs & staging (right-panel review) ----------------------
-
-/** List a worktree's changed files (staged + unstaged + untracked). */
-export function gitStatus(path: string): Promise<FileChange[]> {
-  return invoke<FileChange[]>('git_status', { path });
+/** Everything the Changes tab draws about a worktree, in one answer.
+ *  `isRepo: false` means *not a repository*, never "clean". */
+export function gitReview(path: string, target?: TargetId | null): Promise<GitReview> {
+  return invoke<GitReview>('git_review', { path, target: target ?? null });
 }
 
-/** Per-file added/deleted line counts vs HEAD (for the changed-files list). */
+/** A worktree's branch and its row counts. `isRepo: false` means *not read*,
+ *  never "clean". */
+export function gitRepoStatus(path: string, target?: TargetId | null): Promise<RepoStatus> {
+  return invoke<RepoStatus>('git_repo_status', { path, target: target ?? null });
+}
+
+/** Per-file added/deleted line counts vs HEAD, on this machine — what the
+ *  status watcher's snapshot refreshes (a host's arrive in `gitReview`). */
 export function gitNumstat(path: string): Promise<FileNumstat[]> {
   return invoke<FileNumstat[]>('git_numstat', { path });
 }
 
 /** Unified diff for one file (`staged` = index-vs-HEAD, else worktree-vs-index). */
-export function gitDiff(path: string, file: string, staged: boolean): Promise<string> {
-  return invoke<string>('git_diff', { path, file, staged });
+export function gitDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+  target?: TargetId | null,
+): Promise<string> {
+  return invoke<string>('git_diff', { path, file, staged, target: target ?? null });
 }
 
 /** Before/after image versions for a changed image file (base64), for the visual
  *  diff viewer. `staged` mirrors `gitDiff`. */
-export function gitImageDiff(path: string, file: string, staged: boolean): Promise<ImageDiff> {
-  return invoke<ImageDiff>('git_image_diff', { path, file, staged });
+export function gitImageDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+  target?: TargetId | null,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>('git_image_diff', { path, file, staged, target: target ?? null });
 }
 
 /** Stage one file. */
-export function gitStage(path: string, file: string): Promise<void> {
-  return invoke('git_stage', { path, file });
+export function gitStage(
+  path: string,
+  file: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_stage', { path, file, target: target ?? null, expect: expect ?? null });
 }
 
 /** Unstage one file. */
-export function gitUnstage(path: string, file: string): Promise<void> {
-  return invoke('git_unstage', { path, file });
+export function gitUnstage(
+  path: string,
+  file: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_unstage', { path, file, target: target ?? null, expect: expect ?? null });
 }
 
 /** Stage every change. */
-export function gitStageAll(path: string): Promise<void> {
-  return invoke('git_stage_all', { path });
+export function gitStageAll(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_stage_all', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Unstage everything. */
-export function gitUnstageAll(path: string): Promise<void> {
-  return invoke('git_unstage_all', { path });
+export function gitUnstageAll(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_unstage_all', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Discard a file's local changes (tracked → restore HEAD; untracked → delete). */
-export function gitDiscard(path: string, file: string, untracked: boolean): Promise<void> {
-  return invoke('git_discard', { path, file, untracked });
+export function gitDiscard(
+  path: string,
+  file: string,
+  untracked: boolean,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_discard', {
+    path,
+    file,
+    untracked,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Apply a single-hunk unified-diff patch to stage/unstage/discard it. `cached`
@@ -1352,8 +1220,17 @@ export function gitApply(
   patch: string,
   cached: boolean,
   reverse: boolean,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
 ): Promise<void> {
-  return invoke('git_apply', { path, patch, cached, reverse });
+  return invoke('git_apply', {
+    path,
+    patch,
+    cached,
+    reverse,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Commit the staged changes with `message`. With `amend`, rewrites the current
@@ -1364,19 +1241,33 @@ export function gitCommit(
   message: string,
   amend = false,
   signOff = false,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
 ): Promise<void> {
-  return invoke('git_commit', { path, message, amend, signOff });
+  return invoke('git_commit', {
+    path,
+    message,
+    amend,
+    signOff,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** List the worktree's commit history (newest first), `limit` commits from
  *  `skip`. Powers the History tab + branch graph. */
-export function gitLog(path: string, limit: number, skip: number): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>('git_log', { path, limit, skip });
+export function gitLog(
+  path: string,
+  limit: number,
+  skip: number,
+  target?: TargetId | null,
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>('git_log', { path, limit, skip, target: target ?? null });
 }
 
 /** Unified diff a single commit introduced (vs its first parent). */
-export function gitShow(path: string, hash: string): Promise<string> {
-  return invoke<string>('git_show', { path, hash });
+export function gitShow(path: string, hash: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_show', { path, hash, target: target ?? null });
 }
 
 /** Set (or clear) the worktree the backend watcher polls for live status. */
@@ -1387,25 +1278,39 @@ export function gitSetWatch(path: string | null): Promise<void> {
 /** Fetch the current branch's remote and return the refreshed working-tree
  *  status (ahead/behind now reflect the server), so the user can see whether
  *  there are new upstream commits to pull. */
-export function gitFetch(path: string): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('git_fetch', { path });
+export function gitFetch(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>('git_fetch', { path, target: target ?? null, expect: expect ?? null });
 }
 
-/** Push the current branch. */
-export function gitPush(path: string): Promise<void> {
-  return invoke('git_push', { path });
+/** Push the current branch. On a host it runs there, with that machine's
+ *  credentials and the agent this connection forwards. */
+export function gitPush(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_push', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Pull fast-forward-only. */
-export function gitPull(path: string): Promise<void> {
-  return invoke('git_pull', { path });
+export function gitPull(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_pull', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Draft a commit message for the worktree's staged changes using the configured
  *  AI agent (Settings → AI commit). Rejects when disabled/unconfigured, nothing
- *  is staged, or the agent fails/times out. */
-export function generateCommitMessage(path: string): Promise<string> {
-  return invoke<string>('git_generate_commit_message', { path });
+ *  is staged, or the agent fails/times out. The agent always runs on this
+ *  machine; on a host only the diff is read there. */
+export function generateCommitMessage(path: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_generate_commit_message', { path, target: target ?? null });
 }
 
 /** Name an agent conversation from its opening exchange, using that session's own

@@ -27,6 +27,7 @@ const START_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 pub async fn attach() -> std::io::Result<()> {
     // This build is in use for as long as the connection lasts.
     let _in_use = crate::versions::hold();
+    crate::agent_socket::follow_this_connection();
     let stream = match connect().await {
         Ok(stream) => stream,
         Err(_) => {

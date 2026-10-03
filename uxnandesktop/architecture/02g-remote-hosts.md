@@ -146,9 +146,9 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.7 | terminal remota, keepalive y caidas | implementado |
 | §5.8 | explorar carpetas, por SFTP | implementado |
 | §5.9 | un proyecto que vive en el host | implementado |
-| §5.10 | ficheros del host, servidos por su motor | `commands::files_on`, `uxnan-host/src/files.rs`, `fsRouter.ts` |
-| §5.10b | rama y estado de git en el host | implementado |
-| §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
+| §5.10 | ficheros del host, servidos por su motor | `commands::machine_for`, `uxnan-host/src/files.rs`, `fsRouter.ts` |
+| §5.10b | git del host, servido por su motor | `uxnan-host/src/repo.rs`, `agent_socket.rs` |
+| §5.10c | Cambios e Historial del host | el motor, `gitRouter.ts` |
 | §5.10d | Crear/renombrar/duplicar/borrar en el host | el motor, `fsRouter.ts` |
 | §5.10e | Buscar en el proyecto del host | el motor, `fsRouter.ts` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
@@ -846,7 +846,7 @@ Solo ids, nunca rutas ni salida.
 ## 5.10 Ficheros del host — IMPLEMENTADO, servidos por el motor del host
 
 **Los ficheros de un proyecto del host los sirve su motor** (§5.16,
-`crate::commands::files_on` + `crates/uxnan-host/src/files.rs`). Hay **un solo
+`crate::commands::machine_for` + `crates/uxnan-host/src/files.rs`). Hay **un solo
 juego** de comandos `fs_*`, y cada uno lleva el `target` de la maquina: este
 equipo, o un host, cuyo motor ejecuta alli **el mismo codigo** que la app ejecuta
 en su disco (`uxnan_workspace_engine::fs`, protocolo 9, `Call::Fs`). Listar, leer,
@@ -872,7 +872,7 @@ carpetas (§5.8) y los bytes que mueve la mitad de git que aun va por comandos
 
 **El fencing sigue en el backend** (`02a` §2.9). Toda mutacion sobre un host
 —guardar, crear, renombrar, duplicar, borrar— lleva la expectativa (maquina +
-generacion de conexion) y `files_on` la comprueba **antes** de mandar nada al
+generacion de conexion) y `machine_for` la comprueba **antes** de mandar nada al
 motor: la misma ruta absoluta suele existir en las dos maquinas, y un borrado mal
 encaminado no se puede deshacer. La expectativa la construye un solo sitio,
 `src/lib/fsRouter.ts`, que ya no tiene ramas: llama a los mismos comandos con el
@@ -980,35 +980,42 @@ posterior a una recarga llevaria una expectativa que no emitio nadie.
 | Guardar, crear, renombrar, duplicar, borrar | **Funciona**, con fencing |
 | Un host donde el motor no corre | Sin ficheros de proyecto, y se dice; sus terminales siguen |
 
-## 5.10b Git del host — IMPLEMENTADO (fase 3, segunda parte)
+## 5.10b Git del host — IMPLEMENTADO, servido por el motor del host
 
-`src-tauri/src/ssh/git.rs`. A diferencia de los ficheros, git hay que
-**ejecutarlo**, asi que pasa por `exec` y por tanto por la shell de esa maquina —
-el unico punto de la fase 3 donde la shell interviene. La diferencia con los
-intentos anteriores es que no se supone: §5.7 la pregunto, y **cada argumento se
-entrecomilla para esa respuesta** (`quote_arg`). Una shell que no se pudo nombrar
-no recibe nada: la fila dice que la rama no se leyo, que es verdad.
+**El git de un proyecto del host lo ejecuta su motor** (§5.16, protocolo 10,
+`Call::Git(GitCall)` → `crates/uxnan-host/src/repo.rs`), con el mismo
+`uxnan_workspace_engine::git` que la app ejecuta en su disco: el CLI de git para
+lo que libgit2 hace a medias y la via rapida de libgit2 (`gitfast`) para estado,
+diffs, numstat y log. **Un solo juego** de comandos `git_*` lleva el `target` de
+la maquina y `machine_for` decide (§5.10); las mutaciones van cercadas igual que
+las de ficheros.
 
-**Un comando, salida entre marcadores** (§5.3): rama, distancia con el upstream y
-recuento de cambios se piden juntos. `git -C <ruta>` en vez de un `cd`, porque no
-necesita sintaxis de shell mas alla del entrecomillado.
+Hasta aqui git se ejecutaba como **comandos por la shell del host**
+(`ssh/git.rs`, borrado): cada argumento entrecomillado para la shell que el host
+declaro, la salida entre marcadores, y el parche y el mensaje de commit subidos
+por SFTP porque `exec` no tiene stdin. Funcionaba, y lo que se aprendio sigue en
+el codigo del motor —`&&` se comia el marcador de fin con una rama sin upstream;
+el espacio inicial de ` M README.md` no se recorta—, pero era **una segunda
+implementacion de git** al lado de la local, con sus propios parsers y su propio
+coste por llamada (~2 s de arranque de shell, §5.3). Con el motor: sin
+entrecomillado por dialecto, sin ficheros temporales, sin marcadores, y la misma
+respuesta en las dos maquinas porque es la misma funcion.
 
-**Dos cosas que el test en vivo enseño y los unitarios no podian:**
+**Lo que lee una fila** es `git_repo_status` (`git::RepoStatus`): rama, cambios y
+distancia con el upstream. **`isRepo: false` es el cajon honesto** —no es
+repositorio, o no hay git alli—, y la UI **no** lo pinta como "sin cambios": deja
+los badges como estaban, porque cero cambios y "no se pudo leer" no son lo mismo.
+Lo que dice git cuando se niega viaja como `ErrorCode::Git` y se enseña con sus
+palabras, como un error de git local.
 
-1. **Encadenar con `&&` era un error.** Una rama sin upstream hace fallar
-   `rev-list`, y con `&&` eso se comia todo lo que venia detras —el marcador de
-   fin incluido—, asi que un checkout real volvia como "no es un repositorio". Se
-   secuencia sin condicion: `&` en cmd, `;` en POSIX y PowerShell.
-2. **La linea de distancia puede no existir.** Solo un par "<n> <n>" limpio se
-   toma como distancia; cualquier otra cosa sigue siendo un cambio.
-
-**`isRepo: false` es el cajon honesto**: no es repositorio, no hay git instalado,
-o la shell no se pudo nombrar. La UI **no** lo pinta como "sin cambios" — deja los
-badges como estaban, porque cero cambios y "no se pudo leer" no son lo mismo.
-
-Validado en vivo contra un `sshd` real sobre un checkout de verdad: rama
-`feat/desktop-remote-ssh-hosts`, 9 ficheros sucios, y una carpeta que no es
-repositorio contestando `isRepo: false`.
+**`push`, `pull` y `fetch` usan el agente que reenvia la conexion.** Un canal con
+`ForwardAgent` da a lo que arranca un `SSH_AUTH_SOCK` que vive lo que esa
+conexion; el motor sobrevive a las conexiones, asi que el suyo caducaria en la
+primera reconexion. Cada `attach` apunta una ruta estable del directorio `run`
+(`agent.sock`) al socket de **su** conexion, y el motor da esa ruta a todo lo que
+arranca —su git y sus terminales—: lo que corre alli usa el agente de la ultima
+conexion, como lo haria una terminal abierta por ella (`uxnan-host/src/agent_socket.rs`).
+Solo Unix; en Windows el agente reenviado no tiene esa indireccion.
 
 **Un fichero remoto se guarda en su maquina, o no se guarda.** Guardar pasaba por
 el filesystem local: con la ruta de un host eso falla — o, peor, escribe un
@@ -1044,67 +1051,38 @@ Ahora el backend lo distingue (`AppError::NotConnected`, codigo `NOT_CONNECTED`)
 el panel dice que espera, y al conectar el host el arbol se rellena solo
 (`fileTree.retryForHost`).
 
-## 5.10c Cambios e Historial del host — IMPLEMENTADO (fase 3, tercera parte)
+## 5.10c Cambios e Historial del host — IMPLEMENTADO, por el motor
 
-`src-tauri/src/ssh/git.rs` (lectura y mutaciones), `src/lib/gitRouter.ts` (a que
-maquina va cada operacion) y los dos stores del panel derecho. Con esto las
-pestañas *Cambios* e *Historial* describen la maquina en la que el proyecto vive
-de verdad, en lugar del aviso que las sustituia. GitHub conserva el aviso, porque
-si lee el repositorio de **esta** maquina y su sesion de `gh`.
+Las pestañas *Cambios* e *Historial* describen la maquina en la que el proyecto
+vive de verdad. GitHub conserva su aviso, porque lee el repositorio de **esta**
+maquina y su sesion de `gh`.
 
-**Una peticion, no cuatro.** El layer local pide estado, distancia y numstat por
-separado porque cada llamada cuesta microsegundos. En un host cada una es un
-arranque de shell (~2 s, §5.3) y el panel las quiere todas a la vez, asi que
-`review()` manda **un** comando con cuatro secciones separadas por marcadores
-(`rev-parse HEAD`, `rev-list --left-right --count`, `status --porcelain=v1 -z` y
-`diff --numstat HEAD`) y lo parsean **los parsers locales** — `parse_status_files`
-y `parse_numstat`. Dos parsers para un mismo formato serian dos oportunidades de
-discrepar sobre un mensaje de commit con un salto de linea dentro.
+**Una peticion por lectura, en las dos maquinas.** `git_review` (`git::Review`)
+devuelve de una vez los ficheros cambiados, sus lineas, la distancia y `HEAD`:
+en un host cada llamada es un viaje, y el panel lo quiere todo a la vez. Aqui
+cuesta lo mismo que las tres lecturas de antes, asi que no hay dos caminos.
 
-Las secciones van marcadas y no contadas: dos pueden venir vacias y una
-(`--porcelain -z`) no contiene saltos de linea, asi que partir por lineas las
-fundiria — y un repositorio limpio volveria como uno que no se pudo leer.
+**Toda mutacion va cercada.** Preparar, descartar, aplicar un hunk, commitear y
+sincronizar llevan la `TargetExpectation` (§2.9 de `02a`) y el backend la
+comprueba **antes** de enviar nada — un descarte no se puede deshacer una vez que
+el host lo ha ejecutado, y la misma ruta absoluta suele existir en las dos
+maquinas. El frontend se niega antes incluso de llamar cuando no puede nombrar
+una conexion: mandar un cero seria una expectativa que nadie emitio.
 
-**El unico bug real de esta parte lo encontro el host Linux** (§5.15), no los
-unitarios: el estado de un cambio sin preparar es un **espacio** a la izquierda
-(` M README.md`), y recortar la seccion como espacio en blanco se lo comia, con
-lo que cada ruta llegaba un caracter mas corta y el panel listaba `EADME.md`
-—preparar ese fichero habria fallado sobre algo que no existe—. Ahora se recortan
-solo saltos de linea, con un test unitario que ya no necesita Docker.
+**`fetch`, `push` y `pull` corren alli**, con las credenciales de esa maquina y
+el agente que reenvia la conexion (§5.10b) —el proyecto vive en ella, luego su
+remoto es alcanzable desde ella y no necesariamente desde aqui—. Un remoto que
+pida contraseña falla en vez de esperar a que alguien la escriba: no hay terminal
+detras.
 
-**Lo que cambia el host va por SFTP, no por su shell.** `git apply` y
-`git commit` leen su entrada de **stdin**, y `Connection::exec` no tiene stdin.
-El parche y el mensaje se escriben con la sesion SFTP que ya esta abierta y se
-apunta git al fichero (`-F`, `apply <fichero>`): un mensaje multilinea con
-comillas y `$VAR` llega exactamente como se escribio, sin pasar por las reglas de
-entrecomillado de tres dialectos. El temporal vive junto al `.git` del propio
-repositorio —el unico directorio en el que el usuario seguro puede escribir en esa
-maquina, y en el mismo sistema de ficheros— y **se borra pase lo que pase**: un
-commit fallido dejaria si no un mensaje que el siguiente leeria como suyo.
+**El borrador de commit con IA y el diff de imagenes** funcionan igual: el diff
+preparado y los blobs se leen alli, y el agente corre **aqui**, donde estan su CLI
+y su sesion.
 
-**Toda mutacion va cercada.** Preparar, descartar, aplicar un hunk o commitear
-llevan la `TargetExpectation` (§2.9 de `02a`) y el backend la comprueba **antes**
-de enviar nada — un descarte no se puede deshacer una vez que el host lo ha
-ejecutado, y la misma ruta absoluta suele existir en las dos maquinas, asi que
-una mutacion mal encaminada es justo la que se parece a un exito. El frontend se
-niega antes incluso de llamar cuando no puede nombrar una conexion: mandar un cero
-seria una expectativa que nadie emitio.
-
-**`fetch`, `push` y `pull` corren alli**, con las credenciales de esa maquina —el
-proyecto vive en ella, luego su remoto es alcanzable desde ella y no
-necesariamente desde aqui—. Un canal `exec` no tiene terminal, asi que un remoto
-que pida contraseña falla en vez de esperar a que alguien la escriba: la salida
-honesta, que ademas indica donde hay que configurar las credenciales.
-
-**Enrutado en un solo sitio.** `gitRouter.ts` es el hermano de `fsRouter.ts` y
-existe por lo mismo: la alternativa es que cada punto de llamada pregunte "¿esto
-es remoto?", que es la forma que ya nos costo un error. El store del panel guarda
-la maquina **al lado** de la ruta, porque ninguna de las dos significa nada sola.
-
-**Dos cosas siguen siendo de esta maquina**, y ahora estan ausentes en vez de
-rotas: el **borrador de commit con IA** (lee el diff preparado con el git local) y
-el **diff de imagenes** (lee los blobs igual). Ambas necesitan traer el contenido
-aqui primero; quedan anotadas en `FOR-DEV.md`.
+**Enrutado en un solo sitio.** `gitRouter.ts` es el hermano de `fsRouter.ts` y,
+como el, ya no tiene ramas: nombra la maquina y construye la expectativa. El
+store del panel guarda la maquina **al lado** de la ruta, porque ninguna de las
+dos significa nada sola.
 
 **El par (ruta, maquina) sale de un solo sitio.** Los paneles leian la **ruta**
 del proyecto seleccionado y la **maquina** del workspace de terminal enfocado —
@@ -1127,13 +1105,12 @@ raiz y en cuanto un listado funciona: un arbol que acaba de listar no espera a
 nadie. Leccion, la misma de siempre en esta funcionalidad: **cuando un estado se
 pone, hay que decir tambien cuando se quita.**
 
-**Sin watcher, y dicho.** El sondeo de 3 s es el git de esta maquina; hacerlo
-contra un host seria un arranque de shell cada tres segundos en el ordenador de
-otro, por worktree. En remoto el boton de refrescar **es** la actualizacion y su
-tooltip lo dice — no un cartel explicando el funcionamiento de la app. Ademas el
-evento del watcher local se ignora cuando el panel mira a un host: la misma ruta
-absoluta existe en las dos maquinas, y sin esa comprobacion la lista de ficheros
-de aqui pisaria la revision de alli.
+**El refresco lo da el vigilante del motor.** El sondeo de 3 s es el git de esta
+maquina; en un host el motor vigila la carpeta —tambien `.git`— y empuja el
+cambio (§5.16), y el panel relee una vez cuando la rafaga se calma. El evento del
+sondeo local se ignora cuando el panel mira a un host: la misma ruta absoluta
+existe en las dos maquinas, y sin esa comprobacion la lista de ficheros de aqui
+pisaria la revision de alli.
 
 **Al conectar y al desconectar, los paneles reaccionan solos.** No empujando
 desde el store de hosts —eso importaria `git`, que importa `app`, que importa
@@ -1616,7 +1593,9 @@ la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
 (`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). 8 = los hooks de cada agente uno a uno (`HooksStatus`, `SetHook`,
 `HookConfig`: el mismo instalador corrido en el host, con el `PATH` de su shell de
 login); 9 = los ficheros del proyecto (`Call::Fs(FsCall)` → `Reply::Value`, el
-`workspace_engine::fs` de la app corrido alli, §5.10). Imprime
+`workspace_engine::fs` de la app corrido alli, §5.10); 10 = su git
+(`Call::Git(GitCall)`, el `workspace_engine::git` de la app, y `ErrorCode::Git`
+para lo que git rechaza, §5.10b). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1781,11 +1760,11 @@ ficheros, git y busqueda servidos por el motor.
 |---|---|
 | Terminal | **Funciona**: en Linux, macOS y Windows vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en un host donde el motor no puede correr (sin build, `home` con `noexec`), canal sobre la sesion (§5.7) |
 | Ficheros | **Funciona** por el motor (§5.10): listar con ignorados marcados, abrir, **guardar** (atomico, conservando el modo, con fencing) y **previsualizar** imagenes y PDF. Sin motor: no hay ficheros de proyecto, y se dice |
-| Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Rama y estado git de la fila | **Funciona** por el motor (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
 | Buscar (nombre y contenido) | **Funciona** por el motor, con el mismo recorrido que aqui (§5.10e), sea o no un repositorio. |
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por el motor y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
-| Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. §5.10c |
+| Cambios / Historial | **Funciona** por el motor: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull (con el agente que reenvia la conexion), ejecutados en el host. Se refresca con el vigilante del motor. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
 | Refresco automatico de cualquiera de los anteriores | **Si con el motor** (Linux, macOS, Windows): el motor vigila la carpeta **alli** y empuja los cambios —tambien los de `.git`— como el mismo `fs:changed`, con su target (§5.16). Sin el motor: al abrir, al actuar y con el boton; sondear cuesta ~2 s por `exec` (§5.3) |

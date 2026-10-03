@@ -81,7 +81,7 @@ pub struct RemoveOutcome {
 }
 
 /// Working-tree status summary for a worktree card badge.
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeStatus {
     /// Number of changed entries (modified/added/deleted/untracked).
@@ -96,7 +96,7 @@ pub struct WorktreeStatus {
 /// `index`/`worktree` are the two single-character XY status codes (` ` = clean,
 /// `M`/`A`/`D`/`R`/`C`/`U` for tracked changes, `?` = untracked). The frontend
 /// derives "staged", "modified" and "untracked" from these.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
@@ -109,7 +109,7 @@ pub struct FileChange {
 /// One commit in the history log, for the right panel's "History" tab. `parents`
 /// powers the branch graph (a commit with 2+ parents is a merge); `refs` carries
 /// the ref decorations (e.g. `HEAD`, branch names, `tag: v1`).
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitInfo {
     /// Full 40-char commit hash.
@@ -760,6 +760,73 @@ pub async fn status_with_summary(
     Ok((files, status, head))
 }
 
+/// Everything the Changes panel draws about a worktree, in one answer: the
+/// changed files, their line counts, the distance from the upstream and
+/// `HEAD`. One call rather than three because on a host each call is a round
+/// trip, and the panel asks for all of them at once.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Review {
+    pub files: Vec<FileChange>,
+    pub numstat: Vec<FileNumstat>,
+    #[serde(flatten)]
+    pub status: WorktreeStatus,
+    /// `HEAD`, so the History tab knows when it has to reload.
+    pub head: Option<String>,
+    /// False when the folder is not a repository: a plain folder has no
+    /// changes, and that is a different answer from "clean".
+    pub is_repo: bool,
+}
+
+/// Read a worktree's [`Review`]. A folder that is not a repository answers
+/// `is_repo: false` rather than an error.
+pub async fn review(worktree_path: &str) -> Result<Review, Error> {
+    if !is_git_repo(worktree_path).await {
+        return Ok(Review::default());
+    }
+    let ((files, status, head), numstat) =
+        tokio::try_join!(status_with_summary(worktree_path), numstat(worktree_path))?;
+    Ok(Review {
+        files,
+        numstat,
+        status,
+        head,
+        is_repo: true,
+    })
+}
+
+/// What a project's row shows about one worktree: its branch and its
+/// changed/ahead/behind counts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoStatus {
+    /// The branch, or `None` when detached.
+    pub branch: Option<String>,
+    #[serde(flatten)]
+    pub status: WorktreeStatus,
+    /// False when the folder is not a repository — which the row must show as
+    /// "not read", never as zeroes that read as "clean".
+    pub is_repo: bool,
+}
+
+/// Read a worktree's [`RepoStatus`].
+pub async fn repo_status(worktree_path: &str) -> Result<RepoStatus, Error> {
+    if !is_git_repo(worktree_path).await {
+        return Ok(RepoStatus::default());
+    }
+    let status = worktree_status(worktree_path).await?;
+    let branch = current_branch(worktree_path)
+        .await
+        .ok()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty() && b != "HEAD");
+    Ok(RepoStatus {
+        branch,
+        status,
+        is_repo: true,
+    })
+}
+
 /// Parse `git status --porcelain=v1 --branch` output: the first `## ` line
 /// carries the upstream ahead/behind (`[ahead N, behind M]`); every other
 /// non-empty line is one changed entry.
@@ -1236,7 +1303,7 @@ async fn diff_file_cli(worktree_path: &str, file: &str, staged: bool) -> Result<
 /// `path` is worktree-relative (forward-slash, matching `status_files`). Binary
 /// files report 0/0. Untracked files have no `HEAD` baseline and are omitted (the
 /// frontend marks them as wholly new on its own).
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileNumstat {
     pub path: String,
@@ -1575,7 +1642,7 @@ pub async fn show(worktree_path: &str, hash: &str) -> Result<String, Error> {
 
 /// One side of an image diff: the image bytes as a base64 data-URL payload plus
 /// its MIME type, ready for the frontend to render as `data:<mime>;base64,<…>`.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageData {
     pub mime: String,
@@ -1585,7 +1652,7 @@ pub struct ImageData {
 /// Before/after image versions for a changed image file. Either side is `None`
 /// when it doesn't exist (an added file has no `old`; a deleted file has no
 /// `new`), so the frontend can render an "added"/"removed" state.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageDiff {
     pub old: Option<ImageData>,
@@ -2038,6 +2105,32 @@ mod tests {
         std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
         run_git(dir, &["add", "-A"]).await;
         run_git(dir, &["commit", "-m", "initial"]).await;
+    }
+
+    #[tokio::test]
+    async fn a_review_and_a_row_read_the_repository_in_one_answer_each() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+        std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
+
+        let review = review(&repo_path).await.unwrap();
+        assert!(review.is_repo);
+        assert_eq!(review.files.len(), 1, "{review:?}");
+        assert_eq!(review.files[0].path, "README.md");
+        assert_eq!(review.numstat[0].added, 1);
+        assert_eq!(review.status.dirty, 1);
+        assert!(review.head.as_deref().is_some_and(|h| h.len() == 40));
+
+        let row = repo_status(&repo_path).await.unwrap();
+        assert!(row.is_repo);
+        assert_eq!(row.branch.as_deref(), Some("main"));
+        assert_eq!(row.status.dirty, 1);
+
+        // The wire shape the app's panels read: the counts flattened in.
+        let wire = serde_json::to_value(&row).unwrap();
+        assert_eq!(wire["dirty"], 1);
+        assert_eq!(wire["isRepo"], true);
     }
 
     #[tokio::test]

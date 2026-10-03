@@ -385,7 +385,7 @@ describe("searching a host's project", () => {
     backend.setCommands({
       fs_list_dir: () => [],
       fs_search_files: () => {
-        throw new Error("this host's files are served by its engine, which does not run there");
+        throw new Error("this host's projects are served by its engine, which does not run there");
       },
     });
     fileTree.setRoot("C:/app", "ssh:h1");

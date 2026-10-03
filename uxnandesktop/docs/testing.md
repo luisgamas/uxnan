@@ -78,11 +78,12 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,081 backend tests**
-in total — 786 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 188 in `uxnan-workspace-engine` (its git and libgit2 fast path among them), 5 in `uxnan-host-protocol`, 25 in
-`uxnan-host` (21 against the real daemon over its socket — among them a project's
-files listed, saved and searched on the host, an agent's
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,063 backend tests**
+in total — 765 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 189 in `uxnan-workspace-engine` (its git and libgit2 fast path among them), 5 in `uxnan-host-protocol`, 27 in
+`uxnan-host` (22 against the real daemon over its socket — among them a project's
+files listed, saved and searched on the host and its git read, staged and
+committed there, an agent's
 report sent by the real reporter script reaching only its own terminal, and the
 hooks wired into a temporary `HOME`, and a daemon run from a build folder
 removing the old builds nothing runs from, and a viewer that starts empty
@@ -91,8 +92,8 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,025 of which run everywhere; the other 56 are ignored probes that need something real to talk to
-(48 live SSH probes — 40 against a real `sshd`, one of which idles for five
+`tests/` — 1,012 of which run everywhere; the other 51 are ignored probes that need something real to talk to
+(43 live SSH probes — 39 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -106,9 +107,10 @@ tab that shows it after an app restart, and one — armed also by
 `UXNAN_SSH_TEST_WIRE=1`, because it wires that host's real agents — runs the
 host's own Claude Code once and hears its hooks — and one more has that Claude
 call this app's `uxnan_status` tool through the engine and print the tab the
-call was answered as, and one more has the engine serve a project's files there
-— create, save, list, duplicate, rename, search by name and content, delete —
-plus **8 against a Linux host in a container**;
+call was answered as, and two more have the engine serve a project there — its files (create, save,
+list, duplicate, rename, search by name and content, delete) and its git
+(review, stage, commit, log, the row's branch, git's own refusal) —
+plus **4 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
 
@@ -169,28 +171,24 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The eight tests walk what still runs through the host's own shell and SFTP:
+The four tests walk what still runs through the host's own shell and SFTP:
 password authentication, the shell classification, the inventory probe, the
-folder picker with its repository badge, remote `git status` including the
-no-upstream case, the whole **review** (HEAD, ahead/behind, the changed files and
-their line counts in one command) with its diffs and log, **what the host does
-when it runs out of channels** (held open until it refuses, then the message has
-to name the number *it* enforced — this is what caught the off-by-one and the
-asynchronous release), **an image diff** (bytes that are not valid UTF-8,
-compared byte for byte — the text path would have replaced every one of them),
-and a full git **mutation** cycle: stage, unstage, stage all, commit a message
-containing a newline, quotes and `$VAR` and read it back verbatim,
-discard tracked and untracked files, apply a patch and reverse it, and require a
-patch that does not apply to fail. The mutating tests build their own repository
-on the host so the image's fixture is left as the image made it.
+folder picker with its repository badge, and **what the host does when it runs
+out of channels** (held open until it refuses, then the message has to name the
+number *it* enforced — this is what caught the off-by-one and the asynchronous
+release). A project's files and git are the host engine's now, so they are
+proven where the engine is: against the real daemon over its socket on every CI
+platform (`crates/uxnan-host/tests/daemon.rs`), and over SSH by the engine's live
+probes (`ssh::terminals::tests::live`, which the Windows CI lane runs and any
+`UXNAN_SSH_TEST_ALIAS` host can).
 
-That last group is why this lane exists: it is what caught the one real bug in
-the remote review — git reports an unstaged change with a **leading space**
-(` M README.md`), and trimming the section as whitespace ate it, so every path
-arrived a character short and the panel listed `EADME.md`. The unit tests were
-happy, because none of them had run a shell. They are `#[ignore]` like every
-other live probe, and they **skip with a message** when the environment is not
-set, so a developer without Docker sees a reason rather than a failure.
+This lane earned its place before the engine existed: it caught the one real bug
+in the shell-driven remote review — git reports an unstaged change with a
+**leading space** (` M README.md`), and trimming the section as whitespace ate
+it, so every path arrived a character short. The unit tests were happy, because
+none of them had run a shell. They are `#[ignore]` like every other live probe,
+and they **skip with a message** when the environment is not set, so a developer
+without Docker sees a reason rather than a failure.
 
 CI runs them on `ubuntu-latest`, but only when the change touches the SSH layer
 or the fixture — a container build on every unrelated UI change is how a lane

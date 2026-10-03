@@ -37,7 +37,7 @@ describe('DirectoryPicker GitHub import', () => {
         github_clone: ({ dest }) => dest,
         repo_add: () => repo,
         worktree_list: () => [main],
-        worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+        git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
       },
     });
 

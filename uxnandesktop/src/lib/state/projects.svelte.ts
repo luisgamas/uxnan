@@ -25,8 +25,6 @@ import {
   worktreeCreate,
   worktreeList,
   worktreeRemove,
-  sshGitStatus,
-  worktreeStatus,
 } from "$lib/api";
 import type {
   AgentProfile,
@@ -39,6 +37,7 @@ import type {
   WorktreeEntry,
   WorktreeStatus,
 } from "$lib/types";
+import { repoStatusOn } from "$lib/gitRouter";
 import { app } from "$lib/state/app.svelte";
 import {
   canonicalFor,
@@ -880,15 +879,10 @@ class ProjectsStore {
         try {
           // Whichever machine the worktree is on. Asking this one for a host's
           // path is how a sidebar badge ends up describing the wrong folder.
-          const host = sshHostId(this.targetForPath(path));
-          if (host) {
-            const remote = await sshGitStatus(host, path);
-            // "Not a repository / no git / unnamed shell" is not "clean": leave
-            // the badges alone rather than showing zeroes that mean nothing.
-            if (!remote.isRepo) return null;
-            return [path, { dirty: remote.dirty, ahead: remote.ahead, behind: remote.behind }] as const;
-          }
-          return [path, await worktreeStatus(path)] as const;
+          // "Not a repository" is not "clean": the badges are left alone
+          // rather than showing zeroes that mean nothing.
+          const status = await repoStatusOn(this.targetForPath(path), path);
+          return status ? ([path, status] as const) : null;
         } catch {
           return null;
         }

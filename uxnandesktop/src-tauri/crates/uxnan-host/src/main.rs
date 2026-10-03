@@ -14,6 +14,7 @@
 //!   if it is not running. This is what the desktop `exec`s over SSH.
 //! - `serve` — be the daemon (normally started by `attach`, detached).
 
+mod agent_socket;
 mod agents;
 mod attach;
 mod daemon;
@@ -21,6 +22,7 @@ mod endpoint;
 mod files;
 mod log;
 mod paths;
+mod repo;
 mod versions;
 
 use uxnan_host_protocol::{PROTOCOL, PROTOCOL_MIN};
@@ -46,6 +48,7 @@ fn main() {
             for key in uxnan_workspace_engine::pty::PER_TERMINAL_KEYS {
                 std::env::remove_var(key);
             }
+            agent_socket::hand_on_the_stable_path();
             let detached = args.any(|a| a == "--detached");
             if detached {
                 daemon::detach_from_session();

@@ -43,7 +43,7 @@ beforeEach(() => {
     pty_create: () => true,
     pty_paste_submit: () => undefined,
     worktree_list: () => [{ path: WT, branch: "main", head: "abc", isMain: true }],
-    worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+    git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
   });
   terminals.root = null;
   terminals.workspaces = {};

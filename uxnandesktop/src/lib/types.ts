@@ -821,22 +821,18 @@ export interface SshHostAdded {
   updatedExisting: boolean;
 }
 
-/** A worktree's git state on a host (mirror of Rust `ssh::git::RemoteGitStatus`).
- *
- *  `isRepo: false` is the honest catch-all — not a repository, no git installed,
- *  or a shell that could not be named — and must never be rendered as "clean". */
-export interface SshGitStatus extends WorktreeStatus {
+/** A worktree's branch and row counts (mirror of Rust `git::RepoStatus`), from
+ *  whichever machine it is on. `isRepo: false` means *not a repository* and
+ *  must never be rendered as "clean". */
+export interface RepoStatus extends WorktreeStatus {
   branch: string | null;
   isRepo: boolean;
 }
 
-/** Everything the Changes tab reads about a worktree on a host, answered in one
- *  remote command (mirror of Rust `ssh::git::RemoteReview`).
- *
- *  The pieces are the local layer's own shapes on purpose, so the panel renders
- *  either machine with the components it already has. `isRepo: false` carries
- *  the same meaning as in `SshGitStatus`: *not read*, never "clean". */
-export interface SshGitReview extends WorktreeStatus {
+/** Everything the Changes tab reads about a worktree, in one answer (mirror of
+ *  Rust `git::Review`). The pieces are the shapes the panel already renders;
+ *  `isRepo: false` carries the same meaning as in `RepoStatus`. */
+export interface GitReview extends WorktreeStatus {
   files: FileChange[];
   numstat: FileNumstat[];
   /** The worktree's HEAD, so History knows when it has to reload. Absent in a

@@ -86,6 +86,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A host's git is run by its engine.** Changes, History and a project's row
+  on a host now run the same git code there that they run on this machine,
+  through the host engine, instead of commands sent through the host's shell:
+  one answer per read, no per-shell quoting, and git's own words when it
+  refuses. **Push and pull use your forwarded agent**: with `ForwardAgent` on,
+  everything the engine starts — its git and its terminals — follows the agent
+  of your latest connection, so it keeps working after a reconnect.
 - **A host's files are served by its engine.** The file tree, the editor, the
   previews and search on a project that lives on a host now run the same code
   there that they run on this machine, through the host engine: git-ignored

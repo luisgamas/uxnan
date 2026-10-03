@@ -1,7 +1,7 @@
 //! Files on a host, over SFTP — for what has to reach a host **before** its
 //! engine runs there, or without one.
 //!
-//! A project's files are the host engine's (`commands::files_on`): it lists,
+//! A project's files are the host engine's (`commands::machine_for`): it lists,
 //! saves and searches with the code this app runs on its own disk. What is left
 //! here is what cannot wait for that: putting the engine on the host in the
 //! first place, the folder picker that adds a project, and the bytes the
@@ -133,33 +133,6 @@ impl RemoteFiles {
     #[cfg(test)]
     pub fn pretend_usable(&self) {
         self.alive.store(true, Ordering::Relaxed);
-    }
-
-    /// Delete a file on the host.
-    ///
-    /// Not a tree operation yet (create/rename/delete from the file tree is still
-    /// local-only): its caller is the git layer, which writes a commit message or
-    /// a patch to a scratch file and has to take it away again — leaving one
-    /// behind would have the next commit read a message nobody wrote.
-    pub async fn remove_file(&self, path: &str) -> Result<(), SftpFailure> {
-        let file = normalize(path);
-        self.session
-            .remove_file(file.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not remove {file} on that host"), e))
-    }
-
-    /// Delete a file, for a test that has to clean up after itself.
-    #[cfg(test)]
-    async fn remove_for_test(&self, path: &str) -> Result<(), SftpError> {
-        self.session.remove_file(normalize(path)).await
-    }
-
-    /// Rename, test-only, to hold the protocol fact that `write_file` is built
-    /// on: this cannot overwrite an existing path.
-    #[cfg(test)]
-    async fn rename_for_test(&self, from: &str, to: &str) -> Result<(), SftpError> {
-        self.session.rename(normalize(from), normalize(to)).await
     }
 }
 
@@ -372,82 +345,6 @@ impl RemoteFiles {
         Ok(entries)
     }
 
-    /// Save a file on the host, in place.
-    ///
-    /// **Why in place, when the local writer uses a temp file and a rename.**
-    /// Because over SFTP that strategy does not exist. Measured against a real
-    /// `sshd`, in this order:
-    ///
-    /// - `SSH_FXP_RENAME` onto an **existing** path fails (`Status: Failure`).
-    ///   That is SFTP v3 behaving as specified, not this server being odd: the
-    ///   atomic-overwrite rename is the `posix-rename@openssh.com` extension,
-    ///   which the client library does not implement. So "temp file, then
-    ///   rename" would fail on every save after the first.
-    /// - The fallback — delete the target, then rename — trades a truncated file
-    ///   for a *missing* one. That is the worse failure: the editor still holds
-    ///   the text after a bad write, and holds nothing after a bad delete.
-    /// - A temp file also **loses the destination's permissions and owner**,
-    ///   because what survives is the temp's. Writing in place keeps the file
-    ///   itself — its mode, its owner, its hard links, whatever a symlink points
-    ///   at — which is what the user's host actually cares about.
-    ///
-    /// So: open with `WRITE | CREATE | TRUNCATE`, write, ask the host to flush,
-    /// and then **check the size the host reports**. `TRUNCATE` is not optional —
-    /// the library's own `write()` helper opens with `WRITE` alone, which left
-    /// `SHORTCONTENT-0123456789` behind when `SHORT` was written over a longer
-    /// file. That helper is never used here.
-    pub async fn write_file(&self, path: &str, content: &str) -> Result<(), SftpFailure> {
-        use russh_sftp::protocol::OpenFlags;
-        use tokio::io::AsyncWriteExt;
-
-        let file = normalize(path);
-        let bytes = content.as_bytes();
-        let mut handle = self
-            .session
-            .open_with_flags(
-                file.clone(),
-                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
-            )
-            .await
-            .map_err(|e| self.failed(&format!("could not open {file} on that host"), e))?;
-
-        if let Err(e) = handle.write_all(bytes).await {
-            // Say what state the file is in. It was truncated to open it, so a
-            // failure here is not "nothing happened" and must not read like it.
-            let _ = handle.close().await;
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "{file} was opened for writing on that host but the write failed \
-                 partway ({e}); the file there is incomplete"
-            ))));
-        }
-        // Best effort: `fsync@openssh.com` is an extension, and a host without it
-        // is not a reason to fail a save the host has already accepted.
-        let _ = handle.sync_all().await;
-        if let Err(e) = handle.close().await {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "the host did not finish writing {file}: {e}"
-            ))));
-        }
-
-        // Ask the host what it ended up with. A save that silently stored fewer
-        // bytes than it was given is the one failure the editor cannot notice on
-        // its own — it would keep showing text the host does not have.
-        let stored = self
-            .session
-            .metadata(file.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not confirm {file} on that host"), e))?
-            .size
-            .unwrap_or_default();
-        if stored != bytes.len() as u64 {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "{file} came back as {stored} bytes on that host, not the {} that were sent",
-                bytes.len()
-            ))));
-        }
-        Ok(())
-    }
-
     /// Rename an entry within its folder, answering the new path.
     ///
     /// **SFTP v3 cannot rename onto an existing path** (the atomic-overwrite
@@ -641,17 +538,6 @@ impl RemoteFiles {
             .await
             .map_err(|e| self.failed(&format!("could not look at {target} on that host"), e))
     }
-
-    /// Read a file's raw bytes. The one caller is the image diff, which needs
-    /// the bytes exactly as they are on that machine — a PNG turned into
-    /// replacement characters is not a smaller picture, it is a broken one.
-    pub async fn read_bytes(&self, path: &str) -> Result<Vec<u8>, SftpFailure> {
-        let file = normalize(path);
-        self.session
-            .read(file.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))
-    }
 }
 
 #[cfg(test)]
@@ -665,7 +551,7 @@ mod tests {
     /// PowerShell, WSL or Git Bash — the thing that broke every other approach.
     #[tokio::test]
     #[ignore = "needs a local sshd that authorizes a key in the agent"]
-    async fn sftp_live_lists_and_reads() {
+    async fn sftp_live_lists_a_folder() {
         use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
         use crate::ssh::conn::{connect, Endpoint, Handshake};
         use crate::ssh::hostkey;
@@ -710,88 +596,6 @@ mod tests {
         if let (Some(f), Some(d)) = (first_file, last_dir) {
             assert!(d < f, "directories come first");
         }
-
-        // Read something known back and check it is the real content.
-        let manifest = format!("{dir}/Cargo.toml");
-        let bytes = sftp.read_bytes(&manifest).await.expect("the manifest");
-        assert!(
-            String::from_utf8_lossy(&bytes).contains("uxnan-desktop"),
-            "read the actual file, not an empty buffer"
-        );
-        println!("live: read {} bytes of Cargo.toml", bytes.len());
-    }
-
-    /// Saving on a host, against a real `sshd` — including the two things that
-    /// decided how [`RemoteFiles::write_file`] is built.
-    ///
-    /// Shortening a file is the case that matters: an in-place write without
-    /// `TRUNCATE` leaves the old tail behind, and the editor would show text the
-    /// host does not have. And the "atomic" alternative every local writer uses
-    /// is shown here to be unavailable, not merely unattractive.
-    async fn text(files: &RemoteFiles, path: &str) -> String {
-        String::from_utf8(files.read_bytes(path).await.expect("the file back")).expect("text")
-    }
-
-    #[tokio::test]
-    #[ignore = "needs a local sshd that authorizes a key in the agent"]
-    async fn sftp_live_writes_and_shortens_a_file() {
-        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
-        use crate::ssh::conn::{connect, Endpoint, Handshake};
-        use crate::ssh::hostkey;
-
-        let user = std::env::var("UXNAN_SSH_TEST_USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .expect("a username");
-        let endpoint = Endpoint::new("127.0.0.1", 22);
-        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
-            panic!("expected an unknown host");
-        };
-        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
-        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
-            panic!("the recorded key should verify");
-        };
-        match authenticate(&mut conn, &user, &[Credential::Agent])
-            .await
-            .unwrap()
-        {
-            AuthOutcome::Success { .. } => {}
-            other => panic!("authenticate with the agent first: {other:?}"),
-        }
-        let files = open(&conn).await.expect("an SFTP session");
-
-        let dir = normalize(&std::env::temp_dir().to_string_lossy());
-        let path = format!("{dir}/uxnan-write-live.txt");
-        let _ = files.remove_for_test(&path).await;
-
-        // A file that does not exist yet is created, not refused.
-        let long = "LONG CONTENT — accents, ñ and a tail 0123456789";
-        files.write_file(&path, long).await.expect("the first save");
-        assert_eq!(text(&files, &path).await, long);
-
-        // The one that would silently corrupt: a shorter body over a longer file.
-        let short = "SHORT";
-        files.write_file(&path, short).await.expect("a second save");
-        let after = text(&files, &path).await;
-        assert_eq!(after, short, "no tail of the previous content may survive");
-
-        // Empty is a legitimate document, not a no-op.
-        files.write_file(&path, "").await.expect("saving empty");
-        assert_eq!(text(&files, &path).await, "");
-
-        // And the reason none of this goes through a temp file: renaming onto a
-        // path that exists is refused by the protocol, so the local writer's
-        // strategy cannot be copied here.
-        let other = format!("{dir}/uxnan-write-live-2.txt");
-        files.write_file(&other, "other").await.expect("a sibling");
-        let refused = files.rename_for_test(&other, &path).await;
-        assert!(
-            refused.is_err(),
-            "SFTP v3 rename cannot overwrite; if this ever succeeds, revisit write_file"
-        );
-        println!("live: rename onto an existing path was refused with {refused:?}");
-
-        let _ = files.remove_for_test(&path).await;
-        let _ = files.remove_for_test(&other).await;
     }
 
     /// The failure the user hit: the panel wedged on `session closed` while the

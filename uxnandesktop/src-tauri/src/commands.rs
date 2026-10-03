@@ -20,7 +20,7 @@ use crate::state::{AppState, HookServerInfo};
 use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 use crate::worktreeclean;
 use crate::worktreeloc::{self, Resolved};
-use uxnan_host_protocol::FsCall;
+use uxnan_host_protocol::{FsCall, GitCall};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -1145,7 +1145,7 @@ async fn host_shell(
 /// The engine of a connected host — started (and installed) if no terminal
 /// started it yet, as the first terminal there would. `None` for a host that is
 /// not connected or where the engine cannot run.
-async fn connected_engine<R: tauri::Runtime>(
+pub(crate) async fn connected_engine<R: tauri::Runtime>(
     app: &AppHandle<R>,
     state: &AppState,
     host_id: &str,
@@ -2534,355 +2534,6 @@ pub async fn ssh_repo_add(
     Ok(repo)
 }
 
-/// A worktree's git state **on a host**: branch plus changed/ahead/behind.
-///
-/// Reached through `exec`, so it goes through that machine's shell — the one
-/// place remote git differs from remote files, which use a subsystem. The shell
-/// is the one the host reported when it connected, and every argument is quoted
-/// for it; an unnamed shell, a missing git or a plain folder all answer
-/// `isRepo: false`, which the UI must render as "not read" rather than "clean".
-#[tauri::command]
-pub async fn ssh_git_status(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<ssh::git::RemoteGitStatus, CommandError> {
-    let shell = state
-        .ssh_shells
-        .read()
-        .await
-        .get(&host_id)
-        .copied()
-        .unwrap_or_default();
-    let Some(conn) = session_for(&state, &host_id).await else {
-        return Err(CommandError::from(AppError::Invalid(
-            "connect to this host before reading its git state".to_string(),
-        )));
-    };
-    Ok(ssh::git::status(&conn, shell, &path).await)
-}
-
-/// What the remote git layer needs on every call: the connection, and the shell
-/// the host reported when it connected.
-///
-/// Both together, because either alone is useless — a connection with no shell
-/// cannot be sent a quoted argument safely, and the shell of a host that is not
-/// connected describes nothing.
-async fn remote_git(
-    state: &AppState,
-    host_id: &str,
-) -> Result<
-    (
-        std::sync::Arc<ssh::conn::Connection>,
-        ssh::shellkind::ShellKind,
-    ),
-    CommandError,
-> {
-    let shell = state
-        .ssh_shells
-        .read()
-        .await
-        .get(host_id)
-        .copied()
-        .unwrap_or_default();
-    let Some(conn) = session_for(state, host_id).await else {
-        return Err(CommandError::from(AppError::NotConnected(
-            host_id.to_string(),
-        )));
-    };
-    Ok((conn, shell))
-}
-
-/// Same, for a mutation: refuses unless the caller is still looking at the host
-/// and connection it thought it was.
-///
-/// The check runs **before** anything is sent, for the reason a save
-/// is fenced first — a stage or a discard cannot be taken back once the host has run it,
-/// so a late check would only be able to report the damage.
-async fn remote_git_fenced(
-    state: &AppState,
-    host_id: &str,
-    expect: Option<TargetExpectation>,
-) -> Result<
-    (
-        std::sync::Arc<ssh::conn::Connection>,
-        ssh::shellkind::ShellKind,
-    ),
-    CommandError,
-> {
-    let (conn, shell) = remote_git(state, host_id).await?;
-    target::check(
-        expect.as_ref(),
-        &TargetId::Ssh(host_id.to_string()),
-        conn.generation(),
-    )
-    .map_err(CommandError::from)?;
-    Ok((conn, shell))
-}
-
-/// Everything the Changes panel needs about a worktree on a host, in one round
-/// trip: HEAD, ahead/behind, the changed files and their line counts.
-///
-/// One command rather than the local layer's four, because each of those is a
-/// round trip to another machine and the panel asks for all of them at once —
-/// on a link with 60 ms of latency, four separate reads is a quarter of a second
-/// of nothing happening. See `ssh::git::review`.
-#[tauri::command]
-pub async fn ssh_git_review(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<ssh::git::RemoteReview, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    Ok(ssh::git::review(&conn, shell, &path).await)
-}
-
-/// A file's diff on a host, staged or unstaged.
-#[tauri::command]
-pub async fn ssh_git_diff(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-    staged: bool,
-) -> Result<String, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::git::diff(&conn, shell, &path, &file, staged)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// A file's diff against `HEAD` on a host — the editor's change gutter.
-#[tauri::command]
-pub async fn ssh_git_diff_head(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-) -> Result<String, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::git::diff_head(&conn, shell, &path, &file)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Draft a commit message for a project on a host.
-///
-/// The diff is read **there** and the agent runs **here**: the CLI and its
-/// credentials are this machine's, and requiring one on every host would put
-/// the feature behind an install nobody asked for. The agent is started in the
-/// user's home rather than the project, which does not exist on this machine —
-/// the whole diff is in the prompt, so the directory is only where the process
-/// stands (`aicommit::from_diff`).
-#[tauri::command]
-pub async fn ssh_git_generate_commit_message(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<String, CommandError> {
-    let cfg = state.data.read().await.settings.ai_commit.clone();
-    if !cfg.enabled {
-        return Err(CommandError::from(AppError::Invalid(
-            "AI commit-message generation is disabled".to_string(),
-        )));
-    }
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    // Everything staged, in one command — the same diff the local path feeds the
-    // agent, read from the machine the project is on.
-    let diff = ssh::git::diff(&conn, shell, &path, ".", true)
-        .await
-        .map_err(CommandError::from)?;
-    let home = crate::agent_hooks::home_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
-    crate::aicommit::from_diff(&diff, &cfg, &home)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Before/after versions of an image on a host, for the visual diff viewer.
-///
-/// The committed side comes from `git show` with its bytes kept as bytes; the
-/// working-tree side over SFTP. Nothing is base64-ed by the host, so no tool has
-/// to exist there (`ssh::git::image_diff`).
-#[tauri::command]
-pub async fn ssh_git_image_diff(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-    staged: bool,
-) -> Result<git::ImageDiff, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    let session = sftp_for(&state, &host_id).await?;
-    ssh::git::image_diff(&conn, &session, shell, &path, &file, staged)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// A host worktree's history, newest first.
-#[tauri::command]
-pub async fn ssh_git_log(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    limit: u32,
-    skip: u32,
-) -> Result<Vec<git::CommitInfo>, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::git::log(&conn, shell, &path, limit, skip)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// One commit's patch, on a host.
-#[tauri::command]
-pub async fn ssh_git_show(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    hash: String,
-) -> Result<String, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::git::show(&conn, shell, &path, &hash)
-        .await
-        .map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn ssh_git_stage(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::stage(&conn, shell, &path, &file)
-        .await
-        .map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn ssh_git_unstage(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::unstage(&conn, shell, &path, &file)
-        .await
-        .map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn ssh_git_stage_all(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::stage_all(&conn, shell, &path)
-        .await
-        .map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn ssh_git_unstage_all(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::unstage_all(&conn, shell, &path)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Throw a file's changes away on a host. Fenced like every other mutation, and
-/// the one where being wrong about *which* machine is unrecoverable.
-#[tauri::command]
-pub async fn ssh_git_discard(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    file: String,
-    untracked: bool,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::discard(&conn, shell, &path, &file, untracked)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Apply a patch on a host — the per-hunk actions. The patch travels over SFTP,
-/// not through the shell (`ssh::git::apply_patch`).
-#[tauri::command]
-pub async fn ssh_git_apply(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    patch: String,
-    cached: bool,
-    reverse: bool,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    let session = sftp_for(&state, &host_id).await?;
-    ssh::git::apply_patch(&conn, &session, shell, &path, &patch, cached, reverse)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Commit on a host. The message travels over SFTP for the same reason
-/// (`ssh::git::commit`).
-#[tauri::command]
-pub async fn ssh_git_commit(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    message: String,
-    amend: bool,
-    sign_off: bool,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    let session = sftp_for(&state, &host_id).await?;
-    ssh::git::commit(
-        &conn,
-        &session,
-        shell,
-        &path,
-        message.trim(),
-        amend,
-        sign_off,
-    )
-    .await
-    .map_err(CommandError::from)
-}
-
-/// Fetch, push or pull on a host, then read the worktree back so the panel's
-/// ahead/behind bar reflects what just happened without a second round trip.
-#[tauri::command]
-pub async fn ssh_git_sync(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    action: ssh::git::SyncAction,
-    expect: Option<TargetExpectation>,
-) -> Result<git::WorktreeStatus, CommandError> {
-    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
-    ssh::git::sync(&conn, shell, &path, action)
-        .await
-        .map_err(CommandError::from)?;
-    Ok(ssh::git::review(&conn, shell, &path).await.status)
-}
-
 /// The file session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:
@@ -3026,6 +2677,37 @@ pub struct AnnouncedPort {
     pub path: String,
 }
 
+/// A host's connection and the shell it reported, for what still runs as a
+/// command there (asking it which ports it listens on).
+///
+/// Both together, because either alone is useless — a connection with no shell
+/// cannot be sent a quoted argument safely, and the shell of a host that is not
+/// connected describes nothing.
+async fn remote_shell(
+    state: &AppState,
+    host_id: &str,
+) -> Result<
+    (
+        std::sync::Arc<ssh::conn::Connection>,
+        ssh::shellkind::ShellKind,
+    ),
+    CommandError,
+> {
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(host_id)
+        .copied()
+        .unwrap_or_default();
+    let Some(conn) = session_for(state, host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    };
+    Ok((conn, shell))
+}
+
 /// Ask a host what it is listening on, right now.
 ///
 /// The deliberate second way in, next to what terminals announce: a command
@@ -3036,7 +2718,7 @@ pub async fn ssh_ports_listening(
     state: State<'_, AppState>,
     host_id: String,
 ) -> Result<Vec<ssh::ports::ListeningPort>, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
+    let (conn, shell) = remote_shell(&state, &host_id).await?;
     ssh::ports::listening(&conn, shell)
         .await
         .map_err(CommandError::from)
@@ -3962,18 +3644,6 @@ pub async fn worktree_list(
         .map_err(|e| CommandError::from(AppError::Git(e.message)))
 }
 
-/// Summarize a worktree's working-tree status (changed entries + ahead/behind)
-/// for its sidebar card badges. Runs git directly in `path`.
-#[tauri::command]
-pub async fn worktree_status(path: String) -> Result<git::WorktreeStatus, CommandError> {
-    if !git::is_git_repo(&path).await {
-        return Ok(git::WorktreeStatus::default());
-    }
-    git::worktree_status(&path)
-        .await
-        .map_err(CommandError::from)
-}
-
 /// Whether a worktree's branch already landed in its repo's default base —
 /// merged outright or squashed. Read-only; nothing is deleted.
 ///
@@ -4008,26 +3678,27 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
 // and the center file editor (read/write one text file). Paths are absolute, on
 // the user's own machine (not confined — mirrors `browse_dirs`).
 
-/// Where a project's files are: this machine, or a host's engine.
-enum FilesOn {
+/// Which machine a project call runs on: this one, or a host's engine.
+enum Machine {
     Here,
     Host(std::sync::Arc<ssh::engine::HostEngine>),
 }
 
-/// The machine `target` names, for a file call. On a host, a **mutation** is
-/// fenced first (`02a` §2.9): the expectation the caller prepared has to name
-/// the machine and the connection the change would land on — the same absolute
-/// path usually exists on both machines, and a misrouted save or delete is
-/// silent. A host's files are its engine's: one where the engine cannot run
-/// says so, rather than being served some other way.
-async fn files_on<R: tauri::Runtime>(
+/// The machine `target` names, for a project call — its files or its git. On
+/// a host, a **mutation** is fenced first (`02a` §2.9): the expectation the
+/// caller prepared has to name the machine and the connection the change would
+/// land on — the same absolute path usually exists on both machines, and a
+/// misrouted save, discard or delete is silent. A host's projects are its
+/// engine's: one where the engine cannot run says so, rather than being served
+/// some other way.
+async fn machine_for<R: tauri::Runtime>(
     app: &AppHandle<R>,
     state: &AppState,
     target: Option<&str>,
     fence: Option<Option<&TargetExpectation>>,
-) -> Result<FilesOn, CommandError> {
+) -> Result<Machine, CommandError> {
     let host = match target.filter(|t| !t.is_empty()).map(TargetId::parse) {
-        None | Some(Ok(TargetId::Local)) => return Ok(FilesOn::Here),
+        None | Some(Ok(TargetId::Local)) => return Ok(Machine::Here),
         Some(Ok(TargetId::Ssh(host))) => host,
         Some(Ok(other)) => {
             return Err(CommandError::from(AppError::Invalid(format!(
@@ -4044,9 +3715,9 @@ async fn files_on<R: tauri::Runtime>(
             .map_err(CommandError::from)?;
     }
     match connected_engine(app, state, &host).await {
-        Some(engine) => Ok(FilesOn::Host(engine)),
+        Some(engine) => Ok(Machine::Host(engine)),
         None => Err(CommandError::from(AppError::Invalid(
-            "this host's files are served by its engine, which does not run there".to_string(),
+            "this host's projects are served by its engine, which does not run there".to_string(),
         ))),
     }
 }
@@ -4061,9 +3732,9 @@ pub async fn fs_list_dir(
     path: String,
     target: Option<String>,
 ) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
-    match files_on(&app, &state, target.as_deref(), None).await? {
-        FilesOn::Here => crate::fs::list_dir(&path).await.map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => crate::fs::list_dir(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
             .fs(FsCall::List { path })
             .await
             .map_err(CommandError::from),
@@ -4078,11 +3749,11 @@ pub async fn fs_read_file(
     path: String,
     target: Option<String>,
 ) -> Result<crate::fs::FileContent, CommandError> {
-    match files_on(&app, &state, target.as_deref(), None).await? {
-        FilesOn::Here => crate::fs::read_file(&path)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => crate::fs::read_file(&path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::Read { path })
             .await
             .map_err(CommandError::from),
@@ -4099,11 +3770,11 @@ pub async fn fs_read_data_url(
     path: String,
     target: Option<String>,
 ) -> Result<String, CommandError> {
-    match files_on(&app, &state, target.as_deref(), None).await? {
-        FilesOn::Here => crate::fs::read_data_url(&path)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => crate::fs::read_data_url(&path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::ReadDataUrl { path })
             .await
             .map_err(CommandError::from),
@@ -4136,11 +3807,11 @@ pub async fn fs_write_file(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<(), CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::write_file(&path, &content)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::write_file(&path, &content)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::Write { path, content })
             .await
             .map_err(CommandError::from),
@@ -4205,11 +3876,11 @@ pub async fn fs_rename(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<String, CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::rename_path(&path, &new_name)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::rename_path(&path, &new_name)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::Rename { path, new_name })
             .await
             .map_err(CommandError::from),
@@ -4229,11 +3900,11 @@ pub async fn fs_create_file(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<String, CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::create_file(&dir, &path)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::create_file(&dir, &path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::CreateFile { dir, path })
             .await
             .map_err(CommandError::from),
@@ -4252,11 +3923,11 @@ pub async fn fs_create_dir(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<String, CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::create_dir(&dir, &path)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::create_dir(&dir, &path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::CreateDir { dir, path })
             .await
             .map_err(CommandError::from),
@@ -4274,11 +3945,11 @@ pub async fn fs_delete(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<(), CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::delete_to_trash(&path)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::delete_to_trash(&path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::Delete { path })
             .await
             .map_err(CommandError::from),
@@ -4295,11 +3966,11 @@ pub async fn fs_duplicate(
     target: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<String, CommandError> {
-    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
-        FilesOn::Here => crate::fs::duplicate_file(&path)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => crate::fs::duplicate_file(&path)
             .await
             .map_err(CommandError::from),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::Duplicate { path })
             .await
             .map_err(CommandError::from),
@@ -4336,13 +4007,13 @@ pub async fn fs_search_files(
     limit: usize,
     target: Option<String>,
 ) -> Result<crate::fs::FileSearch, CommandError> {
-    match files_on(&app, &state, target.as_deref(), None).await? {
-        FilesOn::Here => tokio::task::spawn_blocking(move || {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => tokio::task::spawn_blocking(move || {
             crate::fs::search_files(&root, &query, include_hidden, &filters, limit)
         })
         .await
         .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string())),
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::SearchFiles {
                 root,
                 query,
@@ -4373,8 +4044,8 @@ pub async fn fs_search_content(
     limit: usize,
     target: Option<String>,
 ) -> Result<crate::fs::ContentSearch, CommandError> {
-    match files_on(&app, &state, target.as_deref(), None).await? {
-        FilesOn::Here => tokio::task::spawn_blocking(move || {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => tokio::task::spawn_blocking(move || {
             crate::fs::search_content(&root, &query, include_hidden, &filters, limit)
         })
         .await
@@ -4382,7 +4053,7 @@ pub async fn fs_search_content(
         .map_err(|e| CommandError::new("SEARCH_INVALID", e.to_string())),
         // The host answers an unparsable pattern as an invalid call, which
         // is the one way its content search fails on its own.
-        FilesOn::Host(engine) => engine
+        Machine::Host(engine) => engine
             .fs(FsCall::SearchContent {
                 root,
                 query: serde_json::to_value(query).map_err(AppError::Serde)?,
@@ -4657,26 +4328,65 @@ pub fn open_external(app: AppHandle, url: String) -> Result<(), CommandError> {
 /// Working-tree-vs-`HEAD` diff for one file, powering the editor's change gutter
 /// (added lines + a peek at the removed lines). Empty for clean/untracked files.
 #[tauri::command]
-pub async fn git_diff_head(path: String, file: String) -> Result<String, CommandError> {
-    git::diff_head(&path, &file)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_diff_head(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    target: Option<String>,
+) -> Result<String, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::diff_head(&path, &file)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::DiffHead { path, file })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 // --- Git status, diffs & staging (Phase 3) ---------------------------------
 //
-// These run git directly in the worktree `path` (the right panel's review view).
+// Each runs git in the worktree `path` on the machine `target` names: this one,
+// or a host, whose engine runs the same git there (`machine_for`). Mutations
+// carry `expect` and are fenced before anything is sent.
 
-/// List a worktree's changed files (staged + unstaged + untracked). A registered
-/// folder that isn't a git repo simply has no changes, so we return an empty list
-/// rather than an error (keeps the Changes tab + project card quiet for non-git
-/// projects).
+/// Everything the Changes panel draws about a worktree, in one answer — the
+/// changed files, their line counts, the upstream distance and `HEAD`. A folder
+/// that is not a repository answers `isRepo: false`.
 #[tauri::command]
-pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandError> {
-    if !git::is_git_repo(&path).await {
-        return Ok(Vec::new());
+pub async fn git_review(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+) -> Result<git::Review, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::review(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Review { path })
+            .await
+            .map_err(CommandError::from),
     }
-    git::status_files(&path).await.map_err(CommandError::from)
+}
+
+/// What a project's row shows about a worktree: its branch and its
+/// changed/ahead/behind counts, `isRepo: false` for a plain folder.
+#[tauri::command]
+pub async fn git_repo_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+) -> Result<git::RepoStatus, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::repo_status(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Status { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Per-file added/deleted line counts vs `HEAD` for the changed-files list. The
@@ -4695,10 +4405,23 @@ pub async fn git_numstat(path: String) -> Result<Vec<git::FileNumstat>, CommandE
 
 /// Unified diff for one file. `staged` selects the index-vs-HEAD diff.
 #[tauri::command]
-pub async fn git_diff(path: String, file: String, staged: bool) -> Result<String, CommandError> {
-    git::diff_file(&path, &file, staged)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_diff(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    staged: bool,
+    target: Option<String>,
+) -> Result<String, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::diff_file(&path, &file, staged)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Diff { path, file, staged })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Before/after image versions for a changed **image** file, base64-encoded for
@@ -4706,104 +4429,234 @@ pub async fn git_diff(path: String, file: String, staged: bool) -> Result<String
 /// mirroring `git_diff`. A missing side (added/deleted) comes back as `null`.
 #[tauri::command]
 pub async fn git_image_diff(
+    app: AppHandle,
+    state: State<'_, AppState>,
     path: String,
     file: String,
     staged: bool,
+    target: Option<String>,
 ) -> Result<git::ImageDiff, CommandError> {
-    git::image_diff(&path, &file, staged)
-        .await
-        .map_err(CommandError::from)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::image_diff(&path, &file, staged)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::ImageDiff { path, file, staged })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Stage one file.
 #[tauri::command]
-pub async fn git_stage(path: String, file: String) -> Result<(), CommandError> {
-    git::stage_file(&path, &file)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_stage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::stage_file(&path, &file)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Stage { path, file })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Unstage one file.
 #[tauri::command]
-pub async fn git_unstage(path: String, file: String) -> Result<(), CommandError> {
-    git::unstage_file(&path, &file)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_unstage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::unstage_file(&path, &file)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Unstage { path, file })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Stage every change.
 #[tauri::command]
-pub async fn git_stage_all(path: String) -> Result<(), CommandError> {
-    git::stage_all(&path).await.map_err(CommandError::from)
+pub async fn git_stage_all(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::stage_all(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::StageAll { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Unstage everything.
 #[tauri::command]
-pub async fn git_unstage_all(path: String) -> Result<(), CommandError> {
-    git::unstage_all(&path).await.map_err(CommandError::from)
+pub async fn git_unstage_all(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::unstage_all(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::UnstageAll { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Discard a file's local changes (tracked → restore to HEAD; untracked → delete).
 #[tauri::command]
-pub async fn git_discard(path: String, file: String, untracked: bool) -> Result<(), CommandError> {
-    git::discard_file(&path, &file, untracked)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_discard(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    untracked: bool,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::discard_file(&path, &file, untracked)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Discard {
+                path,
+                file,
+                untracked,
+            })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Apply a unified-diff patch (a single hunk, from the frontend) to stage,
 /// unstage, or discard it. `cached` targets the index; `reverse` reverses it.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn git_apply(
+    app: AppHandle,
+    state: State<'_, AppState>,
     path: String,
     patch: String,
     cached: bool,
     reverse: bool,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
 ) -> Result<(), CommandError> {
-    git::apply_patch(&path, &patch, cached, reverse)
-        .await
-        .map_err(CommandError::from)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::apply_patch(&path, &patch, cached, reverse)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Apply {
+                path,
+                patch,
+                cached,
+                reverse,
+            })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Commit the staged changes with `message`. With `amend`, rewrites the current
 /// `HEAD` commit instead of creating a new one. With `sign_off`, appends a
 /// `Signed-off-by:` trailer using the configured git identity.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn git_commit(
+    app: AppHandle,
+    state: State<'_, AppState>,
     path: String,
     message: String,
     amend: bool,
     sign_off: bool,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
 ) -> Result<(), CommandError> {
-    let message = message.trim();
+    let message = message.trim().to_string();
     if message.is_empty() {
         return Err(CommandError::from(AppError::Invalid(
             "commit message is required".to_string(),
         )));
     }
-    git::commit(&path, message, amend, sign_off)
-        .await
-        .map_err(CommandError::from)
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::commit(&path, &message, amend, sign_off)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Commit {
+                path,
+                message,
+                amend,
+                sign_off,
+            })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// List the worktree's commit history (newest first), `limit` commits from
 /// `skip`. Powers the right panel's "History" tab + branch graph.
 #[tauri::command]
 pub async fn git_log(
+    app: AppHandle,
+    state: State<'_, AppState>,
     path: String,
     limit: u32,
     skip: u32,
+    target: Option<String>,
 ) -> Result<Vec<git::CommitInfo>, CommandError> {
-    git::log(&path, limit as usize, skip as usize)
-        .await
-        .map_err(CommandError::from)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::log(&path, limit as usize, skip as usize)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Log { path, limit, skip })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Unified diff a single commit introduced (vs its first parent), for the
 /// "History" tab's commit viewer.
 #[tauri::command]
-pub async fn git_show(path: String, hash: String) -> Result<String, CommandError> {
-    git::show(&path, &hash).await.map_err(CommandError::from)
+pub async fn git_show(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    hash: String,
+    target: Option<String>,
+) -> Result<String, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => git::show(&path, &hash).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Show { path, hash })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Payload of the `git:status-changed` event emitted by the background watcher
@@ -4834,40 +4687,106 @@ pub async fn git_set_watch(
 /// Fetch the current branch's remote (`git fetch`) and return the refreshed
 /// working-tree status, so ahead/behind now reflect the server. Lets the user
 /// check for new upstream commits to pull without touching the working tree.
-/// Errors (offline, no remote) surface to the caller.
+/// Errors (offline, no remote) surface to the caller. On a host it runs there,
+/// with that machine's credentials and the agent this connection forwards.
 #[tauri::command]
-pub async fn git_fetch(path: String) -> Result<git::WorktreeStatus, CommandError> {
-    git::fetch_remote(&path).await.map_err(CommandError::from)?;
-    git::worktree_status(&path)
-        .await
-        .map_err(CommandError::from)
+pub async fn git_fetch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<git::WorktreeStatus, CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => {
+            git::fetch_remote(&path).await.map_err(CommandError::from)?;
+            git::worktree_status(&path)
+                .await
+                .map_err(CommandError::from)
+        }
+        Machine::Host(engine) => engine
+            .git(GitCall::Fetch { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Push the current branch (`git push`). Not retried.
 #[tauri::command]
-pub async fn git_push(path: String) -> Result<(), CommandError> {
-    git::push(&path).await.map_err(CommandError::from)
+pub async fn git_push(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::push(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Push { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Pull fast-forward-only (`git pull --ff-only`).
 #[tauri::command]
-pub async fn git_pull(path: String) -> Result<(), CommandError> {
-    git::pull(&path).await.map_err(CommandError::from)
+pub async fn git_pull(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match machine_for(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        Machine::Here => git::pull(&path).await.map_err(CommandError::from),
+        Machine::Host(engine) => engine
+            .git(GitCall::Pull { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Draft a commit message for `path`'s **staged** changes using the configured
 /// AI agent (Settings → AI commit). Opt-in: errors when disabled/unconfigured,
 /// when nothing is staged, or when the agent fails / times out. Returns the
 /// message (subject on the first line, optional body after a blank line).
+///
+/// On a host the diff is read **there** and the agent runs **here**: the CLI
+/// and its credentials are this machine's, and requiring one on every host
+/// would put the feature behind an install nobody asked for. The agent then
+/// stands in the user's home, since the project is not on this machine — the
+/// whole diff is in the prompt (`aicommit::from_diff`).
 #[tauri::command]
 pub async fn git_generate_commit_message(
+    app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    target: Option<String>,
 ) -> Result<String, CommandError> {
     let cfg = state.data.read().await.settings.ai_commit.clone();
-    crate::aicommit::generate(&path, &cfg)
-        .await
-        .map_err(CommandError::from)
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => crate::aicommit::generate(&path, &cfg)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => {
+            if !cfg.enabled {
+                return Err(CommandError::from(AppError::Invalid(
+                    "AI commit-message generation is disabled".to_string(),
+                )));
+            }
+            let diff: String = engine
+                .git(GitCall::StagedDiff { path })
+                .await
+                .map_err(CommandError::from)?;
+            let home = crate::agent_hooks::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| ".".to_string());
+            crate::aicommit::from_diff(&diff, &cfg, &home)
+                .await
+                .map_err(CommandError::from)
+        }
+    }
 }
 
 /// Name a conversation from what its terminal shows, using the session's own
@@ -5791,10 +5710,10 @@ mod tests {
         assert_eq!(host_loopback_port("http://localhost/"), None);
     }
     use super::{
-        bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
+        bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat,
         issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,
         read_term_buffers, rect_on_any_monitor, redetect_git, reorder_by_ids, resting_corner,
-        term_buffers_path, worktree_status, worth_retrying, TargetId,
+        term_buffers_path, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
 
@@ -5802,7 +5721,7 @@ mod tests {
     /// for none or `local`, and a host that is not connected is refused rather
     /// than answered from this disk at the same path.
     #[tokio::test]
-    async fn a_file_call_is_served_on_the_machine_it_names() {
+    async fn a_project_call_is_served_on_the_machine_it_names() {
         let app = tauri::test::mock_builder()
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
@@ -5815,21 +5734,21 @@ mod tests {
         let handle = app.handle();
         for here in [None, Some(""), Some("local")] {
             assert!(matches!(
-                super::files_on(handle, &state, here, None).await,
-                Ok(super::FilesOn::Here)
+                super::machine_for(handle, &state, here, None).await,
+                Ok(super::Machine::Here)
             ));
         }
-        let Err(away) = super::files_on(handle, &state, Some("ssh:gone"), None).await else {
+        let Err(away) = super::machine_for(handle, &state, Some("ssh:gone"), None).await else {
             panic!("a host that is not connected has no files to serve");
         };
         assert_eq!(away.code, "NOT_CONNECTED", "{}", away.message);
         // A mutation is refused the same way before anything is checked.
         assert!(
-            super::files_on(handle, &state, Some("ssh:gone"), Some(None))
+            super::machine_for(handle, &state, Some("ssh:gone"), Some(None))
                 .await
                 .is_err()
         );
-        let Err(bad) = super::files_on(handle, &state, Some("ftp:box"), None).await else {
+        let Err(bad) = super::machine_for(handle, &state, Some("ftp:box"), None).await else {
             panic!("an unknown kind of machine is refused");
         };
         assert_ne!(bad.code, "NOT_CONNECTED");
@@ -6112,9 +6031,9 @@ mod tests {
     }
 
     /// A registered folder that is not a repository is a valid project with
-    /// nothing to review. All three reads the Changes panel awaits together
-    /// must answer "nothing" for it — one of them erroring is what put git's
-    /// whole `diff` usage text in a toast.
+    /// nothing to review. Every read the Changes panel and a row make must
+    /// answer "not a repository" for it, not an error — one erroring is what
+    /// put git's whole `diff` usage text in a toast.
     #[tokio::test]
     async fn the_review_reads_are_quiet_for_a_plain_folder() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -6122,12 +6041,12 @@ mod tests {
             .await
             .expect("write");
         let path = dir.path().to_string_lossy().into_owned();
-        assert_eq!(git_status(path.clone()).await.unwrap(), Vec::new());
         assert_eq!(git_numstat(path.clone()).await.unwrap(), Vec::new());
         assert_eq!(
-            worktree_status(path).await.unwrap(),
-            crate::git::WorktreeStatus::default()
+            crate::git::review(&path).await.unwrap(),
+            crate::git::Review::default()
         );
+        assert!(!crate::git::repo_status(&path).await.unwrap().is_repo);
     }
 
     #[tokio::test]

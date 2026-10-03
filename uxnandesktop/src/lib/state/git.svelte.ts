@@ -264,17 +264,16 @@ class GitStore {
     }
     this.loading = true;
     try {
-      // One call for both machines. Locally it is still the three calls it
-      // always was; on a host it is a single command, because each one there
-      // costs a shell start (`$lib/gitRouter`).
+      // One call, on whichever machine the worktree is (`$lib/gitRouter`).
       const review = await reviewOn(target, path);
       if (seq !== this.loadSeq || this.path !== path) return;
       if (!review.isRepo) {
-        // "Not a repository", "no git installed" or "the shell could not be
-        // named" — all of which must read as *not read*, never as a clean tree.
+        // A plain folder here simply has no changes. On a host, "not a
+        // repository" or "no git there" must read as *not read*, never as a
+        // clean tree.
         this.files = [];
         this.numstat = {};
-        this.error = i18n.t("git.remoteNotRead");
+        if (sshHostId(target)) this.error = i18n.t("git.remoteNotRead");
         return;
       }
       this.files = review.files.map(classify);
