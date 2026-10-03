@@ -45,10 +45,9 @@ class _FakeTransport implements WebSocketTransport {
   final List<Uint8List> _unheard = [];
   late final StreamController<Uint8List> _incoming =
       StreamController<Uint8List>.broadcast(
-    onListen: () {
-      _unheard.forEach(_incoming.add);
-      _unheard.clear();
-    },
+    onListen: () => _unheard
+      ..forEach(_incoming.add)
+      ..clear(),
   );
 
   void _emit(Map<String, Object> frame) {
