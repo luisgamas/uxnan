@@ -1386,6 +1386,14 @@ mod tests {
                     "-H \"X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%\" -H \"X-Uxnan-Agent-Type: claude\" ",
                     "-d \"{\\\"hook_event_name\\\":\\\"Stop\\\"}\"\r"
                 ),
+                // PowerShell's own client: `curl` is an alias there, and a
+                // native program's quoted JSON is mangled differently by 5.1
+                // and 7, so the body goes as the cmdlet's string, untouched.
+                crate::ssh::shellkind::ShellKind::PowerShell => concat!(
+                    "Invoke-RestMethod -Method Post -Uri $env:UXNAN_HOOK_URL ",
+                    "-Headers @{'X-Uxnan-Token'=$env:UXNAN_HOOK_TOKEN;'X-Uxnan-Agent-Id'=$env:UXNAN_AGENT_ID;'X-Uxnan-Agent-Type'='claude'} ",
+                    "-ContentType 'application/json' -Body '{\"hook_event_name\":\"Stop\"}'\r"
+                ),
                 _ => concat!(
                     "printf '%s' '{\"hook_event_name\":\"Stop\"}' | curl -fsS -X POST \"$UXNAN_HOOK_URL\" ",
                     "-H \"X-Uxnan-Token: $UXNAN_HOOK_TOKEN\" -H \"X-Uxnan-Agent-Id: $UXNAN_AGENT_ID\" ",
