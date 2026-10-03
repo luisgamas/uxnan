@@ -49,11 +49,10 @@ pub fn scrub_process() {
     }
 }
 
-/// Drop the same keys from a child's environment.
+/// Drop the same keys from a child's environment — the engine's own scrub, the
+/// one every child it spawns goes through (`winproc::command`).
 pub fn scrub_command(cmd: &mut tokio::process::Command) {
-    for key in PER_TERMINAL_KEYS {
-        cmd.env_remove(key);
-    }
+    crate::winproc::scrub(cmd);
 }
 
 #[cfg(test)]

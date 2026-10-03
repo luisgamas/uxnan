@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,081 Rust tests (851 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 123
+`docs/chat.md`). 1,081 Rust tests (786 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 188
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 25 in `uxnan-host` (21 against the daemon itself) + 45
 integration), of which 56 are ignored probes that need something real to talk to
 (48 live SSH probes — 40 against a real `sshd` and 8 against a **Linux host in a
@@ -1321,12 +1321,14 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
 - [ ] **WSL is still detected by sniffing UNC paths** (`wsl.rs`, `git.rs`) instead
       of being a `wsl:<distro>` target. The id is reserved and `TargetId::parse`
       rejects it on purpose; promoting it is its own refactor.
-- [ ] Precise agent status in remote sessions (layer 1 needs a reverse tunnel +
-      remote reporter install; layer 3 needs a remote process probe). Layer 2
-      (title/OSC) already works remotely — it rides the PTY stream.
-- [ ] Session survival across an app restart and remote resource snapshots —
-      each its own phase. (Remote files/git/worktrees landed in phase 3; port
-      forwarding + preview in phase 4.)
+- [ ] **Layer 3 on a host: which agent a host terminal runs.** Layers 1 (the
+      engine's hook receiver, `02g` §5.16) and 2 (title/OSC, in the PTY
+      stream) work on a host; layer 3, the process probe, does not yet. The
+      engine already carries `procscan` (it backs `StopAgent`); what is owed is
+      a call that answers a session's foreground agent, and the desktop asking
+      it where it asks `procscan` for a local tab.
+- [ ] Remote resource snapshots (CPU/memory of a host's agents). Session
+      survival across an app restart landed with the host engine (`02g` §5.16).
 
 ## Deferred follow-ups (non-blocking) — by area
 

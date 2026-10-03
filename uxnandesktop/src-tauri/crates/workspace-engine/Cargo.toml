@@ -10,13 +10,14 @@ license.workspace = true
 [dependencies]
 # Reading and writing project files, and searching them (`fs`): the same crates
 # and versions the app used for it.
-tokio = { version = "1", features = ["fs", "rt", "io-util"] }
+tokio = { version = "1", features = ["fs", "rt", "io-util", "process", "time", "macros"] }
 ignore = "0.4"
 globset = "0.4"
 regex = "1"
 base64 = "0.22"
-# What git ignores, for the file tree (`git`): libgit2 without its network
-# transports, statically linked — it builds for every host target.
+# Git for the file tree and the git panels (`git`, `gitfast`): libgit2 without
+# its network transports, statically linked — it builds for every host target.
+# Everything libgit2 does only partially runs the git CLI instead.
 git2 = { version = "0.20", default-features = false }
 # The control surface's header and variable names an agent identifies itself
 # with (`mcp_launch`).

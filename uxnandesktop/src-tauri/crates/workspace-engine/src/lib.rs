@@ -17,11 +17,14 @@ pub mod codex_trust;
 pub mod error;
 pub mod fs;
 pub mod git;
+pub mod gitfast;
 pub mod mcp_launch;
 pub mod procscan;
 pub mod pty;
 pub mod screen;
 pub mod transcript;
 pub mod watch;
+pub mod winproc;
+pub mod wsl;
 
 pub use error::Error;

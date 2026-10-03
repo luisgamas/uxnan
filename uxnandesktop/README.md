@@ -398,7 +398,7 @@ uxnandesktop/
 │   ├── crates/
 │   │   ├── control-protocol/  # the control catalog, envelope, discovery, selectors (no Tauri)
 │   │   ├── uxnan-cli/         # the console client, built with the app
-│   │   ├── workspace-engine/  # terminals, their screen model, folder watching and the agents' hook installer — this machine's and a host's (no Tauri)
+│   │   ├── workspace-engine/  # terminals, their screen model, files, git, folder watching and the agents' hook installer — this machine's and a host's (no Tauri)
 │   │   ├── host-protocol/     # the frames and calls between the app and a host's daemon
 │   │   └── uxnan-host/        # the daemon on a remote host: owns its terminals across disconnects
 │   └── src/
@@ -409,8 +409,7 @@ uxnandesktop/
 │       ├── state.rs       # AppState (RwLock<AppData> + PersistenceManager)
 │       ├── commands.rs    # Tauri commands (git, pty, worktree, browse, agent, ...)
 │       ├── pty.rs         # portable-pty manager
-│       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
-│       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
+│       ├── git.rs         # the engine's git (CLI + git2 fast path), re-exported
 │       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
 │       ├── ssh/           # remote hosts: config, dial (route), conn, auth, secrets,
 │       │                  # hostkey, registry, engine + terminals (the host engine),

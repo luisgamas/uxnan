@@ -57,6 +57,7 @@ impl From<uxnan_workspace_engine::Error> for AppError {
             uxnan_workspace_engine::Error::Io(e) => AppError::Io(e),
             uxnan_workspace_engine::Error::Invalid(m) => AppError::Invalid(m),
             uxnan_workspace_engine::Error::Json(e) => AppError::Serde(e),
+            uxnan_workspace_engine::Error::Git(m) => AppError::Git(m),
         }
     }
 }

@@ -53,7 +53,7 @@ the module this catches; the app crate's own Windows paths — `control::cli`'s
 registry edit — need the full Windows toolchain and stay with CI.)
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
-`git.rs`, `gitfast.rs`, `pty.rs`, `control/` (the catalog dispatch, the two
+`pty.rs`, `control/` (the catalog dispatch, the two
 gates and end-to-end RPC/MCP over a real socket), `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
 `launchenv.rs`, `updater.rs`, `which.rs`, `pets.rs`, `datadir.rs`);
 **integration** tests go in
@@ -79,8 +79,8 @@ holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
 [`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,081 backend tests**
-in total — 851 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 123 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 25 in
+in total — 786 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 188 in `uxnan-workspace-engine` (its git and libgit2 fast path among them), 5 in `uxnan-host-protocol`, 25 in
 `uxnan-host` (21 against the real daemon over its socket — among them a project's
 files listed, saved and searched on the host, an agent's
 report sent by the real reporter script reaching only its own terminal, and the

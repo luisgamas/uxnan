@@ -34,7 +34,7 @@ mod fonts;
 mod fs;
 mod fswatch;
 mod git;
-mod gitfast;
+
 // Public for the same integration tests: they drive the *production* gh layer —
 // against a scripted fake `gh` in the mandatory suite, and against the
 // allowlisted sandbox repository in the ignored live suite.

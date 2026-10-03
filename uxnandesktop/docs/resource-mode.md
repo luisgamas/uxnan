@@ -182,7 +182,7 @@ evidence points at the benchmark scenarios
 
 | Activity | Owner | Cadence (Balanced) | Trigger / park | Cost evidence | Governed by |
 |---|---|---|---|---|---|
-| Active-worktree git status watcher | `src-tauri/src/git.rs` (Tokio) | 3 s, focus-paused | follows `gitSetWatch`; parks with no watched path | R01/R06 | not governed — it feeds the visible Changes panel |
+| Active-worktree git status watcher | `src-tauri/src/commands.rs` → `git_set_watch` (Tokio) | 3 s, focus-paused | follows `gitSetWatch`; parks with no watched path | R01/R06 | not governed — it feeds the visible Changes panel |
 | All-worktree status sweep | `projects.sweepStatuses` | ≥ 15 s (3 s driver tick in `LeftSidebar`) | skipped hidden; forced by focus / agent activity / own git actions | R06 | `gitSweepIntervalMs` |
 | Worktree-list reconcile | `projects.refreshWorktrees` | every 3 s tick | forced by `refreshNow` | R06 | `worktreeReconcileIntervalMs` |
 | GitHub context/rate-limit/badge poll | `github.startPolling` | user setting (45 s), hidden-paused; ≤ 2 badge reads per tick | armed while the app runs, `0` = manual | R08 | `githubPollFactor` (+ 30 s floor) |

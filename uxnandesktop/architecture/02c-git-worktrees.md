@@ -979,5 +979,6 @@ worktree activo. Características:
 | `git_show(path, hash)` | Diff unificado que introdujo un commit (vs su primer padre). `git2` con fallback `git show`; `hash` validado como hexadecimal. |
 | `git_commit(path, message, amend, signOff)` | Commit de lo staged; `amend` reescribe `HEAD`, `signOff` añade `Signed-off-by:` (`-s`). |
 
-Implementación: `src-tauri/src/git.rs` + `gitfast.rs` (`CommitInfo`, `log`,
-`show`, `commit`).
+Implementación: `crates/workspace-engine/src/git.rs` + `gitfast.rs` (`CommitInfo`,
+`log`, `show`, `commit`) — el motor de trabajo, que la app enlaza en proceso y el
+motor de un host ejecuta alli.

@@ -14,6 +14,8 @@ pub enum Error {
     Invalid(String),
     /// A JSON document the engine reads or writes is malformed.
     Json(serde_json::Error),
+    /// git refused or failed, in its own words.
+    Git(String),
 }
 
 impl fmt::Display for Error {
@@ -24,6 +26,7 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{e}"),
             Error::Invalid(m) => write!(f, "{m}"),
             Error::Json(e) => write!(f, "{e}"),
+            Error::Git(m) => write!(f, "git error: {m}"),
         }
     }
 }
