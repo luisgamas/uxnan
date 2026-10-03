@@ -102,6 +102,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `127.0.0.1` address here — which names nothing on the host — and OpenCode got
   `--standalone` when this machine's OpenCode is version 2, which a host's
   OpenCode 1 rejects. A host launch is now typed as it is.
+- **Saving a file keeps its permissions.** The editor saves through a new file
+  renamed over the old one, which came out with default permissions: a script
+  saved in the editor stopped being runnable, and a private file became
+  readable by other accounts. The saved file now keeps the mode it had.
 - **Wiring an agent's hooks keeps its config file's permissions.** The file
   was rewritten as a new one, so a private config (`0600`) came out readable by
   the machine's other accounts, and a shared one private.

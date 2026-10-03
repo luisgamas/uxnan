@@ -495,6 +495,12 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), Error> {
         .unwrap_or_else(|| "file".to_string());
     let tmp = parent.join(format!(".{file_name}.uxnan-tmp"));
     tokio::fs::write(&tmp, content.as_bytes()).await?;
+    // The replacement is a new file, made with the process's umask: give it the
+    // mode of the file it replaces, or saving a script would drop its `+x` (and
+    // a private file would come out readable by others).
+    if let Ok(meta) = tokio::fs::metadata(&target).await {
+        let _ = tokio::fs::set_permissions(&tmp, meta.permissions()).await;
+    }
     // rename is atomic on the same filesystem; clean up the temp on failure.
     if let Err(e) = tokio::fs::rename(&tmp, &target).await {
         let _ = tokio::fs::remove_file(&tmp).await;
@@ -1000,6 +1006,23 @@ pub fn image_mime(file: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn saving_keeps_the_files_mode() {
+        use super::write_file;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("run.sh");
+        std::fs::write(&script, "echo old\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_file(&script.to_string_lossy(), "echo new\n")
+            .await
+            .unwrap();
+        let mode = std::fs::metadata(&script).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "a saved script is still runnable");
+        assert_eq!(std::fs::read_to_string(&script).unwrap(), "echo new\n");
+    }
 
     #[tokio::test]
     async fn read_attachment_names_types_and_caps_a_file() {
