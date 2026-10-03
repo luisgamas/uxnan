@@ -3604,8 +3604,21 @@ emparejado en la LAN es alcanzable fuera de casa sin volver a emparejar. Los
 codigos de cierre del relay llegan como `RelayException` tipada (PC apagado,
 telefono no emparejado / revocado, relay lleno) — §5.10.
 
+**Orden de seleccion (1.6.2).** Cada intento dialea en paralelo las
+direcciones guardadas (`TrustedDevice.hosts`, que `BridgeReplica` reemplaza con
+`BridgeSettings.hosts`) y, solo con Wi-Fi/Ethernet, busca al PC por mDNS
+(`_uxnan._tcp`, TXT `id` = `macDeviceId`, maximo 2,5 s, nunca en segundo plano).
+Un socket abierto es solo un candidato: los handshakes E2EE corren uno a la vez
+(8 s cada uno), primero las direcciones guardadas y al final las anunciadas por
+mDNS (no estan firmadas). Un candidato cuyo handshake falla (otra identidad,
+error de protocolo, silencio) se cierra y no se reintenta en ese intento; si no
+queda ninguno, el mismo intento sigue por el relay (`RelayReason.directHandshakeFailed`),
+de modo que nada en la red local puede dejar al telefono fuera de su relay. Si
+mDNS vio al PC pero ninguna direccion respondio, el telefono lo dice
+(`RelayReason.sameNetworkUnreachable`: la red puede aislar dispositivos).
+
 **Volver a la via directa.** Si el telefono esta conectado por el relay y
-cambia de red (o vuelve al primer plano), marca una sola vez las direcciones
+cambia de red, vuelve al primer plano o recibe direcciones nuevas del PC, marca una sola vez las direcciones
 directas que anuncia el PC (`selectDirect`, 2 s por direccion, sin tocar el
 relay); si una responde, corre el handshake sobre ella con la sesion del relay
 aun viva y la confirma como un cambio validado — el bridge cierra entonces el
