@@ -161,3 +161,31 @@ test('over the router: phones are in every sync, and only a phone describes itse
     }
   });
 });
+
+test("the PC's live addresses take a revision only when they change, and never reach disk", async () => {
+  await withState(async (state) => {
+    const ledger = await SyncLedger.load(state);
+    const store = new BridgeSettingsStore({
+      state,
+      ledger,
+      config: DEFAULT_DAEMON_CONFIG,
+      hosts: ['192.168.18.22:19850'],
+    });
+    await store.load();
+    const announced: string[][] = [];
+    store.onChange(({ settings }) => announced.push(settings.hosts));
+    const before = store.rev;
+
+    // The same set, in another order: nothing to tell anyone.
+    await store.setHosts(['192.168.18.22:19850', '192.168.18.22:19850']);
+    assert.equal(store.rev, before);
+    assert.deepEqual(announced, []);
+
+    // The PC moved to another network.
+    await store.setHosts(['192.168.100.140:19850', '100.76.97.16:19850']);
+    assert.ok(store.rev > before);
+    assert.deepEqual(store.get().hosts, ['100.76.97.16:19850', '192.168.100.140:19850']);
+    assert.deepEqual(announced, [['100.76.97.16:19850', '192.168.100.140:19850']]);
+    assert.equal('hosts' in (await state.readConfig()), false);
+  });
+});

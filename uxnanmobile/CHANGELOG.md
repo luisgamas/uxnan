@@ -6,6 +6,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.39-alpha.20261003+20261006] - 20261003
+### Added
+
+- **Finds your PC on the local network by itself.** When the PC's saved
+  addresses don't answer and the phone is on a Wi-Fi, it looks for the PC on
+  that network for a moment (at most 2.5 s, only while connecting — never in
+  the background, never on mobile data) and connects to wherever it is now.
+  If the PC is there but doesn't answer — a network that keeps its devices
+  apart — the PC's details say so under the connection badge instead of
+  leaving "Relay" unexplained.
+- **Nothing on your network can keep the phone off your relay.** A direct
+  address now only counts once the phone has verified it is your PC (the
+  encrypted handshake). A device that answers in its place — on an old
+  address, or by announcing itself as your PC — is skipped, and the same
+  connection attempt goes on to the PC's other addresses and then the relay,
+  instead of failing and trying that device again.
+
+### Fixed
+
+- **The phone no longer stays on the relay at home after the PC changed
+  networks.** It kept dialing the addresses from the day it was paired, so
+  once the PC moved to another network it always fell back to the relay —
+  even sitting on the same Wi-Fi. The PC now tells the phone where it listens
+  whenever that changes, the phone replaces what it had, and a connection on
+  the relay moves to the PC's new address on its own.
+
 ## [0.0.38-alpha.20261003+20261005] - 20261003
 ### Added
 

@@ -6703,7 +6703,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-cli"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -6715,7 +6715,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-control-protocol"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "serde",
  "serde_json",
@@ -6725,7 +6725,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-desktop"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -6782,7 +6782,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "getrandom 0.3.4",
  "libc",
@@ -6798,7 +6798,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host-protocol"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "serde",
  "serde_json",
@@ -6807,7 +6807,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-workspace-engine"
-version = "0.0.74"
+version = "0.0.75"
 dependencies = [
  "base64 0.22.1",
  "git2",

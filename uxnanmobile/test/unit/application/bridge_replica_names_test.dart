@@ -55,6 +55,12 @@ class _Pcs implements ITrustedDeviceRepository {
   }
 
   @override
+  Future<void> recordHosts(String macDeviceId, List<String> hosts) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(hosts: hosts);
+  }
+
+  @override
   Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
     final d = devices[macDeviceId];
     if (d != null) devices[macDeviceId] = d.copyWith(lastSeen: at);
@@ -110,8 +116,10 @@ void main() {
   late List<(String, Map<String, dynamic>?)> calls;
   late String? lose;
   late Map<String, Object?> settings;
+  late List<String> hostsChanged;
 
   setUp(() {
+    hostsChanged = [];
     db = UxnanDatabase.forTesting(NativeDatabase.memory());
     replicaRepo = DriftBridgeReplicaRepository(db);
     events = StreamController<DomainEvent>.broadcast();
@@ -174,6 +182,7 @@ void main() {
       outbox: ActionOutbox(repository: replicaRepo),
       phoneName: phoneName,
       pcs: pcs,
+      onHostsChanged: hostsChanged.add,
     );
   });
 
@@ -319,6 +328,73 @@ void main() {
       settings['relay'] = {'url': 'wss://relay.example/with/a/path'};
       await replica.sync();
       expect(pcs.devices['pc-1']?.relay, _relay);
+    });
+  });
+
+  group('where the PC listens (BridgeSettings.hosts)', () {
+    const pairedOn = '192.168.18.22:19850';
+    const now = ['100.76.97.16:19850', '192.168.100.140:19850'];
+
+    setUp(() {
+      pcs.devices['pc-1'] =
+          pcs.devices['pc-1']!.copyWith(hosts: const [pairedOn]);
+    });
+
+    test('a sync replaces the paired-on addresses, never adds to them',
+        () async {
+      settings['hosts'] = now;
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.hosts, now);
+      expect(hostsChanged, ['pc-1'], reason: 'the session hears it');
+    });
+
+    test('a settings update moves them, once per change', () async {
+      phases.add(ConnectionPhase.connected);
+      await _settle();
+      hostsChanged.clear();
+      events.add(
+        const SettingsUpdatedEvent(
+          home: '/Users/me',
+          name: 'Studio',
+          rev: 4,
+          hosts: now,
+        ),
+      );
+      await _settle();
+      expect(pcs.devices['pc-1']?.hosts, now);
+      expect(hostsChanged, ['pc-1']);
+
+      // The same list again (another setting changed): nothing to tell.
+      events.add(
+        const SettingsUpdatedEvent(
+          home: '/Users/me',
+          name: 'Desk',
+          rev: 5,
+          hosts: now,
+        ),
+      );
+      await _settle();
+      expect(hostsChanged, ['pc-1']);
+    });
+
+    test('an empty list is stored: the PC listens for no direct connection',
+        () async {
+      settings['hosts'] = <String>[];
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.hosts, isEmpty);
+    });
+
+    test('settings without the field (an older bridge) leave them alone',
+        () async {
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.hosts, [pairedOn]);
+
+      events.add(
+        const SettingsUpdatedEvent(home: '/Users/me', name: 'Desk', rev: 4),
+      );
+      await _settle();
+      expect(pcs.devices['pc-1']?.hosts, [pairedOn]);
+      expect(hostsChanged, isEmpty);
     });
   });
 }

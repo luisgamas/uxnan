@@ -37,6 +37,7 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
+import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
@@ -60,6 +61,7 @@ import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/domain/value_objects/usage_summary.dart';
+import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
 import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -84,6 +86,7 @@ final secureTransportLayerProvider =
     Provider<SecureTransportLayer>((ref) => SecureTransportLayer());
 
 /// Chooses and opens the transport for a device: direct LAN/Tailscale hosts
+/// — with the PC looked for by mDNS meanwhile while the phone is on a Wi-Fi —
 /// first, then the bridge's own relay (spec 02a §5.9.3, §5.10).
 final transportSelectorProvider = Provider<TransportSelector>(
   (ref) => DirectTransportSelector(
@@ -92,6 +95,9 @@ final transportSelectorProvider = Provider<TransportSelector>(
       createTransport: WebSocketChannelTransport.new,
       identity: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
     ),
+    lanFinder: MdnsLanBridgeFinder(),
+    onLocalNetwork: () =>
+        ref.read(networkChangeMonitorProvider).isOnLocalNetwork(),
   ),
 );
 
@@ -160,6 +166,13 @@ final connectedEndpointProvider = StreamProvider<String?>(
 /// reaches the PC.
 final connectedRouteProvider = StreamProvider<ConnectionRoute?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectedRouteStream,
+);
+
+/// Why the live route is the relay when that is worth saying
+/// (`SessionCoordinator.relayReason`): the PC was seen on the phone's own
+/// Wi-Fi but did not answer there. Null otherwise.
+final relayReasonProvider = StreamProvider<RelayReason?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).relayReasonStream,
 );
 
 /// The connected bridge's status (`bridge/status`), re-read on every
@@ -896,6 +909,8 @@ final bridgeReplicaProvider = Provider<BridgeReplica>((ref) {
     outbox: ref.watch(actionOutboxProvider),
     phoneName: ref.watch(phoneNameManagerProvider),
     pcs: ref.watch(trustedDeviceRepositoryProvider),
+    // The PC published new addresses: a relay session tries them.
+    onHostsChanged: coordinator.handlePcAddressesChanged,
   );
   ref.onDispose(replica.dispose);
   return replica;

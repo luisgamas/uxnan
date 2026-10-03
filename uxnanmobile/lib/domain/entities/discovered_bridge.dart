@@ -13,6 +13,7 @@ class DiscoveredBridge extends Equatable {
     required this.host,
     required this.port,
     this.deviceId,
+    this.addresses = const [],
   });
 
   /// Service instance display name (the bridge's hostname).
@@ -27,9 +28,18 @@ class DiscoveredBridge extends Equatable {
   /// The PC's `macDeviceId` (TXT `id`), when advertised.
   final String? deviceId;
 
+  /// Every IPv4 literal the service resolved to or hinted at, on a network
+  /// the phone could share with the PC (private, CGNAT/Tailscale, link-local,
+  /// loopback) — [host] first when it is one. What a paired phone dials when
+  /// its stored addresses fail ([directHosts]).
+  final List<String> addresses;
+
   /// The `host:port` string the manual-pairing flow expects.
   String get hostPort => '$host:$port';
 
+  /// [addresses] as the `host:port` entries the transport selector dials.
+  List<String> get directHosts => [for (final a in addresses) '$a:$port'];
+
   @override
-  List<Object?> get props => [name, host, port, deviceId];
+  List<Object?> get props => [name, host, port, deviceId, addresses];
 }

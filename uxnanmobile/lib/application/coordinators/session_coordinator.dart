@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/core/errors/relay_exception.dart';
@@ -16,6 +17,7 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -56,6 +58,7 @@ class SessionCoordinator {
     Uuid? uuid,
     DelayFn? delay,
     int maxReconnectAttempts = 10,
+    Duration directRetryDebounce = const Duration(seconds: 1),
   })  : _secureTransport = secureTransport,
         _transportSelector = transportSelector,
         _identityResolver = identityResolver,
@@ -67,7 +70,8 @@ class SessionCoordinator {
         _outboundBuffer = outboundBuffer ?? OutboundMessageBuffer(),
         _uuid = uuid ?? const Uuid(),
         _delay = delay ?? Future<void>.delayed,
-        _maxReconnectAttempts = maxReconnectAttempts {
+        _maxReconnectAttempts = maxReconnectAttempts,
+        _directRetryDebounce = directRetryDebounce {
     // Close any session left open by a previous run (an app kill without a
     // clean disconnect) so its time is bounded at the last-known-alive moment.
     final repo = _connectionSessionRepository;
@@ -88,6 +92,7 @@ class SessionCoordinator {
   final Uuid _uuid;
   final DelayFn _delay;
   final int _maxReconnectAttempts;
+  final Duration _directRetryDebounce;
 
   final BehaviorSubject<ConnectionPhase> _connectionPhase =
       BehaviorSubject<ConnectionPhase>.seeded(ConnectionPhase.disconnected);
@@ -116,6 +121,12 @@ class SessionCoordinator {
   // the endpoint again. Same lifecycle as [_connectedEndpoint].
   final BehaviorSubject<ConnectionRoute?> _connectedRoute =
       BehaviorSubject<ConnectionRoute?>.seeded(null);
+  // Why the live route is the relay, when that is worth saying — set from
+  // what the transport selector found on the way (the PC seen on the phone's
+  // own network, yet not answering there). Null on any direct route and
+  // whenever [_connectedRoute] is; refreshed by every try to leave the relay.
+  final BehaviorSubject<RelayReason?> _relayReason =
+      BehaviorSubject<RelayReason?>.seeded(null);
   // The device a connection attempt is currently in flight for (so only that
   // PC shows "connecting", never the others).
   final BehaviorSubject<TrustedDevice?> _connectingDevice =
@@ -150,6 +161,12 @@ class SessionCoordinator {
   // wait in the replay buffer so none is written to the relay connection the
   // bridge is about to close (its answer would be lost with it).
   bool _holdingForSwitch = false;
+  // Asked to leave the relay again while a try was already running (the
+  // network changed again, the PC published new addresses): one more try
+  // follows it — never more, however many asks arrived.
+  bool _directAgain = false;
+  // Debounces the tries the PC's new addresses ask for.
+  Timer? _directRetry;
 
   /// Completed to interrupt the current reconnect backoff so a foreground
   /// [resume] retries immediately instead of waiting out the delay. `null` when
@@ -205,6 +222,14 @@ class SessionCoordinator {
   /// How the live channel reaches the PC, if connected.
   ConnectionRoute? get connectedRoute => _connectedRoute.value;
 
+  /// Why the live route is the relay, when that is worth saying — the PC was
+  /// seen on the phone's own network but none of its addresses answered — or
+  /// null (a direct route, a relay away from home, not connected).
+  Stream<RelayReason?> get relayReasonStream => _relayReason.stream;
+
+  /// Current value of [relayReasonStream].
+  RelayReason? get relayReason => _relayReason.value;
+
   /// Stream of the device a connection attempt is in flight for (or null).
   Stream<TrustedDevice?> get connectingDeviceStream => _connectingDevice.stream;
 
@@ -244,12 +269,12 @@ class SessionCoordinator {
     _intentionalDisconnect = false;
     _connectingDevice.add(device);
     try {
-      final current = await _withStoredRelay(device);
-      final session = await _openSession(
+      final current = await _withStoredRoutes(device);
+      final (session, relayReason) = await _openSession(
         current,
         HandshakeMode.trustedReconnect,
       );
-      await _commitSession(current, session);
+      await _commitSession(current, session, relayReason: relayReason);
     } on Object {
       _connectingDevice.add(null);
       rethrow;
@@ -502,6 +527,7 @@ class SessionCoordinator {
     _connectedDevice.add(null);
     _connectedEndpoint.add(null);
     _connectedRoute.add(null);
+    _relayReason.add(null);
     _endConnectionSession();
     unawaited(handleReconnect());
   }
@@ -526,6 +552,7 @@ class SessionCoordinator {
       _connectedDevice.add(null);
       _connectedEndpoint.add(null);
       _connectedRoute.add(null);
+      _relayReason.add(null);
       _endConnectionSession();
       _connectingDevice.add(null);
       _connectionPhase.add(ConnectionPhase.disconnected);
@@ -599,9 +626,10 @@ class SessionCoordinator {
   /// may have appeared:
   ///
   /// - **Connected through the relay**: dials the PC's direct hosts once
-  ///   (bounded by the selector's per-host timeout) and moves the session
-  ///   there if one answers — back home is back to direct, so the relay
-  ///   carries only what has no other way. The relay session keeps working
+  ///   (bounded by the selector's per-host timeout, plus a mDNS look-up of at
+  ///   most 2.5 s on a Wi-Fi) and moves the session there if one answers —
+  ///   back home is back to direct, so the relay carries only what has no
+  ///   other way. The relay session keeps working
   ///   until the direct one has completed its handshake, and stays if none
   ///   answers.
   /// - Otherwise — and when the relay session stays — it does what [resume]
@@ -639,31 +667,64 @@ class SessionCoordinator {
     if (alive && tryDirect) await _tryDirectRoute();
   }
 
+  /// Call when the PC [deviceId] published new direct addresses
+  /// (`BridgeSettings.hosts`, stored by `BridgeReplica`) — it joined another
+  /// network. A session held through the relay to that PC tries them, after
+  /// [_directRetryDebounce] so a burst of changes is one try; any other
+  /// session has nothing to do (a direct one is already where the PC is, and
+  /// the next dial reads the stored addresses anyway).
+  void handlePcAddressesChanged(String deviceId) {
+    if (_disposed || _intentionalDisconnect) return;
+    if (_connectedDevice.value?.macDeviceId != deviceId ||
+        _connectedRoute.value != ConnectionRoute.relay) {
+      return;
+    }
+    _scheduleDirectRetry();
+  }
+
+  void _scheduleDirectRetry() {
+    _directRetry?.cancel();
+    _directRetry = Timer(_directRetryDebounce, () {
+      _directRetry = null;
+      unawaited(_tryDirectRoute());
+    });
+  }
+
   /// Moves a session held through the relay onto one of the PC's direct hosts
   /// when one answers. Returns whether it moved.
+  ///
+  /// The addresses are the ones the store holds now ([_withStoredRoutes]):
+  /// the bridge keeps them current over the relay too, so a PC that changed
+  /// networks is tried where it listens today. On a local network the
+  /// selector also looks for the PC by mDNS, and says when it saw it there
+  /// without an answer ([RelayReason.sameNetworkUnreachable]) — which becomes
+  /// the session's [relayReason] while it stays on the relay.
   ///
   /// The relay session stays the live one — answering requests, delivering
   /// notifications — until the direct one has completed its handshake; then
   /// the direct one is committed exactly as a validated switch is
-  /// ([_commitSession]). If no host answers within the selector's per-host
-  /// timeout, or the handshake fails, nothing changes. The bridge closes the
-  /// relay connection itself once the direct one registers (it keeps one
-  /// connection per phone), and that close is expected here, not a reason to
-  /// reconnect.
+  /// ([_commitSession]). If nothing answers, or the handshake fails, nothing
+  /// changes. The bridge closes the relay connection itself once the direct
+  /// one registers (it keeps one connection per phone), and that close is
+  /// expected here, not a reason to reconnect.
   ///
-  /// A no-op unless the live route is the relay and the PC advertises direct
-  /// hosts, so a phone away from home pays one short, failed dial per network
-  /// change or app resume, and nothing more.
+  /// Single-flight: asked again while a try runs, it runs ONE more try after
+  /// it (unless that one moved) — a flapping network never stacks tries. A
+  /// no-op unless the live route is the relay and the PC has direct
+  /// addresses, so a phone away from home pays one short, failed try per
+  /// network change, app resume or address change, and nothing more.
   Future<bool> _tryDirectRoute() async {
     final live = _connectedDevice.value;
     final relayChannel = _channel;
     if (live == null ||
         relayChannel == null ||
-        live.hosts.isEmpty ||
         _connectedRoute.value != ConnectionRoute.relay ||
-        _switchingToDirect ||
         _reconnecting ||
         _connectionPhase.value != ConnectionPhase.connected) {
+      return false;
+    }
+    if (_switchingToDirect) {
+      _directAgain = true;
       return false;
     }
     bool stillOnRelay() =>
@@ -674,40 +735,63 @@ class SessionCoordinator {
         _connectionPhase.value == ConnectionPhase.connected;
 
     _switchingToDirect = true;
+    _directAgain = false;
     var moved = false;
     try {
-      final transport = await _transportSelector.selectDirect(live);
-      if (transport == null) return false;
+      final stored = await _withStoredRoutes(live);
+      if (stored.hosts.isEmpty || !stillOnRelay()) return false;
+      // Each direct candidate is handshaken in turn (the selector bounds each
+      // handshake); one that fails is skipped and the relay stays meanwhile.
+      var handshakes = 0;
+      final selection = await _transportSelector.selectDirect(
+        stored,
+        secure: (transport) async {
+          final handshake = ++handshakes;
+          if (!stillOnRelay()) {
+            throw StateError('The session left the relay');
+          }
+          // Advertise the freshest applied seq, so the bridge replays as
+          // little as possible over the new channel.
+          _persistBridgeSeq();
+          final active = _activeMac.value;
+          final device =
+              active?.macDeviceId == stored.macDeviceId ? active! : stored;
+          _holdingForSwitch = true;
+          try {
+            return await _secureOver(
+              transport,
+              device,
+              HandshakeMode.trustedReconnect,
+            );
+          } on Object catch (error) {
+            AppLogger.warn(
+              'A direct host failed its handshake; staying on the relay',
+              error,
+            );
+            // Requests held for this handshake go out over the relay — unless
+            // the next candidate's handshake (after a timeout) already runs.
+            if (handshake == handshakes) {
+              _holdingForSwitch = false;
+              if (stillOnRelay()) await _flushOutbound();
+            }
+            rethrow;
+          }
+        },
+      );
+      final transport = selection.transport;
+      final session = selection.secured;
+      if (transport == null || session == null) {
+        // Still on the relay: say why, when a direct path was there.
+        if (stillOnRelay()) _relayReason.add(selection.relayReason);
+        return false;
+      }
       if (!stillOnRelay()) {
         unawaited(transport.disconnect().catchError((_) {}));
         return false;
       }
-      // Advertise the freshest applied seq, so the bridge replays as little
-      // as possible over the new channel.
-      _persistBridgeSeq();
       final active = _activeMac.value;
-      final device = active?.macDeviceId == live.macDeviceId ? active! : live;
-      _holdingForSwitch = true;
-      final (WebSocketTransport, SecureChannel) session;
-      try {
-        session = await _secureOver(
-          transport,
-          device,
-          HandshakeMode.trustedReconnect,
-        ).timeout(_directSwitchHandshakeTimeout);
-      } on Object catch (error) {
-        // A timeout leaves the handshake running: closing its socket ends it.
-        AppLogger.warn(
-          'Moving to a direct host failed; staying on the relay',
-          error,
-        );
-        unawaited(transport.disconnect().catchError((_) {}));
-        return false;
-      }
-      if (!stillOnRelay()) {
-        unawaited(transport.disconnect().catchError((_) {}));
-        return false;
-      }
+      final device =
+          active?.macDeviceId == stored.macDeviceId ? active! : stored;
       // What the relay delivered while the handshake ran is replayed over the
       // new channel too (it was after the advertised seq): count it applied.
       session.$2.skipInboundThrough(relayChannel.session.bridgeOutboundSeq);
@@ -728,12 +812,10 @@ class SessionCoordinator {
           await _flushOutbound();
         }
       }
+      if (_directAgain && !moved && !_disposed) _scheduleDirectRetry();
+      _directAgain = false;
     }
   }
-
-  /// How long the handshake over a direct host that answered may take before
-  /// the session gives up moving there and stays on the relay.
-  static const Duration _directSwitchHandshakeTimeout = Duration(seconds: 8);
 
   /// Waits out the reconnect backoff [wait], returning early when
   /// [_wakeReconnect] fires (e.g. the app resumed) so the next attempt is
@@ -759,6 +841,7 @@ class SessionCoordinator {
     _connectedDevice.add(null);
     _connectedEndpoint.add(null);
     _connectedRoute.add(null);
+    _relayReason.add(null);
     _endConnectionSession();
     await _rxSubscription?.cancel();
     _rxSubscription = null;
@@ -824,6 +907,7 @@ class SessionCoordinator {
   Future<void> dispose() async {
     _disposed = true;
     _stopHeartbeat();
+    _directRetry?.cancel();
     _intentionalDisconnect = true;
     await _rxSubscription?.cancel();
     await _transport?.disconnect();
@@ -833,6 +917,7 @@ class SessionCoordinator {
     await _connectedDevice.close();
     await _connectedEndpoint.close();
     await _connectedRoute.close();
+    await _relayReason.close();
     await _connectingDevice.close();
     await _incoming.close();
   }
@@ -849,13 +934,13 @@ class SessionCoordinator {
     _connectingDevice.add(target);
     try {
       _connectionPhase.add(ConnectionPhase.handshaking);
-      final device = await _withStoredRelay(target);
-      final session = await _openSession(
+      final device = await _withStoredRoutes(target);
+      final (session, relayReason) = await _openSession(
         device,
         mode,
         relayTicket: relayTicket,
       );
-      await _commitSession(device, session);
+      await _commitSession(device, session, relayReason: relayReason);
     } on Object {
       _connectingDevice.add(null);
       rethrow;
@@ -865,16 +950,22 @@ class SessionCoordinator {
   /// Opens a transport + secure channel for [device] into locals, with NO side
   /// effects on the current session/phase — so a failed attempt (e.g. an
   /// unreachable device during a switch) leaves any existing session untouched.
-  Future<(WebSocketTransport, SecureChannel)> _openSession(
+  /// Also answers why the transport is the relay, when the selector found a
+  /// reason worth saying.
+  Future<((WebSocketTransport, SecureChannel), RelayReason?)> _openSession(
     TrustedDevice device,
     HandshakeMode mode, {
     String? relayTicket,
   }) async {
-    final transport = await _transportSelector.select(
+    // The handshake runs inside the selection, per candidate: a direct
+    // address that answers but is not this PC is skipped, and the same
+    // attempt goes on to the next one and then the relay.
+    final selection = await _transportSelector.select(
       device,
       relayTicket: relayTicket,
+      secure: (transport) => _secureOver(transport, device, mode),
     );
-    return _secureOver(transport, device, mode);
+    return (selection.secured, selection.relayReason);
   }
 
   /// Runs the E2EE handshake for [device] over an already-connected
@@ -904,28 +995,35 @@ class SessionCoordinator {
     }
   }
 
-  /// [device] with the relay the store holds for it now. The bridge shares its
-  /// relay in its settings, and the replica writes it to the store
-  /// (`BridgeReplica`) while the in-memory copy here is older — so a PC paired
-  /// on the LAN is dialled through the relay it announced since, the moment
-  /// the phone leaves home. The rest of the copy stands (its applied sequence
-  /// is ahead of the store's).
-  Future<TrustedDevice> _withStoredRelay(TrustedDevice device) async {
+  /// [device] with the routes the store holds for it now: its relay and its
+  /// direct addresses. The bridge shares both in its settings, and the
+  /// replica writes them to the store (`BridgeReplica`) while the in-memory
+  /// copy here is older — so a PC paired on the LAN is dialled through the
+  /// relay it announced since, the moment the phone leaves home, and a PC
+  /// that joined another network is dialled where it listens now. The rest of
+  /// the copy stands (its applied sequence is ahead of the store's).
+  Future<TrustedDevice> _withStoredRoutes(TrustedDevice device) async {
     final repository = _trustedDeviceRepository;
     if (repository == null) return device;
     final TrustedDevice? stored;
     try {
       stored = await repository.getDevice(device.macDeviceId);
     } on Object catch (error, stackTrace) {
-      AppLogger.warn('Reading the stored relay failed', error, stackTrace);
+      AppLogger.warn('Reading the stored routes failed', error, stackTrace);
       return device;
     }
-    if (stored == null || stored.relay == device.relay) return device;
+    if (stored == null ||
+        (stored.relay == device.relay &&
+            const ListEquality<String>().equals(stored.hosts, device.hosts))) {
+      return device;
+    }
+    TrustedDevice refreshed(TrustedDevice d) =>
+        d.withRelay(stored!.relay).copyWith(hosts: stored.hosts);
     final active = _activeMac.value;
     if (active != null && active.macDeviceId == device.macDeviceId) {
-      _activeMac.add(active.withRelay(stored.relay));
+      _activeMac.add(refreshed(active));
     }
-    return device.withRelay(stored.relay);
+    return refreshed(device);
   }
 
   /// Commits a freshly-opened [session] as the live one: tears down the
@@ -934,8 +1032,9 @@ class SessionCoordinator {
   /// switch.
   Future<void> _commitSession(
     TrustedDevice device,
-    (WebSocketTransport, SecureChannel) session,
-  ) async {
+    (WebSocketTransport, SecureChannel) session, {
+    RelayReason? relayReason,
+  }) async {
     final (transport, channel) = session;
     _stopHeartbeat();
     // The session being replaced (a validated switch, or leaving the relay
@@ -962,6 +1061,7 @@ class SessionCoordinator {
     final route = routeOfEndpoint(url, relay: device.relay);
     _connectedEndpoint.add(url);
     _connectedRoute.add(route);
+    _relayReason.add(route == ConnectionRoute.relay ? relayReason : null);
     _startConnectionSession(device, url, route);
     _connectingDevice.add(null);
     _connectionPhase.add(ConnectionPhase.connected);

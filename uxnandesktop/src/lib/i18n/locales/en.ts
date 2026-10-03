@@ -2718,6 +2718,14 @@ export const en = {
   "relay.indicatorOffHint": "Turned off: paired phones reach this computer only on the same network or over Tailscale.",
   "relay.indicatorConnectingHint": "The bridge is connecting to your relay.",
   "relay.indicatorPhones": "Phones through it",
+  // Connected, but is any phone actually going through it? Phones on the same
+  // network or over Tailscale reach the bridge directly and never touch it.
+  "relay.indicatorStandby": "Ready",
+  "relay.indicatorInUse": "In use",
+  "relay.indicatorStandbyTooltip": "Relay · Ready — no phone is using it (phones on this network connect directly)",
+  "relay.indicatorInUseOne": "Relay · Carrying {n} phone",
+  "relay.indicatorInUseOther": "Relay · Carrying {n} phones",
+  "relay.indicatorPhonesNone": "No phone is using it. Phones on the same network or over Tailscale connect directly.",
   "relay.indicatorSettings": "Remote access settings",
   // How each connected phone reaches the bridge (presence `route`)
   "route.lan": "LAN",

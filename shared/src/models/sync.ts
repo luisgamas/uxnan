@@ -43,6 +43,14 @@ export interface BridgeSettings {
    * clients: it changes through the `relay/*` methods, never `settings/set`.
    */
   relay: RelayEndpoint | null;
+  /**
+   * Where the bridge listens for a direct connection right now: `host:port` for
+   * each LAN and Tailscale address (no virtual or link-local adapter). Kept
+   * current as the PC changes networks, so a paired phone reaches it directly
+   * on whatever network it joined since pairing instead of falling back to the
+   * relay. Empty when the LAN server is off. Read-only for clients.
+   */
+  hosts: string[];
 }
 
 export interface SettingsSetParams {

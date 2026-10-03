@@ -3638,4 +3638,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relaySetupDone => 'Your relay is ready.';
+
+  @override
+  String get pcRelaySameNetworkUnreachable =>
+      'On the same Wi-Fi, but the PC didn\'t answer directly (the network may isolate devices) — using your relay.';
 }

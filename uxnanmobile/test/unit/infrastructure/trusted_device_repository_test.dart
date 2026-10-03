@@ -133,6 +133,28 @@ void main() {
       expect(loaded!.hosts, ['192.168.1.5:8765', '100.64.0.2:8765']);
     });
 
+    test("replaces the PC's hosts as they change, and empties them", () async {
+      await repo.saveDevice(
+        _device('mac-1', hosts: const ['192.168.18.22:19850']),
+      );
+      await repo.recordLastSeen('mac-1', DateTime(2026, 10));
+
+      await repo.recordHosts(
+        'mac-1',
+        const ['192.168.100.140:19850', '100.76.97.16:19850'],
+      );
+      var loaded = await repo.getDevice('mac-1');
+      // Replaced, never appended: the pairing-day address is gone.
+      expect(loaded!.hosts, ['192.168.100.140:19850', '100.76.97.16:19850']);
+      // Only the hosts changed.
+      expect(loaded.lastSeen, DateTime(2026, 10));
+      expect(loaded.displayName, 'Device mac-1');
+
+      await repo.recordHosts('mac-1', const []);
+      loaded = await repo.getDevice('mac-1');
+      expect(loaded!.hosts, isEmpty);
+    });
+
     test('a relay-only device loads with empty hosts', () async {
       await repo.saveDevice(_device('mac-1'));
       final loaded = await repo.getDevice('mac-1');

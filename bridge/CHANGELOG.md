@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.46-alpha.20261003] - 20261003
+### Fixed
+
+- **A phone no longer uses the relay right next to its PC after the PC changed
+  networks.** The PC's addresses only travelled in the pairing QR, so a phone
+  paired on one network kept dialling it on every other one and fell back to
+  the relay. The bridge now publishes where it listens (`BridgeSettings.hosts`),
+  rechecks its network every 15 s, tells every paired phone when it changes —
+  over the relay too — and re-announces itself on mDNS with the new addresses.
+- **Link-local addresses (`169.254.x.x`) are no longer offered to phones**: an
+  interface whose DHCP failed gives itself one, and dialling it only cost the
+  phone a timeout.
+
 ## [0.0.45-alpha.20261003] - 20261003
 ### Added
 

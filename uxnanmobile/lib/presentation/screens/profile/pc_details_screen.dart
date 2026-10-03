@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_route.dart';
+import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -65,6 +66,10 @@ class PcDetailsScreen extends ConsumerWidget {
         ref.watch(connectedDeviceProvider).value?.macDeviceId == deviceId;
     // How the phone reaches this PC right now, as the session classified it.
     final route = isConnected ? ref.watch(connectedRouteProvider).value : null;
+    // And why it is the relay, when the PC was seen right here.
+    final relayReason = route == ConnectionRoute.relay
+        ? ref.watch(relayReasonProvider).value
+        : null;
 
     return NeScaffold(
       title: device?.displayName ?? l10n.devicesTitle,
@@ -88,6 +93,7 @@ class PcDetailsScreen extends ConsumerWidget {
           device: device,
           isConnected: isConnected,
           route: route,
+          relayReason: relayReason,
         ),
       ),
     );
@@ -100,6 +106,7 @@ class PcDetailsScreen extends ConsumerWidget {
     required TrustedDevice? device,
     required bool isConnected,
     required ConnectionRoute? route,
+    required RelayReason? relayReason,
   }) {
     final firstYear = m.memberSince?.year ?? DateTime.now().year;
     final titleStyle = Theme.of(context).textTheme.titleLarge;
@@ -121,6 +128,7 @@ class PcDetailsScreen extends ConsumerWidget {
                 device: device,
                 isConnected: isConnected,
                 route: route,
+                relayReason: relayReason,
               ),
             ),
             if (isConnected) ...[
@@ -254,11 +262,13 @@ class _PcHeader extends StatelessWidget {
     required this.device,
     required this.isConnected,
     required this.route,
+    required this.relayReason,
   });
 
   final TrustedDevice? device;
   final bool isConnected;
   final ConnectionRoute? route;
+  final RelayReason? relayReason;
 
   @override
   Widget build(BuildContext context) {
@@ -321,6 +331,17 @@ class _PcHeader extends StatelessWidget {
                 // how: LAN, Tailscale or the relay — is one shape wherever a
                 // PC is shown.
                 ConnectionStatusBadge(connected: isConnected, route: route),
+                // On the relay with the PC right here on the same Wi-Fi: the
+                // one place that says why, so it does not read as a fault.
+                if (relayReason == RelayReason.sameNetworkUnreachable) ...[
+                  const SizedBox(height: UxnanSpacing.xs),
+                  Text(
+                    l10n.pcRelaySameNetworkUnreachable,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

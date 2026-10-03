@@ -35,7 +35,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 29 in `uxnan-host` (2
 integration), of which 48 are ignored probes that need something real to talk to
 (40 live SSH probes — 37 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,804 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,809 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1036,8 +1036,9 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       phone reaching this computer through it from another network.
 - [ ] **Visual approval and a live run of the status-bar relay indicator and
       the per-phone route labels.** Built: `RelayStatusButton.svelte` (hidden
-      until a relay is set up; state, `lastError`, address, phones on the relay,
-      version and the way to Remote access) and `ConnectionRouteLabel.svelte`
+      until a relay is set up; state — connected split into a quiet *standing
+      by* and a lit, counted *in use* — `lastError`, address, phones on the
+      relay, version and the way to Remote access) and `ConnectionRouteLabel.svelte`
       (*LAN* / *Tailscale* / *Relay* from presence `route`, in Settings →
       Phones and the Bridge window), with component tests; screenshots rendered
       from the frontend only. Still owed: the maintainer's review, then a run
@@ -1742,7 +1743,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,063 Rust + 1,804 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,063 Rust + 1,809 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

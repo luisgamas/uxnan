@@ -201,6 +201,7 @@ class IncomingMessageProcessor {
       rev: rev,
       carriesRelay: carriesRelay,
       relay: relay,
+      hosts: hostsOfSettings(settings),
     );
   }
 
@@ -217,6 +218,46 @@ class IncomingMessageProcessor {
     final relay = RelayEndpoint.fromJson(raw);
     return relay == null ? (false, null) : (true, relay);
   }
+
+  /// Reads `BridgeSettings.hosts` from a wire [settings] object: where the PC
+  /// listens for a direct connection right now, or `null` when the settings
+  /// say nothing about it.
+  ///
+  /// Absent says nothing — a bridge older than the field — and so does a
+  /// malformed value (not a list, or a non-empty list without one usable
+  /// `host:port`), so the addresses the phone already knows stand. A present,
+  /// EMPTY list is an answer: the PC listens for no direct connection (its
+  /// LAN server is off). Entries are trimmed, unusable ones dropped and
+  /// duplicates folded, in the bridge's order.
+  static List<String>? hostsOfSettings(Object? settings) {
+    if (settings is! Map || !settings.containsKey('hosts')) return null;
+    final raw = settings['hosts'];
+    if (raw is! List) return null;
+    if (raw.isEmpty) return const [];
+    final hosts = <String>{
+      for (final entry in raw.take(_maxHosts))
+        if (entry is String && isHostPort(entry.trim())) entry.trim(),
+    };
+    return hosts.isEmpty ? null : List.unmodifiable(hosts);
+  }
+
+  /// More direct addresses than any PC has; a longer list is cut here.
+  static const int _maxHosts = 32;
+
+  /// Whether [value] is a bare `host:port` — an IPv4 or DNS name, or a
+  /// bracketed IPv6, then a port in 1–65535 — the shape the bridge publishes
+  /// (`bridge/src/transport/local-hosts.ts`) and the selector dials.
+  static bool isHostPort(String value) {
+    if (value.isEmpty || value.length > 255) return false;
+    final match = _hostPort.firstMatch(value);
+    if (match == null) return false;
+    final port = int.parse(match.group(2)!);
+    return port >= 1 && port <= 65535;
+  }
+
+  static final RegExp _hostPort = RegExp(
+    r'^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?):(\d{1,5})$',
+  );
 
   /// Decodes `stream/thread/updated`; a payload without a usable thread (no
   /// string `id`) is dropped rather than upserted half-formed.

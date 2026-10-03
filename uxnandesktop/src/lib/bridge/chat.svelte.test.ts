@@ -64,7 +64,7 @@ function changes(extra: Partial<SyncChanges> = {}): SyncChanges {
     storeId: 's1',
     rev: 10,
     reset: true,
-    settings: { home: '/Users/me', name: 'Studio', relay: null },
+    settings: { home: '/Users/me', name: 'Studio', relay: null, hosts: [] },
     projects: [],
     removedProjectIds: [],
     threads: [],

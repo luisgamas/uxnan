@@ -128,12 +128,20 @@ app only asks, through `relay/*`, and follows `stream/relay/updated`
 
 Once a relay is set up, the **status bar** carries a relay indicator beside the
 backend one (`RelayStatusButton.svelte`; the same icon-trigger + status popover
-as the ports and usage indicators). Its cloud icon says the state at a glance —
-green *Connected*, amber *Connecting…*, red *Can't connect*, muted *Off* — and a
-dot marks a newer relay to deploy. The popover shows the state with the
-bridge's reason when it cannot connect, the relay's address, the phones on it
-(the relay's own count, named from presence where `route` is `relay`), the
-deployed version, **Update relay** when the bridge ships a newer one, and
+as the ports and usage indicators). Its cloud icon says the state at a glance,
+and a connected relay has two looks, because being connected is not being used:
+phones on the same network or over Tailscale reach the bridge directly and never
+touch it. **Standing by** (connected, `relay/status.connectedPhones` is 0) is as
+quiet as off — a muted icon, *Ready — no phone is using it (phones on this
+network connect directly)* on hover. **In use** (one phone or more on it) is the
+only lit look: a green icon with the count beside it (the orchestration count's
+shape), *Carrying N phone(s)* on hover. The rest are unchanged — amber
+*Connecting…*, red *Can't connect*, muted *Off* — and a dot marks a newer relay
+to deploy. The popover shows the state (*Ready* / *In use* while connected) with
+the bridge's reason when it cannot connect, the relay's address, the phones on
+it (the relay's own count, named from presence where `route` is `relay`; with
+none, it says phones on the same network or over Tailscale connect directly),
+the deployed version, **Update relay** when the bridge ships a newer one, and
 **Remote access settings**; both open Settings → Bridge & mobile scrolled to
 Remote access, where the update (and its token prompt) lives. Like the ports and
 usage indicators, it is hidden when there is nothing to say: no bridge, a bridge

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:async/async.dart';
@@ -11,6 +12,7 @@ import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/connection_session.dart';
+import 'package:uxnan/domain/entities/discovered_bridge.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/secure_session.dart';
@@ -19,6 +21,7 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
@@ -26,6 +29,8 @@ import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/crypto/handshake_crypto.dart';
 import 'package:uxnan/infrastructure/crypto/key_generation.dart';
+import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
+import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
@@ -214,6 +219,105 @@ class _FakeBridge {
   }
 }
 
+/// A network for the REAL [DirectTransportSelector]: addresses where the
+/// trusted PC listens, addresses where a spoofer accepts the socket and runs
+/// the handshake with its own identity (so the phone's real signature check
+/// is what rejects it), and the PC's relay, which speaks the relay control
+/// protocol (`challenge` → `phone-auth` → `ready`) and then reaches the PC.
+/// Every other address refuses the socket.
+class _Lan {
+  _Lan({
+    required this.pc,
+    required this.spoofer,
+    required this.handler,
+    this.pcHosts = const {},
+    this.spoofHosts = const {},
+  });
+
+  final Ed25519KeyPairBytes pc;
+  final Ed25519KeyPairBytes spoofer;
+  final RpcMessage Function(RpcMessage request) handler;
+  final Set<String> pcHosts;
+  final Set<String> spoofHosts;
+
+  /// Every URL dialed, in order.
+  final List<String> dials = [];
+
+  int dialsTo(String host) => dials.where((u) => u.contains(host)).length;
+}
+
+class _LanTransport extends _InMemoryTransport {
+  _LanTransport(this.lan);
+
+  final _Lan lan;
+  bool _relayAuthPending = false;
+
+  @override
+  Future<void> connect(String url) async {
+    connectedUrl = url;
+    lan.dials.add(url);
+    if (url.contains('/v1/connect/')) {
+      _relayAuthPending = true;
+      _attach(lan.pc);
+      Timer.run(
+        () => incomingController.add(
+          _jsonBytes({'t': 'challenge', 'v': 1, 'nonce': 'cd' * 32}),
+        ),
+      );
+      return;
+    }
+    final host = url.replaceFirst('ws://', '');
+    if (lan.pcHosts.contains(host)) return _attach(lan.pc);
+    if (lan.spoofHosts.contains(host)) return _attach(lan.spoofer);
+    throw StateError('unreachable: $url');
+  }
+
+  void _attach(Ed25519KeyPairBytes identity) {
+    final bridge = _InMemoryTransport();
+    peer = bridge;
+    bridge.peer = this;
+    unawaited(_FakeBridge(bridge, identity, lan.handler).run());
+  }
+
+  @override
+  Future<void> sendText(String text) async {
+    if (_relayAuthPending) {
+      _relayAuthPending = false;
+      Timer.run(() => incomingController.add(_jsonBytes({'t': 'ready'})));
+      return;
+    }
+    return super.sendText(text);
+  }
+}
+
+/// What the network announces on `_uxnan._tcp`, in the TXT shape the bridge
+/// advertises (`mdns-advertiser.ts`) — which a spoofer can copy, PC id and all.
+class _Announced implements LanBridgeFinder {
+  _Announced(this.addresses);
+
+  final List<String> addresses;
+
+  @override
+  Stream<DiscoveredBridge> find(String deviceId, {required Duration window}) {
+    Uint8List txt(String v) => Uint8List.fromList(utf8.encode(v));
+    return Stream.fromIterable([
+      for (final address in addresses)
+        parseDiscoveredBridge(
+          name: 'Studio',
+          host: 'Studio.local',
+          port: 19850,
+          addresses: [InternetAddress(address)],
+          txt: {
+            'v': txt('1'),
+            'id': txt(deviceId),
+            'port': txt('19850'),
+            'addr': txt(address),
+          },
+        )!,
+    ]);
+  }
+}
+
 class _FakeSelector implements TransportSelector {
   _FakeSelector(this.identity, this.handler);
 
@@ -231,9 +335,14 @@ class _FakeSelector implements TransportSelector {
   /// Every device asked for, with the relay ticket it came with, in order.
   final List<(TrustedDevice, String?)> selected = [];
 
+  /// What the selector found on the way, as the real one reports it: the PC
+  /// seen on the phone's network although none of its addresses answered.
+  RelayReason? relayReason;
+
   @override
-  Future<WebSocketTransport> select(
+  Future<TransportSelection<S>> select<S>(
     TrustedDevice device, {
+    required TransportSecurer<S> secure,
     String? relayTicket,
   }) async {
     selected.add((device, relayTicket));
@@ -260,7 +369,12 @@ class _FakeSelector implements TransportSelector {
     final fakeBridge = _FakeBridge(bridge, identity, handler);
     currentBridge = fakeBridge;
     unawaited(fakeBridge.run());
-    return phone;
+    // The real selector handshakes each candidate itself.
+    return TransportSelection(
+      phone,
+      await secure(phone),
+      relayReason: relay != null ? relayReason : null,
+    );
   }
 
   /// Whether the PC's direct hosts answer [selectDirect].
@@ -274,10 +388,26 @@ class _FakeSelector implements TransportSelector {
   /// phone's newer connection.
   bool supersede = true;
 
+  /// The device every [selectDirect] was asked for, in order — the hosts the
+  /// session read from the store.
+  final List<TrustedDevice> directAsked = [];
+
+  /// While set, [selectDirect] waits on it before answering (a try in
+  /// flight).
+  Completer<void>? directGate;
+
   @override
-  Future<WebSocketTransport?> selectDirect(TrustedDevice device) async {
+  Future<DirectSelection<S>> selectDirect<S>(
+    TrustedDevice device, {
+    required TransportSecurer<S> secure,
+  }) async {
     directDials++;
-    if (!directReachable || device.hosts.isEmpty) return null;
+    directAsked.add(device);
+    final gate = directGate;
+    if (gate != null) await gate.future;
+    if (!directReachable || device.hosts.isEmpty) {
+      return DirectSelection<S>(relayReason: relayReason);
+    }
     final previous = phoneSides.isEmpty ? null : phoneSides.last;
     final phone = _InMemoryTransport();
     final bridge = _InMemoryTransport();
@@ -299,7 +429,13 @@ class _FakeSelector implements TransportSelector {
     );
     currentBridge = fakeBridge;
     unawaited(fakeBridge.run());
-    return phone;
+    try {
+      return DirectSelection(transport: phone, secured: await secure(phone));
+    } on Object {
+      return const DirectSelection(
+        relayReason: RelayReason.directHandshakeFailed,
+      );
+    }
   }
 
   Future<void> dropCurrent() async {
@@ -385,6 +521,12 @@ class _FakeTrustedDeviceRepo implements ITrustedDeviceRepository {
   }
 
   @override
+  Future<void> recordHosts(String macDeviceId, List<String> hosts) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(hosts: hosts);
+  }
+
+  @override
   Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
     final d = devices[macDeviceId];
     if (d != null) devices[macDeviceId] = d.copyWith(lastSeen: at);
@@ -436,6 +578,7 @@ void main() {
         privateSeed: phoneId.privateSeed,
       ),
       delay: delay ?? (_) async {}, // elide backoff in tests by default
+      directRetryDebounce: const Duration(milliseconds: 10),
     );
     if (setActive) {
       // A PC is active only once it is paired, so its record is stored.
@@ -1029,6 +1172,148 @@ void main() {
       expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
     });
 
+    test(
+        "the PC's new addresses bring a relay session home — the ones the "
+        'store holds now, not the pairing-day ones', () async {
+      // Paired on 192.168.18.22; the PC has since moved to another network.
+      final harness = await build(echo, hosts: const ['192.168.18.22:19850']);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      harness.selector.directReachable = true;
+
+      // The replica stored where the PC listens now, then told the session.
+      await harness.repo.recordHosts('mac-1', const ['192.168.100.140:19850']);
+      harness.coordinator.handlePcAddressesChanged('mac-1');
+      await _until(
+        () => harness.coordinator.connectedRoute == ConnectionRoute.lan,
+      );
+
+      expect(
+        harness.selector.directAsked.single.hosts,
+        ['192.168.100.140:19850'],
+      );
+      expect(
+        harness.coordinator.connectedEndpoint,
+        'ws://192.168.100.140:19850',
+      );
+      expect(harness.coordinator.connectedDevice?.hosts, [
+        '192.168.100.140:19850',
+      ]);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    });
+
+    test('a burst of address changes is one try', () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+
+      for (var i = 0; i < 5; i++) {
+        harness.coordinator.handlePcAddressesChanged('mac-1');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(harness.selector.directDials, 1);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+    });
+
+    test("another PC's addresses, or a direct session, ask for no try",
+        () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+
+      harness.coordinator.handlePcAddressesChanged('mac-2');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(harness.selector.directDials, 0);
+
+      final direct = await build(echo, relay: null, hosts: const [lanHost]);
+      addTearDown(direct.coordinator.dispose);
+      await direct.coordinator.connect(forceQrBootstrap: true);
+      expect(direct.coordinator.connectedRoute, ConnectionRoute.lan);
+      direct.coordinator.handlePcAddressesChanged('mac-1');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(direct.selector.directDials, 0);
+    });
+
+    test('a flapping network never stacks tries: one in flight, one after',
+        () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      final gate = Completer<void>();
+      harness.selector.directGate = gate;
+
+      final first = harness.coordinator.handleNetworkChange();
+      await Future<void>.delayed(Duration.zero);
+      final more = [
+        for (var i = 0; i < 4; i++) harness.coordinator.handleNetworkChange(),
+      ];
+      harness.coordinator.handlePcAddressesChanged('mac-1');
+      await Future.wait(more);
+      expect(harness.selector.directDials, 1, reason: 'one try in flight');
+
+      gate.complete();
+      await first;
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(harness.selector.directDials, 2, reason: 'and one after it');
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
+    });
+
+    test(
+        'a failed try keeps the relay session, and says why when the PC was '
+        'seen on this network', () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.relayReason, isNull);
+      harness.selector.relayReason = RelayReason.sameNetworkUnreachable;
+
+      await harness.coordinator.handleNetworkChange();
+
+      expect(
+        harness.coordinator.relayReason,
+        RelayReason.sameNetworkUnreachable,
+      );
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      final response = await harness.coordinator
+          .sendRequest('ping')
+          .timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'ping');
+
+      // Away from that network the PC is not seen: nothing to say.
+      harness.selector.relayReason = null;
+      await harness.coordinator.handleNetworkChange();
+      expect(harness.coordinator.relayReason, isNull);
+
+      // Seen again, and then reached: a direct route has no relay reason.
+      harness.selector.relayReason = RelayReason.sameNetworkUnreachable;
+      await harness.coordinator.handleNetworkChange();
+      harness.selector.directReachable = true;
+      await harness.coordinator.handleNetworkChange();
+      await pumpEventQueue();
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      expect(harness.coordinator.relayReason, isNull);
+    });
+
+    test('connecting through the relay says why when the PC was seen nearby',
+        () async {
+      final harness = await build(echo, hosts: const [lanHost]);
+      addTearDown(harness.coordinator.dispose);
+      harness.selector.relayReason = RelayReason.sameNetworkUnreachable;
+
+      await harness.coordinator.connect(forceQrBootstrap: true);
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      expect(
+        harness.coordinator.relayReason,
+        RelayReason.sameNetworkUnreachable,
+      );
+
+      await harness.coordinator.disconnect();
+      expect(harness.coordinator.relayReason, isNull);
+    });
+
     test('a PC with no direct hosts is never dialed directly', () async {
       final harness = await build(echo);
       addTearDown(harness.coordinator.dispose);
@@ -1039,6 +1324,152 @@ void main() {
 
       expect(harness.selector.directDials, 0);
       expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+    });
+  });
+
+  group('nothing on the network keeps the phone off its relay', () {
+    const dead = '192.168.18.22';
+    const spoof = '192.168.100.66';
+    const pcIp = '192.168.100.140';
+
+    Future<
+        ({
+          SessionCoordinator coordinator,
+          _Lan lan,
+          List<Duration> waits,
+        })> onLan({
+      required List<String> stored,
+      Set<String> pcHosts = const {},
+      Set<String> spoofHosts = const {},
+      List<String> announced = const [],
+      RelayEndpoint? relay = _relay,
+      int maxReconnectAttempts = 10,
+    }) async {
+      final pc = await keygen.generateIdentityKeyPair();
+      final spoofer = await keygen.generateIdentityKeyPair();
+      final phoneKeys = await keygen.generateIdentityKeyPair();
+      final phone = PhoneIdentity(
+        phoneDeviceId: 'phone-1',
+        publicKey: phoneKeys.publicKey,
+        privateSeed: phoneKeys.privateSeed,
+      );
+      final lan = _Lan(
+        pc: pc,
+        spoofer: spoofer,
+        handler: echo,
+        pcHosts: pcHosts,
+        spoofHosts: spoofHosts,
+      );
+      final waits = <Duration>[];
+      final coordinator = SessionCoordinator(
+        secureTransport: SecureTransportLayer(),
+        transportSelector: DirectTransportSelector(
+          () => _LanTransport(lan),
+          relayClient: RelayClient(
+            createTransport: () => _LanTransport(lan),
+            identity: () async => phone,
+          ),
+          lanFinder: _Announced(announced),
+          onLocalNetwork: () async => true,
+          directTimeout: const Duration(milliseconds: 200),
+          mdnsWindow: const Duration(milliseconds: 50),
+        ),
+        identityResolver: () async => phone,
+        delay: (wait) async => waits.add(wait),
+        maxReconnectAttempts: maxReconnectAttempts,
+      )..setActiveDevice(
+          TrustedDevice(
+            macDeviceId: 'mac-1',
+            displayName: 'Test Bridge',
+            macIdentityPublicKey: pc.publicKey,
+            relay: relay,
+            hosts: [for (final h in stored) '$h:19850'],
+            sessionId: 'session-xyz',
+            pairedAt: DateTime(2026),
+          ),
+        );
+      return (coordinator: coordinator, lan: lan, waits: waits);
+    }
+
+    test(
+        'an announced peer that fails the handshake: the relay, in the same '
+        'attempt', () async {
+      final harness = await onLan(
+        stored: const [dead],
+        spoofHosts: const {'$spoof:19850'},
+        announced: const [spoof],
+      );
+      addTearDown(harness.coordinator.dispose);
+
+      await harness.coordinator.connect();
+
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.relay);
+      expect(
+        harness.coordinator.relayReason,
+        RelayReason.directHandshakeFailed,
+      );
+      expect(harness.lan.dialsTo(spoof), 1, reason: 'skipped, not retried');
+      expect(harness.lan.dials.last, _relayPhoneUrl);
+      final response = await harness.coordinator
+          .sendRequest('ping')
+          .timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'ping');
+    });
+
+    test('a stored host that fails the handshake gives way to the next one',
+        () async {
+      final harness = await onLan(
+        stored: const [spoof, pcIp],
+        spoofHosts: const {'$spoof:19850'},
+        pcHosts: const {'$pcIp:19850'},
+      );
+      addTearDown(harness.coordinator.dispose);
+
+      await harness.coordinator.connect();
+
+      expect(harness.coordinator.connectedRoute, ConnectionRoute.lan);
+      expect(harness.coordinator.connectedEndpoint, 'ws://$pcIp:19850');
+      expect(harness.coordinator.relayReason, isNull);
+      expect(harness.lan.dials, isNot(contains(_relayPhoneUrl)));
+      final response = await harness.coordinator
+          .sendRequest('ping')
+          .timeout(const Duration(seconds: 5));
+      expect((response.result! as Map)['echo'], 'ping');
+    });
+
+    test(
+        'no relay and a spoofed peer: the typed error, then the usual backoff '
+        '— never a retry storm', () async {
+      final harness = await onLan(
+        stored: const [dead],
+        spoofHosts: const {'$spoof:19850'},
+        announced: const [spoof],
+        relay: null,
+        maxReconnectAttempts: 3,
+      );
+      addTearDown(harness.coordinator.dispose);
+
+      await expectLater(
+        harness.coordinator.connect(),
+        throwsA(
+          isA<TransportException>().having(
+            (e) => e.kind,
+            'kind',
+            TransportErrorKind.handshake,
+          ),
+        ),
+      );
+      expect(harness.lan.dialsTo(spoof), 1);
+
+      await harness.coordinator.handleReconnect();
+
+      // One dial of the spoofer per attempt, each after its backoff wait.
+      expect(harness.waits, hasLength(3));
+      expect(harness.lan.dialsTo(spoof), 1 + 3);
+      expect(harness.coordinator.connectionPhase, ConnectionPhase.error);
+      final recovery = await harness.coordinator.recoveryStateStream.first;
+      expect(recovery.requiresManualIntervention, isTrue);
+      expect(recovery.lastTransportFailure, TransportErrorKind.handshake);
     });
   });
 

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.31-alpha.20261003] - 20261003
+### Added
+
+- **Where the PC listens now.** `BridgeSettings.hosts`: the bridge's live
+  `host:port` list (LAN + Tailscale), read-only for clients and kept current as
+  the PC changes networks.
+
 ## [0.0.30-alpha.20261003] - 20261003
 ### Added
 

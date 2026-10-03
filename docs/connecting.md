@@ -27,7 +27,10 @@ uxnan-bridge start
 ```
 
 The QR carries the PC's local addresses; the phone connects straight to them.
-Nothing else to do. If the phone cannot reach the PC on the same Wi-Fi, see
+Nothing else to do — and nothing to redo when the PC moves: the bridge keeps
+every paired phone told where it is now (a laptop taken from home to the office
+included), and a phone that cannot reach the addresses it knows looks for its
+PC on the local network before it uses your relay. If the phone cannot reach the PC on the same Wi-Fi, see
 [`bridge/docs/connectivity.md`](../bridge/docs/connectivity.md) →
 *Troubleshooting Direct LAN* (usually a firewall rule, or a guest Wi-Fi that
 keeps devices apart).

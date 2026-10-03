@@ -454,6 +454,51 @@ void main() {
       expect(malformed.carriesRelay, isFalse);
     });
 
+    test('stream/settings carries where the PC listens (BridgeSettings.hosts)',
+        () {
+      SettingsUpdatedEvent settings(Map<String, Object?> body) =>
+          processor.classify(
+            note('stream/settings/updated', {
+              'settings': {'home': '/work', 'name': 'Studio', ...body},
+              'rev': 20,
+            }),
+          ) as SettingsUpdatedEvent;
+
+      // The shape the bridge sends: `host:port` per LAN/Tailscale address.
+      expect(
+        settings({
+          'relay': null,
+          'hosts': ['100.76.97.16:19850', '192.168.100.140:19850'],
+        }).hosts,
+        ['100.76.97.16:19850', '192.168.100.140:19850'],
+      );
+      // Present and empty: the PC listens for no direct connection.
+      expect(settings({'hosts': <Object>[]}).hosts, isEmpty);
+      // Absent — an older bridge — says nothing, so nothing is replaced.
+      expect(settings({}).hosts, isNull);
+      // Malformed says nothing either.
+      expect(settings({'hosts': '192.168.1.5:19850'}).hosts, isNull);
+      expect(
+        settings({
+          'hosts': [42, 'no port', ''],
+        }).hosts,
+        isNull,
+      );
+      // Unusable entries are dropped, duplicates folded, the order kept.
+      expect(
+        settings({
+          'hosts': [
+            ' 192.168.1.5:19850 ',
+            'evil:99999',
+            7,
+            '192.168.1.5:19850',
+            '[fd7a:115c:a1e0::1]:19850',
+          ],
+        }).hosts,
+        ['192.168.1.5:19850', '[fd7a:115c:a1e0::1]:19850'],
+      );
+    });
+
     test('stream/relay/updated carries the whole status', () {
       final event = processor.classify(
         note('stream/relay/updated', {
