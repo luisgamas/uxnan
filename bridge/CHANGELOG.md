@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.45-alpha.20261003] - 20261003
 ### Added
 
 - **Every client knows how each phone is connected.** Presence and

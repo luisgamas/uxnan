@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.74] - 20261003
 ### Fixed
 
 - **A new chat shows its first message at once.** The conversation's first
