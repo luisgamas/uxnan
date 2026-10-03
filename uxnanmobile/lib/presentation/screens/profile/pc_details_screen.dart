@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -17,10 +18,10 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
-import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/transport_badge.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// One PC's stats: what its agents spent, its plan limits while it is the
@@ -62,9 +63,8 @@ class PcDetailsScreen extends ConsumerWidget {
     final metricsAsync = ref.watch(pcMetricsProvider(deviceId));
     final isConnected =
         ref.watch(connectedDeviceProvider).value?.macDeviceId == deviceId;
-    final relayConnected = isConnected
-        ? ref.watch(bridgeStatusProvider).value?.relayConnected
-        : null;
+    // How the phone reaches this PC right now, as the session classified it.
+    final route = isConnected ? ref.watch(connectedRouteProvider).value : null;
 
     return NeScaffold(
       title: device?.displayName ?? l10n.devicesTitle,
@@ -87,7 +87,7 @@ class PcDetailsScreen extends ConsumerWidget {
           metrics,
           device: device,
           isConnected: isConnected,
-          relayConnected: relayConnected,
+          route: route,
         ),
       ),
     );
@@ -99,7 +99,7 @@ class PcDetailsScreen extends ConsumerWidget {
     ProfileMetrics m, {
     required TrustedDevice? device,
     required bool isConnected,
-    required bool? relayConnected,
+    required ConnectionRoute? route,
   }) {
     final firstYear = m.memberSince?.year ?? DateTime.now().year;
     final titleStyle = Theme.of(context).textTheme.titleLarge;
@@ -120,7 +120,7 @@ class PcDetailsScreen extends ConsumerWidget {
               child: _PcHeader(
                 device: device,
                 isConnected: isConnected,
-                relayConnected: relayConnected,
+                route: route,
               ),
             ),
             if (isConnected) ...[
@@ -253,12 +253,12 @@ class _PcHeader extends StatelessWidget {
   const _PcHeader({
     required this.device,
     required this.isConnected,
-    required this.relayConnected,
+    required this.route,
   });
 
   final TrustedDevice? device;
   final bool isConnected;
-  final bool? relayConnected;
+  final ConnectionRoute? route;
 
   @override
   Widget build(BuildContext context) {
@@ -276,10 +276,6 @@ class _PcHeader extends StatelessWidget {
       }
     }
     final subtitle = parts.join(' · ');
-
-    final transport = (isConnected && relayConnected != null)
-        ? (relayConnected! ? l10n.connectionRelay : l10n.connectionDirect)
-        : null;
 
     return NeCard(
       child: Row(
@@ -321,20 +317,10 @@ class _PcHeader extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: UxnanSpacing.xs),
-                // The same badge the device card wears, so "connected" is one
-                // shape wherever a PC is shown: the live fill while it is,
-                // supporting metadata while it is not.
-                NeBadge(
-                  icon: isConnected ? UxIcons.wifiTethering : UxIcons.cloudOff,
-                  label: [
-                    if (isConnected)
-                      l10n.connectionConnected
-                    else
-                      l10n.connectionDisconnected,
-                    if (transport != null) transport,
-                  ].join(' · '),
-                  tone: isConnected ? NeBadgeTone.live : NeBadgeTone.secondary,
-                ),
+                // The same badge the device card wears, so "connected" — and
+                // how: LAN, Tailscale or the relay — is one shape wherever a
+                // PC is shown.
+                ConnectionStatusBadge(connected: isConnected, route: route),
               ],
             ),
           ),

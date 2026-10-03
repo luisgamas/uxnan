@@ -132,6 +132,7 @@ class _PushHostState extends ConsumerState<_PushHost>
     with WidgetsBindingObserver {
   StreamSubscription<String>? _tapSub;
   StreamSubscription<ElicitationResolution>? _resolutionSub;
+  StreamSubscription<void>? _networkSub;
 
   @override
   void initState() {
@@ -156,6 +157,14 @@ class _PushHostState extends ConsumerState<_PushHost>
         .read(threadManagerProvider)
         .resolutionsStream
         .listen(_settleElicitation);
+    // The phone moved to another network: the session looks for a better path
+    // to its PC — back home, the relay gives way to the LAN — and confirms the
+    // one it holds survived the move.
+    _networkSub = ref.read(networkChangeMonitorProvider).changes.listen(
+          (_) => unawaited(
+            ref.read(sessionCoordinatorProvider).handleNetworkChange(),
+          ),
+        );
     // Cold start: if a tapped notification launched the app, deep-link once the
     // first frame is laid out (so the router is mounted).
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -251,6 +260,7 @@ class _PushHostState extends ConsumerState<_PushHost>
     WidgetsBinding.instance.removeObserver(this);
     _tapSub?.cancel();
     _resolutionSub?.cancel();
+    _networkSub?.cancel();
     super.dispose();
   }
 

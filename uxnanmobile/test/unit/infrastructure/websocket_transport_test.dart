@@ -7,7 +7,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// A socket whose network vanished: it opened fine, but its closing handshake
 /// is never answered.
-class _DeadSocketChannel with StreamChannelMixin<dynamic>
+class _DeadSocketChannel
+    with StreamChannelMixin<dynamic>
     implements WebSocketChannel {
   final _incoming = StreamController<dynamic>();
 

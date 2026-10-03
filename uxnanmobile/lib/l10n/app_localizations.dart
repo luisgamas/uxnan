@@ -152,12 +152,6 @@ abstract class AppLocalizations {
   /// **'Relay'**
   String get connectionRelay;
 
-  /// Transport indicator: the live connection is a direct LAN/Tailscale link.
-  ///
-  /// In en, this message translates to:
-  /// **'Direct'**
-  String get connectionDirect;
-
   /// Network-path badge: the live connection is a direct address on the same local network (Wi-Fi/Ethernet) as the PC.
   ///
   /// In en, this message translates to:
@@ -5911,6 +5905,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Can\'t reach your relay.'**
   String get relayFailureUnreachable;
+
+  /// Connection error: no direct host of the PC answered and the PC has no relay (or it is switched off), so nothing can reach it from the phone's current network.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach {device} from this network: its remote access is off. Turn it on from the PC — or from here, the next time you\'re on the same network.'**
+  String deviceNoRemoteRoute(String device);
+
+  /// Title of the dismissible hint on a directly connected PC's card when the PC has no remote access (no relay, or relay off).
+  ///
+  /// In en, this message translates to:
+  /// **'Reach this PC away from home'**
+  String get remoteAccessHintTitle;
+
+  /// Hint body: the PC has no relay yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up remote access to keep reaching this PC away from home.'**
+  String get remoteAccessHintSetUpBody;
+
+  /// Hint body: the PC has a relay, but it is switched off.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote access is off on this PC. Turn it on to keep reaching it away from home.'**
+  String get remoteAccessHintTurnOnBody;
+
+  /// Hint action: opens the relay setup page.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up'**
+  String get remoteAccessHintSetUpAction;
+
+  /// Hint action: switches the PC's relay on.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get remoteAccessHintTurnOnAction;
+
+  /// Tooltip of the hint's close button; hides the hint for this PC for good.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t suggest again'**
+  String get remoteAccessHintDismiss;
 
   /// PC details section: how phones reach this PC from other networks.
   ///

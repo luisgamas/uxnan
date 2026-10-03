@@ -13,15 +13,23 @@ import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 /// ([TrustedDevice.relay]); [DirectTransportSelector] tries the hosts first
 /// and falls back to the relay. The E2EE semantics are identical on either
 /// channel.
-// ignore: one_member_abstracts — a DI seam (tests supply in-memory channels).
 abstract class TransportSelector {
   /// Returns a connected transport for [device]. [relayTicket] is the pairing
   /// QR's one-time relay ticket, given only for the first connection of a
   /// phone pairing through the relay.
+  ///
+  /// Throws a [TransportException] of kind [TransportErrorKind.noRoute] when
+  /// no direct host answers and the PC has no relay switched on.
   Future<WebSocketTransport> select(
     TrustedDevice device, {
     String? relayTicket,
   });
+
+  /// Dials only [device]'s direct hosts, once, and returns the first that
+  /// answers — or `null` when none does (or it has none). Never touches the
+  /// relay: the session uses it to leave the relay for a direct path while
+  /// the relay session keeps working.
+  Future<WebSocketTransport?> selectDirect(TrustedDevice device);
 }
 
 /// Tries the device's direct LAN/Tailscale [TrustedDevice.hosts] first (each
@@ -69,11 +77,17 @@ class DirectTransportSelector implements TransportSelector {
     final relayClient = _relayClient;
     if (relay == null || !relay.enabled || relayClient == null) {
       throw const TransportException(
-        TransportErrorKind.connection,
+        TransportErrorKind.noRoute,
         'No reachable transport: every direct host failed and no relay is on',
       );
     }
     return relayClient.connect(relay, ticket: relayTicket);
+  }
+
+  @override
+  Future<WebSocketTransport?> selectDirect(TrustedDevice device) async {
+    if (device.hosts.isEmpty) return null;
+    return _dialDirectHosts(device.hosts);
   }
 
   /// Dials every [hosts] entry concurrently and resolves with the first

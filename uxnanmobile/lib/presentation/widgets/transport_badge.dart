@@ -1,27 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:uxnan/domain/enums/network_kind.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// A small pill that labels the network path a live connection is using —
-/// LAN, Tailscale, a direct address, or the relay — following the same
-/// "type-specific icon + color pill" pattern as `CommitRefChip`
-/// (`git/widgets/commit_ref_chip.dart`). When the path isn't known ([kind] is
-/// [NetworkKind.unknown] — including while a connection attempt is still in
-/// flight) the badge renders nothing; the in-flight state is carried by the
-/// card's own status line, not by this pill.
+/// A small pill that names how a live connection reaches its PC — LAN,
+/// Tailscale or the relay — following the same "type-specific icon + color
+/// pill" pattern as `CommitRefChip` (`git/widgets/commit_ref_chip.dart`).
+/// When the route isn't known ([route] is null — including while a connection
+/// attempt is still in flight) the badge renders nothing; the in-flight state
+/// is carried by the surface's own status line, not by this pill.
 ///
 /// Cross-fades between states with [AnimatedSwitcher] — honoring reduced
-/// motion — so a kind flip mid-session (e.g. a reconnect that falls back from
-/// Tailscale to the relay) reads as a transition, not a jump cut.
+/// motion — so a route change mid-session (back home: the relay gives way to
+/// the LAN) reads as a transition, not a jump cut.
 class TransportBadge extends StatelessWidget {
-  /// Creates a [TransportBadge] for [kind].
-  const TransportBadge({required this.kind, this.dense = false, super.key});
+  /// Creates a [TransportBadge] for [route].
+  const TransportBadge({required this.route, this.dense = false, super.key});
 
-  /// The classified network path.
-  final NetworkKind kind;
+  /// How the live channel reaches the PC, or null when unknown.
+  final ConnectionRoute? route;
 
   /// A tighter variant for dense rows.
   final bool dense;
@@ -31,20 +31,24 @@ class TransportBadge extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final route = this.route;
 
     final Widget child;
-    if (kind == NetworkKind.unknown) {
+    if (route == null) {
       child = const SizedBox.shrink(key: ValueKey('hidden'));
     } else {
-      final (icon, label) = _labelFor(kind, l10n);
-      final (background, foreground) = _colorsFor(kind, colors);
+      final (background, foreground) = _colorsFor(route, colors);
       child = _Pill(
-        key: ValueKey(kind),
+        key: ValueKey(route),
         dense: dense,
         background: background,
         foreground: foreground,
-        leading: UxIcon(icon, size: dense ? 11 : 13, color: foreground),
-        label: label,
+        leading: UxIcon(
+          connectionRouteIcon(route),
+          size: dense ? 11 : 13,
+          color: foreground,
+        ),
+        label: connectionRouteLabel(route, l10n),
       );
     }
 
@@ -59,32 +63,65 @@ class TransportBadge extends StatelessWidget {
     );
   }
 
-  (UxIconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) =>
-      (networkKindIcon(kind), networkKindLabel(kind, l10n));
-
-  (Color, Color) _colorsFor(NetworkKind kind, ColorScheme colors) {
-    return switch (kind) {
-      NetworkKind.lan => (
+  (Color, Color) _colorsFor(ConnectionRoute route, ColorScheme colors) {
+    return switch (route) {
+      ConnectionRoute.lan => (
           colors.tertiaryContainer,
           colors.onTertiaryContainer,
         ),
-      NetworkKind.tailscale => (
+      ConnectionRoute.tailscale => (
           colors.primaryContainer,
           colors.onPrimaryContainer,
         ),
-      NetworkKind.direct => (
+      ConnectionRoute.relay => (
           colors.secondaryContainer,
           colors.onSecondaryContainer,
         ),
-      NetworkKind.relay => (
-          colors.surfaceContainerHighest,
-          colors.onSurfaceVariant,
-        ),
-      NetworkKind.unknown => (
-          colors.surfaceContainerHighest,
-          colors.onSurfaceVariant,
-        ),
     };
+  }
+}
+
+/// A PC's connection status as one [NeBadge]: the live route while connected
+/// (`LAN`, `Tailscale`, `Relay` — a plain "Connected" until the route is
+/// known), `Detecting…` while its own attempt runs, `Disconnected` otherwise.
+///
+/// The device card on the home screen and the PC's details both wear this one,
+/// so "connected" — and how — is one shape wherever a PC is shown.
+class ConnectionStatusBadge extends StatelessWidget {
+  /// Creates a [ConnectionStatusBadge].
+  const ConnectionStatusBadge({
+    required this.connected,
+    this.connecting = false,
+    this.route,
+    super.key,
+  });
+
+  /// Whether this PC holds the live channel.
+  final bool connected;
+
+  /// Whether a connection attempt to this PC is in flight.
+  final bool connecting;
+
+  /// How the live channel reaches this PC, when [connected] and known.
+  final ConnectionRoute? route;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final route = connected ? this.route : null;
+    return NeBadge(
+      icon: !connected
+          ? UxIcons.cloudOff
+          : route == null
+              ? UxIcons.wifiTethering
+              : connectionRouteIcon(route),
+      label: !connected
+          ? (connecting ? l10n.transportDetecting : l10n.connectionDisconnected)
+          : route == null
+              ? l10n.connectionConnected
+              : connectionRouteLabel(route, l10n),
+      tone: connected ? NeBadgeTone.live : NeBadgeTone.secondary,
+    );
   }
 }
 
@@ -132,29 +169,22 @@ class _Pill extends StatelessWidget {
   }
 }
 
-/// The human name of a network path, shared by the badge and any surface that
-/// spells the path out in words (the device card's connection cell). One
-/// mapping, so a rename cannot leave the two disagreeing. Empty for
-/// [NetworkKind.unknown] — callers decide what an unclassified live channel
-/// should say.
-String networkKindLabel(NetworkKind kind, AppLocalizations l10n) {
-  return switch (kind) {
-    NetworkKind.lan => l10n.transportLan,
-    NetworkKind.tailscale => l10n.transportTailscale,
-    NetworkKind.direct => l10n.connectionDirect,
-    NetworkKind.relay => l10n.connectionRelay,
-    NetworkKind.unknown => '',
+/// The human name of a route, shared by every surface that names one (the
+/// drawer's pill, the PC's status badge). One mapping, so a rename cannot
+/// leave two surfaces disagreeing.
+String connectionRouteLabel(ConnectionRoute route, AppLocalizations l10n) {
+  return switch (route) {
+    ConnectionRoute.lan => l10n.transportLan,
+    ConnectionRoute.tailscale => l10n.transportTailscale,
+    ConnectionRoute.relay => l10n.connectionRelay,
   };
 }
 
-/// The glyph for a network path, shared by the badge and any surface that shows
-/// the path on its own (the device card's connection badge). A LAN, a Tailscale
-/// tunnel and the relay are different journeys, and one generic aerial for all
-/// three told the reader nothing they did not already know.
-UxIconData networkKindIcon(NetworkKind kind) => switch (kind) {
-      NetworkKind.lan => UxIcons.router,
-      NetworkKind.tailscale => UxIcons.shield,
-      NetworkKind.direct => UxIcons.link,
-      NetworkKind.relay => UxIcons.cloud,
-      NetworkKind.unknown => UxIcons.help,
+/// The glyph for a route. A LAN, a Tailscale tunnel and the relay are
+/// different journeys, and one generic aerial for all three told the reader
+/// nothing they did not already know.
+UxIconData connectionRouteIcon(ConnectionRoute route) => switch (route) {
+      ConnectionRoute.lan => UxIcons.router,
+      ConnectionRoute.tailscale => UxIcons.shield,
+      ConnectionRoute.relay => UxIcons.cloud,
     };

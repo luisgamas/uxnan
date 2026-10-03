@@ -5,6 +5,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Back home is back to direct.** When the phone joins another network, or
+  comes back to the app, while it reaches its PC through the relay, it tries
+  the PC's own addresses once and moves there if one answers — without
+  dropping the conversation: the relay keeps working until the direct
+  connection is ready. Away from home it costs one short, failed try.
+- **A PC you reach on your own network suggests remote access** when it has
+  none set up (or has it switched off): a quiet card on the PC, with *Set up*
+  or *Turn on*. Close it and it never comes back for that PC.
+
+### Changed
+
+- **The connection badge says how the phone reaches the PC: LAN, Tailscale or
+  Relay** — on the home card, in the drawer and on the PC's details, each with
+  its own icon. The PC's details used to say "Relay" whenever the PC's bridge
+  was linked to its relay, even with the phone right next to it on the LAN.
+- **"Can't reach your PC" says why when it can.** If none of the PC's
+  addresses answers and the PC has no remote access on, the message says so
+  and how to fix it (turn it on from the PC, or from the phone the next time
+  it is on the same network) instead of a plain "couldn't reach it".
+
 ### Fixed
 
 - **Switching from mobile data to Wi-Fi no longer leaves the app stuck on

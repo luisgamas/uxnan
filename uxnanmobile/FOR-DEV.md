@@ -98,10 +98,12 @@ connected to live bridge data, validated on-device against a real bridge.
   `GET /pair/resolve?code=`, host typed or picked from mDNS discovery; the
   code is sent to **only** the host the user chose — never fanned out to
   discovered candidates, since it is a shared secret and mDNS records are
-  spoofable). The devices screen shows a **network-path badge** (LAN /
-  Tailscale / Direct / Relay, `NetworkKind`) on the connected PC, derived from
-  the actual live endpoint rather than the coarser relay/direct
-  `bridge/status` flag.
+  spoofable). The connected PC wears a **route badge** — LAN / Tailscale /
+  Relay (`ConnectionRoute`, the `shared/` contract's three, with
+  `isTailscaleAddress` mirrored and tested on the shared vectors) — on the
+  home card, the drawer and the PC's details, classified once by the session
+  from the endpoint the channel settled on (never from `bridge/status
+  .relayConnected`, which is the bridge's own relay link).
 - **Direct LAN/Tailscale transport** — `DirectTransportSelector` tries each direct
   `hosts` entry from the QR first, falls back to the PC's own relay.
 - **The PC's own relay** (architecture/02a §5.10). Pairing QR v3 carries the
@@ -129,7 +131,23 @@ connected to live bridge data, validated on-device against a real bridge.
   (`PendingActionKind.setRelay`) and sent dated (`relay/set { ageMs }`). The
   reconnect loop carries the typed `RelayFailure`
   (`ConnectionRecoveryState.lastRelayFailure`), and every Connect snackbar
-  and the threads' offline banner say it in words (`connect_failure_text.dart`).
+  and the threads' offline banner say it in words (`connect_failure_text.dart`),
+  including "no route from this network" (no direct host answered and the PC
+  has no relay on: `TransportErrorKind.noRoute`). **Back home is back to
+  direct:** on a network change (`NetworkChangeMonitor`, `connectivity_plus`)
+  or a resume, a session on the relay dials the PC's direct hosts once and
+  moves there when one answers, keeping the relay session live until the
+  direct handshake completes (`SessionCoordinator._tryDirectRoute`). A PC
+  reached on the LAN/Tailscale with no relay (or one switched off) shows a
+  dismissible *set up / turn on remote access* card on its home card
+  (`RemoteAccessHintCard`, dismissal remembered per PC). Covered by
+  `session_coordinator_test` (*route and the way back home*),
+  `network_change_monitor_test`, `connection_route_test`,
+  `transport_badge_test`, `my_devices_screen_test`, `pc_details_screen_test`,
+  `threads_list_test` and `connect_failure_text_test`. **Not yet
+  device-verified:** the relay → LAN move on a real phone walking into the
+  PC's Wi-Fi, and the hint's *Turn on* against a live bridge (see the relay
+  UI item under *App+bridge seams*).
   Covered by `relay_client_test`, `transport_selector_test`,
   `session_coordinator_test`, `bridge_replica_names_test`, `relay_manager_test`,
   `remote_access_section_test`, `relay_setup_screen_test`, the pairing tests,
@@ -138,8 +156,7 @@ connected to live bridge data, validated on-device against a real bridge.
   [`docs/testing.md`](docs/testing.md)). **Not yet device-verified** against a
   relay deployed to Cloudflare.
 - **Multi-PC connection-targeting** — all live actions target the PC we actually
-  hold a channel to; browsing is read-only. `bridge/status` consumed (Relay /
-  Direct transport indicator). The devices card shows the **real connected
+  hold a channel to; browsing is read-only. The devices card shows the **real connected
   endpoint** (the direct host that won the dial race, or the relay — carried on
   `connectedEndpointStream`), not the first advertised host, and **blurs it by
   default with tap-to-reveal** so the network topology isn't exposed at a glance.
@@ -510,6 +527,11 @@ shipping.
       from home reconnects after its next LAN connection), remove with and
       without deleting the Worker, and see each connection error's words by
       stopping the bridge, revoking the phone and leaving the network.
+      Also on a device: walk from mobile data into the PC's Wi-Fi with the app
+      open (and with it backgrounded, then resumed) and confirm the badge
+      turns from Relay to LAN without the conversation dropping; with the
+      relay off, leave the network and read the "remote access is off"
+      reason; tap the home card's *Set up* / *Turn on* hint and close it.
 
 - [ ] **Replica mirror — on-device verification with Uxnan Desktop.** The
       replica, project registry, start folder, presence line and origin mark are

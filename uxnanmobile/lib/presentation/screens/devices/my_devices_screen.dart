@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/network_kind.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
+import 'package:uxnan/presentation/screens/devices/remote_access_hint.dart';
 import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -168,12 +169,12 @@ class MyDevicesScreen extends ConsumerWidget {
     // never makes it appear connected when it isn't reachable.
     final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
     final connectingId = ref.watch(connectingDeviceProvider).value?.macDeviceId;
-    // The classified network path of the LIVE channel — LAN, Tailscale, a
-    // direct address, or the relay — derived client-side from the actual
-    // connected endpoint (never from `bridge/status.relayConnected`, which
-    // can't tell LAN from Tailscale and lags the real per-session transport).
-    // Only the connected PC shows it.
-    final networkKind = ref.watch(networkKindProvider);
+    // How the LIVE channel reaches its PC — LAN, Tailscale or the relay — as
+    // the session classified it once from the endpoint it settled on. Only
+    // the connected PC shows it, and with none there is nothing to ask the
+    // session (watching it would spin the whole connection stack up).
+    final route =
+        connectedId == null ? null : ref.watch(connectedRouteProvider).value;
     // The endpoint the live channel is ACTUALLY served through (the winning
     // direct host, or the relay), so the connected card shows the real address
     // in use — not the first advertised host (a lexicographic guess that is
@@ -201,7 +202,7 @@ class MyDevicesScreen extends ConsumerWidget {
           columns: columns,
           connectedId: connectedId,
           connectingId: connectingId,
-          networkKind: networkKind,
+          route: route,
           connectedEndpoint: connectedEndpoint,
         );
       },
@@ -216,7 +217,7 @@ class MyDevicesScreen extends ConsumerWidget {
     required int columns,
     required String? connectedId,
     required String? connectingId,
-    required NetworkKind networkKind,
+    required ConnectionRoute? route,
     required String? connectedEndpoint,
   }) {
     return NeScaffold(
@@ -289,7 +290,7 @@ class MyDevicesScreen extends ConsumerWidget {
               columns: columns,
               connectedId: connectedId,
               connectingId: connectingId,
-              networkKind: networkKind,
+              route: route,
               connectedEndpoint: connectedEndpoint,
               onStats: (device) =>
                   PcDetailsScreen.push(context, device.macDeviceId),
@@ -319,7 +320,7 @@ class _DeviceCardList extends StatelessWidget {
     required this.columns,
     required this.connectedId,
     required this.connectingId,
-    required this.networkKind,
+    required this.route,
     required this.connectedEndpoint,
     required this.onStats,
     required this.onOpen,
@@ -333,7 +334,7 @@ class _DeviceCardList extends StatelessWidget {
   final int columns;
   final String? connectedId;
   final String? connectingId;
-  final NetworkKind networkKind;
+  final ConnectionRoute? route;
   final String? connectedEndpoint;
   final void Function(TrustedDevice) onStats;
   final void Function(TrustedDevice) onOpen;
@@ -348,7 +349,7 @@ class _DeviceCardList extends StatelessWidget {
       device: device,
       isConnected: isConnected,
       isConnecting: device.macDeviceId == connectingId,
-      networkKind: isConnected ? networkKind : NetworkKind.unknown,
+      route: isConnected ? route : null,
       connectedEndpoint: isConnected ? connectedEndpoint : null,
       onStats: () => onStats(device),
       onOpen: () => onOpen(device),
@@ -409,7 +410,7 @@ class _DeviceCard extends StatelessWidget {
     required this.device,
     required this.isConnected,
     required this.isConnecting,
-    required this.networkKind,
+    required this.route,
     required this.connectedEndpoint,
     required this.onStats,
     required this.onOpen,
@@ -423,10 +424,9 @@ class _DeviceCard extends StatelessWidget {
   final bool isConnected;
   final bool isConnecting;
 
-  /// For the connected PC: the classified network path of the live channel
-  /// (LAN / Tailscale / direct / relay); [NetworkKind.unknown] when not this
-  /// card's connected PC.
-  final NetworkKind networkKind;
+  /// For the connected PC: how the live channel reaches it (LAN, Tailscale or
+  /// the relay); null when unknown or not this card's connected PC.
+  final ConnectionRoute? route;
 
   /// For the connected PC: the URL the live channel is actually served through
   /// (the winning direct host, or the relay); null when unknown / not connected.
@@ -525,21 +525,24 @@ class _DeviceCard extends StatelessWidget {
             spacing: UxnanSpacing.sm,
             runSpacing: UxnanSpacing.sm,
             children: [
-              NeBadge(
-                icon: isConnected ? UxIcons.wifiTethering : UxIcons.cloudOff,
-                // Status and network path are one fact seen from two sides:
-                // the live path when there is one, otherwise what the
-                // connection is doing.
-                label: isConnected
-                    ? _connectionValue(networkKind, l10n)
-                    : isConnecting
-                        ? l10n.transportDetecting
-                        : l10n.connectionDisconnected,
-                tone: isConnected ? NeBadgeTone.live : NeBadgeTone.secondary,
+              // Status and route are one fact seen from two sides: the live
+              // route when there is one, otherwise what the connection is
+              // doing.
+              ConnectionStatusBadge(
+                connected: isConnected,
+                connecting: isConnecting,
+                route: route,
               ),
               _DeviceWorkingBadge(deviceId: device.macDeviceId),
             ],
           ),
+          // Reached directly, with no way in from other networks: suggest
+          // setting one up while the PC can be asked to.
+          if (isConnected)
+            RemoteAccessHintCard(
+              deviceId: device.macDeviceId,
+              margin: const EdgeInsets.only(top: UxnanSpacing.md),
+            ),
           const SizedBox(height: UxnanSpacing.md),
           Row(
             children: [
@@ -561,14 +564,6 @@ class _DeviceCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// What the connection cell says for a LIVE channel: the classified network
-  /// path, or a plain "Connected" while the path is still unclassified — never
-  /// an empty cell.
-  static String _connectionValue(NetworkKind kind, AppLocalizations l10n) {
-    final label = networkKindLabel(kind, l10n);
-    return label.isEmpty ? l10n.connectionConnected : label;
   }
 
   /// The address shown under the device name.

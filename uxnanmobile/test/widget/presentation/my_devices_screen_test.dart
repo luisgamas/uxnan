@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/connection_route.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
@@ -19,8 +21,7 @@ import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import '../../support/ux_icon_finder.dart';
 
-/// The relay host every [_device] advertises, so a test can drive the relay
-/// network-kind badge by passing `connectedEndpoint: kRelayUrl`.
+/// The relay host every [_device] advertises.
 const kRelayUrl = 'wss://relay.uxnan.dev';
 
 /// The relay every [_device] reaches its bridge through.
@@ -30,11 +31,16 @@ const kRelay = RelayEndpoint(
   enabled: true,
 );
 
-TrustedDevice _device(String id, String name) => TrustedDevice(
+TrustedDevice _device(
+  String id,
+  String name, {
+  RelayEndpoint? relay = kRelay,
+}) =>
+    TrustedDevice(
       macDeviceId: id,
       displayName: name,
       macIdentityPublicKey: Uint8List(32),
-      relay: kRelay,
+      relay: relay,
       sessionId: 's-$id',
       pairedAt: DateTime(2026, 6, 3),
       lastSeen: DateTime(2026, 6, 6, 9),
@@ -58,6 +64,7 @@ Widget _wrap({
   TrustedDevice? connected,
   TrustedDevice? connecting,
   String? connectedEndpoint,
+  ConnectionRoute? route,
   List<Thread> threads = const [],
   Map<String, ThreadActivity> activity = const {},
   String? phoneName,
@@ -83,6 +90,8 @@ Widget _wrap({
       connectingDeviceProvider.overrideWith((ref) => Stream.value(connecting)),
       connectedEndpointProvider
           .overrideWith((ref) => Stream.value(connectedEndpoint)),
+      // The session classifies the route; the screen only shows it.
+      connectedRouteProvider.overrideWith((ref) => Stream.value(route)),
     ],
     child: MaterialApp.router(
       routerConfig: router,
@@ -93,6 +102,8 @@ Widget _wrap({
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('renders a card per paired PC with a connect action', (
     tester,
   ) async {
@@ -135,70 +146,155 @@ void main() {
     expect(find.text("Jorge's MacBook"), findsOneWidget);
   });
 
-  testWidgets(
-      'shows the network-kind badge derived from the actual endpoint, '
-      'not bridge/status', (tester) async {
-    final device = _device('mac-1', 'My Mac');
-    await tester.pumpWidget(
-      _wrap(
-        devices: [device],
-        connected: device,
-        // The live channel is served through the device's own relay host.
-        connectedEndpoint: kRelayUrl,
+  group('the connected PC names its route', () {
+    for (final (route, endpoint, label, icon) in [
+      (ConnectionRoute.relay, kRelayUrl, 'Relay', UxIcons.cloud),
+      (ConnectionRoute.lan, 'ws://192.168.1.42:8765', 'LAN', UxIcons.router),
+      (
+        ConnectionRoute.tailscale,
+        'ws://100.90.10.5:8765',
+        'Tailscale',
+        UxIcons.shield,
       ),
-    );
-    await tester.pump();
+    ]) {
+      testWidgets(label, (tester) async {
+        final device = _device('mac-1', 'My Mac');
+        await tester.pumpWidget(
+          _wrap(
+            devices: [device],
+            connected: device,
+            connectedEndpoint: endpoint,
+            route: route,
+          ),
+        );
+        // The device arrives, then the route the screen asks for once it has.
+        await tester.pump();
+        await tester.pump();
 
-    // Status and network path share one cell: the live path IS the status.
-    expect(find.text('Relay'), findsOneWidget);
+        // Status and route share one badge: the live route IS the status.
+        expect(find.text(label), findsOneWidget);
+        expect(findUxIcon(icon), findsOneWidget);
+      });
+    }
+
+    testWidgets('a plain "Connected" until the route is known', (
+      tester,
+    ) async {
+      final device = _device('mac-1', 'My Mac');
+      await tester.pumpWidget(_wrap(devices: [device], connected: device));
+      await tester.pump();
+
+      expect(find.text('Connected'), findsOneWidget);
+    });
   });
 
-  testWidgets('shows a LAN badge for a private-network endpoint', (
-    tester,
-  ) async {
-    final device = _device('mac-1', 'My Mac');
-    await tester.pumpWidget(
-      _wrap(
-        devices: [device],
-        connected: device,
-        connectedEndpoint: 'ws://192.168.1.42:8765',
-      ),
+  group('remote-access hint', () {
+    const off = RelayEndpoint(
+      url: kRelayUrl,
+      routingId: '0123456789abcdef0123456789abcdef',
+      enabled: false,
     );
-    await tester.pump();
 
-    expect(find.text('LAN'), findsOneWidget);
-  });
+    Future<void> pumpConnected(
+      WidgetTester tester, {
+      required RelayEndpoint? relay,
+      required ConnectionRoute route,
+    }) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final device = _device('mac-1', 'My Mac', relay: relay);
+      await tester.pumpWidget(
+        _wrap(
+          devices: [device],
+          connected: device,
+          connectedEndpoint: 'ws://192.168.1.42:8765',
+          route: route,
+        ),
+      );
+      // The device arrives, then its route, then the dismissed set loads.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump();
+      }
+    }
 
-  testWidgets('shows a Tailscale badge for a 100.64.0.0/10 endpoint', (
-    tester,
-  ) async {
-    final device = _device('mac-1', 'My Mac');
-    await tester.pumpWidget(
-      _wrap(
-        devices: [device],
-        connected: device,
-        connectedEndpoint: 'ws://100.90.10.5:8765',
-      ),
-    );
-    await tester.pump();
+    testWidgets('a PC reached on the LAN with no relay suggests setting up', (
+      tester,
+    ) async {
+      await pumpConnected(tester, relay: null, route: ConnectionRoute.lan);
 
-    expect(find.text('Tailscale'), findsOneWidget);
-  });
+      expect(find.text('Reach this PC away from home'), findsOneWidget);
+      expect(
+        find.text(
+          'Set up remote access to keep reaching this PC away from home.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TextButton, 'Set up'), findsOneWidget);
+    });
 
-  testWidgets('shows a Direct badge for a public/other endpoint', (
-    tester,
-  ) async {
-    final device = _device('mac-1', 'My Mac');
-    await tester.pumpWidget(
-      _wrap(
-        devices: [device],
-        connected: device,
-        connectedEndpoint: 'ws://203.0.113.5:8765',
-      ),
-    );
-    await tester.pump();
+    testWidgets('a PC whose relay is off suggests turning it on', (
+      tester,
+    ) async {
+      await pumpConnected(tester, relay: off, route: ConnectionRoute.tailscale);
 
-    expect(find.text('Direct'), findsOneWidget);
+      expect(find.text('Reach this PC away from home'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Turn on'), findsOneWidget);
+    });
+
+    testWidgets('nothing to suggest when the relay is on', (tester) async {
+      await pumpConnected(tester, relay: kRelay, route: ConnectionRoute.lan);
+
+      expect(find.text('Reach this PC away from home'), findsNothing);
+    });
+
+    testWidgets('nothing to suggest while the phone is on the relay', (
+      tester,
+    ) async {
+      // Only reachable through a relay that is now off: a switch-off from
+      // elsewhere. The person cannot set anything up from out here.
+      await pumpConnected(tester, relay: off, route: ConnectionRoute.relay);
+
+      expect(find.text('Reach this PC away from home'), findsNothing);
+    });
+
+    testWidgets('a disconnected PC never shows it', (tester) async {
+      await tester.pumpWidget(
+        _wrap(devices: [_device('mac-1', 'My Mac', relay: null)]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Reach this PC away from home'), findsNothing);
+    });
+
+    testWidgets('dismissing it hides it for this PC, for good', (
+      tester,
+    ) async {
+      await pumpConnected(tester, relay: null, route: ConnectionRoute.lan);
+
+      await tester.tap(find.byTooltip("Don't suggest again"));
+      await tester.pump();
+      expect(find.text('Reach this PC away from home'), findsNothing);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getStringList('uxnan.devices.remoteAccessHintDismissed'),
+        ['mac-1'],
+      );
+    });
+
+    testWidgets('a dismissal remembered from before keeps it hidden', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        'uxnan.devices.remoteAccessHintDismissed': ['mac-1'],
+      });
+      await pumpConnected(tester, relay: null, route: ConnectionRoute.lan);
+
+      expect(find.text('Reach this PC away from home'), findsNothing);
+    });
   });
 
   testWidgets('shows one detecting status while this PC is connecting', (

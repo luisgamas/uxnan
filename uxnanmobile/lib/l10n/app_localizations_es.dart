@@ -37,9 +37,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get connectionRelay => 'Relay';
 
   @override
-  String get connectionDirect => 'Directa';
-
-  @override
   String get transportLan => 'LAN';
 
   @override
@@ -3413,6 +3410,31 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get relayFailureUnreachable => 'No se puede llegar a tu relay.';
+
+  @override
+  String deviceNoRemoteRoute(String device) {
+    return 'No se puede llegar a $device desde esta red: su acceso remoto está apagado. Enciéndelo desde la PC, o desde aquí la próxima vez que estés en la misma red.';
+  }
+
+  @override
+  String get remoteAccessHintTitle => 'Llega a esta PC fuera de casa';
+
+  @override
+  String get remoteAccessHintSetUpBody =>
+      'Configura el acceso remoto para seguir llegando a esta PC cuando no estés en casa.';
+
+  @override
+  String get remoteAccessHintTurnOnBody =>
+      'El acceso remoto está apagado en esta PC. Enciéndelo para seguir llegando a ella cuando no estés en casa.';
+
+  @override
+  String get remoteAccessHintSetUpAction => 'Configurar';
+
+  @override
+  String get remoteAccessHintTurnOnAction => 'Encender';
+
+  @override
+  String get remoteAccessHintDismiss => 'No volver a sugerir';
 
   @override
   String get remoteAccessTitle => 'Acceso remoto';
