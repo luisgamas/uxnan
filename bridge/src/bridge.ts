@@ -72,7 +72,8 @@ import {
   removeDiscoveryFile,
   writeDiscoveryFile,
 } from './local-control-discovery.js';
-import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
+import { localHostPorts } from './transport/local-hosts.js';
+import { NetworkWatcher } from './transport/network-watcher.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { constantTimeEqual } from './transport/constant-time.js';
@@ -293,7 +294,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const buildPairingPayload = (): PairingPayload =>
     generatePairingPayload({
       ...(relayService?.pairingRelay() ? { relay: relayService.pairingRelay() } : {}),
-      ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
+      ...(settings.get().hosts.length > 0 ? { hosts: settings.get().hosts } : {}),
       macDeviceId: deviceState.identity.macDeviceId,
       macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
       // The phone files the PC under the name every client uses for it.
@@ -314,7 +315,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     pairingCodeService.arm();
     relayService?.openPairing();
   };
-  const settings = new BridgeSettingsStore({ state, ledger, config });
+  const settings = new BridgeSettingsStore({
+    state,
+    ledger,
+    config,
+    hosts: config.lanEnabled ? localHostPorts(config.lanPort) : [],
+  });
   await settings.load();
   const projects = new ProjectRegistry({
     state,
@@ -754,6 +760,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   let lanHandle: LanServerHandle | undefined;
   let mdns: MdnsAdvertiser | undefined;
+  let networkWatcher: NetworkWatcher | undefined;
 
   logger.info(`bridge ready (v${BRIDGE_VERSION})`);
 
@@ -861,19 +868,34 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       logger.info(`LAN server listening on port ${lanHandle.port}`);
       // Advertise on the LAN via mDNS so the phone can discover the bridge for
       // manual-code pairing (best-effort; degrades silently if it can't bind).
-      if (config.mdnsEnabled && !mdns) {
+      const lanPort = lanHandle.port;
+      const advertise = (addresses: string[]): void => {
+        if (!config.mdnsEnabled) return;
+        mdns?.stop();
         const name = hostname();
         mdns = new MdnsAdvertiser({
           instanceName: name,
           hostName: name.replace(/[^A-Za-z0-9-]/g, '-'),
-          port: lanHandle.port,
-          addresses: localIPv4s(),
+          port: lanPort,
+          addresses,
           txt: { id: deviceState.identity.macDeviceId },
           logger,
         });
         mdns.start();
-      }
-      return { port: lanHandle.port };
+      };
+      // Follow the PC across networks: publish where it listens now (every paired
+      // phone converges on it, over the relay too) and re-announce on mDNS.
+      networkWatcher ??= new NetworkWatcher({
+        onChange: (addresses) => {
+          logger.info(`network changed: listening on ${addresses.join(', ') || 'no address'}`);
+          void settings.setHosts(addresses.map((address) => `${address}:${lanPort}`));
+          advertise(addresses);
+        },
+      });
+      void settings.setHosts(networkWatcher.addresses.map((address) => `${address}:${lanPort}`));
+      if (!mdns) advertise(networkWatcher.addresses);
+      networkWatcher.start();
+      return { port: lanPort };
     },
     startLocalControl: async () => {
       if (localControl) return { port: localControl.port };
@@ -953,6 +975,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         recordChildrenIn(undefined);
         await childLedger.flush();
       }
+      networkWatcher?.stop();
       if (mdns) {
         mdns.stop();
         mdns = undefined;

@@ -417,6 +417,7 @@ async function cmdConfig(args: string[]): Promise<void> {
       home: configuredHome(config),
       name: configuredName(config),
       relay: config.relay ?? null,
+      hosts: [],
     };
     if (key === undefined) process.stdout.write(`${JSON.stringify(settings, null, 2)}\n`);
     else if (key === 'home' || key === 'name') process.stdout.write(`${settings[key]}\n`);

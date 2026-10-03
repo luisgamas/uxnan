@@ -97,13 +97,20 @@ export class BridgeSettingsStore {
   #decidedAt: DecidedAt = {};
   #lock: Promise<unknown> = Promise.resolve();
 
-  constructor(options: { state: DaemonState; ledger: SyncLedger; config: DaemonConfig }) {
+  constructor(options: {
+    state: DaemonState;
+    ledger: SyncLedger;
+    config: DaemonConfig;
+    /** Where the bridge listens right now (see {@link setHosts}). */
+    hosts?: string[];
+  }) {
     this.#state = options.state;
     this.#ledger = options.ledger;
     this.#settings = {
       home: configuredHome(options.config),
       name: configuredName(options.config),
       relay: options.config.relay ?? null,
+      hosts: [...(options.hosts ?? [])],
     };
   }
 
@@ -114,7 +121,34 @@ export class BridgeSettingsStore {
 
   get(): BridgeSettings {
     const relay = this.#settings.relay;
-    return { ...this.#settings, relay: relay ? { ...relay } : null };
+    return {
+      ...this.#settings,
+      relay: relay ? { ...relay } : null,
+      hosts: [...this.#settings.hosts],
+    };
+  }
+
+  /**
+   * The addresses the bridge listens on changed (the PC joined another network).
+   * A live fact, never stored: it takes a revision and is announced, so every
+   * paired phone converges on it — over the relay too, which is how a phone that
+   * fell back to the relay learns where to reach its PC directly.
+   */
+  setHosts(hosts: string[]): Promise<BridgeSettings> {
+    const run = this.#lock.then(async () => {
+      const next = [...new Set(hosts)].sort();
+      const current = this.#settings.hosts;
+      if (next.length === current.length && next.every((h, i) => h === current[i])) {
+        return this.get();
+      }
+      this.#settings = { ...this.#settings, hosts: next };
+      const rev = this.#ledger.stamp(SETTINGS_MARK);
+      await this.#ledger.flush();
+      this.#announce({ settings: this.get(), rev });
+      return this.get();
+    });
+    this.#lock = run.catch(() => undefined);
+    return run;
   }
 
   /** The revision the settings last changed at. */
@@ -166,18 +200,21 @@ export class BridgeSettingsStore {
       this.#settings = { ...this.#settings, ...next };
       const rev = this.#ledger.stamp(SETTINGS_MARK);
       await this.#ledger.flush();
-      const change = { settings: this.get(), rev };
-      for (const listener of this.#listeners) {
-        try {
-          listener(change);
-        } catch {
-          /* a listener's failure is its own */
-        }
-      }
+      this.#announce({ settings: this.get(), rev });
       return this.get();
     });
     this.#lock = run.catch(() => undefined);
     return run;
+  }
+
+  #announce(change: SettingsChange): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(change);
+      } catch {
+        /* a listener's failure is its own */
+      }
+    }
   }
 
   #isLatest(key: keyof BridgeSettings, at: number): boolean {

@@ -79,3 +79,29 @@ test('isVirtualInterfaceName keeps real LAN and Tailscale interfaces', () => {
     assert.equal(isVirtualInterfaceName(virtual), true, `${virtual} must be filtered`);
   }
 });
+
+test('localHostPorts leaves out link-local addresses another device cannot reach', () => {
+  const ifaces: InterfaceMap = {
+    en0: [
+      {
+        address: '169.254.10.20',
+        netmask: '255.255.0.0',
+        family: 'IPv4',
+        mac: '00:00:00:00:00:01',
+        internal: false,
+        cidr: '169.254.10.20/16',
+      },
+    ],
+    en1: [
+      {
+        address: '192.168.100.140',
+        netmask: '255.255.255.0',
+        family: 'IPv4',
+        mac: '00:00:00:00:00:02',
+        internal: false,
+        cidr: '192.168.100.140/24',
+      },
+    ],
+  };
+  assert.deepEqual(localHostPorts(19850, ifaces), ['192.168.100.140:19850']);
+});
