@@ -33,6 +33,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   "Connecting…".** The new connection waited for the old one to say goodbye,
   and a connection that died with its network never does. The new session now
   starts at once, and closing any connection waits for its goodbye at most 2 s.
+- **The back gesture closes what is on top.** On Android 16, where back is
+  predictive for every app, the gesture could go back a screen under an open
+  sheet and leave the sheet up. Back now always reaches what is on top first —
+  a sheet, then the screen under it — the same as the back button.
 
 ## [0.0.37-alpha.20261003+20261004] - 20261003
 ### Changed

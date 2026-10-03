@@ -154,6 +154,8 @@ export class Conversation {
   });
   /** Offset of the oldest loaded turn in the thread; `0` = everything loaded. */
   oldestOffset = $state(0);
+  /** How many notifications this window has applied (see `load`). */
+  #applied = 0;
   hasOlder = $derived(this.oldestOffset > 0);
 
   constructor(threadId: string, call: BridgeCall) {
@@ -172,11 +174,22 @@ export class Conversation {
   async load(): Promise<void> {
     this.loading = true;
     try {
-      const page = await this.#call<TurnList>('turn/list', {
-        threadId: this.threadId,
-        limit: Math.max(TURN_PAGE, this.turns.length),
-        fromEnd: true,
-      });
+      // A page is the bridge as it was when it answered. One that left before
+      // something this window has since applied — the first message's turn,
+      // created while a brand-new conversation's first read was on its way —
+      // would put that state back as it was, and the chat showed empty until
+      // the next event. Ask again until no notification landed in between
+      // (the bridge reads its own writes, so the next page has them).
+      let page: TurnList;
+      for (let attempt = 0; ; attempt++) {
+        const applied = this.#applied;
+        page = await this.#call<TurnList>('turn/list', {
+          threadId: this.threadId,
+          limit: Math.max(TURN_PAGE, this.turns.length),
+          fromEnd: true,
+        });
+        if (applied === this.#applied || attempt >= 2) break;
+      }
       this.adoptPage(page);
       this.error = null;
       this.loaded = true;
@@ -267,6 +280,7 @@ export class Conversation {
 
   /** Apply one notification that names this thread. */
   apply(notification: BridgeNotification): void {
+    this.#applied += 1;
     const p = record(notification.params);
     // Streamed prose and thinking wait in a buffer for a moment, so the view
     // re-renders a few times per second instead of on every delta (the

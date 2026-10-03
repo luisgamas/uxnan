@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A new chat shows its first message at once.** The conversation's first
+  read of the bridge left as the first message was sent; when it came back
+  after the bridge had already created that message's turn, it put the chat
+  back to empty until the next event arrived. A read that crossed a newer event
+  is now asked again, so nothing a later notification brought is undone.
 
 ### Added
 

@@ -55,6 +55,17 @@ ThemeData buildUxnanTheme({
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
+    // The page transition Android's predictive back draws when no gesture is
+    // running — without its per-page gesture handling. That handling lets a
+    // page claim the back gesture when it is the top of ITS navigator, even
+    // under a sheet or a page of another navigator (the app nests the router's
+    // root, the shell and Settings): back popped the screen under an open
+    // sheet. Unclaimed, the gesture reaches the router, which pops whatever is
+    // on top across navigators — the same path as the back button. Android 16
+    // turns predictive back on for every app targeting API 36.
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {TargetPlatform.android: FadeForwardsPageTransitionsBuilder()},
+    ),
     scaffoldBackgroundColor: colorScheme.surface,
     appBarTheme: AppBarTheme(
       backgroundColor: colorScheme.surface,
