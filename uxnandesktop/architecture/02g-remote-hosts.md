@@ -157,7 +157,7 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
 | §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
 | §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
-| §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ssh/ports.rs`, `portscan.rs` |
+| §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ports` en el motor, `portscan.rs` |
 | §5.16 | El motor del host: terminales que sobreviven a la conexion | `crates/uxnan-host`, `ssh/engine.rs`, `ssh/terminals.rs` |
 | §5.15 | Como se prueba contra un host de verdad (y contra un servidor en proceso, §5.1–§5.2) | `ssh/testhost.rs`, `ssh/testserver.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
@@ -1457,7 +1457,7 @@ primera vez.
 
 ## 5.14 Puertos del host — IMPLEMENTADO (fase 4)
 
-`src-tauri/src/ssh/forward.rs`, `src-tauri/src/ssh/ports.rs`,
+`src-tauri/src/ssh/forward.rs`, `crates/workspace-engine/src/ports.rs` (en el motor del host),
 `src-tauri/src/portscan.rs`, `src/lib/state/ports.svelte.ts`,
 `src/lib/components/PortsStatusButton.svelte`.
 
@@ -1471,12 +1471,12 @@ que uno acaba de levantar alli era abrir el navegador *en* esa maquina.
 | Camino | Coste | Que ve |
 |---|---|---|
 | **Anunciado** — la terminal imprimio su URL (`portscan.rs`) | **Cero**: esos bytes ya venian de camino a la terminal | Lo que el propio servidor dice de si mismo, en cualquier host y con cualquier shell, porque habla el *programa* y no la maquina |
-| **Encontrado** — se le pregunta al host (`ssh/ports.rs`) | Un comando allí, o sea un arranque de shell (~2 s, §5.3) | Todo lo que escucha, incluido lo que nadie anuncio o lo que ya corria antes de abrir uxnan |
+| **Encontrado** — se le pregunta al motor del host (`ports::listening`, `Call::Ports`) | Una llamada al motor: en Linux lee la tabla del kernel (`/proc/net/tcp{,6}`) sin lanzar nada; en macOS `lsof` (un proceso que no es la shell de la persona recibe la tabla de `netstat` vacia, medido) y en Windows `netstat -ano`, ejecutados sin shell | Todo lo que escucha, incluido lo que nadie anuncio o lo que ya corria antes de abrir uxnan |
 
-Por eso el primero es automatico y el segundo es un **boton**. Sondear cada
-pocos segundos mantendria un canal permanentemente ocupado en la maquina de
-otro para responder una pregunta que casi nunca se esta haciendo — la misma
-decision que ya tomo el panel de Cambios (§5.11).
+El primero es automatico y el segundo es un **boton**. Con el motor preguntar ya
+no cuesta un arranque de shell, pero sondear seguiria siendo trabajo constante en
+la maquina de otro para una pregunta que casi nunca se esta haciendo. Un host sin
+motor no tiene este camino, y lo dice.
 
 **Quitar las secuencias de escape no es cosmetico.** Vite imprime su puerto en
 negrita: los bytes en el cable son `http://localhost:\e[1m5173\e[22m/`. Un

@@ -919,6 +919,17 @@ impl HostEngine {
         }
     }
 
+    /// The TCP ports the host listens on, read there by its engine.
+    pub async fn ports(
+        &self,
+    ) -> Result<Vec<uxnan_workspace_engine::ports::ListeningPort>, AppError> {
+        self.needs(12, "list the ports it listens on")?;
+        match self.request(Call::Ports, None).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a port listing", &other)),
+        }
+    }
+
     /// Something asked of a project's git on the host, by the engine's own
     /// `git` there, answered in that module's shapes.
     pub async fn git<T: serde::de::DeserializeOwned>(

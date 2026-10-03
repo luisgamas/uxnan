@@ -19,6 +19,7 @@ pub mod fs;
 pub mod git;
 pub mod gitfast;
 pub mod mcp_launch;
+pub mod ports;
 pub mod procscan;
 pub mod pty;
 pub mod screen;

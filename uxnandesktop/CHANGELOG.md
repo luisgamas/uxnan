@@ -86,6 +86,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A host's ports are read by its engine.** The ports button asks the host
+  engine, which reads that machine's own socket table — the kernel's directly
+  on Linux, so a server without `ss` answers too; `lsof` on macOS; `netstat` on
+  Windows — instead of commands sent through the host's shell.
 - **A tab on a host is named by the agent running in it.** Start Claude Code,
   Codex or any other known agent by hand in a host terminal and the tab and
   its sidebar row follow it, as they do here: the host engine looks at that

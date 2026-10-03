@@ -78,9 +78,9 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,069 backend tests**
-in total — 745 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 213 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 29 in
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,068 backend tests**
+in total — 735 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 222 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 29 in
 `uxnan-host` (24 against the real daemon over its socket — among them a project's
 files listed, saved and searched on the host, its git read, staged and
 committed there, its worktrees made and removed there, and which agent a terminal runs
@@ -93,7 +93,7 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,016 of which run everywhere; the other 53 are ignored probes that need something real to talk to
+`tests/` — 1,015 of which run everywhere; the other 53 are ignored probes that need something real to talk to
 (45 live SSH probes — 41 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
@@ -115,7 +115,8 @@ git's own refusal) — and one more, armed also by `UXNAN_SSH_TEST_AGENT` (an ag
 holding a key the host authorizes for its own account), pushes from the host
 over SSH with the agent the connection forwards, before and after a reconnect,
 after a push with no agent has failed — and one more hears the host engine say
-which agent a terminal there runs, and when it ends —
+which agent a terminal there runs, and when it ends — and one more has the
+engine list what that host listens on, its own `sshd` among it —
 plus **4 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
@@ -138,16 +139,18 @@ never decides a result — each skips with a reason where the tool is missing.
 
 ### A Linux host, in a container
 
-Three of those `sshd` probes belong to the ports work: one carries a real
+Two of those `sshd` probes belong to the ports work: one carries a real
 connection through a forward (and twelve at once, over a host whose `MaxSessions`
 is the default ten — the measurement the design rests on, since `direct-tcpip`
 channels are not sessions), then closes it and proves the socket is really gone;
 the second aims a forward at a port with **nothing behind it** and requires the app
 to say so — the case that proved a channel opening is not the same as a port
-answering; the third asks this machine what it is listening on and finds a port
-the test itself is holding. The parser for `ss` / Windows `netstat` / BSD `netstat` is
-unit-tested on captured output, which proves the parsing and nothing about the
-command — the live pair is what covers the half that has bitten this layer twice.
+answering. What a host listens on is the engine's (`ports::listening`): its parser
+for `ss` / Windows `netstat` / BSD `netstat` / `lsof` is unit-tested on captured
+output and on a captured kernel table, and one test that runs everywhere binds a
+port and requires this machine's own listing to find it — through `/proc` on
+Linux, `lsof` on macOS, `netstat` on Windows. That test is what found that
+macOS hands a process other than the person's shell an empty `netstat` table.
 
 Every other live SSH test talks to the `sshd` of the machine running it — which
 on this project has always been Windows, with `cmd`. So the POSIX half of the

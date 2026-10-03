@@ -31,7 +31,6 @@ pub mod engine;
 pub mod forward;
 pub mod hostkey;
 pub mod inventory;
-pub mod ports;
 pub mod pty;
 pub mod registry;
 pub mod secrets;

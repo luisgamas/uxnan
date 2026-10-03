@@ -1062,6 +1062,23 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host whose sshd listens on 22"]
+        async fn the_hosts_ports_are_read_by_its_engine() {
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let ports = engine.ports().await.expect("the engine lists them");
+            // The sshd answering this very test listens there.
+            assert!(ports.iter().any(|p| p.port == 22), "{ports:?}");
+            println!(
+                "live: {alias} engine listed {} listening ports",
+                ports.len()
+            );
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

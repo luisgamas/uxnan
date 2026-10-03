@@ -592,7 +592,8 @@ impl Daemon {
             | Call::SetHook { .. }
             | Call::HookConfig { .. }
             | Call::Fs(_)
-            | Call::Git(_) => Outcome::Error {
+            | Call::Git(_)
+            | Call::Ports => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -992,6 +993,16 @@ where
                                 let answer = viewer.clone();
                                 tokio::spawn(async move {
                                     let outcome = crate::files::serve(call).await;
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Ports }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let found = uxnan_workspace_engine::ports::listening()
+                                        .await
+                                        .and_then(crate::files::value);
+                                    let outcome = crate::files::outcome(found);
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
                             }

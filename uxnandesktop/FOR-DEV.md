@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,069 Rust tests (745 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 213
+`docs/chat.md`). 1,068 Rust tests (735 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 222
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 29 in `uxnan-host` (24 against the daemon itself) + 45
 integration), of which 53 are ignored probes that need something real to talk to
 (45 live SSH probes — 41 against a real `sshd` and 4 against a **Linux host in a
@@ -1308,8 +1308,8 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
       workspace in two windows" as unsupported rather than as working.
 - [ ] **Ports — what phase 4 deliberately left out.** A forwarded port shows its
       number and how many connections it has carried, and nothing else: no
-      process name (that needs a second command per port, and `ss -ltnp` cannot
-      see another user's processes anyway), no reverse forward (a port *here*
+      process name (the engine's listing could carry the owning process, but
+      only the account's own processes are visible to it), no reverse forward (a port *here*
       published *there* — `russh` has `tcpip_forward`, nobody has asked for it),
       and no memory across restarts (a tunnel dies with the app, which matches
       what the connection does). Ports are only scanned on hosts; a local dev
@@ -1751,7 +1751,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,069 Rust + 1,804 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,068 Rust + 1,804 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

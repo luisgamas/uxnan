@@ -69,7 +69,7 @@ pub struct ForwardInfo {
     pub refusal: Option<Refusal>,
     /// Where on the host the tunnel actually knocks. `127.0.0.1` for the normal
     /// case; another address when the service is pinned to one interface there
-    /// and the host's own loopback answers nothing (`ssh::ports`).
+    /// and the host's own loopback answers nothing (the engine's `ports`).
     pub address: String,
 }
 
@@ -494,7 +494,7 @@ const HOST_LOOPBACK: &str = "127.0.0.1";
 /// specific address of that machine — a VPN interface, a LAN address — answers
 /// nothing on `127.0.0.1` there, so a tunnel aimed at it reaches nothing and the
 /// user is told their dev server is broken. The scan already knows that address
-/// (`ssh::ports::ListeningPort::address`), so it is tried rather than guessed at.
+/// (the engine's `ports::ListeningPort::address`), so it is tried rather than guessed at.
 ///
 /// Returns the address that answered, or the last one tried with the refusal it
 /// gave — a tunnel is opened either way, since the service may start later.

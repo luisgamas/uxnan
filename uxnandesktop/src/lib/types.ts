@@ -1213,7 +1213,7 @@ export interface ForwardRefusal {
 }
 
 /** A TCP port a host reported listening on (mirror of Rust
- *  `ssh::ports::ListeningPort`), from the on-demand scan. */
+ *  the engine's `ports::ListeningPort`), from the on-demand scan. */
 export interface ListeningPort {
   port: number;
   /** Bound to loopback only — the case a forward exists to solve. */

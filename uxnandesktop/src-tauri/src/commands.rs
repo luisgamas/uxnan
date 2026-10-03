@@ -2727,51 +2727,24 @@ pub struct AnnouncedPort {
     pub path: String,
 }
 
-/// A host's connection and the shell it reported, for what still runs as a
-/// command there (asking it which ports it listens on).
+/// Ask a host what it is listening on, right now — its engine reads that
+/// machine's own socket table (`ports::listening`).
 ///
-/// Both together, because either alone is useless — a connection with no shell
-/// cannot be sent a quoted argument safely, and the shell of a host that is not
-/// connected describes nothing.
-async fn remote_shell(
-    state: &AppState,
-    host_id: &str,
-) -> Result<
-    (
-        std::sync::Arc<ssh::conn::Connection>,
-        ssh::shellkind::ShellKind,
-    ),
-    CommandError,
-> {
-    let shell = state
-        .ssh_shells
-        .read()
-        .await
-        .get(host_id)
-        .copied()
-        .unwrap_or_default();
-    let Some(conn) = session_for(state, host_id).await else {
-        return Err(CommandError::from(AppError::NotConnected(
-            host_id.to_string(),
-        )));
-    };
-    Ok((conn, shell))
-}
-
-/// Ask a host what it is listening on, right now.
-///
-/// The deliberate second way in, next to what terminals announce: a command
-/// costs a shell start on that machine (`02g` §5.3), so it runs when the user
-/// asks and never on a timer.
+/// The deliberate second way in, next to what terminals announce: it runs
+/// when the user asks, never on a timer. A host where the engine cannot run
+/// says so, as its files and git do.
 #[tauri::command]
 pub async fn ssh_ports_listening(
+    app: AppHandle,
     state: State<'_, AppState>,
     host_id: String,
-) -> Result<Vec<ssh::ports::ListeningPort>, CommandError> {
-    let (conn, shell) = remote_shell(&state, &host_id).await?;
-    ssh::ports::listening(&conn, shell)
-        .await
-        .map_err(CommandError::from)
+) -> Result<Vec<uxnan_workspace_engine::ports::ListeningPort>, CommandError> {
+    match machine_for(&app, &state, Some(&format!("ssh:{host_id}")), None).await? {
+        Machine::Host(engine) => engine.ports().await.map_err(CommandError::from),
+        Machine::Here => Err(CommandError::from(AppError::Invalid(format!(
+            "{host_id} is not a host"
+        )))),
+    }
 }
 
 /// Bring a port on a host to this machine, and answer where it landed.
