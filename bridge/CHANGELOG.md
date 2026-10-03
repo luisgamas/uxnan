@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.44-alpha.20261003] - 20261003
 ### Changed
 
 - **Each access mode means the same on every agent, and each agent offers only

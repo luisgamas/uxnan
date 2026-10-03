@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.3-alpha.20261003] - 20261003
 ### Changed
 - **The relay is now a Cloudflare Worker that each user's bridge deploys into
   the user's own Cloudflare account.** One SQLite-backed Durable Object
