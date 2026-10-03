@@ -12,10 +12,9 @@
  */
 
 import { inspectAll } from './changes.mjs';
-import { readCurrent } from './bump.mjs';
+import { carriedPart, readCarried, readCurrent, versionForFiles } from './bump.mjs';
 import { component } from './components.mjs';
 import { workingTreeState } from './git.mjs';
-import { versionForFiles } from './bump.mjs';
 
 const args = process.argv.slice(2);
 const channel =
@@ -103,6 +102,18 @@ for (const row of rows.filter((r) => r.worthy)) {
       console.log(`    ${entry.file}: ${entry.version ?? '(none)'}`);
   } else {
     console.log(`  ⚠ could not read version files: ${state.error}`);
+  }
+  // What the component carries (the relay Worker inside the bridge) moves its own
+  // version only when it changed — say which, so nobody has to work it out.
+  for (const part of row.carried ?? []) {
+    const name = carriedPart(row.id, part.id).name;
+    const versions = new Set(readCarried(carriedPart(row.id, part.id)).map((e) => e.version));
+    const agree = versions.size === 1 ? '' : ' — ⚠ its version files DISAGREE already';
+    console.log(
+      part.worthy
+        ? `  carries ${name}: ${part.substantive.length} file(s) changed → ${part.current} would become ${part.next}${agree}`
+        : `  carries ${name}: unchanged, stays ${part.current}${agree}`,
+    );
   }
   if (meta.releaseBefore.length > 0) {
     console.log(

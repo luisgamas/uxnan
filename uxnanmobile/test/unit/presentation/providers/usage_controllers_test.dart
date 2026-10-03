@@ -22,6 +22,7 @@ class _Bridge implements SessionCoordinator {
   Future<RpcMessage> sendRequest(
     String method, [
     Map<String, dynamic>? params,
+    Duration? timeout,
   ]) async {
     asked.add((method, params));
     return answer(method, params);
@@ -35,7 +36,6 @@ final _pc = TrustedDevice(
   macDeviceId: 'pc-1',
   displayName: 'Studio Mac',
   macIdentityPublicKey: Uint8List(32),
-  relayUrl: 'wss://relay.example',
   sessionId: 's',
   pairedAt: DateTime(2026, 3),
 );

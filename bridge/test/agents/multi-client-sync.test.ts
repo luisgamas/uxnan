@@ -37,7 +37,6 @@ interface Note {
 }
 
 const CAPS: AgentCapabilities = {
-  planMode: false,
   streaming: true,
   approvals: true,
   forking: false,

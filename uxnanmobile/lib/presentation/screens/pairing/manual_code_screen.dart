@@ -18,6 +18,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
+import 'package:uxnan/presentation/widgets/ne_filled_field.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -247,7 +248,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                           padding: const EdgeInsets.all(UxnanSpacing.lg),
                           child: Column(
                             children: [
-                              _FilledField(
+                              NeFilledField(
                                 controller: _host,
                                 enabled: !_connecting,
                                 icon: UxIcons.dns,
@@ -257,7 +258,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                                 textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: UxnanSpacing.md),
-                              _FilledField(
+                              NeFilledField(
                                 controller: _code,
                                 enabled: !_connecting,
                                 icon: UxIcons.key,
@@ -357,68 +358,6 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// A Neural Expressive **filled** text field (guide §4.3 input treatment): a
-/// borderless `surfaceContainerHighest` field with a rounded shape and a
-/// leading glyph, replacing M3's hard `OutlineInputBorder`.
-class _FilledField extends StatelessWidget {
-  const _FilledField({
-    required this.controller,
-    required this.enabled,
-    required this.icon,
-    required this.label,
-    required this.hint,
-    this.keyboardType,
-    this.textInputAction,
-    this.textCapitalization = TextCapitalization.none,
-    this.onSubmitted,
-  });
-
-  final TextEditingController controller;
-  final bool enabled;
-  final UxIconData icon;
-  final String label;
-  final String hint;
-  final TextInputType? keyboardType;
-  final TextInputAction? textInputAction;
-  final TextCapitalization textCapitalization;
-  final ValueChanged<String>? onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return TextField(
-      controller: controller,
-      enabled: enabled,
-      autocorrect: false,
-      keyboardType: keyboardType,
-      textInputAction: textInputAction,
-      textCapitalization: textCapitalization,
-      onSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: UxIcon(icon, color: colors.onSurfaceVariant),
-        filled: true,
-        fillColor: colors.surfaceContainerHighest,
-        // Borderless filled field with a soft rounded shape; the focused
-        // state gets a 2 dp primary outline (guide §4.3 focused state).
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colors.primary, width: 2),
-        ),
       ),
     );
   }

@@ -79,7 +79,14 @@ import {
 } from './acp-tools.js';
 
 const GROK_CAPABILITIES: AgentCapabilities = {
-  planMode: true,
+  // `grok agent stdio` advertises no session modes over ACP and takes no
+  // permission-mode or sandbox flag (grok 1.0.46): the bridge can only answer
+  // the permission requests it sends. That keeps "request approval" (each one
+  // goes to the person — when Grok's own configuration asks at all, see
+  // `grokPermissionSource`) and "full access" (each one is allowed), and leaves
+  // out "approve for me" (no reviewer of its own) and "plan only".
+  accessModes: ['requestApproval', 'fullAccess'],
+  defaultAccessMode: 'fullAccess',
   streaming: true,
   // ACP `session/request_permission` gives real per-action approvals.
   approvals: true,
@@ -101,7 +108,7 @@ const GROK_CAPABILITIES: AgentCapabilities = {
 };
 
 /** How a run should answer Grok's permission prompts. */
-type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
+type PermissionPosture = 'interactive' | 'approveSession';
 
 export interface GrokAdapterOptions {
   /** Home directory its session store is listed from (tests); the user's by default. */
@@ -879,10 +886,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     const toolCall = isRecord(p['toolCall']) ? p['toolCall'] : {};
     // A request for no turn of ours is refused: nothing the user set allows it.
     if (!run) return cancelledOutcome();
-    // Non-interactive postures auto-answer without troubling the phone.
-    if (run.posture === 'approveAll') {
-      return selectOption(options, 'approve') ?? cancelledOutcome();
-    }
+    // Full access answers every request itself.
     if (run.posture === 'approveSession') {
       return (
         selectOption(options, 'approveSession') ??
@@ -1026,16 +1030,7 @@ function effortOption(raw: unknown): ReturnType<typeof reasoningOption> | undefi
 
 /** Map the thread's access mode to how this run answers permission prompts. */
 function postureFor(accessMode: SendTurnOptions['accessMode']): PermissionPosture {
-  switch (accessMode) {
-    case 'approveForMe':
-      return 'approveAll';
-    case 'fullAccess':
-      return 'approveSession';
-    case 'requestApproval':
-      return 'interactive';
-    default:
-      return 'interactive';
-  }
+  return accessMode === 'requestApproval' ? 'interactive' : 'approveSession';
 }
 
 /**

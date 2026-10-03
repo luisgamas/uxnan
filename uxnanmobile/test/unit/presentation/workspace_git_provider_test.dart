@@ -20,7 +20,6 @@ final _device = TrustedDevice(
   macDeviceId: 'mac-1',
   displayName: 'PC',
   macIdentityPublicKey: Uint8List(32),
-  relayUrl: 'wss://relay.test',
   sessionId: 'session-1',
   pairedAt: DateTime(2026),
 );

@@ -16,6 +16,7 @@
  * predates the deletions the bridge still remembers), a full snapshot with
  * `reset: true` that the client applies by replacing its replica.
  */
+import type { RelayEndpoint } from './relay.js';
 import type { Project } from './project.js';
 import type { Thread } from './thread.js';
 import type { TrustedDevice } from './session.js';
@@ -36,6 +37,12 @@ export interface BridgeSettings {
    * client, or `uxnan-bridge config set name`, can change it.
    */
   name: string;
+  /**
+   * The bridge's relay, so a phone paired on the LAN can reach it from any
+   * network without pairing again. `null` while none is set up. Read-only for
+   * clients: it changes through the `relay/*` methods, never `settings/set`.
+   */
+  relay: RelayEndpoint | null;
 }
 
 export interface SettingsSetParams {

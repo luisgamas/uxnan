@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { applyVersion, assertConsistent, readCurrent, versionForFiles } from './bump.mjs';
+import {
+  applyCarriedVersion,
+  applyVersion,
+  assertConsistent,
+  carriedPart,
+  readCarried,
+  readCurrent,
+  versionForFiles,
+} from './bump.mjs';
 import { component } from './components.mjs';
 
 /** A throwaway tree shaped like the repo, so the writers run for real. */
@@ -123,5 +131,63 @@ describe('assertConsistent', () => {
       () => assertConsistent('desktop', '0.0.28', { cwd }),
       /package-lock\.json: 0\.0\.2/,
     );
+  });
+});
+
+describe('applyCarriedVersion — the relay Worker inside the bridge', () => {
+  /** The root lock with every workspace, so a neighbour moving would show. */
+  function seedNode() {
+    put(
+      'relay/package.json',
+      JSON.stringify({ name: 'uxnan-relay', version: '0.0.2-alpha.20260720' }, null, 2) + '\n',
+    );
+    put(
+      'package-lock.json',
+      JSON.stringify(
+        {
+          name: 'uxnan-monorepo',
+          packages: {
+            bridge: { name: 'uxnan-bridge', version: '0.0.43-alpha.20261002' },
+            relay: { name: 'uxnan-relay', version: '0.0.2-alpha.20260720' },
+            shared: { name: '@uxnan/shared', version: '0.0.29-alpha.20261002' },
+          },
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+  }
+
+  it('moves relay/package.json and only the relay entry of the root lock', () => {
+    seedNode();
+    const relay = carriedPart('bridge', 'relay');
+    const changes = applyCarriedVersion(relay, '0.0.3-alpha.20261003', { cwd });
+
+    assert.deepEqual(
+      changes.map((c) => [c.file, c.from, c.to]),
+      [
+        ['relay/package.json', '0.0.2-alpha.20260720', '0.0.3-alpha.20261003'],
+        ['package-lock.json', '0.0.2-alpha.20260720', '0.0.3-alpha.20261003'],
+      ],
+    );
+    for (const entry of readCarried(relay, { cwd })) {
+      assert.equal(entry.version, '0.0.3-alpha.20261003', entry.file);
+    }
+    const lock = JSON.parse(readFileSync(join(cwd, 'package-lock.json'), 'utf8'));
+    assert.equal(lock.packages.bridge.version, '0.0.43-alpha.20261002');
+    assert.equal(lock.packages.shared.version, '0.0.29-alpha.20261002');
+  });
+
+  it('changes nothing on a dry run', () => {
+    seedNode();
+    const relay = carriedPart('bridge', 'relay');
+    applyCarriedVersion(relay, '0.0.3-alpha.20261003', { cwd, dryRun: true });
+    for (const entry of readCarried(relay, { cwd })) {
+      assert.equal(entry.version, '0.0.2-alpha.20260720', entry.file);
+    }
+  });
+
+  it('refuses a part the component does not carry', () => {
+    assert.throws(() => carriedPart('desktop', 'relay'), /carries no part/);
   });
 });

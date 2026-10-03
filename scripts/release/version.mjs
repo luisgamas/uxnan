@@ -93,6 +93,25 @@ export function nextVersion({ kind, tags, channel = 'stable', date = new Date() 
 }
 
 /**
+ * The next version of a part a component carries rather than releases — the
+ * relay Worker inside the bridge.
+ *
+ * It has no tags of its own any more, so its line continues from whichever is
+ * higher: the version its files hold now, or a tag it once shipped under. Taking
+ * both means a historical tag can never be undercut, and two carried bumps on
+ * the same day still move forward (the patch rises even when the date does not).
+ *
+ * @param {object} input
+ * @param {'npm'} input.kind
+ * @param {string|null} input.current the version its files hold today
+ * @param {string[]} [input.tags] historical tags, any order
+ * @param {Date} [input.date]
+ */
+export function nextCarriedVersion({ kind, current, tags = [], date = new Date() }) {
+  return nextVersion({ kind, tags: current ? [...tags, current] : tags, date }).version;
+}
+
+/**
  * Refuses a version that would not be seen as newer than what already shipped.
  * For the desktop that is the whole point: the MSI and the updater compare only
  * `0.0.PATCH`, so reusing a base makes the new build invisible rather than

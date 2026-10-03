@@ -1,6 +1,7 @@
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
@@ -88,16 +89,9 @@ class IncomingMessageProcessor {
               rev: params['rev'] is int ? params['rev'] as int : null,
             )
           : const UnknownDomainEvent(method: 'stream/project/removed'),
-      'stream/settings/updated' => SettingsUpdatedEvent(
-          home: switch (params['settings']) {
-            {'home': final String home} => home,
-            _ => null,
-          },
-          name: switch (params['settings']) {
-            {'name': final String name} => name,
-            _ => null,
-          },
-          rev: params['rev'] is int ? params['rev'] as int : null,
+      'stream/settings/updated' => _settingsUpdated(
+          params['settings'],
+          params['rev'] is int ? params['rev'] as int : null,
         ),
       'stream/presence/updated' => PresenceUpdatedEvent(
           clients: params['clients'] is List
@@ -106,6 +100,7 @@ class IncomingMessageProcessor {
         ),
       'stream/agents/updated' => const AgentsUpdatedEvent(),
       'stream/bridge/updated' => BridgeUpdatedEvent(update: params['update']),
+      'stream/relay/updated' => RelayUpdatedEvent(status: params['status']),
       'stream/agent/held' =>
         params['agentId'] is String && params['sessionId'] is String
             ? AgentSessionHeldEvent(
@@ -171,7 +166,15 @@ class IncomingMessageProcessor {
     bool beforeText = false,
   }) {
     if (content is Map) {
-      final blockId = content['blockId'];
+      // An approval or a question is one request whatever copy of it arrives,
+      // so one stored before requests carried a `blockId` is keyed by its own
+      // id: a second copy replaces the first instead of showing a second card.
+      final blockId = content['blockId'] ??
+          switch (content['type']) {
+            'approval' => content['approvalId'],
+            'question' => content['questionId'],
+            _ => null,
+          };
       return ContentBlockEvent(
         turnId: turnId,
         threadId: threadId,
@@ -181,6 +184,38 @@ class IncomingMessageProcessor {
       );
     }
     return const UnknownDomainEvent(method: 'stream/content/block');
+  }
+
+  /// Decodes `stream/settings/updated` (the whole `BridgeSettings`).
+  DomainEvent _settingsUpdated(Object? settings, int? rev) {
+    final (carriesRelay, relay) = relayOfSettings(settings);
+    return SettingsUpdatedEvent(
+      home: switch (settings) {
+        {'home': final String home} => home,
+        _ => null,
+      },
+      name: switch (settings) {
+        {'name': final String name} => name,
+        _ => null,
+      },
+      rev: rev,
+      carriesRelay: carriesRelay,
+      relay: relay,
+    );
+  }
+
+  /// Reads `BridgeSettings.relay` from a wire [settings] object: whether it
+  /// says anything about the relay, and the relay (`null`: none). An absent
+  /// or malformed field says nothing, so it never clears a relay the phone
+  /// already knows.
+  static (bool, RelayEndpoint?) relayOfSettings(Object? settings) {
+    if (settings is! Map || !settings.containsKey('relay')) {
+      return (false, null);
+    }
+    final raw = settings['relay'];
+    if (raw == null) return (true, null);
+    final relay = RelayEndpoint.fromJson(raw);
+    return relay == null ? (false, null) : (true, relay);
   }
 
   /// Decodes `stream/thread/updated`; a payload without a usable thread (no

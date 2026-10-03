@@ -541,26 +541,21 @@ test('AntigravityAdapter repairs a model stored as the whole `agy models` line',
   assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
 });
 
-test('AntigravityAdapter maps accessMode to plan vs skip-permissions', async () => {
+test('Antigravity offers no access mode and runs in its configured posture', async () => {
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy' });
+  assert.equal(adapter.capabilities.accessModes, undefined);
   const cases = [
-    { accessMode: 'requestApproval' as const, plan: true },
-    { accessMode: 'approveForMe' as const, plan: false },
-    { accessMode: 'fullAccess' as const, plan: false },
+    { permissionMode: 'bypassPermissions' as const, flag: '--dangerously-skip-permissions' },
+    { permissionMode: 'plan' as const, flag: '--mode' },
   ];
-  for (const { accessMode, plan } of cases) {
+  for (const { permissionMode, flag } of cases) {
     const { spawnFn, last } = fakeSpawner();
-    const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
-    const { done } = collect(adapter);
-    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p', accessMode });
+    const configured = new AntigravityAdapter({ binaryPath: 'agy', spawnFn, permissionMode });
+    const { done } = collect(configured);
+    await configured.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p' });
     last().feed([resultEvent('ok')]);
     await done;
-    const args = last().args;
-    assert.equal(
-      args.includes('--mode') && args[args.indexOf('--mode') + 1] === 'plan',
-      plan,
-      `accessMode=${accessMode} plan=${plan}`,
-    );
-    assert.equal(args.includes('--dangerously-skip-permissions'), !plan);
+    assert.ok(last().args.includes(flag), `${permissionMode} passes ${flag}`);
   }
 });
 

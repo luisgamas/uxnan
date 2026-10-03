@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
 import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -73,13 +74,17 @@ class MyDevicesScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(sessionCoordinatorProvider).switchMac(device);
-    } on Object {
+    } on Object catch (error) {
       // The switch validates reachability first and stays on the current PC on
       // failure; tell the user the target couldn't be reached.
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text(l10n.deviceConnectFailed(device.displayName))),
+          SnackBar(
+            content: Text(
+              connectFailureText(l10n, device.displayName, error),
+            ),
+          ),
         );
     }
   }
@@ -579,9 +584,10 @@ class _DeviceCard extends StatelessWidget {
     if (connectedEndpoint != null && connectedEndpoint.isNotEmpty) {
       return _hostFromEndpoint(connectedEndpoint);
     }
-    if (device.relayUrl.isNotEmpty) {
-      final host = Uri.tryParse(device.relayUrl)?.host;
-      return host == null || host.isEmpty ? device.relayUrl : host;
+    final relay = device.relay;
+    if (relay != null && relay.enabled) {
+      final host = Uri.tryParse(relay.url)?.host;
+      return host == null || host.isEmpty ? relay.url : host;
     }
     return device.hosts.isNotEmpty ? device.hosts.first : '';
   }

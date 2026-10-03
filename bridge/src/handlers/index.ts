@@ -3,7 +3,8 @@
  *
  * Git, workspace, thread/turn, project, replica sync and shared settings,
  * agent, account (auth/status), usage (`agent/usageStats`), notifications,
- * Uxnan Desktop's tools (`desktop/*`, local channel only) and bridge-control.
+ * Uxnan Desktop's tools (`desktop/*`, local channel only), the user's relay
+ * (`relay/*`) and bridge-control.
  */
 import type { HandlerRouter } from '../handler-router.js';
 import { registerGitHandlers } from './git-handler.js';
@@ -19,6 +20,7 @@ import { registerMetricsHandlers } from './metrics-handler.js';
 import { registerNotificationHandlers } from './notifications-handler.js';
 import { registerDesktopHandlers } from './desktop-handler.js';
 import { registerBridgeControlHandlers } from './bridge-control-handler.js';
+import { registerRelayHandlers } from './relay-handler.js';
 
 export function registerAllHandlers(router: HandlerRouter): void {
   registerThreadHandlers(router);
@@ -33,6 +35,7 @@ export function registerAllHandlers(router: HandlerRouter): void {
   registerMetricsHandlers(router);
   registerNotificationHandlers(router);
   registerDesktopHandlers(router);
+  registerRelayHandlers(router);
   // Real implementations last so they win over any earlier stub of the same name.
   registerBridgeControlHandlers(router);
 }

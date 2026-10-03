@@ -132,7 +132,6 @@ export {
   type CodexAdapterOptions,
   type CodexEvent,
   type SpawnedAppServer,
-  type CodexPermissionMode,
 } from './adapters/codex-adapter.js';
 export {
   PiAdapter,
@@ -260,7 +259,6 @@ export {
   type ClaudeCodeAdapterOptions,
   type ClaudeEvent,
   type ClaudeModelSpec,
-  type ClaudePermissionMode,
 } from './adapters/claude-adapter.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {
@@ -341,10 +339,29 @@ export {
 } from './transport/session-handler.js';
 export { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 export {
-  connectRelayAsMac,
-  type ConnectRelayOptions,
-  type RelayConnection,
-} from './transport/relay-client.js';
+  RelayService,
+  normalizeRelayUrl,
+  type RelayServiceOptions,
+} from './relay/relay-service.js';
+export {
+  RelayHost,
+  closeReason as relayCloseReason,
+  type RelayHostOptions,
+  type RelayHostState,
+  type RelayHostTarget,
+  type RelayHostTiming,
+} from './relay/relay-host.js';
+export {
+  CloudflareError,
+  deployRelay,
+  isAccountId,
+  relayVersion,
+  removeHost,
+  type CloudflareTarget,
+  type DeployResult,
+  type FetchLike,
+} from './relay/cloudflare.js';
+export { bundledRelayVersion, readRelayBundle } from './relay/relay-bundle.js';
 export {
   startLanServer,
   type LanServerOptions,

@@ -52,7 +52,7 @@ uxnan/
 ├── uxnandesktop/                  # Desktop ADE app (Tauri 2 + Rust + Svelte 5)
 │   └── architecture/              # PRD+SRS for the desktop app
 ├── bridge/                        # Node.js daemon for PC
-├── relay/                         # Node.js relay server
+├── relay/                         # The user's own relay: a Cloudflare Worker the bridge deploys
 ├── shared/                        # Shared contracts (types, JSON-RPC schemas)
 ├── web/                           # Marketing website (Next.js 15, static export)
 ├── AGENTS.md                      # This file — the single source of truth
@@ -249,9 +249,12 @@ a rule, not a preference.
 - Detailed conventions: `uxnandesktop/architecture/03-implementation-guide.md`
 
 **Bridge / Relay (bridge/, relay/):**
-- Node.js
+- Bridge: Node.js. Relay: a Cloudflare Worker + Durable Object (TypeScript),
+  tested on the real Workers runtime (Miniflare); it is not published on its
+  own — the bridge ships its bundle and deploys it into the user's account.
 - JSON-RPC 2.0 over WebSocket
-- Contracts defined in `shared/`
+- Contracts defined in `shared/` (the relay imports only the dependency-free
+  `@uxnan/shared/relay`)
 
 **Web (web/):**
 - Next.js 15 (App Router) with `output: "export"` — a fully static site, no server
@@ -525,7 +528,7 @@ has bitten us, and where it lives:
 #### Cross-monorepo functionality (read this twice)
 
 Many features span monorepos — a bridge method the phone renders, an E2EE step
-both sides implement, push in the bridge with a relay fallback. When you change
+both sides implement, push sent by the bridge and shown by the phone. When you change
 one side of a shared feature:
 
 - update **`shared/`** (the contract source of truth) **and** the cross-component
@@ -640,7 +643,8 @@ If the documentation says one thing but the existing code does another:
 ## Releases & versioning
 
 Components version **independently** via per-component git tags (`shared-v*`,
-`bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`). Pushing a component tag runs
+`bridge-v*`, `desktop-v*`, `mobile-v*`). The relay Worker has no tag of its own:
+it ships inside the bridge (old `relay-v*` tags are history). Pushing a component tag runs
 that component's `release-*.yml` workflow. The version convention, which files
 carry a version, the release matrix and the full step-by-step are in
 **[`docs/releases.md`](docs/releases.md)**; the contributor-facing summary is in

@@ -84,7 +84,7 @@ failure never overwrites an already-restored layout.
 | Component | Relationship |
 |---|---|
 | [`bridge/`](../../bridge/) | Node daemon that connects the **mobile app** to the PC's agents over E2EE. Implemented; it's the contract reference. The desktop can **embed** it as a Tauri sidecar (Phase 6) so the phone connects directly to the desktop. |
-| [`relay/`](../../relay/) | Relay server for off-LAN (WAN) connectivity; forwards opaque E2EE envelopes. Optional. |
+| [`relay/`](../../relay/) | The user's own relay for off-LAN (WAN) phone connectivity: a Cloudflare Worker the bridge deploys into the user's account; forwards opaque E2EE envelopes. Optional. |
 | [`uxnanmobile/`](../../uxnanmobile/) | Flutter remote control for the agents running on the PC. |
 | [`shared/`](../../shared/) | Shared JSON-RPC/type contracts between bridge, relay, and mobile. The embedded bridge reuses these. |
 

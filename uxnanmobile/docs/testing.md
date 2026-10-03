@@ -39,7 +39,7 @@ test/
 │   ├── infrastructure/  # transport, crypto, drift repositories
 │   └── presentation/    # providers, theme
 ├── widget/presentation/ # screen + widget tests
-└── integration/         # (placeholder; see "deferred" below)
+└── integration/         # opt-in tests against real processes (below)
 ```
 
 Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror the
@@ -53,6 +53,12 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   function; tests pass a fake that records the method and returns a canned
   `RpcMessage.response(...)`. Unknown methods return an empty result so
   best-effort calls (`thread/archive`, …) degrade exactly like in production.
+- **The relay's fake bridge.** `test/support/relay_fakes.dart` holds
+  `relayStatusJson(...)` (a `RelayStatus` in the exact `shared/` shape), a
+  `FakeRelayBridge` that answers `relay/*` (refusals, lost requests, held
+  answers to see progress) and an in-memory action store. Relay screen tests
+  run the **real** `RelayManager` over it rather than overriding its status,
+  so what is asserted is what the bridge's answer does to the screen.
 - **`ProviderContainer` overrides.** Provider tests build a `ProviderContainer`
   with `overrides:` (e.g. override `agentsProvider`), `await` the future, then
   read the derived provider.
@@ -92,6 +98,27 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   This is the artifact that proves the two `buildEnvelopeAad` implementations
   agree byte-for-byte — a mismatch would make the app and the bridge mutually
   undecryptable.
+
+## The relay, against the real relay
+
+`test/integration/relay_local_test.dart` drives the phone's `RelayClient`
+against the **real** relay Worker on the Workers runtime (workerd, through
+Miniflare) — the same bundle the bridge deploys. A small Node script,
+[`../tool/relay_e2e/local_relay_host.mjs`](../tool/relay_e2e/local_relay_host.mjs),
+starts it, authenticates as a bridge on the host route, opens a pairing window
+with a one-time ticket and echoes on every phone channel; the test pairs with
+the ticket (once), connects again as a trusted phone, and checks the relay's
+refusals (`notAllowed`, `bridgeOffline`). It needs Node and the relay built,
+so it is skipped unless asked:
+
+```bash
+npm run build -w uxnan-relay            # from the repository root
+UXNAN_RELAY_E2E=1 flutter test test/integration/relay_local_test.dart
+```
+
+The unit tests (`relay_client_test.dart`, `transport_selector_test.dart`)
+cover the same protocol against a fake room that answers with the frames and
+close codes of `relay/src/room.ts`, including the exact string the phone signs.
 
 ## What automated tests do NOT cover (verify manually)
 

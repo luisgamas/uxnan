@@ -17,6 +17,9 @@
   // With the bridge connected: the phones connected right now (presence, live),
   // pairing a new one, and the start folder the projects list is explored from —
   // settings every client shares (architecture/02a §5.8.17).
+  //
+  // Remote access (the bridge's relay, `RelaySettings`) sits under the phones it
+  // serves and stays visible without a bridge, disabled with the reason.
   import { Button } from "$lib/components/ui/button";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Switch } from "$lib/components/ui/switch";
@@ -35,6 +38,7 @@
   import { chat } from "$lib/bridge/chat.svelte";
   import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import RelaySettings from "$lib/components/RelaySettings.svelte";
   import { Input } from "$lib/components/ui/input";
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
   import DeleteIcon from "@hugeicons/core-free-icons/Delete02Icon";
@@ -472,6 +476,11 @@
       </div>
     </SettingsSection>
 
+  {/if}
+
+  <RelaySettings />
+
+  {#if status.state === "connected"}
     <SettingsSection title={i18n.t("bridge.shared")} description={i18n.t("bridge.sharedDesc")}>
       <div class="divide-y divide-border/60">
         <SettingsRow label={i18n.t("bridge.pcName")} description={i18n.t("bridge.pcNameDesc")}>

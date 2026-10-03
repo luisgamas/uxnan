@@ -15,7 +15,11 @@ enum PendingActionKind {
   deleteThread,
 
   /// A new name for the PC itself (`settings/set { name }`).
-  renamePc;
+  renamePc,
+
+  /// Serving phones through the PC's relay switched on or off
+  /// (`relay/set { enabled }`). Its target is the PC itself.
+  setRelay;
 
   /// The bridge method that carries it.
   String get method => switch (this) {
@@ -24,6 +28,7 @@ enum PendingActionKind {
         PendingActionKind.unarchiveThread => 'thread/unarchive',
         PendingActionKind.deleteThread => 'thread/delete',
         PendingActionKind.renamePc => 'settings/set',
+        PendingActionKind.setRelay => 'relay/set',
       };
 
   /// The kinds a newer action of this kind, on the same target, makes moot.
@@ -44,6 +49,7 @@ enum PendingActionKind {
             PendingActionKind.deleteThread,
           ],
         PendingActionKind.renamePc => const [PendingActionKind.renamePc],
+        PendingActionKind.setRelay => const [PendingActionKind.setRelay],
       };
 
   /// Parses a stored name; `null` for one this build does not know.
@@ -82,7 +88,7 @@ class PendingAction extends Equatable {
   /// What it was done to: a conversation id, or the PC's own id.
   final String targetId;
 
-  /// The new name, for a rename.
+  /// The new name, for a rename; `'true'` or `'false'` for a relay switch.
   final String? value;
 
   /// When the user did it, by this phone's clock.
@@ -93,6 +99,7 @@ class PendingAction extends Equatable {
   Map<String, dynamic> params({int? ageMs}) => {
         ...switch (kind) {
           PendingActionKind.renamePc => {'name': value},
+          PendingActionKind.setRelay => {'enabled': value == 'true'},
           PendingActionKind.renameThread => {
               'threadId': targetId,
               'title': value,

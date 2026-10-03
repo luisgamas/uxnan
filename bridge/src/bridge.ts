@@ -20,6 +20,7 @@ import {
   makeNotification,
   type AgentsUpdatedParams,
   type BridgeUpdatedParams,
+  type RelayUpdatedNotification,
   type LocatedAgent,
   type BridgeStatus,
   type PairingPayload,
@@ -44,7 +45,7 @@ import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
-import { PairingCodeService } from './pairing/pairing-code-service.js';
+import { PAIRING_WINDOW_MS, PairingCodeService } from './pairing/pairing-code-service.js';
 import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
 import { cachedUpdateStatus, fetchLatestPublishedVersion } from './update-check.js';
@@ -56,7 +57,9 @@ import {
 } from './self-update.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
-import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
+import { RelayService } from './relay/relay-service.js';
+import type { FetchLike } from './relay/cloudflare.js';
+import { bundledRelayVersion, readRelayBundle } from './relay/relay-bundle.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
 import {
   startLocalControlServer,
@@ -142,6 +145,10 @@ export interface StartBridgeOptions {
   recordChildProcesses?: boolean;
   /** Process inspection / signalling for the reap (tests). */
   reapDeps?: ReapDeps;
+  /** The relay's Cloudflare and `/v1/version` HTTP (tests: a fake of the API). */
+  relayFetch?: FetchLike;
+  /** `false` never opens the relay's control socket (tests that fake Cloudflare). */
+  relayConnect?: boolean;
 }
 
 export interface Bridge {
@@ -158,8 +165,11 @@ export interface Bridge {
   pairingInfo(): PairingPayload;
   /** The current manual-pairing code to show on the PC (rotates on expiry). */
   currentPairingCode(): string;
-  /** Connect to the relay as `mac` and serve a phone for the given session. */
-  connectRelay(sessionId: string): Promise<void>;
+  /**
+   * Connect to the user's relay when one is set up and enabled, and follow it
+   * from then on (set up, rotated, switched off — `relay/*`). Idempotent.
+   */
+  startRelay(): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
   startLan(): Promise<{ port: number }>;
   /**
@@ -174,25 +184,6 @@ export interface Bridge {
    */
   notify(deviceId: string, method: string, params?: unknown): boolean;
   stop(): Promise<void>;
-}
-
-/**
- * Pure decision for the relay reconnect backoff: given how long the last relay
- * session lasted and the current backoff, return the delay to use for the
- * *next* reconnect attempt. A session shorter than `minHealthyMs` never really
- * carried a phone (the relay accepted the socket and closed it again — the
- * session was already taken, a relay error, a relay bounce), so the backoff
- * doubles (capped at `maxMs`); a session that reached `minHealthyMs` resets
- * the backoff to `baseMs`. Exported standalone so the reconnect loop's timing
- * decision can be unit-tested without a live relay.
- */
-export function nextRelayBackoff(
-  sessionMs: number,
-  currentBackoffMs: number,
-  opts: { minHealthyMs: number; baseMs: number; maxMs: number },
-): number {
-  if (sessionMs >= opts.minHealthyMs) return opts.baseMs;
-  return Math.min(currentBackoffMs * 2, opts.maxMs);
 }
 
 /** `opencode ×2, pi` — names and counts only, never a command line. */
@@ -291,11 +282,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (count > 0) logger.info(`cancelled ${count} queued turn(s) left by a previous run`);
     })
     .catch((err: unknown) => logger.warn(`failed to close orphaned queued turns: ${String(err)}`));
+  // Assigned once the context and router exist (below); read lazily by the
+  // pairing payload and the context.
+  let relayService: RelayService | undefined;
   // Single source of the pairing payload — shared by the QR and the manual-code
   // resolve endpoint, so both hand out identical pairing data.
   const buildPairingPayload = (): PairingPayload =>
     generatePairingPayload({
-      ...(config.relayEnabled ? { relayUrl: config.relayUrl } : {}),
+      ...(relayService?.pairingRelay() ? { relay: relayService.pairingRelay() } : {}),
       ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
       macDeviceId: deviceState.identity.macDeviceId,
       macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
@@ -311,6 +305,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     // separate `qr` command — or an autostarted, console-less daemon — agree on it.
     statePath: state.pathFor(DAEMON_FILES.pairingCode),
   });
+  // Opening the pairing window also lets the relay admit one new phone with a
+  // fresh ticket, so pairing works when the phone is not on this network.
+  const armPairing = (): void => {
+    pairingCodeService.arm();
+    relayService?.openPairing();
+  };
   const settings = new BridgeSettingsStore({ state, ledger, config });
   await settings.load();
   const projects = new ProjectRegistry({
@@ -333,12 +333,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   ];
   const browse = new BrowseService(browseRootsFor(settings.get().home));
   settings.onChange(({ settings: next }) => browse.setRoots(browseRootsFor(next.home)));
-  // Direct FCM is the PRIMARY push path: when a Firebase service account is present
-  // the bridge delivers straight to FCM on any transport (LAN/Tailscale/relay). With
-  // no credential this is null and the bridge uses the relay fallback (FOR-DEV).
+  // The bridge alone delivers background push, straight to FCM, on any transport
+  // (LAN/Tailscale/relay). Without a Firebase service account this is null and
+  // background push is off.
   const pushSender = await createBridgePushSender(logger);
   const pushService = new PushService({
-    relayUrl: config.relayUrl,
     config,
     logger,
     state,
@@ -462,15 +461,15 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
-  // Interactive approvals (opt-in): the Claude adapter injects a PreToolUse hook
-  // that round-trips each tool to this bridge's local HTTP endpoint. The hook
-  // URL is lazy (the LAN port is known only after `startLan`); the token guards
-  // the endpoint and the script is written under `~/.uxnan/hooks/`.
-  const claudeInteractiveApprovals =
-    (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
+  // "Request approval" on Claude Code is a `PreToolUse` hook that round-trips
+  // each tool to this bridge's local HTTP endpoint, so it is offered whenever
+  // that endpoint exists (the LAN server). The hook URL is lazy (the port is
+  // known only after `startLan`); the token guards the endpoint and the script
+  // is written under `~/.uxnan/hooks/`.
+  const claudeApprovals = config.lanEnabled;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
   const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
-  if (claudeInteractiveApprovals) {
+  if (claudeApprovals) {
     void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
       logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
     );
@@ -490,10 +489,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new ClaudeCodeAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
-        ...(claudeInteractiveApprovals
+        ...(claudeApprovals
           ? {
-              interactiveApprovals: true,
               approvalHook: {
                 token: hookState.token,
                 scriptPath: claudeHookScriptPath,
@@ -521,12 +518,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new CodexAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        // The app-server has its own approval channel; default to `interactive`
-        // so every tool gating is surfaced to the phone (the previous
-        // `acceptEdits` default silently auto-approved everything via
-        // `codex exec -s workspace-write`). `acceptEdits` is still accepted
-        // for back-compat and maps to the same no-prompt behavior.
-        permissionMode: codexSettings.permissionMode ?? 'interactive',
         // Route app-server approval elicitations to the bridge's shared
         // approval round-trip (the same one the Claude PreToolUse hook and
         // the Echo demo use).
@@ -627,10 +618,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   let localControl: LocalControlServerHandle | undefined;
   let localControlToken: string | undefined;
 
-  // Live relay-connection state, mutated by the relay serve loop below and read
-  // by both `Bridge.status()` and the `bridge/status` handler (via the context).
-  const relayState = { connected: false };
-
   // The bridge's own update (`self-update.ts`): seeded from the on-disk cache,
   // checked against the registry hourly, applied by `bridge/update`, and told
   // to every client with `stream/bridge/updated`.
@@ -697,15 +684,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     browse,
     pushService,
     logger,
-    relayConnected: () => relayState.connected,
+    relayConnected: () => relayService?.status().state === 'connected',
+    relay: () => {
+      if (!relayService) throw new Error('relay service not started');
+      return relayService;
+    },
     localControlActive: () => localControl !== undefined,
     updater,
     pairingPayload: () => {
-      pairingCodeService.arm();
+      armPairing();
       return buildPairingPayload();
     },
     pairingCode: () => {
-      pairingCodeService.arm();
+      armPairing();
       return pairingCodeService.issue();
     },
     now,
@@ -720,21 +711,43 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const updateTimer = setInterval(() => void updater.refresh(), DAEMON_UPDATE_CHECK_MS);
   updateTimer.unref?.();
 
-  const relayConnections: RelayConnection[] = [];
+  // The user's own relay (architecture/02a §5.10): one owner deploys, connects
+  // and reports it. Its phone channels run the same secure session as the LAN,
+  // behind the same pairing window.
+  relayService = new RelayService({
+    settings,
+    state,
+    secrets: secretStore,
+    trustStore,
+    identity: {
+      publicKeyHex: deviceState.identity.macIdentityPublicKey,
+      sign: (message) => deviceState.sign(message),
+    },
+    serve: (io) =>
+      handleSecureConnection({
+        io,
+        ctx: context,
+        router,
+        deviceState,
+        trustStore,
+        displayName: settings.get().name,
+        transport: 'relay',
+        isPairingArmed: () => pairingCodeService.isArmed(),
+      }),
+    bundle: { read: readRelayBundle, version: bundledRelayVersion() },
+    logger,
+    now,
+    onChange: (status) =>
+      broadcast(StreamNotification.RelayUpdated, { status } satisfies RelayUpdatedNotification),
+    pairingWindowMs: PAIRING_WINDOW_MS,
+    ...(options.relayFetch ? { fetch: options.relayFetch } : {}),
+    ...(options.relayConnect === false ? { connect: false } : {}),
+  });
+  const relay = relayService;
+  let relayStarted = false;
+
   let lanHandle: LanServerHandle | undefined;
   let mdns: MdnsAdvertiser | undefined;
-  let stopping = false;
-  const RELAY_RECONNECT_DELAY_MS = 2000;
-  // A relay session shorter than this never really carried a phone (see
-  // `nextRelayBackoff`); the reconnect loop backs off exponentially up to this
-  // cap instead of hot-looping against a relay that accepts and closes.
-  const MIN_HEALTHY_SESSION_MS = 3000;
-  const MAX_RECONNECT_DELAY_MS = 30_000;
-  const delay = (ms: number): Promise<void> =>
-    new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      timer.unref?.();
-    });
 
   logger.info(`bridge ready (v${BRIDGE_VERSION})`);
 
@@ -745,7 +758,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     status: () =>
       buildBridgeStatus({
         version: BRIDGE_VERSION,
-        relayConnected: relayState.connected,
+        relayConnected: relay.status().state === 'connected',
         lanEnabled: config.lanEnabled,
         activeSessions: sessions.count,
         startedAt,
@@ -757,107 +770,23 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         update: updater.snapshot(),
       }),
     // Showing the QR (or the manual code, below) IS the operator's "pair a
-    // phone now" signal: arm the LAN bootstrap window so the handshake accepts
-    // a qr_bootstrap for the next PAIRING_WINDOW_MS (see the LAN
-    // handleSecureConnection wiring in startLan, and server-handshake.ts).
+    // phone now" signal: arm the bootstrap window so the handshake accepts a
+    // qr_bootstrap for the next PAIRING_WINDOW_MS — on the LAN and, with a
+    // one-time ticket, through the relay (see armPairing and
+    // server-handshake.ts).
     generatePairingQr: () => {
-      pairingCodeService.arm();
+      armPairing();
       return buildPairingPayload();
     },
     pairingInfo: buildPairingPayload,
     currentPairingCode: () => {
-      pairingCodeService.arm();
+      armPairing();
       return pairingCodeService.currentCode();
     },
-    connectRelay: async (sessionId: string) => {
-      const dial = (): Promise<RelayConnection> =>
-        connectRelayAsMac({
-          relayUrl: config.relayUrl,
-          sessionId,
-          macDeviceId: deviceState.identity.macDeviceId,
-          macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-          machineName: settings.get().name,
-        });
-
-      // Serve exactly one phone session over `connection`; resolves when the
-      // connection closes (the relay closes our socket when the phone drops).
-      const serve = async (connection: RelayConnection): Promise<void> => {
-        relayConnections.push(connection);
-        relayState.connected = true;
-        try {
-          await handleSecureConnection({
-            io: connection.io,
-            ctx: context,
-            router,
-            deviceState,
-            trustStore,
-            displayName: settings.get().name,
-            transport: 'relay',
-            expectedSessionId: sessionId,
-          });
-        } finally {
-          const idx = relayConnections.indexOf(connection);
-          if (idx >= 0) relayConnections.splice(idx, 1);
-          try {
-            connection.ws.close();
-          } catch {
-            /* already closed */
-          }
-          relayState.connected = relayConnections.length > 0;
-        }
-      };
-
-      // Initial connect (awaited so the caller knows the relay is reachable).
-      const initial = await dial();
-      // Background loop: after each session ends, reconnect to the relay and
-      // wait for the phone again. This lets the phone trusted-reconnect after a
-      // drop (or a bridge/relay restart) WITHOUT re-scanning the QR — the old
-      // one-shot handler treated a reconnecting phone's handshake as encrypted
-      // traffic and dropped it.
-      void (async () => {
-        let current: RelayConnection | undefined = initial;
-        // Backs off after a session that ends almost immediately (relay
-        // accept-then-close, a bounce, or the session already being taken) so
-        // a misbehaving relay can't drive this into a tight, CPU-spinning
-        // reconnect loop; a session that actually carries a phone resets it.
-        let backoffMs = RELAY_RECONNECT_DELAY_MS;
-        while (!stopping) {
-          if (!current) {
-            try {
-              current = await dial();
-            } catch (err) {
-              logger.warn(
-                `relay reconnect failed: ${err instanceof Error ? err.message : String(err)}`,
-              );
-              await delay(backoffMs);
-              backoffMs = nextRelayBackoff(0, backoffMs, {
-                minHealthyMs: MIN_HEALTHY_SESSION_MS,
-                baseMs: RELAY_RECONNECT_DELAY_MS,
-                maxMs: MAX_RECONNECT_DELAY_MS,
-              });
-              continue;
-            }
-          }
-          // Serve one phone session, then re-arm on the relay.
-          const startedAt = now();
-          await serve(current);
-          current = undefined;
-          // `stop()` closes the relay connection, so the final `serve()` always
-          // returns "unhealthily" fast. Leave before the backoff so shutdown
-          // neither logs a misleading warning nor lingers in a sleep.
-          if (stopping) break;
-          const sessionMs = now() - startedAt;
-          if (sessionMs < MIN_HEALTHY_SESSION_MS) {
-            logger.warn(`relay session ended after ${sessionMs}ms; backing off ${backoffMs}ms`);
-            await delay(backoffMs);
-          }
-          backoffMs = nextRelayBackoff(sessionMs, backoffMs, {
-            minHealthyMs: MIN_HEALTHY_SESSION_MS,
-            baseMs: RELAY_RECONNECT_DELAY_MS,
-            maxMs: MAX_RECONNECT_DELAY_MS,
-          });
-        }
-      })();
+    startRelay: async () => {
+      if (relayStarted) return;
+      relayStarted = true;
+      await relay.start();
     },
     startLan: async () => {
       if (lanHandle) return { port: lanHandle.port };
@@ -1008,18 +937,13 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
       logger.info('bridge stopping');
-      stopping = true;
+      relay.stop();
       clearInterval(updateTimer);
       await agentManager.stopAll();
       if (childLedger) {
         recordChildrenIn(undefined);
         await childLedger.flush();
       }
-      for (const connection of relayConnections) {
-        connection.ws.close();
-      }
-      relayConnections.length = 0;
-      relayState.connected = false;
       if (mdns) {
         mdns.stop();
         mdns = undefined;

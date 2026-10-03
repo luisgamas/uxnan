@@ -111,6 +111,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   host's engine now share one watcher, which keeps every report inside the
   folder it watches.
 
+## [0.0.73] - 20261003
+### Added
+
+- **Remote access, in Settings → Bridge & mobile.** It explains the three ways
+  a phone reaches this computer — the same Wi-Fi, Tailscale, or your own relay
+  — and sets the relay up for you: paste a Cloudflare account ID and an API
+  token (the *Edit Cloudflare Workers* template) and the bridge deploys a free
+  relay into your own account. The token is sent once and forgotten unless you
+  choose to keep it in the system keychain. Once it is there, the section shows
+  whether it is connected, how many phones use it, its address and version,
+  and lets you turn it off, update it, give it a new address or remove it. A
+  relay you deployed yourself can be used by its address; the section shows
+  the key it must list. Without a bridge, or with one too old for it, the
+  section stays visible and says why.
+
+### Changed
+
+- **The access menu offers what the agent can do.** It lists only the modes
+  the conversation's agent can honor, adds **Plan only** where the agent has
+  it, and is hidden for an agent with none. A conversation whose mode its agent
+  no longer offers says so above the composer, with the mode it runs in now.
+  The modes read the same as on the phone: *Request approval*, *Approve for
+  me*, *Full access*, *Plan only*. A new conversation starts in its agent's
+  default mode, which the bridge sets.
+
+### Fixed
+
+- **An approval always shows its card above the composer.** When the same
+  approval reached the app twice — a reload of the turn racing the live
+  request — the duplicate broke the card above the composer, leaving only a
+  "Waiting for you" line in the conversation and nothing to answer it with.
+  A request is now one card whatever copies of it arrive.
+
 ## [0.0.72] - 20261002
 ### Changed
 

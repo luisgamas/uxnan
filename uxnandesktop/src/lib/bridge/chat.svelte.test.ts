@@ -64,7 +64,7 @@ function changes(extra: Partial<SyncChanges> = {}): SyncChanges {
     storeId: 's1',
     rev: 10,
     reset: true,
-    settings: { home: '/Users/me', name: 'Studio' },
+    settings: { home: '/Users/me', name: 'Studio', relay: null },
     projects: [],
     removedProjectIds: [],
     threads: [],
@@ -222,7 +222,7 @@ describe('ChatStore', () => {
     expect(open.queue.turnIds).toEqual(['q']);
   });
 
-  it('starts a thread in a folder with a fixed agent and the phone-default access', async () => {
+  it('starts a thread in a folder with a fixed agent, leaving its access mode to the bridge', async () => {
     const { store, calls } = harness({ 'thread/start': thread('new', '/repo', 1) });
     const started = await store.startThread({
       cwd: '/repo',
@@ -237,9 +237,8 @@ describe('ChatStore', () => {
       method: 'thread/start',
       params: { agentId: 'codex', cwd: '/repo', model: 'gpt-5', title: 'Named tab' },
     });
-    await vi.waitFor(() =>
-      expect(calls.some((c) => c.method === 'thread/setAccessMode')).toBe(true),
-    );
+    // The bridge starts it in its agent's default mode; the desktop sets none.
+    expect(calls.some((c) => c.method === 'thread/setAccessMode')).toBe(false);
     expect(store.threads.has('new')).toBe(true);
   });
 

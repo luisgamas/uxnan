@@ -41,5 +41,5 @@ These are not pending dev work — they're per-machine setup. Full how-to is in
 
 - **Firebase client config** (`google-services.json`, `GoogleService-Info.plist`)
   belongs to the **mobile app** (`uxnanmobile/FOR-HUMAN.md`).
-- The **relay**'s optional push credential ([`../relay/FOR-HUMAN.md`](../relay/FOR-HUMAN.md))
-  is only for a self-hosted hosted-relay setup; the canonical push owner is the bridge.
+- The **relay** needs no push credential — it carries no push traffic; the bridge
+  is the only push sender.

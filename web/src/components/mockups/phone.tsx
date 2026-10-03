@@ -434,7 +434,7 @@ export function PhoneConversations() {
 
 const BULLETS = [
   { code: "shared/", rest: "JSON-RPC + E2EE contracts" },
-  { code: "relay/", rest: "optional, self-hosted" },
+  { code: "relay/", rest: "optional, your own on Cloudflare" },
   { code: "bridge/", rest: "the daemon on your PC" },
 ];
 

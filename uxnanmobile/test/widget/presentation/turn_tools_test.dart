@@ -8,6 +8,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_context_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -238,6 +239,7 @@ void main() {
       (ApprovalMode.approveForMe, UxIcons.verifiedUser, UxnanColors.success),
       (ApprovalMode.fullAccess, UxIcons.lockOpen, UxnanColors.error),
       (ApprovalMode.requestApproval, UxIcons.panTool, UxnanColors.warning),
+      (ApprovalMode.plan, UxIcons.checklistRtl, UxnanColors.connecting),
     ];
 
     for (final (mode, icon, color) in cases) {
@@ -362,5 +364,33 @@ void main() {
     await tester.pumpAndSettle();
     // Its own entry: no level is marked as a default.
     expect(find.text('Default'), findsWidgets);
+  });
+
+  testWidgets('the access sheet lists only the modes the agent offers',
+      (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (c) {
+            context = c;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    final chosen = ApprovalModeSheet.show(
+      context,
+      ApprovalMode.fullAccess,
+      const [ApprovalMode.approveForMe, ApprovalMode.fullAccess],
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Approve for me'), findsOneWidget);
+    expect(find.text('Full access'), findsOneWidget);
+    expect(find.text('Request approval'), findsNothing);
+    expect(find.text('Plan only'), findsNothing);
+    await tester.tap(find.text('Approve for me'));
+    await tester.pumpAndSettle();
+    expect(await chosen, ApprovalMode.approveForMe);
   });
 }

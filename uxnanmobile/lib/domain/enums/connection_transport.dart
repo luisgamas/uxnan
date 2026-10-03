@@ -6,6 +6,6 @@ enum ConnectionTransport {
   /// A direct LAN/Tailscale host (`ws://host:port`).
   direct,
 
-  /// The hosted relay fallback (`wss://…`).
+  /// The bridge's own relay (`wss://…/v1/connect/<routingId>`).
   relay,
 }

@@ -1,20 +1,26 @@
-/// How the agent's actions are approved (spec 02a — access modes).
+/// How much the agent may do before it asks (spec 02a — access modes). Each
+/// mode means the same on every agent; an agent offers only the ones it can
+/// honor (`AgentCapabilities.accessModes`).
 enum ApprovalMode {
-  /// Always ask before risky/external actions.
+  /// Every action with a side effect (writing, running a command, the
+  /// network, a path outside the project) waits for the person.
   requestApproval,
 
-  /// Auto-approve except for potentially risky actions.
+  /// Works without asking inside the project; what goes beyond it is decided
+  /// by the CLI's own reviewer where it has one.
   approveForMe,
 
-  /// Unrestricted access.
+  /// No prompts and no sandbox: the CLI's own bypass.
   fullAccess,
-}
 
-/// The approval mode every new thread starts in (spec 02a — access modes).
-///
-/// Full access by default so the agent acts without prompting for each tool —
-/// the intended experience for this personal tool. It is the single source of
-/// truth for the pre-seed UI default and the value persisted to the bridge when
-/// a thread has no mode yet; the user can still change it per-thread from the
-/// compact turn-context shelf above the composer.
-const ApprovalMode kDefaultApprovalMode = ApprovalMode.fullAccess;
+  /// Reads and plans; writes and runs nothing.
+  plan;
+
+  /// The mode a wire name (`thread.accessMode`) stands for, or null.
+  static ApprovalMode? fromName(Object? name) {
+    for (final mode in values) {
+      if (mode.name == name) return mode;
+    }
+    return null;
+  }
+}

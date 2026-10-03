@@ -42,6 +42,8 @@ import {
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
   type OpenCodeModelRef,
+  type OpenCodeAgent,
+  type OpenCodeEffect,
   type OpenCodePermissionPolicy,
   type OpenCodePrompt,
   type PermissionReply,
@@ -55,6 +57,13 @@ import type { SpawnFn } from './spawn.js';
  * Reads, the plan tool, questions and sub-agents run freely.
  */
 const GATED_ACTIONS = ['shell', 'edit', 'webfetch', 'external_directory'] as const;
+
+/** The session rules for a policy: every gated action, on any resource. */
+function permissionRules(
+  policy: OpenCodePermissionPolicy,
+): { action: string; resource: string; effect: OpenCodeEffect }[] {
+  return GATED_ACTIONS.map((action) => ({ action, resource: '*', effect: policy[action] }));
+}
 
 /** How long `models()` waits for a freshly booted server to load its catalog. */
 const MODELS_WAIT_MS = 10_000;
@@ -443,6 +452,8 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   readonly #cwd: string;
   /** sessionID → the model it runs, so a turn switches only when it differs. */
   readonly #sessionModel = new Map<string, string>();
+  /** sessionID → the primary agent it runs, as this process last set it. */
+  readonly #sessionAgent = new Map<string, OpenCodeAgent>();
 
   constructor(opts: OpenCodeV2ServerOptions) {
     this.#cwd = opts.cwd;
@@ -512,11 +523,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
       ...(opts.title !== undefined ? { title: opts.title } : {}),
       location: { directory: this.#cwd },
       ...(opts.model ? { model: modelRef(opts.model, opts.variant) } : {}),
-      permissions: GATED_ACTIONS.map((action) => ({
-        action,
-        resource: '*',
-        effect: opts.permission,
-      })),
+      permissions: permissionRules(opts.permission),
     });
     const id = res.data?.id;
     if (!id) throw new Error('opencode did not return a session id');
@@ -524,8 +531,16 @@ export class OpenCodeV2Server implements IOpenCodeServer {
     return id;
   }
 
+  async setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void> {
+    // `PATCH /api/session/:id { permissions }` replaces the rules (2.0.19).
+    await this.#serve.request('PATCH', `/api/session/${encodeURIComponent(sessionId)}`, {
+      permissions: permissionRules(permission),
+    });
+  }
+
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
     await this.#useModel(sessionId, prompt.model, prompt.variant);
+    await this.#useAgent(sessionId, prompt.agent);
     await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
       text: prompt.text,
     });
@@ -560,6 +575,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
    */
   async runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
     await this.#useModel(sessionId, run.model, run.variant);
+    await this.#useAgent(sessionId, run.agent);
     const id = encodeURIComponent(sessionId);
     if (run.skill) {
       await this.#serve.request('POST', `/api/session/${id}/prompt`, {
@@ -572,6 +588,20 @@ export class OpenCodeV2Server implements IOpenCodeServer {
         text: run.args,
       });
     }
+  }
+
+  /**
+   * Put the session on [agent] (2.x keeps the agent on the session: `POST
+   * /api/session/:id/agent`, 2.0.19). Set once per session in this process,
+   * then only when it changes — a session this process did not set may be on
+   * either.
+   */
+  async #useAgent(sessionId: string, agent: OpenCodeAgent): Promise<void> {
+    if (this.#sessionAgent.get(sessionId) === agent) return;
+    await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/agent`, {
+      agent,
+    });
+    this.#sessionAgent.set(sessionId, agent);
   }
 
   /** Switch the session's model when a turn asks for another one. */

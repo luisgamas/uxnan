@@ -43,9 +43,6 @@ it, and only four flagship marks ship as assets (`claudecode`, `codex`,
 
 ## Deferred until later phases (no action needed yet)
 
-- [ ] **Relay URL / self-hosted relay** (Phase 6) — for off-LAN mobile
-      connectivity through the embedded bridge. LAN/Tailscale-direct needs none.
-
 - [ ] **GitHub OAuth App `client_id`** (only for the *native* GitHub sign-in follow-up
       — `FOR-DEV.md → "GitHub integration — follow-ups"`). **Not needed today:** the
       shipped GitHub integration signs in through the local **`gh` CLI**, so it needs no

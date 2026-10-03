@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,086 Rust tests (883 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 97
+`docs/chat.md`). 1,086 Rust tests (858 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 122
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 24 in `uxnan-host` (20 against the daemon itself) + 45
 integration), of which 59 are ignored probes that need something real to talk to
 (51 live SSH probes — 39 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,759 frontend Vitest tests across two
+GitHub tests; and on Windows 1 real-scheduler probe) + 1,788 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1022,6 +1022,19 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 - [ ] Fork and "session info" (the agent's native session id, for resuming it
       from its own CLI) in the chat header's menu — the phone offers both.
 
+### Remote access (the user's own relay)
+- [ ] **Visual approval and a live run of Settings → Bridge & mobile → Remote
+      access.** Built: the section (`RelaySettings.svelte`), the setup dialog
+      (`RelaySetupDialog.svelte`), the shared token field
+      (`RelayTokenField.svelte`) and the one replica of the relay
+      (`$lib/bridge/relay.svelte.ts`, fed by `relay/status` on every connect and
+      `stream/relay/updated`), with component and store tests. Still owed: the
+      maintainer's visual review of the proposal (screenshots rendered from the
+      frontend only), and a run in `npm run tauri dev` against a bridge that
+      ships `relay/*` — a real deploy into a Cloudflare account, update,
+      new address and remove (with and without a remembered token) — then a
+      phone reaching this computer through it from another network.
+
 ### Terminal-launched sessions
 - [ ] **A live view of a terminal's session on the phone while it runs.** The
       hand-off is built (holds, Continue as chat, Continue here, Open in
@@ -1730,7 +1743,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,759 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,788 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

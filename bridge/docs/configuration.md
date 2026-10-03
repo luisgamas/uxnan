@@ -11,13 +11,12 @@ file is optional; create it to override. Defaults live in
 
 | Field | Default | Purpose |
 |---|---|---|
-| `relayUrl` | built-in default (placeholder) | WebSocket URL of the relay (remote/off-LAN fallback). The built-in default is a **placeholder** — set this to **your own** self-hosted relay's `wss://…` URL *before* you flip `relayEnabled`, so turning the relay on is a one-line change with nothing else to wire. |
-| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`push-notifications.md`](./push-notifications.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
+| `relay` | *(absent)* | **Your own relay** — `{ "url": "wss://…", "routingId": "<32 hex>", "enabled": true }`, how phones reach this PC from another network. **Absent by default**: the bridge is LAN/Tailscale-direct and the pairing QR carries only the direct `hosts`. **Do not write it by hand** — `uxnan-bridge relay setup` (deploys the relay into your Cloudflare account) or `relay use <wss-url>` sets it, `relay enable`/`disable` flips `enabled`, `relay rotate` changes `routingId`, `relay remove` deletes it. It is shared with every client as `BridgeSettings.relay`. An entry that is not a valid endpoint is ignored, and the retired `relayUrl` / `relayEnabled` keys are dropped when the config is read. How it was set up lives beside it in `~/.uxnan/relay.json`; a remembered Cloudflare token only in the system keyring. See [`connectivity.md`](./connectivity.md#3-your-own-relay) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. On multi-homed hosts, the bridge joins and emits on every eligible advertised IPv4 rather than trusting the OS multicast route. Best-effort — an unavailable UDP 5353 interface is logged and pairing still works by QR or by typing the host. Discovery never advertises the pairing code and never creates trust. |
 | `localControlEnabled` | `true` | Serve the **local control channel** Uxnan Desktop uses on this machine: a WebSocket bound to `127.0.0.1` only, on a free port, authorized by a token written with the port to `~/.uxnan/local-control.json` (owner-only, fresh every start, removed on stop). Only `uxnan-bridge start` opens it. Set `false` to refuse the desktop entirely. See [connectivity](connectivity.md#4-uxnan-desktop-on-the-same-machine-local-control-channel). |
-| `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
+| `autoReconnect` | `true` | Not read by the current bridge: the relay control socket always reconnects (2 s → 60 s backoff) while a relay is enabled. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |
 | `defaultAgent` | `opencode` | Agent used when a thread doesn't pick one. |
@@ -30,7 +29,7 @@ file is optional; create it to override. Defaults live in
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
-| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
+| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (background delivery is gated on the bridge's Firebase service account — see [`push-notifications.md`](./push-notifications.md)). |
 
 ## Projects: one registry every client mirrors
 
@@ -107,8 +106,7 @@ config is loaded.
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
 | `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by active agents that enumerate their own models (OpenCode, Codex, pi, Antigravity, Zero, Grok). |
-| `permissionMode` | Headless fallback posture for adapters that consume this config: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to Claude, Codex, pi and Antigravity. The per-thread `accessMode` is authoritative when the adapter supports it; OpenCode, Zero and Grok use their live protocol permission surfaces instead of this field. |
-| `interactiveApprovals` | Opt-in `PreToolUse` approvals for **Claude Code** (default false; requires `lanEnabled`). When true, every tool Claude runs prompts on the phone before execution. The CLI hook permits a 30-minute request, while the bridge's decision countdown is five connected minutes and then denies. It overrides Claude's fallback `permissionMode` while active. |
+| `permissionMode` | The posture of an agent that offers **no access modes** — pi and Antigravity: `acceptEdits`, `default` (read-only) or `bypassPermissions`. Every other agent runs in the conversation's access mode, chosen in the apps; see [agents.md → *Access modes*](./agents.md#access-modes). Claude Code's "request approval" needs `lanEnabled` (its approval hook calls the bridge's local HTTP endpoint). |
 
 ### Per-project agent/model pins (`projectAgents`)
 
@@ -139,7 +137,6 @@ reserved and not yet consumed.)
   "defaultAgent": "claude-code",
   "agents": {
     "claude-code": {
-      "permissionMode": "acceptEdits",
       "model": "opus",
       "models": [
         { "id": "claude-fable-5-1", "displayName": "Fable 5.1" },
@@ -152,7 +149,7 @@ reserved and not yet consumed.)
         "claude-haiku-4-5"
       ]
     },
-    "codex": { "permissionMode": "acceptEdits" },
+    "pi-agent": { "permissionMode": "acceptEdits" },
     "opencode": { "model": "provider/model" }
   },
   "projectAgents": [
@@ -165,7 +162,7 @@ reserved and not yet consumed.)
 With `browseRoots` set to `Documents`, the phone browses sub-folders under it,
 picks any directory as a thread's working dir, and starts an agent rooted there.
 The browse API cannot navigate above the root; note the **agent process** itself is
-only write-bounded by its `permissionMode` — see
+only write-bounded by the conversation's access mode — see
 [`../FOR-HUMAN.md`](../FOR-HUMAN.md) (browse root & agent scope).
 
 ## State files in `~/.uxnan/`

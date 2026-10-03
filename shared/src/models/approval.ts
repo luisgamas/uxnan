@@ -38,4 +38,11 @@ export interface ApprovalRequestBlock {
   risk?: ApprovalRisk;
   /** Optional extra detail (e.g. the command or affected paths). */
   detail?: string;
+  /**
+   * The request's own id again (`approvalId`), as the `LiveBlock` id: a copy
+   * of the same request delivered twice — the stored one a client just
+   * reloaded and the live one that follows it — replaces the first in place
+   * instead of showing as a second card.
+   */
+  blockId?: string;
 }

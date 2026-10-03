@@ -91,6 +91,38 @@ connecting) and names it. Several phones can be paired. **Shared with your phone
 bridge explores new projects from, on the phone and here alike
 (`settings/set`).
 
+### Remote access (your own relay)
+
+**Settings → Bridge & mobile → Remote access** is how a phone reaches this
+computer away from home. The bridge owns the relay (architecture/02a §5.10): it
+deploys it into your Cloudflare account, keeps it connected and reports it; the
+app only asks, through `relay/*`, and follows `stream/relay/updated`
+(`$lib/bridge/relay.svelte.ts` is the one copy of that status here; spec:
+`architecture/02e` §5.4).
+
+- **Not set up:** the three ways a phone connects — the same Wi-Fi (works
+  already), Tailscale (works automatically with it on both; the pairing QR
+  carries those addresses) and your own relay (any network). **Set up your
+  relay** asks for your Cloudflare **account ID** (Workers & Pages overview)
+  and an **API token** made from the *Edit Cloudflare Workers* template at
+  `dash.cloudflare.com/profile/api-tokens`, then the bridge deploys it
+  (`relay/setup`, up to about a minute). The token is sent once and the field
+  is emptied as soon as the bridge answers; **Remember the token on this PC
+  (system keychain)**, off by default, lets the bridge keep it for a later
+  update or removal. **Use a relay you deployed** takes the address of one you
+  run yourself (`relay/use`) and shows this computer's key, which that relay
+  must list in `UXNAN_HOST_KEYS`.
+- **Set up:** **Use the relay** (on/off, `relay/set`), its state with the
+  bridge's reason when it cannot connect, the phones using it now, its address,
+  its version with **Update relay** when the bridge ships a newer one
+  (`relay/update`; asks for the token when none is remembered; a relay you
+  deployed yourself is updated where you deployed it), **New address**
+  (`relay/rotate` — phones away from home reconnect after their next visit to
+  the home network) and **Remove** (`relay/remove`, optionally deleting it from
+  Cloudflare too).
+- **No bridge, or one older than `relay/*`:** the section stays, disabled, with
+  the reason.
+
 ## One list of projects with the phone
 
 Your projects here and the phone's are the bridge's one registry
@@ -360,8 +392,12 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (one per line) with the one it runs at by
   default marked (untouched, the bridge sends that default, so what the pill
   shows is what the turn uses; an agent that names no default offers
-  "Default") — and the access mode (*Ask first* / *Auto-approve edits* /
-  *Full access*; new chats start at *Full access*, like new chats on the phone)
+  "Default") — and the access mode — only the modes the conversation's agent offers, out of
+  *Request approval* / *Approve for me* / *Full access* / *Plan only* (the menu
+  is hidden for an agent with none; a new chat starts in the agent's default,
+  set by the bridge; a mode the agent no longer offers is said above the
+  composer, with the one it runs in; what each mode does per agent is in
+  `bridge/docs/agents.md` → *Access modes*)
   — and a ring showing how full the context window is, when the agent reports
   it (amber past 75%, red past 90%; the figures are in its tooltip). For an
   agent with a plan the bridge reads (Claude Code, Codex, Grok) the tooltip

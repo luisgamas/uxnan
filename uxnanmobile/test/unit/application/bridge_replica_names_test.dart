@@ -13,6 +13,7 @@ import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/repositories/i_phone_profile_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/value_objects/phone_details.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_bridge_replica_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -45,6 +46,12 @@ class _Pcs implements ITrustedDeviceRepository {
   Future<void> rename(String macDeviceId, String name) async {
     final d = devices[macDeviceId];
     if (d != null) devices[macDeviceId] = d.copyWith(displayName: name);
+  }
+
+  @override
+  Future<void> recordRelay(String macDeviceId, RelayEndpoint? relay) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.withRelay(relay);
   }
 
   @override
@@ -83,8 +90,14 @@ Future<void> _settle() async {
   }
 }
 
-/// Names every client shares (architecture/02a §5.8.17), as the phone applies
-/// and changes them.
+const _relay = RelayEndpoint(
+  url: 'wss://uxnan-relay.example.workers.dev',
+  routingId: '0123456789abcdef0123456789abcdef',
+  enabled: true,
+);
+
+/// Names and the relay every client shares (architecture/02a §5.8.17), as the
+/// phone applies and changes them.
 void main() {
   late UxnanDatabase db;
   late DriftBridgeReplicaRepository replicaRepo;
@@ -96,6 +109,7 @@ void main() {
   late PhoneNameManager phoneName;
   late List<(String, Map<String, dynamic>?)> calls;
   late String? lose;
+  late Map<String, Object?> settings;
 
   setUp(() {
     db = UxnanDatabase.forTesting(NativeDatabase.memory());
@@ -104,12 +118,12 @@ void main() {
     phases = StreamController<ConnectionPhase>.broadcast();
     calls = [];
     lose = null;
+    settings = {'home': '/Users/me', 'name': 'Studio', 'relay': null};
     pcs = _Pcs()
       ..devices['pc-1'] = TrustedDevice(
         macDeviceId: 'pc-1',
         displayName: 'MacBook-Pro.local',
         macIdentityPublicKey: Uint8List(32),
-        relayUrl: '',
         sessionId: 's',
         pairedAt: DateTime(2026),
       );
@@ -122,7 +136,7 @@ void main() {
             'storeId': 's1',
             'rev': 3,
             'reset': true,
-            'settings': {'home': '/Users/me', 'name': 'Studio'},
+            'settings': settings,
             'threads': <Object>[],
             'removedThreadIds': <Object>[],
             'projects': <Object>[],
@@ -244,5 +258,67 @@ void main() {
     );
     await _settle();
     expect(methods(), ['device/describe']);
+  });
+
+  group("the PC's relay (BridgeSettings.relay)", () {
+    test('a sync stores it, so the PC is reachable away from home', () async {
+      settings['relay'] = _relay.toJson();
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.relay, _relay);
+    });
+
+    test('a settings update switches it, and a null one clears it', () async {
+      pcs.devices['pc-1'] = pcs.devices['pc-1']!.withRelay(_relay);
+      phases.add(ConnectionPhase.connected);
+      await _settle();
+
+      const off = RelayEndpoint(
+        url: 'wss://uxnan-relay.example.workers.dev',
+        routingId: '0123456789abcdef0123456789abcdef',
+        enabled: false,
+      );
+      events.add(
+        const SettingsUpdatedEvent(
+          home: '/Users/me',
+          name: 'Studio',
+          rev: 4,
+          carriesRelay: true,
+          relay: off,
+        ),
+      );
+      await _settle();
+      expect(pcs.devices['pc-1']?.relay, off);
+
+      events.add(
+        const SettingsUpdatedEvent(
+          home: '/Users/me',
+          name: 'Studio',
+          rev: 5,
+          carriesRelay: true,
+        ),
+      );
+      await _settle();
+      expect(pcs.devices['pc-1']?.relay, isNull);
+    });
+
+    test('settings that say nothing about it leave it alone', () async {
+      pcs.devices['pc-1'] = pcs.devices['pc-1']!.withRelay(_relay);
+      settings.remove('relay');
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.relay, _relay);
+
+      events.add(
+        const SettingsUpdatedEvent(home: '/Users/me', name: 'Desk', rev: 4),
+      );
+      await _settle();
+      expect(pcs.devices['pc-1']?.relay, _relay);
+    });
+
+    test('a malformed relay is not taken for "none"', () async {
+      pcs.devices['pc-1'] = pcs.devices['pc-1']!.withRelay(_relay);
+      settings['relay'] = {'url': 'wss://relay.example/with/a/path'};
+      await replica.sync();
+      expect(pcs.devices['pc-1']?.relay, _relay);
+    });
   });
 }

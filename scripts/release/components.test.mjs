@@ -4,25 +4,27 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { COMPONENTS, RELEASE_ORDER, component, isNonShipping } from './components.mjs';
+import {
+  COMPONENTS,
+  RELEASE_ORDER,
+  allVersionFiles,
+  component,
+  isNonShipping,
+  pathsOf,
+  within,
+} from './components.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 describe('the registry', () => {
   it('describes every component the repo releases', () => {
-    assert.deepEqual(COMPONENTS.map((c) => c.id).sort(), [
-      'bridge',
-      'desktop',
-      'mobile',
-      'relay',
-      'shared',
-    ]);
+    assert.deepEqual(COMPONENTS.map((c) => c.id).sort(), ['bridge', 'desktop', 'mobile', 'shared']);
   });
 
   it('points every version file at something that exists', () => {
     // A path typo here is invisible until a release half-bumps the tree.
     for (const meta of COMPONENTS) {
-      for (const entry of meta.versionFiles) {
+      for (const entry of allVersionFiles(meta)) {
         assert.ok(existsSync(join(repo, entry.file)), `${meta.id}: missing ${entry.file}`);
       }
     }
@@ -36,7 +38,7 @@ describe('the registry', () => {
     // The rule docs/releases.md states in prose: a manifest without its lock is the
     // drift that `--allow-same-version` hides at build time.
     for (const meta of COMPONENTS) {
-      const files = meta.versionFiles.map((e) => e.file);
+      const files = allVersionFiles(meta).map((e) => e.file);
       const manifests = files.filter((f) => f.endsWith('package.json'));
       for (const manifest of manifests) {
         const hasLock = files.some((f) => f.endsWith('package-lock.json'));
@@ -54,9 +56,8 @@ describe('the registry', () => {
   it('orders shared before the packages that resolve it from npm', () => {
     // The bridge pins @uxnan/shared by reading npm at build time, so tagging
     // them together publishes a bridge against the previous shared.
-    assert.deepEqual(component('shared').releaseBefore, ['bridge', 'relay']);
+    assert.deepEqual(component('shared').releaseBefore, ['bridge']);
     assert.ok(RELEASE_ORDER.indexOf('shared') < RELEASE_ORDER.indexOf('bridge'));
-    assert.ok(RELEASE_ORDER.indexOf('shared') < RELEASE_ORDER.indexOf('relay'));
   });
 
   it('covers every component in the release order', () => {
@@ -65,6 +66,57 @@ describe('the registry', () => {
 
   it('rejects an unknown id instead of returning undefined', () => {
     assert.throws(() => component('web'), /unknown component/);
+  });
+});
+
+describe('the relay — shipped inside the bridge, never released on its own', () => {
+  it('is not a component, and says where it went when asked for', () => {
+    assert.ok(!RELEASE_ORDER.includes('relay'));
+    assert.throws(() => component('relay'), /ships inside uxnan-bridge/);
+  });
+
+  it('is a part the bridge carries, measured over the Worker and the protocol it inlines', () => {
+    const [relay] = component('bridge').carries;
+    assert.equal(relay.id, 'relay');
+    // esbuild inlines `@uxnan/shared/relay` into the bundle, so that file is
+    // Worker source as much as `relay/src/` is.
+    assert.deepEqual(relay.paths, ['relay', 'shared/src/relay']);
+    assert.deepEqual(pathsOf(component('bridge')), ['bridge', 'relay', 'shared/src/relay']);
+  });
+
+  it('keeps the historical relay-v tags as the floor of the Worker version line', () => {
+    assert.deepEqual(component('bridge').carries[0].tagPrefixes, ['relay-v']);
+  });
+
+  it('moves the Worker version in relay/package.json and its root lock entry', () => {
+    assert.deepEqual(
+      component('bridge').carries[0].versionFiles.map((e) => [e.file, e.pkgPath]),
+      [
+        ['relay/package.json', undefined],
+        ['package-lock.json', 'relay'],
+      ],
+    );
+  });
+
+  it("treats the Miniflare test harness as the bridge's tests, not its package", () => {
+    // `uxnan-relay/local` starts the Worker for the bridge's e2e tests; the
+    // bridge takes `uxnan-relay` as a devDependency only.
+    const bridge = component('bridge');
+    assert.equal(isNonShipping('relay/src/local/start-local-relay.ts', bridge), true);
+    assert.equal(isNonShipping('relay/src/worker.ts', bridge), false);
+    assert.equal(isNonShipping('relay/src/room.ts', bridge), false);
+    assert.equal(isNonShipping('relay/scripts/build.mjs', bridge), false);
+    assert.equal(isNonShipping('shared/src/relay/protocol.ts', bridge), false);
+  });
+});
+
+describe('within', () => {
+  it('matches a path segment, never a longer name that starts the same', () => {
+    assert.equal(within('relay/src/worker.ts', 'relay'), true);
+    assert.equal(within('relay', 'relay'), true);
+    assert.equal(within('relay-old/x.ts', 'relay'), false);
+    assert.equal(within('shared/src/relay/protocol.ts', 'shared/src/relay'), true);
+    assert.equal(within('shared/src/relay.ts', 'shared/src/relay'), false);
   });
 });
 

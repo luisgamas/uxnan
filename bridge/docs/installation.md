@@ -38,7 +38,7 @@ uxnan-bridge start
 ## Run
 
 ```bash
-uxnan-bridge start     # boot the daemon: LAN server + relay + print the pairing QR
+uxnan-bridge start     # boot the daemon: LAN server (+ your relay, if set up) + print the pairing QR
 uxnan-bridge qr        # print the pairing QR (the running bridge's, when one runs)
 uxnan-bridge status    # the running bridge's status as JSON (starts nothing)
 uxnan-bridge stop      # signal the running daemon to stop
@@ -49,7 +49,7 @@ reconnects to the trusted device without re-scanning.
 
 > **Pair within 5 minutes of showing the QR or code.** First-time enrollment is
 > only accepted while a pairing window is open, so a device that never saw your
-> screen cannot enroll itself over the LAN. Showing the QR or the code opens the
+> screen cannot enroll itself over the LAN or through your relay. Showing the QR or the code opens the
 > window, and so does a phone successfully looking up the code. If the window
 > lapsed, just run `uxnan-bridge qr` (or `code`) again.
 >
@@ -64,11 +64,14 @@ reconnects to the trusted device without re-scanning.
 
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)
-- **Remote (off-LAN):** recommended is **Tailscale** (or any mesh VPN) — also no
-  hosting; the bridge's Tailscale address is advertised automatically. A hosted
-  relay is the optional alternative.
+- **Tailscale:** also direct, from anywhere — the bridge's Tailscale address is
+  advertised automatically.
+- **Your own relay:** for a phone on another network without a VPN,
+  `uxnan-bridge relay setup --account <id>` deploys a relay into your own free
+  Cloudflare account; paired phones then reach the PC from any network.
 
-See [`connectivity.md`](./connectivity.md) for the three modes.
+See [`connectivity.md`](./connectivity.md) for the three ways, and
+[`../../docs/connecting.md`](../../docs/connecting.md) for the user guide.
 
 ## Staying up to date
 

@@ -1,27 +1,8 @@
 /**
- * Push notification payload sent from the bridge to the relay (POST /push/notify).
+ * Push platform of a phone's FCM/APNs registration (`notifications/register`).
  *
- * Source: architecture/02a-system-architecture.md §5.10.2.
+ * Background push is delivered by the bridge alone, straight to FCM
+ * (architecture/02a §5.10.2); the relay carries no push traffic.
  */
 
 export type PushPlatform = 'ios' | 'android';
-
-export interface PushNotifyRequest {
-  sessionId: string;
-  /** Secret that authenticates the bridge to the relay for this session. */
-  notificationSecret: string;
-  threadId: string;
-  turnId: string;
-  title: string;
-  body: string;
-}
-
-export interface PushRegisterRequest {
-  pushToken: string;
-  platform: PushPlatform;
-}
-
-export interface PushRegisterResult {
-  registered: boolean;
-  notificationSecret: string;
-}

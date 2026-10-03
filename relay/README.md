@@ -1,99 +1,139 @@
 # uxnan-relay
 
-![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Worker_%2B_Durable_Object-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![WebSocket](https://img.shields.io/badge/WebSocket-stateless-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 ![E2EE](https://img.shields.io/badge/sees-only_sealed_envelopes-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
-![Role](https://img.shields.io/badge/role-optional_%2F_self--hosted-blue?style=for-the-badge)
+![Role](https://img.shields.io/badge/role-optional_%2F_your_own_account-blue?style=for-the-badge)
 
-A small, stateless WebSocket relay that forwards **opaque E2EE envelopes** between
-the [Uxnan](../README.md) mobile app and the [bridge](../bridge/README.md) when
-the two aren't on the same network. It only ever sees encrypted frames — never
-plaintext, keys, code, or diffs. The envelope-forwarding path is stateless; the
-**optional** push fallback persists a small token/dedupe file
-(`~/.uxnan/relay-state.json`). Only the phone uses it: Uxnan Desktop talks to
-the bridge on the same machine over the bridge's local control channel.
+The relay lets the [Uxnan](../README.md) phone app reach your PC's
+[bridge](../bridge/README.md) from **another network** — mobile data, a café, the
+office — without a VPN. It is a **Cloudflare Worker with one SQLite-backed
+Durable Object per bridge**, and it runs in **your own free Cloudflare account**:
+the bridge deploys it there for you (`uxnan-bridge relay setup`). Uxnan hosts no
+relay and has no server in the path.
 
-> **Status:** alpha-functional — and **optional / self-hosted**. The product is
-> bridge-first (LAN-direct and Tailscale-direct need zero hosting and zero
-> credentials); the relay is just the hosted off-LAN fallback for people who want
-> to run their own. Push notifications are sent **by the bridge directly** now —
-> the relay's `/push/*` endpoints stay only as a fallback. What's built and
-> what's left is in [`FOR-DEV.md`](FOR-DEV.md); history in
-> [`CHANGELOG.md`](CHANGELOG.md).
+The relay first checks who is connecting — the bridge and each phone sign a
+challenge with their Ed25519 identity key — then turns into a blind pipe. Every
+byte after that is the documented E2EE handshake and AES-256-GCM envelopes,
+which the relay cannot read. Uxnan Desktop never uses it: it talks to the bridge
+on the same machine over the local control channel.
 
-> **`mac` / `iphone` are ROLES, not platforms.** `mac` = the PC/bridge side (runs
-> on Windows, macOS or Linux); `iphone` = the mobile app side (Android or iOS).
-> The names come from the protocol spec and are fixed by the wire contract with
-> the mobile app — they do not restrict the operating system.
+> **Status:** alpha-functional — the relay, the bridge's deploy and control
+> (`relay/*`, `uxnan-bridge relay …`) and the phone's relay client are built and
+> tested against the real Workers runtime and a relay deployed to Cloudflare.
+> Still optional: LAN and Tailscale need no relay at all. The desktop and phone
+> screens for it are not built yet (the CLI is the way in today). Details in
+> [`FOR-DEV.md`](FOR-DEV.md); history in [`CHANGELOG.md`](CHANGELOG.md).
 
-## When you actually need it
+## When you need it
 
-Most of the time, you do not. When your phone and PC share a network — the same
-Wi-Fi, or a Tailscale tailnet — the app reaches the bridge **directly**, with no
-relay, no hosting, and no credentials. The relay exists for the one case the
-direct paths cannot cover: reaching your PC from **outside** that network. In that
-case you self-host this relay, and it simply shuttles sealed envelopes between the
-two sides. Because everything is already end-to-end encrypted, the relay is a dumb
-pipe by design — it can route or drop traffic, but it can never read it.
+Most of the time, you do not. When the phone and the PC share a network — the
+same Wi-Fi, or a Tailscale tailnet — the phone reaches the bridge **directly**,
+and it always tries those addresses first. The relay covers the one case the
+direct paths cannot: a phone on another network with no VPN. The user guide is
+[`docs/connecting.md`](../docs/connecting.md).
 
-<details>
-<summary><b>Diagram — how the relay pairs two sides by session, seeing nothing</b></summary>
+## How a user gets one
+
+Through the bridge, never by hand:
+
+```bash
+uxnan-bridge relay setup --account <cloudflare-account-id>   # asks for an API token
+```
+
+The bridge uploads the Worker it ships into that account, adds its own public
+key to the Worker's `UXNAN_HOST_KEYS`, enables `workers.dev`, and from then on
+keeps a control socket open to it. Paired phones learn the relay through the
+bridge's shared settings and use it when no direct address answers. The token
+is used for the deploy and dropped unless `--remember` keeps it in the system
+keyring. Full flow, token permissions and the manual path for developers:
+[`docs/deploy.md`](docs/deploy.md).
+
+## How it works
 
 ```mermaid
 sequenceDiagram
-  participant P as 📱 iphone (app)
-  participant R as 🔁 relay
-  participant B as 🌉 mac (bridge)
-  B->>R: connect (x-role: mac, x-session-id)
-  P->>R: connect (x-role: iphone, x-session-id)
-  Note over R: pair the two sockets sharing a sessionId
-  P->>R: sealed E2EE envelope
-  R->>B: same envelope, forwarded unchanged
-  B->>R: sealed E2EE envelope
-  R->>P: same envelope, forwarded unchanged
-  Note over R: never sees plaintext, keys, code, or diffs
+  participant B as 🌉 bridge
+  participant R as 🔁 relay (room for routingId)
+  participant P as 📱 phone
+  B->>R: /v1/host/<routingId> · challenge → host-auth (signed) → ready
+  B->>R: allow {trusted phone keys}
+  P->>R: /v1/connect/<routingId> · challenge → phone-auth (signed) → (wait)
+  R->>B: dial {channel}
+  B->>R: /v1/channel/<routingId>/<channel> · challenge → channel-auth → ready
+  R->>P: ready
+  Note over P,B: from here: E2EE handshake + sealed envelopes, forwarded verbatim
 ```
 
-</details>
+- **Routes.** `/v1/host/<routingId>` (the bridge's control socket),
+  `/v1/connect/<routingId>` (a phone), `/v1/channel/<routingId>/<channelId>`
+  (the bridge's side of one phone's pipe), and `GET /v1/version`
+  (`{ name, protocol, version }`). Anything else is `404`; a route opened
+  without a WebSocket upgrade is `426`.
+- **Auth.** On every socket the relay sends a challenge nonce; the client signs
+  `relaySigningMessage` — route, relay host, routing id, channel id and nonce —
+  with its Ed25519 key, so a signature cannot be replayed on another route,
+  relay or channel. A host key must be in the Worker's `UXNAN_HOST_KEYS`, and
+  the first host that claims a routing id keeps it. A phone must be on the
+  bridge's allow list (`allow` frame) or present a one-time pairing ticket.
+- **Pairing tickets.** When you show the pairing QR, the bridge sends the relay
+  the SHA-256 of a fresh 32-byte ticket with a time-to-live (`ticket`, at most
+  15 minutes; the bridge uses its pairing window). The QR carries the ticket;
+  the relay admits one phone presenting it, once, then forgets it. The E2EE
+  handshake behind it is still gated on the bridge's pairing window.
+- **Revocation.** Removing a trusted phone resends the allow list; the relay
+  closes that phone's live channel at once (`revoked`, 4010).
+- **Several phones.** Each phone gets its own channel; the bridge runs the same
+  secure session over each as on the LAN.
+- **Several PCs.** One Worker per Cloudflare account serves every PC set up on
+  it: each PC adds its key to `UXNAN_HOST_KEYS` and has its own room.
+- **Idle costs nothing.** The room uses the WebSocket Hibernation API: between
+  messages it is evicted from memory, its sockets stay open, and the bridge's
+  30-second `ping` is answered `pong` by the runtime without waking it. Per-socket
+  state lives in hibernation attachments and the room's SQLite storage.
+- **What it stores.** The bound host key, the trusted phone keys, and the
+  SHA-256 of any open ticket — nothing from the traffic.
+- **Limits.** Control frames ≤ 64 KiB; ≤ 64 trusted phone keys; ≤ 8 phones
+  connected at once; ≤ 32 sockets per room; 10 s to answer the challenge; 10 s
+  for the bridge to open a dialled phone's channel.
 
-## Run
-
-```bash
-uxnan-relay 8787        # or: RELAY_PORT=8787 uxnan-relay
-```
-
-## Protocol
-
-A client connects via WebSocket presenting:
-
-| Header | Query fallback | Values |
-|---|---|---|
-| `x-role` | `?role=` | `mac` (bridge) or `iphone` (app) |
-| `x-session-id` | `?sessionId=` | the shared session id |
-
-The relay pairs the `mac` and `iphone` sockets that share a `sessionId` and
-forwards every frame from one to the other unchanged. `GET /health` returns
-`{"ok":true}`. The full cross-component spec is
-`architecture/02a-system-architecture.md` §5.10.
-
-## Docs
-
-See [`docs/`](docs/): [deployment & hosting](docs/deploy.md) (LAN-only vs
-Cloudflare Tunnel / Fly.io / Workers) · [testing](docs/testing.md).
-
-Push notifications are **bridge-first** now (the relay is only an optional
-delivery fallback) — see
-[`bridge/docs/push-notifications.md`](../bridge/docs/push-notifications.md).
+The close codes (`RELAY_CLOSE`, 4001–4011), frames and limits are defined once
+in [`@uxnan/shared/relay`](../shared/src/relay/protocol.ts); the
+cross-component spec is
+[`architecture/02a-system-architecture.md`](../architecture/02a-system-architecture.md)
+§5.10.
 
 ## Develop
 
 ```bash
-# from the repo root (npm workspaces):
-npm run build && npm test
+# from the repository root (npm workspaces)
+npm run build -w uxnan-relay       # esbuild bundle → dist/worker/uxnan-relay.js, + the local launcher
+npm test -w uxnan-relay            # build, then 18 tests on the real Workers runtime (Miniflare)
+npm run typecheck -w uxnan-relay   # Worker types + Node-side types
 ```
 
-Requires Node ≥ 18. ESM-only. The relay consumes
-[`@uxnan/shared`](../shared/README.md) for the JSON-RPC envelope types; the
-bridge-side `relay-e2e.test.ts` exercises the full end-to-end (relay + bridge + a
-fake phone over a real WebSocket).
+The root `npm run build` builds `shared` → `relay` → `bridge`; the bridge's own
+build copies the Worker bundle into its package (`dist/relay-worker/`), which is
+what `relay setup` / `relay update` deploy.
+
+The package is **private** (not published to npm). It exports:
+
+- `uxnan-relay/worker-bundle` — the single ES module uploaded to Cloudflare;
+- `uxnan-relay/local` — `startLocalRelay({ hostKeys })`, which runs that same
+  bundle on the real Workers runtime through Miniflare. The relay's tests, the
+  bridge's relay end-to-end tests and the phone's opt-in integration test all
+  use it.
+
+Source: [`src/worker.ts`](src/worker.ts) (routing, `/v1/version`),
+[`src/room.ts`](src/room.ts) (the Durable Object),
+[`src/local/start-local-relay.ts`](src/local/start-local-relay.ts),
+[`scripts/build.mjs`](scripts/build.mjs).
+
+## Docs
+
+[Deployment](docs/deploy.md) (by the bridge; by hand for developers; free-plan
+limits) · [testing](docs/testing.md) (local runtime and a deployed relay) ·
+[connecting the phone](../docs/connecting.md) (user guide).
+
+The relay carries no push: background push is sent by the bridge straight to
+FCM — see [`bridge/docs/push-notifications.md`](../bridge/docs/push-notifications.md).

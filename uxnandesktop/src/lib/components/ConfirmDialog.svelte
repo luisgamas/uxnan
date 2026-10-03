@@ -8,6 +8,10 @@
   // The ghost button is *Cancel* by default, but a caller whose two answers are
   // both real choices ("save it" / "discard and leave") names it.
   //
+  // A confirmation that needs an answer besides yes/no (an option to tick, a
+  // credential the action needs) passes it as `children`: it renders in the
+  // dialog's own body slot, under the description and aligned with it.
+  //
   // Two different things can be worth knowing, so there are two callbacks:
   //
   // - `oncancel` — the **ghost button** was pressed. An explicit answer, which
@@ -18,6 +22,7 @@
   //   believing the dialog is still up after the person dismissed it — and the
   //   next request to open it is then not a change at all, which is how a
   //   destructive action ends up silently doing nothing the second time.
+  import type { Snippet } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -39,6 +44,7 @@
     onconfirm,
     oncancel,
     ondismiss,
+    children,
   }: {
     open?: boolean;
     title: string;
@@ -56,6 +62,8 @@
     /** The dialog closed and nothing was confirmed — that button, Escape or a
      *  click outside. */
     ondismiss?: () => void;
+    /** Extra fields the confirmation needs, in the dialog's body slot. */
+    children?: Snippet;
   } = $props();
 
   let busy = $state(false);
@@ -143,6 +151,15 @@
         {/if}
       </div>
     </Dialog.Header>
+
+    {#if children}
+      <!-- The content grid's gap spaces it from the header and the footer, so
+           the body slot adds no padding of its own; with the danger mark it
+           lines up under the title, not under the mark. -->
+      <Dialog.Body class={cn("flex min-w-0 flex-col gap-3 py-0", danger && "pl-12")}>
+        {@render children()}
+      </Dialog.Body>
+    {/if}
 
     {#if error}
       <p

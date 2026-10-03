@@ -123,7 +123,7 @@ flowchart LR
 
   app -- "QR · mDNS · manual code" --> bridge
   app == "E2EE · LAN / Tailscale (direct)" ==> bridge
-  app -. "E2EE · relay (off-LAN)" .-> bridge
+  app -. "E2EE · your own relay (off-LAN)" .-> bridge
   bridge --> p1
   bridge --> p2
   bridge --> p3
@@ -176,11 +176,13 @@ flutter run \
 ```
 
 > **No `RELAY_URL` needed to connect.** The bridge address comes from the
-> **pairing QR**: a fresh bridge is **LAN/Tailscale-direct** (`relayEnabled`
-> defaults to `false`) and advertises its direct `host:port`s, which the phone
-> tries first. The relay is **optional** — self-hosted, used only as a remote
-> fallback. When a paired bridge advertises a relay URL, the phone reads it
-> from the QR; nothing is injected at compile time.
+> **pairing QR**: a fresh bridge is **LAN/Tailscale-direct** and advertises its
+> direct `host:port`s, which the phone tries first. The relay is **optional** —
+> the user's own, which the bridge deploys into their Cloudflare account — and
+> is only dialled when no direct host answers. The phone learns it from the QR
+> (pairing QR v3: `{url, routingId, ticket?}`) and from the bridge's shared
+> settings, so a PC paired at home stays reachable away from it. There is no
+> default relay, and nothing is injected at compile time.
 
 ### Build flavors
 

@@ -355,10 +355,13 @@ uxnan-bridge start
 
 Eso levanta el daemon e imprime el QR de emparejamiento ahí mismo, en la
 terminal. Escanéalo desde la app (o escribe el código corto que imprime) y quedas
-emparejado. El teléfono se conecta **directo** por tu LAN o Tailscale primero, y
-solo cae a un relay opcional y self-hosted cuando estás fuera de esa red; sea
-cual sea la ruta, cada byte va sellado de extremo a extremo antes de salir de tu
-teléfono. Configuración completa en **[bridge/README.md](bridge/README.md)**.
+emparejado. El teléfono se conecta **directo** por tu LAN o Tailscale primero.
+Para llegar a tu PC desde cualquier otra red sin VPN, el bridge puede desplegar
+**tu propio relay** en tu cuenta gratuita de Cloudflare (`uxnan-bridge relay
+setup`); uxnan no hospeda nada. Sea cual sea la ruta, cada byte va sellado de
+extremo a extremo antes de salir de tu teléfono. Cómo elegir:
+**[conectar tu teléfono](docs/connecting.md)** (en inglés); configuración
+completa en **[bridge/README.md](bridge/README.md)**.
 
 ---
 
@@ -414,7 +417,8 @@ y los prerequisitos de inicio de sesión por agente.
 
 Cada byte entre tu teléfono y tu PC va sellado de extremo a extremo: un
 intercambio de claves X25519, identidades firmadas con Ed25519, y cifrado
-AES-256-GCM; el relay opcional solo ve sobres sellados, nunca tu código. Las
+AES-256-GCM; tu relay opcional, que corre en tu propia cuenta de Cloudflare,
+solo ve sobres sellados, nunca tu código. Las
 acciones de GitHub pasan por tu propio CLI `gh`, que guarda su token OAuth en el
 keychain de tu sistema. Uxnan solo lee un estado de sesión sanitizado y nada
 más. ¿Encontraste una vulnerabilidad? Por favor no abras un issue público. Ve

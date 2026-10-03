@@ -22,7 +22,6 @@ function withAgent(): void {
       displayName: "Codex",
       available: true,
       capabilities: {
-        planMode: false,
         streaming: true,
         approvals: false,
         forking: false,

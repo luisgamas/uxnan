@@ -40,6 +40,27 @@ function asCallError(err: unknown): BridgeCallError {
   return new BridgeCallError(typeof err === 'string' ? err : 'bridge call failed', 'BRIDGE_ERROR');
 }
 
+/** The JSON-RPC error code the backend appends to a bridge error's message
+ *  (`"<message> (<code>)"`, `bridgeclient::connection::CallError`). */
+const RPC_CODE_SUFFIX = /\s*\((-?\d+)\)$/;
+
+/** The bridge answered "method not found" (-32601): it predates the method. */
+export function isUnknownMethodError(err: unknown): boolean {
+  const message =
+    err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '';
+  return RPC_CODE_SUFFIX.exec(message)?.[1] === '-32601';
+}
+
+/** A bridge error as a person reads it: the bridge's own words, without the
+ *  numeric JSON-RPC code the transport appends. */
+export function bridgeErrorText(err: unknown): string {
+  const message =
+    err && typeof err === 'object' && 'message' in err
+      ? String((err as { message: unknown }).message)
+      : String(err);
+  return message.replace(RPC_CODE_SUFFIX, '');
+}
+
 /** Whether `value` is shaped like a JSON-RPC notification. Payloads cross a
  *  process boundary, so they are checked, not trusted. */
 export function isNotification(value: unknown): value is BridgeNotification {

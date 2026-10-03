@@ -104,6 +104,14 @@ import type {
   MetricsSnapshot,
 } from '../models/metrics.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
+import type {
+  RelayCredentialParams,
+  RelayRemoveParams,
+  RelaySetParams,
+  RelaySetupParams,
+  RelayStatus,
+  RelayUseParams,
+} from '../models/relay.js';
 import type { DesktopAttachParams, DesktopAttachResult } from '../local-control/local-control.js';
 
 // --- Param shapes -----------------------------------------------------------
@@ -630,6 +638,19 @@ export interface JsonRpcMethodRegistry {
    * version.
    */
   'bridge/checkForUpdate': { params: void; result: BridgeUpdate };
+
+  // The user's own relay. The bridge owns it: it deploys the Worker into the
+  // user's Cloudflare account, keeps it connected and reports it; every client
+  // asks it. Each answers with the status as it stands after the action.
+  'relay/status': { params: void; result: RelayStatus };
+  'relay/setup': { params: RelaySetupParams; result: RelayStatus };
+  'relay/use': { params: RelayUseParams; result: RelayStatus };
+  'relay/set': { params: RelaySetParams; result: RelayStatus };
+  'relay/update': { params: RelayCredentialParams; result: RelayStatus };
+  // New routing id: the old one stops working; paired phones learn the new one
+  // through the shared settings.
+  'relay/rotate': { params: void; result: RelayStatus };
+  'relay/remove': { params: RelayRemoveParams; result: RelayStatus };
 
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };

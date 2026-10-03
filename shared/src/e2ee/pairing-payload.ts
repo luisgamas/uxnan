@@ -1,5 +1,5 @@
 /**
- * Pairing QR payload (version 2).
+ * Pairing QR payload (version 3: `relay` is an object).
  *
  * Source: architecture/02a-system-architecture.md §5.9.1 (Phase 1) and
  * uxnandesktop/architecture/02e-bridge-integration.md §5.3.
@@ -12,15 +12,17 @@
  * `base64.decode(base64.normalize(qr))` then `jsonDecode`.
  */
 import { MAX_PAIRING_AGE_MS, PAIRING_QR_VERSION } from '../constants.js';
+import { isPairingTicket, isRelayId } from '../relay/protocol.js';
 
 export interface PairingPayload {
   /** Payload version. Always {@link PAIRING_QR_VERSION}. */
   v: number;
   /**
-   * Relay WebSocket URL — the remote fallback transport. OPTIONAL: a LAN/Tailscale
-   * setup pairs over {@link hosts} alone with no hosted relay.
+   * The bridge's own relay — the transport when the phone is on another
+   * network. OPTIONAL: present only while a relay is set up and enabled; a
+   * LAN/Tailscale setup pairs over {@link hosts} alone.
    */
-  relay?: string;
+  relay?: PairingRelay;
   /**
    * Direct `host:port` addresses where the bridge's LAN server listens (the bridge's
    * non-internal IPv4s — LAN and e.g. a Tailscale `100.x` address). The phone should
@@ -35,6 +37,20 @@ export interface PairingPayload {
   /** Unix epoch ms when this payload expires. */
   expiresAt: number;
   displayName: string;
+}
+
+/** How a phone reaches the bridge's relay, as the pairing QR carries it. */
+export interface PairingRelay {
+  /** `wss://…` base URL of the relay. */
+  url: string;
+  /** The bridge's room on that relay (32 lowercase hex chars). */
+  routingId: string;
+  /**
+   * One-time pairing ticket (32 random bytes, base64url) the relay accepts
+   * while this pairing window is open, so a phone that is NOT on the LAN can
+   * pair through the relay for the first time. Absent once the window closed.
+   */
+  ticket?: string;
 }
 
 /**
@@ -75,7 +91,7 @@ export function encodePairingQr(payload: PairingPayload): string {
 }
 
 /**
- * Validate a decoded pairing payload object against the v2 contract.
+ * Validate a decoded pairing payload object against the current contract ({@link PAIRING_QR_VERSION}).
  *
  * @param now current time in epoch ms (injected for testability)
  */
@@ -100,9 +116,9 @@ export function validatePairingPayload(value: unknown, now: number): PairingVali
     return { valid: false, error: 'expired' };
   }
 
-  // Transport fields: `relay` (string) and/or `hosts` (string[]) — at least one.
+  // Transport fields: `relay` (object) and/or `hosts` (string[]) — at least one.
   const relay = obj['relay'];
-  if (relay !== undefined && (typeof relay !== 'string' || relay.length === 0)) {
+  if (relay !== undefined && !isPairingRelay(relay)) {
     return { valid: false, error: 'missing_field', detail: 'relay' };
   }
   const hosts = obj['hosts'];
@@ -112,7 +128,7 @@ export function validatePairingPayload(value: unknown, now: number): PairingVali
   ) {
     return { valid: false, error: 'missing_field', detail: 'hosts' };
   }
-  const hasRelay = typeof relay === 'string' && relay.length > 0;
+  const hasRelay = relay !== undefined;
   const hasHosts = Array.isArray(hosts) && hosts.length > 0;
   if (!hasRelay && !hasHosts) {
     return { valid: false, error: 'missing_transport' };
@@ -136,4 +152,15 @@ export function parsePairingQr(qr: string, now: number): PairingValidationResult
 /** Convenience: the default expiry for a freshly generated payload. */
 export function defaultPairingExpiry(now: number): number {
   return now + MAX_PAIRING_AGE_MS;
+}
+
+function isPairingRelay(value: unknown): value is PairingRelay {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const relay = value as Record<string, unknown>;
+  return (
+    typeof relay['url'] === 'string' &&
+    /^wss?:\/\/[^/\s]+$/.test(relay['url']) &&
+    isRelayId(relay['routingId']) &&
+    (relay['ticket'] === undefined || isPairingTicket(relay['ticket']))
+  );
 }

@@ -3,6 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
+/// The trusted devices table exactly as schemas v5–v11 created it. Every
+/// upgrade to v12 rewrites it, so a database from any of those versions has
+/// it.
+const _trustedDevicesV11 = 'CREATE TABLE "trusted_devices_table" ( '
+    '"mac_device_id" TEXT NOT NULL, '
+    '"display_name" TEXT NOT NULL, "relay_url" TEXT NOT NULL, '
+    '"hosts" TEXT NULL, "session_id" TEXT NOT NULL, '
+    '"paired_at_ms" INTEGER NOT NULL, "last_seen_ms" INTEGER NULL, '
+    '"last_applied_bridge_outbound_seq" INTEGER NULL, '
+    'PRIMARY KEY ("mac_device_id"))';
+
 /// Upgrades of an existing on-device database (`UxnanDatabase.migration`).
 void main() {
   test('a v9 database gains the continuedIn column and keeps its messages',
@@ -34,6 +45,7 @@ void main() {
                 1000,
               ],
             )
+            ..execute(_trustedDevicesV11)
             ..execute('PRAGMA user_version = 9');
         },
       ),
@@ -81,6 +93,7 @@ void main() {
                 't2',
               ],
             )
+            ..execute(_trustedDevicesV11)
             ..execute('PRAGMA user_version = 10');
         },
       ),
@@ -99,5 +112,43 @@ void main() {
       (await legacyRepo.getMessages('th1')).single.turnDuration,
       const Duration(seconds: 352),
     );
+  });
+
+  test("a v11 database drops the shared relay's URL and keeps the PC",
+      () async {
+    // The trusted devices table exactly as schema v11 created it, with a PC
+    // paired through the retired shared relay.
+    final legacy = UxnanDatabase.forTesting(
+      NativeDatabase.memory(
+        setup: (raw) {
+          raw
+            ..execute(_trustedDevicesV11)
+            ..execute(
+              'INSERT INTO trusted_devices_table '
+              'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                'mac-1',
+                'Studio',
+                'wss://relay.uxnan.io',
+                '192.168.1.5:19850',
+                's1',
+                1000,
+                2000,
+                7,
+              ],
+            )
+            ..execute('PRAGMA user_version = 11');
+        },
+      ),
+    );
+    addTearDown(legacy.close);
+
+    final row = await legacy.select(legacy.trustedDevicesTable).getSingle();
+    expect(row.displayName, 'Studio');
+    expect(row.hosts, '192.168.1.5:19850');
+    expect(row.lastAppliedBridgeOutboundSeq, 7);
+    expect(row.relayUrl, isNull);
+    expect(row.relayRoutingId, isNull);
+    expect(row.relayEnabled, isFalse);
   });
 }

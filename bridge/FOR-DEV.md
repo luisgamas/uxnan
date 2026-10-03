@@ -14,8 +14,8 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1000, shared 43, relay
-30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
+standalone). It builds clean and the suite is green (bridge 1030, shared 57, relay
+18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
 release follow-ups are the post-publish *Packaging* hardening items and real-device
@@ -65,14 +65,31 @@ push validation (FOR-HUMAN).
   by `test/transport/local-control.test.ts`, `test/agents/multi-client-sync.test.ts`
   and, from the other side, the desktop's `bridgeclient` contract test against
   this built bridge.
-- **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
+- **Your own relay** (architecture/02a §5.10, `relay/`) — `RelayService` is the
+  one owner: it deploys the relay Worker the bridge ships into the user's
+  Cloudflare account through the REST API (`relay/cloudflare.ts`: several PCs
+  per Worker by key, the Worker deleted with its last PC, the token never in an
+  error), keeps the endpoint as the shared setting `relay` (`BridgeSettings.relay`,
+  so a phone paired on the LAN converges on it) and the setup in `relay.json`,
+  remembers a token only on request (system keyring), and answers the seven
+  `relay/*` methods for every client plus `stream/relay/updated`; `RelayHost`
+  keeps the control socket (signed challenge, `allow` list, 30 s keepalive,
+  2 s → 60 s backoff, slowest pace after a refusal) and opens one channel per
+  phone on `dial`, each running the LAN's secure session. Showing the QR or the
+  code mints a one-time relay ticket, and the pairing window now gates the
+  relay path too. CLI `uxnan-bridge relay …` asks the running daemon; the token
+  is read without echo. Covered by `test/relay/` and, against the real Worker
+  on the Workers runtime, `test/transport/relay-e2e.test.ts`. Device run
+  still owed — see `relay/FOR-DEV.md`.
+- **E2EE transport** — direct-LAN `http+ws` server and relay channels,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
-  background reconnect loop; stable pairing session; mDNS discovery
+  stable pairing session; mDNS discovery
   (`_uxnan._tcp.local`) with explicit per-IPv4 membership/announcements on
-  multi-homed hosts; manual-code pairing (`GET /pair/resolve?code=`); the LAN
+  multi-homed hosts; manual-code pairing (`GET /pair/resolve?code=`); the
   `qr_bootstrap` handshake is gated on an operator-armed pairing window
-  (`PairingCodeService.arm`/`isArmed`, 3-minute TTL, in-memory) — showing the QR
-  or the manual code arms it, so a reachable LAN/Tailscale device cannot
+  (`PairingCodeService.arm`/`isArmed`, `PAIRING_WINDOW_MS` = 5 minutes,
+  in-memory) on the LAN and the relay alike — showing the QR or the manual code
+  arms it, so a device that can reach the LAN port or the relay cannot
   self-enroll as trusted outside that window; `trusted_reconnect` is unaffected.
 - **OS-keychain identity persistence** + single-instance lock.
 - **No agent process outlives a bridge killed hard.** Every agent process
@@ -207,7 +224,8 @@ push validation (FOR-HUMAN).
   suffix, and two projects sharing a folder name get separate groups (one pinned
   digest, identical on both sides). Advertised as `features.managedWorktrees`;
   the ones the bridge placed are recorded in `managed-worktrees.json`.
-- **Direct FCM push from the bridge** — primary path, persisted across restarts,
+- **Direct FCM push from the bridge** — the only push path (the token goes
+  nowhere but FCM; the relay carries no push), persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
   (no creds = silent no-op; foreground local notifications still work).
 - **Sanitized per-agent `auth/status`** — never tokens; login detected by
@@ -319,18 +337,9 @@ push validation (FOR-HUMAN).
       approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
       a headless entry point.
-- [ ] **OpenCode access-mode — mid-thread per-turn re-apply.** The thread's
-      `accessMode` is mapped to a permission ruleset and passed on `POST /session`
-      (`opencode-adapter.ts` `#rulesetFor`), so it governs an OpenCode thread from its
-      first turn. A mid-thread access-mode change does NOT recreate the session, so
-      the new posture only applies to threads started after the change. Resolve by
-      confirming whether `opencode serve` accepts a per-turn permission override
-      (or `PATCH /session/{id}`), or recreate the session when the mode changes.
-      (Codex no longer has this caveat: every turn re-attaches with
-      `thread/resume`, which carries the current posture.)
 - [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
       session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
-      app-server already remembers `approved_for_session`); a per-turn allow-list so
+      app-server already remembers `acceptForSession`); a per-turn allow-list so
       repeated identical tools aren't re-prompted; document that the Claude
       hook URL needs the LAN port resolved (handled by the lazy `url()` after
       `startLan`, but worth a note).
@@ -514,7 +523,6 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
       ideally from the *Smoke — platforms* workflow. Marker: `inspectProcess`.
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
-- [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
 - [ ] **The self-update's last live paths.** Run live on every platform by the
       *Smoke — platforms* workflow (2026-09-27): systemd `--user` on Linux, Task
       Scheduler on Windows and launchd on macOS each update to the newest
@@ -526,7 +534,9 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 ## Packaging — npm publish readiness
 
-`bin`/`files`/`engines`/`repository`/`prepublishOnly` are set on all three packages,
+`bin`/`files`/`engines`/`repository`/`prepublishOnly` are set on the published
+packages (`@uxnan/shared`, `uxnan-bridge`; `uxnan-relay` is private and ships as
+the bridge's `dist/relay-worker/`),
 and `.github/workflows/release-npm.yml` automates the tag-driven publish. The
 **first publish shipped** (`0.0.1-alpha.20260627`, `alpha` dist-tag) — the workflow
 pinned `@uxnan/shared` to the exact version at publish time, validated by the
@@ -555,8 +565,10 @@ successful run. Remaining post-publish hardening:
       guard is still needed before investigating the stdio path further; it may already
       be fixed.
 
-## Relay hardening (relay-only)
+## Relay
 
-Multi-session `mac` registration + auth-on-forwarding are relay-only and tracked in
-[`relay/FOR-DEV.md`](../relay/FOR-DEV.md) (the authoritative list). They do not block
-the bridge.
+What is still owed for the relay — a device run of the whole path, and
+self-hosting the same Worker outside Cloudflare — is tracked in
+[`relay/FOR-DEV.md`](../relay/FOR-DEV.md) (the authoritative list). The screens
+that drive `relay/*` are owed by the clients: `uxnandesktop/FOR-DEV.md` and
+`uxnanmobile/FOR-DEV.md` (*Relay UI*). None of it blocks the bridge.

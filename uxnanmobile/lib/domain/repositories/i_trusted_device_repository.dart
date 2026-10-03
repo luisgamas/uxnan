@@ -1,4 +1,5 @@
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 
 /// Contract for persisting trusted bridge devices (spec 02a §5.1.4).
 ///
@@ -23,6 +24,11 @@ abstract class ITrustedDeviceRepository {
 
   /// Stores [name] as what this phone calls the PC [macDeviceId].
   Future<void> rename(String macDeviceId, String name);
+
+  /// Stores [relay] as how this phone reaches the PC [macDeviceId] from
+  /// another network (`null`: the PC has no relay). Written only from what
+  /// the PC's bridge shares (`BridgeSettings.relay`).
+  Future<void> recordRelay(String macDeviceId, RelayEndpoint? relay);
 
   /// Records that the PC [macDeviceId] was last reached at [at].
   Future<void> recordLastSeen(String macDeviceId, DateTime at);

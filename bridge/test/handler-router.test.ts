@@ -30,6 +30,9 @@ function fakeContext(): BridgeContext {
     pushService: {} as BridgeContext['pushService'],
     logger: createLogger('test', 'error'),
     relayConnected: () => false,
+    relay: () => {
+      throw new Error('no relay in this test');
+    },
     localControlActive: () => false,
     updater: {} as BridgeContext['updater'],
     pairingPayload: () => {

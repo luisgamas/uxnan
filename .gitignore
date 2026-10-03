@@ -63,3 +63,6 @@ bridge_logs.txt
 # OS
 .DS_Store
 Desktop.ini
+
+# Workers runtime scratch (Miniflare / the Cloudflare CLI)
+.wrangler/

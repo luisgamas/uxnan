@@ -146,7 +146,7 @@ abstract class AppLocalizations {
   /// **'Reconnecting…'**
   String get connectionReconnecting;
 
-  /// Transport indicator: the live connection runs over the hosted relay.
+  /// Transport indicator: the live connection runs over the PC's own relay.
   ///
   /// In en, this message translates to:
   /// **'Relay'**
@@ -2669,7 +2669,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalQuestion.
   ///
   /// In en, this message translates to:
-  /// **'How should actions be approved?'**
+  /// **'How much may the agent do before it asks?'**
   String get approvalQuestion;
 
   /// No description provided for @approvalRequestTitle.
@@ -2681,7 +2681,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalRequestBody.
   ///
   /// In en, this message translates to:
-  /// **'Always ask before editing external files or using the internet.'**
+  /// **'Every change, command and use of the internet waits for you.'**
   String get approvalRequestBody;
 
   /// No description provided for @approvalAutoTitle.
@@ -2693,7 +2693,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalAutoBody.
   ///
   /// In en, this message translates to:
-  /// **'Only ask for actions detected as potentially risky.'**
+  /// **'Works on its own inside the project; anything beyond it is checked by the agent\'s own review, or asks you.'**
   String get approvalAutoBody;
 
   /// No description provided for @approvalFullTitle.
@@ -2705,8 +2705,26 @@ abstract class AppLocalizations {
   /// No description provided for @approvalFullBody.
   ///
   /// In en, this message translates to:
-  /// **'Unrestricted access to the internet and any file.'**
+  /// **'No questions and no sandbox: any file, any command, the internet.'**
   String get approvalFullBody;
+
+  /// No description provided for @approvalPlanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan only'**
+  String get approvalPlanTitle;
+
+  /// No description provided for @approvalPlanBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads and plans; changes nothing and runs nothing.'**
+  String get approvalPlanBody;
+
+  /// Shown above the composer when a conversation's access mode is no longer offered by its agent.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} no longer offers {retired}. This conversation runs in {current}.'**
+  String approvalModeRetired(String agent, String retired, String current);
 
   /// Title shown on a pending approval card while it is still actionable.
   ///
@@ -5869,6 +5887,408 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{plan} · {window} {percent}% used'**
   String composerPlanLine(String plan, String window, int percent);
+
+  /// Connection error: the relay reached, but the PC's bridge is not connected to it.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PC is offline or its bridge is stopped.'**
+  String get relayFailureBridgeOffline;
+
+  /// Connection error: the relay says this phone is not (or no longer) trusted by the bridge.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is no longer paired with the PC — pair again.'**
+  String get relayFailureNotPaired;
+
+  /// Connection error: the relay refused because too many phones are connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many phones are connected through the relay.'**
+  String get relayFailureFull;
+
+  /// Connection error: the user's relay could not be reached or answered something unexpected.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach your relay.'**
+  String get relayFailureUnreachable;
+
+  /// PC details section: how phones reach this PC from other networks.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote access'**
+  String get remoteAccessTitle;
+
+  /// Lead-in to the three connection options.
+  ///
+  /// In en, this message translates to:
+  /// **'Three ways to reach this PC from your phone:'**
+  String get remoteAccessIntro;
+
+  /// Connection option title.
+  ///
+  /// In en, this message translates to:
+  /// **'Same network'**
+  String get remoteAccessSameNetworkTitle;
+
+  /// Connection option body.
+  ///
+  /// In en, this message translates to:
+  /// **'Works already — nothing to set up.'**
+  String get remoteAccessSameNetworkBody;
+
+  /// Connection option title (product name).
+  ///
+  /// In en, this message translates to:
+  /// **'Tailscale'**
+  String get remoteAccessTailscaleTitle;
+
+  /// Connection option body.
+  ///
+  /// In en, this message translates to:
+  /// **'Works automatically when it\'s on both this phone and the PC.'**
+  String get remoteAccessTailscaleBody;
+
+  /// Connection option title.
+  ///
+  /// In en, this message translates to:
+  /// **'Your own relay'**
+  String get remoteAccessRelayTitle;
+
+  /// Connection option body.
+  ///
+  /// In en, this message translates to:
+  /// **'Works from any network. Needs a free Cloudflare account.'**
+  String get remoteAccessRelayBody;
+
+  /// Button opening the relay setup page.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up your relay'**
+  String get relaySetUpAction;
+
+  /// Hint when the PC is not connected: relay management needs it.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to this PC to set up or manage its relay.'**
+  String get relayConnectToManage;
+
+  /// Title of the relay status row.
+  ///
+  /// In en, this message translates to:
+  /// **'Your relay'**
+  String get relayYourRelay;
+
+  /// Relay state badge.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get relayStateConnected;
+
+  /// Relay state badge.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get relayStateConnecting;
+
+  /// Relay state badge when the bridge's last attempt failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Not working'**
+  String get relayStateError;
+
+  /// Relay badge while the PC is not connected: the relay it last reported is on.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get relayStateOn;
+
+  /// Relay state badge: switched off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get relayStateOff;
+
+  /// How many phones talk to the PC through the relay right now.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No phones connected through it} =1{1 phone connected through it} other{{count} phones connected through it}}'**
+  String relayPhonesConnected(int count);
+
+  /// Relay on/off switch title.
+  ///
+  /// In en, this message translates to:
+  /// **'Reach this PC from anywhere'**
+  String get relayEnabledTitle;
+
+  /// Relay on/off switch subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Phones away from home connect through your relay.'**
+  String get relayEnabledSubtitle;
+
+  /// Switch subtitle: an 'on' decision is kept until the PC is reachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turns on when the PC is reachable again.'**
+  String get relaySwitchPendingOn;
+
+  /// Switch subtitle: an 'off' decision is kept until the PC is reachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turns off when the PC is reachable again.'**
+  String get relaySwitchPendingOff;
+
+  /// Snackbar: the relay switch was kept for later.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. Your PC hears it the next time it\'s reachable.'**
+  String get relaySwitchKept;
+
+  /// Row: redeploy the relay version the bridge ships.
+  ///
+  /// In en, this message translates to:
+  /// **'Update relay'**
+  String get relayUpdateTitle;
+
+  /// Update row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is available'**
+  String relayUpdateSubtitle(String version);
+
+  /// Update row subtitle while it runs (up to a minute).
+  ///
+  /// In en, this message translates to:
+  /// **'Updating your relay…'**
+  String get relayUpdating;
+
+  /// Snackbar after a relay update.
+  ///
+  /// In en, this message translates to:
+  /// **'Your relay is up to date.'**
+  String get relayUpdated;
+
+  /// Row: give the relay a new routing address.
+  ///
+  /// In en, this message translates to:
+  /// **'New address'**
+  String get relayRotateTitle;
+
+  /// New address row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The current address stops working.'**
+  String get relayRotateSubtitle;
+
+  /// Confirm dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Give your relay a new address?'**
+  String get relayRotateConfirmTitle;
+
+  /// Confirm dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'The current address stops working right away. A phone that is away from home reconnects after it next connects to this PC on your home network.'**
+  String get relayRotateConfirmBody;
+
+  /// Confirm dialog action.
+  ///
+  /// In en, this message translates to:
+  /// **'New address'**
+  String get relayRotateConfirm;
+
+  /// Snackbar after rotating.
+  ///
+  /// In en, this message translates to:
+  /// **'Your relay has a new address.'**
+  String get relayRotated;
+
+  /// Row: stop using the relay.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove relay'**
+  String get relayRemoveTitle;
+
+  /// Remove row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Phones then reach this PC only on the same network or Tailscale.'**
+  String get relayRemoveSubtitle;
+
+  /// Confirm dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove your relay?'**
+  String get relayRemoveConfirmTitle;
+
+  /// Confirm dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Phones away from home can\'t reach this PC until you set up a relay again.'**
+  String get relayRemoveConfirmBody;
+
+  /// Checkbox in the remove dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Also delete it from your Cloudflare account'**
+  String get relayRemoveDeleteWorker;
+
+  /// Confirm dialog action.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get relayRemoveConfirm;
+
+  /// Remove row subtitle while it runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Removing your relay…'**
+  String get relayRemoving;
+
+  /// Snackbar after removing.
+  ///
+  /// In en, this message translates to:
+  /// **'Relay removed.'**
+  String get relayRemoved;
+
+  /// Dialog title asking for the token.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloudflare API token'**
+  String get relayTokenTitle;
+
+  /// Dialog body asking for the token.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PC needs the token for this. It travels end-to-end encrypted to your PC and is never kept on this phone.'**
+  String get relayTokenBody;
+
+  /// Token field label.
+  ///
+  /// In en, this message translates to:
+  /// **'API token'**
+  String get relayTokenLabel;
+
+  /// Tooltip: reveal the token field.
+  ///
+  /// In en, this message translates to:
+  /// **'Show token'**
+  String get relayTokenShow;
+
+  /// Tooltip: obscure the token field.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide token'**
+  String get relayTokenHide;
+
+  /// Option: the bridge keeps the token in the system keychain.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember the token on the PC'**
+  String get relayRememberToken;
+
+  /// Explains the remember option.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept in the PC\'s system keychain, so updating or removing the relay won\'t ask for it again.'**
+  String get relayRememberTokenHint;
+
+  /// Token dialog action.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get relayTokenContinue;
+
+  /// A relay action got no answer (lost connection or timeout).
+  ///
+  /// In en, this message translates to:
+  /// **'Your PC didn\'t answer. Try again.'**
+  String get relayActionNoAnswer;
+
+  /// Relay setup page title.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up your relay'**
+  String get relaySetupTitle;
+
+  /// Relay setup page intro.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PC deploys a small relay into your own free Cloudflare account. Then this phone reaches your PC from any network — end-to-end encrypted, so the relay only ever sees sealed envelopes.'**
+  String get relaySetupIntro;
+
+  /// Setup step 1 title.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an API token'**
+  String get relaySetupStepToken;
+
+  /// Setup step 1 body. Keep Cloudflare's English UI names and the exact template name.
+  ///
+  /// In en, this message translates to:
+  /// **'In Cloudflare, open API Tokens, choose Create Token and use the template “Edit Cloudflare Workers”.'**
+  String get relaySetupStepTokenBody;
+
+  /// Link to dash.cloudflare.com/profile/api-tokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Cloudflare API tokens'**
+  String get relaySetupOpenCloudflare;
+
+  /// Setup step 2 title.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy your account ID'**
+  String get relaySetupStepAccount;
+
+  /// Setup step 2 body.
+  ///
+  /// In en, this message translates to:
+  /// **'It\'s the long code after dash.cloudflare.com/ in the address bar once you\'re signed in, and it\'s also on the Workers & Pages overview.'**
+  String get relaySetupStepAccountBody;
+
+  /// Field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Account ID'**
+  String get relaySetupAccountLabel;
+
+  /// Field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'32 letters and numbers'**
+  String get relaySetupAccountHint;
+
+  /// Inline error: a field is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the account ID and the token.'**
+  String get relaySetupMissingFields;
+
+  /// Primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Deploy relay'**
+  String get relaySetupDeploy;
+
+  /// Primary button while deploying.
+  ///
+  /// In en, this message translates to:
+  /// **'Deploying…'**
+  String get relaySetupDeploying;
+
+  /// Shown while deploying.
+  ///
+  /// In en, this message translates to:
+  /// **'This can take up to a minute. Keep the app open.'**
+  String get relaySetupDeployingHint;
+
+  /// Snackbar after a successful setup.
+  ///
+  /// In en, this message translates to:
+  /// **'Your relay is ready.'**
+  String get relaySetupDone;
 }
 
 class _AppLocalizationsDelegate

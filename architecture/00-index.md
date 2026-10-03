@@ -1,11 +1,17 @@
 # Uxnan — Documentación Técnica (Especificación Móvil)
 
-> **Versión:** 1.2.1
-> **Fecha:** 2026-07-21
+> **Versión:** 1.3.0
+> **Fecha:** 2026-10-02
 > **Estado:** Definición inicial — borrador técnico completo, sincronizado con código ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod 3.x (manual)
 > **Monorepo:** Este directorio (`architecture/`) contiene la especificación PRD+SRS de la app móvil Flutter.
+
+> **Resumen ejecutivo (1.3.0):** el relay pasa a ser el **propio de cada
+> usuario** — un Cloudflare Worker que el bridge despliega en la cuenta del
+> usuario (`02a` §5.10) — y el QR de pairing a la v3 (`relay: {url, routingId,
+> ticket?}`). Nueva fila de estado *Relay propio*; el código del relay Node se
+> eliminó.
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > esta carpeta es la **fuente de verdad** para la arquitectura del sistema.
@@ -50,11 +56,12 @@
 | Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
 | Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |
 | Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
-| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay, **direct LAN/Tailscale**) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) y validado on-device en LAN/Tailscale (post-Windows-Firewall) |
-| `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge ↔ relay + móvil ↔ bridge directo en LAN/Tailscale) |
+| Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (**direct LAN/Tailscale** primero, después el relay propio del PC) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) y validado on-device en LAN/Tailscale (post-Windows-Firewall) |
+| `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge directo en LAN/Tailscale; el relay Node anterior también, ya eliminado) |
+| **Relay propio del usuario** (Cloudflare Worker + Durable Object desplegado por el bridge; `relay/*`, `stream/relay/updated`, `BridgeSettings.relay`, QR v3 con ticket, `RelayClient` en el móvil) | 🟡 Hecho, sin validar en dispositivo | 02a §5.10; relay probado sobre el runtime real de Workers y contra un relay desplegado en Cloudflare; bridge y móvil probados contra el runtime local. Falta: una corrida en dispositivo y las pantallas (móvil y desktop) — `relay/FOR-DEV.md`, `uxnanmobile/FOR-DEV.md`, `uxnandesktop/FOR-DEV.md` |
 | **Descubrimiento LAN + direcciones directas LAN/Tailscale** | ✅ Hecho | El bridge anuncia `hosts: string[]` en el `PairingPayload`; el móvil los prueba primero y cae al relay. Para el código manual, `_uxnan._tcp.local` permite elegir un bridge en la LAN: el bridge se une/anuncia explícitamente por cada IPv4 elegible para soportar PCs multi-homed. mDNS solo sugiere el host, nunca publica el código ni crea confianza. |
 | Reconexión robusta: heartbeat `bridge/status`, single-flight, ping WS, "Verificar conexión", sessionId estable | ✅ Hecho | 02c §11 |
-| Pairing — **lógica** (`PairingPayload` v2, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; **QR + código manual** (manual es bridge-first, no relay — ver §5.5.3) |
+| Pairing — **lógica** (`PairingPayload` v3, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; **QR + código manual** (manual es bridge-first, no relay — ver §5.5.3) |
 | Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen`, `UpdatePromptDialog`, `ManualCodeScreen`, `MyDevicesScreen`, rutas) | ✅ Hecho | M3; estado sin PCs integrado en el cuerpo de Dispositivos con AppBar persistente y logo Uxnan; verificado on-device en Android |
 | Conversación/timeline — **dominio + datos** (`MessageContent` polimórfico, `Message`/`Turn`, `DriftMessageRepository`, `MessageDeduplicator`, `TurnTimelineSnapshot` + reducer) | ✅ Hecho | 02a §5.6/§6.2 |
 | Conversación — **managers** (`ThreadManager`, `IncomingMessageProcessor`, eventos de dominio + streaming, **per-thread in-memory buffer** que sobrevive a la navegación) | ✅ Hecho | 02a §5.2.2/§5.2.5 |
@@ -76,7 +83,7 @@
 | **Título automático de conversación** | ✅ Hecho | Conserva el título del bridge; si sigue siendo placeholder, el primer prompt crea un título breve vía `thread/rename`, sin sobrescribir renombres manuales |
 | **Remove device** (unpair) | ✅ Hecho | Envía `bridge/removeTrustedDevice` con el id del teléfono, luego borra local |
 | **Git** (status, commit, push, pull, branches, switchBranch, createBranch, createWorktree, discard, undoCommit, createPr, revert, deleteBranch, removeWorktree, per-file `git/diff`) | ✅ Hecho | UI: full-screen `GitScreen` (ruta de la carpeta, abierta desde la conversacion o desde la fila de carpeta) con staging por hunk, switch con auto-stash, smart PR, undo-commit, diff per-file unificado |
-| **Push FCM** (registro de token, notificaciones locales, deep-link, preferencias Replies/Errors, foreground suppression, persistencia entre reinicios, multi-device) | ✅ Hecho (gated) | **Push directo desde el bridge** (`uxnan-bridge` lazy-loads `firebase-admin`); el relay es fallback opcional; Android LIVE; iOS pending APNs key en Firebase (FOR-HUMAN) |
+| **Push FCM** (registro de token, notificaciones locales, deep-link, preferencias Replies/Errors, foreground suppression, persistencia entre reinicios, multi-device) | ✅ Hecho (gated) | **Push directo desde el bridge** (`uxnan-bridge` lazy-loads `firebase-admin`), única ruta: el relay no tiene push y nunca ve el token; Android LIVE; iOS pending APNs key en Firebase (FOR-HUMAN) |
 | **Settings** (theme, language, notification preferences, personalization) | ✅ Hecho | Persistido vía `AppearancePreferencesStore` / `NotificationPreferencesStore` |
 | **Custom themes** (temas personalizables) | ✅ Hecho | El usuario diseña temas Material 3 en una **librería multi-tema** con una pantalla **Theme Manager dedicada** (`ThemeManagerScreen`), separada de Personalización. Un `CustomTheme` puede ser **single-brightness** (light-only o dark-only) o **dual**; el lado faltante se deriva de los key colors del lado autorado vía Material 3 (`fromDualSchemes` / `single` / `derivedFromSeed`). El Theme Manager muestra un **grid de cards de preview en vivo** (dual = light\|dark lado a lado, single = un panel) con chip de brillo + badges *Active*/*Built-in*; tap activa, **long-press** entra en multi-select para borrar/exportar en bloque; *New* / *Import* / *Export all* / *Reset* viven en el `NeTopBar`. Import/Export usan **bottom sheets** (`theme_sheets.dart`) y aceptan formatos nativo, Material Theme Builder y flat (object o array). Personalización quedó adelgazada: picker de theme-mode (un *dual* deja libre System/Light/Dark; un *single* fuerza su brillo vía `effectiveThemeModeProvider`/`themePickerEnabledProvider`), una card compacta de custom-theme (master switch + entrada al manager con preview del activo) y el idioma. El editor ([`CustomThemeEditorScreen`](../../uxnanmobile/lib/presentation/screens/settings/custom_theme_editor_screen.dart)) muestra tabs Light/Dark solo para un dual (un single muestra su lado + *Add a {light/dark} side*), con HSV picker por rol y *Derive from seed*. Persistido en `shared_preferences` (`uxnan.appearance.customThemes` JSON array, `…activeCustomThemeId`, `…useCustomTheme`); `schemaVersion` 1→2 (docs v1 cargan como dual). Ver `02c-implementation-guide.md` §3.1. |
 | **Persistencia de sort/density** | ✅ Hecho | `ThreadListPreferencesStore` persiste sort + density de la lista de threads |
@@ -100,7 +107,7 @@ uxnan/                           # Monorepo raíz
 ├── uxnanmobile/                 # Proyecto Flutter (Android + iOS)
 ├── bridge/                      # Node.js daemon para PC (standalone o embebido en desktop)
 ├── uxnandesktop/                # App de escritorio ADE (Tauri 2 + Rust + Svelte 5)
-├── relay/                       # Node.js relay server (opcional, self-hosted)
+├── relay/                       # Relay propio del usuario: Cloudflare Worker que despliega el bridge (opcional)
 ├── shared/                      # Contratos compartidos (tipos, JSON-RPC schemas)
 └── README.md
 ```
@@ -111,7 +118,7 @@ uxnan/                           # Monorepo raíz
 | `uxnanmobile/` | Proyecto Flutter que implementa la app móvil de Uxnan para Android e iOS. Su especificación técnica vive en `architecture/`. |
 | `bridge/` | Daemon Node.js para PC que actúa como puente entre la app móvil y los recursos de la computadora (Git, sistema de archivos, terminal). Es un componente standalone que también puede integrarse dentro de la app de escritorio (`uxnandesktop/`). |
 | `uxnandesktop/` | App de escritorio ADE (Agente de Desarrollo Embarcado) construida con Tauri 2, Rust y Svelte 5. Contiene su propia documentación técnica en `uxnandesktop/architecture/`. |
-| `relay/` | Servidor relay Node.js que facilita la comunicación entre la app móvil y el bridge/desktop cuando no hay conexión directa en red local. **Opcional y self-hosted** (2026-06): la ruta primaria del producto es LAN-direct / Tailscale-direct; el relay es el fallback off-LAN hospedado por el propio usuario. |
+| `relay/` | El relay propio de cada usuario: un Cloudflare Worker + Durable Object que el bridge despliega en la cuenta de Cloudflare del usuario, para que el móvil llegue al bridge desde otra red. **Opcional** (2026-10): la ruta primaria del producto es LAN-direct / Tailscale-direct; Uxnan no hospeda ningún relay. |
 | `shared/` | Contratos compartidos entre todos los componentes: definiciones de tipos TypeScript, schemas JSON-RPC y cualquier otra interfaz común que necesiten consumir múltiples proyectos del monorepo. |
 
 ---

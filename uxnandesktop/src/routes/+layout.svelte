@@ -4,6 +4,7 @@
   import { onMount, untrack } from "svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { relay } from "$lib/bridge/relay.svelte";
   import { terminalSessions } from "$lib/state/terminalSessions.svelte";
   import { projectMirror } from "$lib/bridge/projectMirror.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
@@ -87,6 +88,8 @@
     // store that mirrors its conversations for the chat tabs.
     void bridge.start();
     chat.start();
+    // The bridge's relay (Settings → Bridge & mobile → Remote access).
+    relay.start();
     // Tell the bridge which agent sessions this window's terminals hold, and
     // hand one over when asked (architecture/02a §5.8.19).
     terminalSessions.start();

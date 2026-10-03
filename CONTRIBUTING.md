@@ -20,7 +20,7 @@ you're touching:
 | ------- | ---------- | ----- |
 | `shared` | Contracts: JSON-RPC + E2EE types and validators | TypeScript |
 | `bridge` | PC daemon (`uxnan-bridge`) that drives the agent CLIs | Node.js |
-| `relay` | E2EE relay server (`uxnan-relay`) | Node.js |
+| `relay` | The user's own relay: a Worker the bridge deploys into the user's Cloudflare account; forwards opaque E2EE frames | TypeScript (Cloudflare Workers + Durable Objects) |
 | `uxnandesktop` | Desktop ADE | Tauri 2 + Rust + Svelte 5 |
 | `uxnanmobile` | Mobile client | Flutter (Android / iOS) |
 
@@ -77,7 +77,7 @@ first re-runs the verification and only builds/publishes if it's green.
 
 | Tag | Result |
 | --- | ------ |
-| `shared-v*` / `bridge-v*` / `relay-v*` | publish to **npm** (publish `shared` first) |
+| `shared-v*` / `bridge-v*` | publish to **npm** (publish `shared` first) |
 | `desktop-stable-v0.0.PATCH` | stable installers → **GitHub Release** (draft) |
 | `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` | nightly installers → **GitHub pre-release** (draft) |
 | `mobile-v*[+build]` | signed AAB → **Google Play** (open testing / beta) |
@@ -85,6 +85,13 @@ first re-runs the verification and only builds/publishes if it's green.
 Versions follow `0.0.PATCH-alpha.YYYYMMDD` for the npm/mobile alpha line. Desktop
 uses explicit stable/nightly tag forms so its updater channels cannot be mixed;
 see [`docs/releases.md`](docs/releases.md).
+
+The relay has **no release of its own**: `uxnan-relay` is a private workspace (a
+Cloudflare Worker) whose bundle ships inside `uxnan-bridge`, so a change under
+`relay/` is released by cutting the bridge. That cut also moves the Worker's own
+version in `relay/package.json` — only when the Worker changed. Old `relay-v*`
+tags stay in git but trigger nothing. See *The relay Worker ships inside the
+bridge* in [`docs/releases.md`](docs/releases.md#the-relay-worker-ships-inside-the-bridge).
 
 ### Non-negotiable rule — mobile release notes
 

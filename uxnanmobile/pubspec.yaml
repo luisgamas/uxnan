@@ -6,7 +6,7 @@ publish_to: 'none'
 # version: <build-name>+<build-number>
 # The build-number is Play's versionCode and must strictly increase. The previous
 # release used 20260724, so today's calendar date is already greater.
-version: 0.0.36-alpha.20261002+20261003
+version: 0.0.37-alpha.20261003+20261004
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -24,7 +24,7 @@ dependencies:
   cryptography_flutter: ^2.3.4 # native crypto acceleration
   cupertino_icons: ^1.0.8
   device_info_plus: ^12.4.0 # the phone's own name and model (device/describe)
-  dio: ^5.4.0 # HTTP client for relay REST endpoints
+  dio: ^5.4.0 # HTTP client (manual pairing, app updates, remote media)
   drift: ^2.18.0 # SQLite ORM (local persistence)
   drift_flutter: ^0.2.0 # drift Flutter integration
   equatable: ^2.0.5 # structural equality for domain objects

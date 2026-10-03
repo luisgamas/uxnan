@@ -13,6 +13,7 @@ import {
   JsonRpcErrorCode,
   RpcError,
   StreamNotification,
+  effectiveAccessMode,
   makeNotification,
   type AccessMode,
   type DesktopTools,
@@ -75,6 +76,19 @@ function approvalDetail(input: Record<string, unknown>): string {
     }
   }
   return '';
+}
+
+/**
+ * The access mode a turn runs in on [adapter]: the stored one when the agent
+ * offers it, else the agent's default — never a mode its adapter cannot honor.
+ * Nothing for an agent that offers no mode (it runs as configured).
+ */
+function accessModeFor(
+  adapter: IAgentAdapter,
+  stored: AccessMode | undefined,
+): { accessMode?: AccessMode } {
+  const mode = effectiveAccessMode(adapter.capabilities, stored);
+  return mode !== undefined ? { accessMode: mode } : {};
 }
 
 /** Display metadata + availability for a registered adapter, surfaced by `agent/list`. */
@@ -387,6 +401,20 @@ export class AgentManager {
         ...(meta?.defaultModel !== undefined ? { defaultModel: meta.defaultModel } : {}),
       };
     });
+  }
+
+  /**
+   * The access modes an agent offers (`capabilities.accessModes`); empty for
+   * an agent that offers none or is not registered.
+   */
+  accessModesOf(agentId: AgentId): AccessMode[] {
+    return [...(this.#adapters.get(agentId)?.capabilities.accessModes ?? [])];
+  }
+
+  /** The mode a new conversation with this agent starts in, if it offers any. */
+  defaultAccessModeOf(agentId: AgentId): AccessMode | undefined {
+    const adapter = this.#adapters.get(agentId);
+    return adapter ? effectiveAccessMode(adapter.capabilities, undefined) : undefined;
   }
 
   /** The bridge's configured default agent. */
@@ -932,7 +960,7 @@ export class AgentManager {
       ...(options.options !== undefined ? { options: options.options } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
+      ...accessModeFor(adapter, options.accessMode),
       ...(options.command !== undefined ? { command: options.command } : {}),
       // FOR-DEV: every adapter registers these except Zero, whose sandbox
       // blocks its MCP servers' network (bridge/FOR-DEV.md → "Uxnan Desktop's

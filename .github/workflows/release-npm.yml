@@ -1,12 +1,17 @@
-name: Release — npm (shared, bridge, relay)
+name: Release — npm (shared, bridge)
 
 # Publishes one npm package per component tag:
 #   shared-v<version>  → @uxnan/shared
 #   bridge-v<version>  → uxnan-bridge
-#   relay-v<version>   → uxnan-relay
 # <version> is the full identifier, e.g. 0.0.1-alpha.20260621.
 #
-# Dependency order: publish shared FIRST (its own tag). bridge/relay then pin
+# The relay is NOT published. `uxnan-relay` is a private workspace: a Cloudflare
+# Worker whose bundle the bridge build copies into `bridge/dist/relay-worker/`,
+# so it reaches users inside `uxnan-bridge` and nowhere else. A change to it is
+# released by cutting the bridge (`scripts/release/components.mjs` → `carries`).
+# The historical `relay-v*` tags stay in git; this workflow ignores them.
+#
+# Dependency order: publish shared FIRST (its own tag). The bridge then pins
 # @uxnan/shared to the exact `latest` version already on npm before publishing.
 #
 # Dist-tag: every release publishes to the **`latest`** dist-tag, so the newest
@@ -44,7 +49,6 @@ on:
     tags:
       - "shared-v*"
       - "bridge-v*"
-      - "relay-v*"
   # Publish an EXISTING tag with THIS workflow file. A tag push runs the
   # workflow as it was at the tagged commit, so re-running a failed publish
   # job cannot pick up a fix made to this file afterwards — which is exactly
@@ -54,7 +58,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to publish (shared-v… | bridge-v… | relay-v…)'
+        description: 'Existing tag to publish (shared-v… | bridge-v…)'
         type: string
         required: true
 
@@ -99,13 +103,13 @@ jobs:
         run: |
           # e.g. bridge-v0.0.1-alpha.20260621 — from the push, or the dispatch input
           git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::'$TAG' is not a tag"; exit 1; }
-          PREFIX="${TAG%%-v*}"            # shared | bridge | relay
+          PREFIX="${TAG%%-v*}"            # shared | bridge
           VERSION="${TAG#*-v}"            # 0.0.1-alpha.20260621
           case "$PREFIX" in
             shared) WS="shared" ;;
             bridge) WS="bridge" ;;
-            relay)  WS="relay" ;;
-            *) echo "::error::unknown tag prefix '$PREFIX' (expected shared|bridge|relay)"; exit 1 ;;
+            relay)  echo "::error::uxnan-relay is no longer published: the relay Worker ships inside uxnan-bridge. Cut the bridge instead."; exit 1 ;;
+            *) echo "::error::unknown tag prefix '$PREFIX' (expected shared|bridge)"; exit 1 ;;
           esac
           echo "ws=$WS" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -120,8 +124,8 @@ jobs:
         # failing here; if it lags (still at the base) this bumps it to the tag.
         run: npm version "${{ steps.meta.outputs.version }}" --no-git-tag-version --allow-same-version -w ${{ steps.meta.outputs.ws }}
 
-      - name: Pin @uxnan/shared (bridge/relay only)
-        if: steps.meta.outputs.ws != 'shared'
+      - name: Pin @uxnan/shared (bridge only)
+        if: steps.meta.outputs.ws == 'bridge'
         run: |
           SHARED_VER=$(npm view @uxnan/shared dist-tags.latest 2>/dev/null || true)
           if [ -z "$SHARED_VER" ]; then
@@ -131,8 +135,38 @@ jobs:
           npm pkg set "dependencies.@uxnan/shared=$SHARED_VER" -w ${{ steps.meta.outputs.ws }}
           echo "Pinned @uxnan/shared to exact $SHARED_VER"
 
+      # shared → relay → bridge: the bridge build copies the relay Worker bundle
+      # (`relay/dist/worker/uxnan-relay.js`) into its own `dist/relay-worker/`,
+      # so the relay must be built first. The root script does it in that order.
       - name: Build (all workspaces, dependency order)
         run: npm run build
+
+      # The Worker reaches users only inside this package: a bridge published
+      # without it could neither set up nor update anyone's relay, and nothing
+      # else would notice. So prove it is in the tarball — at the version
+      # `relay/package.json` carries — before publishing.
+      - name: Check the relay Worker ships inside the bridge
+        if: steps.meta.outputs.ws == 'bridge'
+        run: |
+          # The report's shape varies across npm releases (a bare array, or keyed
+          # by workspace), so find the file list wherever it sits.
+          files=$(npm pack --dry-run --json -w bridge 2>/dev/null \
+            | jq -rs '[.. | objects | select((.files | type) == "array")][0].files[].path' || true)
+          if [ -z "$files" ]; then
+            echo "::error::could not read the file list from npm pack; it printed:"
+            npm pack --dry-run --json -w bridge 2>&1 | head -c 1500
+            exit 1
+          fi
+          for f in dist/relay-worker/uxnan-relay.js dist/relay-worker/meta.json; do
+            grep -qxF "$f" <<<"$files" || { echo "::error::$f is missing from the uxnan-bridge package"; exit 1; }
+          done
+          bundled=$(jq -r .version bridge/dist/relay-worker/meta.json)
+          expected=$(jq -r .version relay/package.json)
+          if [ "$bundled" != "$expected" ]; then
+            echo "::error::the bundled relay Worker says $bundled, relay/package.json says $expected"
+            exit 1
+          fi
+          echo "Relay Worker $bundled ships inside uxnan-bridge"
 
       # No token: npm detects the Actions OIDC environment and exchanges the
       # id-token for a publish credential scoped to this package and version.

@@ -1,9 +1,60 @@
 # Changelog — uxnan-relay
 
-All notable changes to the relay server are documented here.
+All notable changes to the relay are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.3-alpha.20261003] - 20261003
+### Changed
+- **The relay is now a Cloudflare Worker that each user's bridge deploys into
+  the user's own Cloudflare account.** One SQLite-backed Durable Object
+  (`RelayRoom`) per bridge routing id holds that bridge's sockets, using the
+  WebSocket Hibernation API: an idle control socket costs nothing, and the
+  bridge's `ping` is answered `pong` without waking the object (2 wake-ups in
+  3 idle minutes, measured on a free account). Routes: `/v1/host/<routingId>`
+  (bridge), `/v1/connect/<routingId>` (phone),
+  `/v1/channel/<routingId>/<channelId>` and `GET /v1/version`. The protocol
+  lives in `@uxnan/shared/relay`. `npm run build` bundles the Worker with
+  esbuild into `dist/worker/uxnan-relay.js`, which the bridge ships and
+  uploads; `uxnan-relay/local` (`startLocalRelay`) runs that same bundle on the
+  real Workers runtime through Miniflare 4 for tests.
+- **The package is private.** It is no longer published to npm: the bundle
+  ships inside `uxnan-bridge`.
+- **Tests** run on the real Workers runtime, and the same suite runs against a
+  deployed relay (`UXNAN_RELAY_TEST_URL` + `UXNAN_RELAY_TEST_HOST_KEYS`).
+  18 tests (`test/relay.test.ts`), replacing the 16 of the Node server.
+
+### Added
+- **Authentication before any forwarding.** Every socket gets a challenge; the
+  bridge and phones answer with an Ed25519 signature bound to the route, relay
+  host, routing id, channel and nonce. Host keys come from the Worker's
+  `UXNAN_HOST_KEYS`, and a routing id stays bound to the first host that
+  claimed it; a newer control socket of the same bridge replaces the old one.
+- **Trusted phones and one-time pairing tickets.** The bridge sends its trusted
+  phone keys (`allow`) and, while its pairing window is open, the SHA-256 of a
+  one-time ticket (`ticket`, at most 15 minutes) that admits one new phone,
+  once.
+- **Revocation.** A phone removed from the allow list loses its live channel at
+  once (close code 4010).
+- **Several phones per bridge** (one channel each, `dial`; up to 8 at once) and
+  **several PCs per Worker** (one room each).
+- **Limits and deadlines:** control frames ≤ 64 KiB, ≤ 64 trusted keys, ≤ 32
+  sockets per room, 10 s to authenticate, 10 s for the bridge to answer a dial.
+
+### Removed
+- **The Node relay server** (`relay-server.ts`), its CLI `uxnan-relay` and
+  `RELAY_PORT`, the `x-role` / `x-session-id` session pairing, `GET /health`,
+  the per-IP rate limiter, the CSWSH `Origin` check, the constant-time helper,
+  and the `ws` runtime dependency (now a test-only dev dependency).
+- **Push, entirely.** The `POST /push/register` and `POST /push/notify`
+  endpoints, `PushRegistry` and the FCM sender (`relay/src/push.ts`), the
+  token/dedupe state file `~/.uxnan/relay-state.json` and its
+  `UXNAN_RELAY_STATE` override, the relay's `UXNAN_FCM_SERVICE_ACCOUNT`, and the
+  optional `firebase-admin` dependency. They let the relay see the phone's push
+  token and every notification's title and body in plaintext; background push
+  is now sent only by the bridge, straight to FCM, and the relay only forwards
+  sealed envelopes. (`push.test.ts` and `push-persistence.test.ts` deleted.)
 
 ## [0.0.2-alpha.20260720] - 2026-07-20
 

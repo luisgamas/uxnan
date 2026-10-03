@@ -33,6 +33,7 @@ import type {
 import type { BridgeNotification } from './client.svelte';
 import { streamCoalesceWindow } from './streamingMarkdown';
 import { readOutbox, writeOutbox, type OutboxEntry } from './outbox';
+import { requestIdOf } from './timeline';
 
 /** Calls a bridge method (injected so the reducer is testable without Tauri). */
 export type BridgeCall = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -594,5 +595,9 @@ export function orderBySeq(turns: Turn[]): Turn[] {
 function blockIdOf(block: unknown): string | undefined {
   if (!block || typeof block !== "object") return undefined;
   const id = (block as Record<string, unknown>).blockId;
-  return typeof id === "string" && id ? id : undefined;
+  if (typeof id === "string" && id) return id;
+  // An approval or a question is one request whatever copy of it arrives: one
+  // the bridge stored before it carried a `blockId` must not show twice either
+  // (a second copy is a second card, and a duplicate key empties the dock).
+  return requestIdOf(block) || undefined;
 }

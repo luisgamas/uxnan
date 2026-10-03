@@ -12,8 +12,16 @@ class TrustedDevicesTable extends Table {
   /// Human readable device name.
   TextColumn get displayName => text()();
 
-  /// Relay URL used to reach the bridge (empty for a LAN/Tailscale-only device).
-  TextColumn get relayUrl => text()();
+  /// The bridge's relay (`RelayEndpoint`): its `wss://` base URL, or null
+  /// while the bridge has none. Schema < 12 stored a bare URL of the retired
+  /// shared relay here (non-null, often empty); v12 clears it.
+  TextColumn get relayUrl => text().nullable()();
+
+  /// The bridge's room on [relayUrl] (32 lowercase hex chars); null with it.
+  TextColumn get relayRoutingId => text().nullable()();
+
+  /// Whether the bridge serves phones through [relayUrl] right now.
+  BoolColumn get relayEnabled => boolean().withDefault(const Constant(false))();
 
   /// Direct `host:port` addresses (LAN / Tailscale) advertised in the pairing
   /// QR, stored newline-separated. Nullable/absent for older rows (schema < 4).

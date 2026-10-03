@@ -5,7 +5,13 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { JsonRpcErrorCode, MAX_ATTACHMENT_BYTES, RpcError, isDesktopClientId } from '@uxnan/shared';
+import {
+  ACCESS_MODES,
+  JsonRpcErrorCode,
+  MAX_ATTACHMENT_BYTES,
+  RpcError,
+  isDesktopClientId,
+} from '@uxnan/shared';
 import type {
   AccessMode,
   ThreadOrigin,
@@ -93,10 +99,15 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       if (existing) return withLiveState(existing, ctx);
     }
     const title = optionalString(p, 'title');
+    // The conversation starts in its agent's default mode, set here by the
+    // owner of threads — not by whichever client opened it, so every surface
+    // starts alike and the first turn never runs in a mode nobody chose.
+    const accessMode = ctx.agentManager.defaultAccessModeOf(agentId);
     const thread = await ctx.threadStore.startThread(
       {
         projectId,
         ...(title !== undefined ? { title } : {}),
+        ...(accessMode !== undefined ? { accessMode } : {}),
         agentId,
         ...(model !== undefined ? { model } : {}),
         cwd,
@@ -143,12 +154,23 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ctx,
     );
   });
-  router.register('thread/setAccessMode', async (p, ctx: BridgeContext) =>
-    ctx.threadStore.setAccessMode(
-      requireString(p, 'threadId'),
-      parseAccessMode(requireString(p, 'mode')),
-    ),
-  );
+  router.register('thread/setAccessMode', async (p, ctx: BridgeContext) => {
+    const threadId = requireString(p, 'threadId');
+    const mode = parseAccessMode(requireString(p, 'mode'));
+    // A mode is a promise about what the agent will do; one its adapter cannot
+    // keep is refused rather than stored and silently run as something else.
+    const thread = await ctx.threadStore.getThread(threadId);
+    const agentId = (thread.agentId as AgentId | undefined) ?? ctx.agentManager.defaultAgent;
+    const offered = ctx.agentManager.accessModesOf(agentId);
+    if (!offered.includes(mode)) {
+      throw RpcError.invalidParams(
+        offered.length === 0
+          ? `${agentId} offers no access mode`
+          : `${agentId} offers ${offered.join(' | ')}, not ${mode}`,
+      );
+    }
+    return ctx.threadStore.setAccessMode(threadId, mode);
+  });
   // `ageMs`: an action a client took offline and sends now (architecture/02a
   // §5.8.17). It applies only if nothing decided the same later elsewhere; a
   // superseded one answers with the thread as it stands.
@@ -308,8 +330,6 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     ctx.agentManager.sendQueuedNow(requireString(p, 'threadId'), requireString(p, 'turnId')),
   );
 }
-
-const ACCESS_MODES: readonly AccessMode[] = ['requestApproval', 'approveForMe', 'fullAccess'];
 
 /** Validates a wire `mode` string against the {@link AccessMode} union. */
 function parseAccessMode(mode: string): AccessMode {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateE2EEnvelope, validateJsonRpcRequest, validatePushPayload } from '../src/index.js';
+import { validateE2EEnvelope, validateJsonRpcRequest } from '../src/index.js';
 
 test('validateJsonRpcRequest accepts a valid request', () => {
   const result = validateJsonRpcRequest({
@@ -47,13 +47,17 @@ test('validateE2EEnvelope rejects a negative seq', () => {
   assert.ok(!result.valid);
 });
 
-test('validatePushPayload requires the notification secret', () => {
-  const result = validatePushPayload({
+test('validatePairingPayloadSchema accepts the relay object and rejects a bare URL', async () => {
+  const { validatePairingPayloadSchema, PAIRING_QR_VERSION } = await import('../src/index.js');
+  const base = {
+    v: PAIRING_QR_VERSION,
     sessionId: 's',
-    threadId: 't',
-    turnId: 'u',
-    title: 'done',
-    body: 'ok',
-  });
-  assert.ok(!result.valid);
+    macDeviceId: 'm',
+    macIdentityPublicKey: 'k',
+    expiresAt: 1,
+    displayName: 'PC',
+  };
+  const relay = { url: 'wss://r.example.workers.dev', routingId: 'a'.repeat(32) };
+  assert.ok(validatePairingPayloadSchema({ ...base, relay }).valid);
+  assert.ok(!validatePairingPayloadSchema({ ...base, relay: relay.url }).valid);
 });

@@ -19,7 +19,7 @@ Closes #<!-- issue number, or delete this line if there's no issue -->
 
 - [ ] `shared` — contracts / JSON-RPC / E2EE schemas
 - [ ] `bridge` — PC daemon (uxnan-bridge)
-- [ ] `relay` — E2EE relay server (uxnan-relay)
+- [ ] `relay` — the user's own relay (Cloudflare Worker the bridge deploys)
 - [ ] `uxnandesktop` — Tauri desktop app
 - [ ] `uxnanmobile` — Flutter mobile app
 - [ ] Cross-cutting / tooling / CI / docs

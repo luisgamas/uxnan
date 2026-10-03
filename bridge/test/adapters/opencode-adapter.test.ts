@@ -6,6 +6,7 @@ import {
   OpenCodeAdapter,
   OpenCodeV1Translator,
   OpenCodeV2Translator,
+  permissionPolicyFor,
   parseModelList,
   parseOpenCodeModelWindows,
   openCodeUsageTokens,
@@ -27,7 +28,7 @@ import {
   type PermissionReply,
   type SpawnedProcess,
 } from '../../src/index.js';
-import type { AgentStreamEvent } from '@uxnan/shared';
+import type { AccessMode, AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `opencode serve` behind the neutral contract. Raw protocol events go
 // through the REAL V1 / V2 translators, so these tests cover what a live server's
@@ -67,6 +68,12 @@ class FakeServer implements IOpenCodeServer {
   listed: OpenCodeListedSession[] = [];
   listSessions(directory: string, limit: number): Promise<OpenCodeListedSession[]> {
     return Promise.resolve(this.listed.filter((s) => s.directory === directory).slice(0, limit));
+  }
+  /** Each `setPermission` call, in order. */
+  readonly permissionChanges: { sessionId: string; permission: OpenCodePermissionPolicy }[] = [];
+  setPermission(sessionId: string, permission: OpenCodePermissionPolicy): Promise<void> {
+    this.permissionChanges.push({ sessionId, permission });
+    return Promise.resolve();
   }
   hasSession(sessionId: string): Promise<boolean> {
     this.checked.push(sessionId);
@@ -688,9 +695,14 @@ test('OpenCodeAdapter routes permission.asked → approval → reply', async () 
   });
   collect(adapter);
 
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'edit a file' });
-  // interactive by default → gated tools set to `ask`
-  assert.equal(server.lastPermission, 'ask');
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'edit a file',
+    accessMode: 'requestApproval',
+  });
+  // Request approval → every gated action asks.
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('requestApproval'));
 
   server.emit('permission.asked', {
     id: 'per_1',
@@ -812,12 +824,51 @@ test('OpenCodeAdapter rejects a question when the user skips (empty answers)', a
   assert.deepEqual(server.questionReplies, []);
 });
 
-test('OpenCodeAdapter uses allow rules for approveForMe', async () => {
+test('OpenCodeAdapter works inside the project and asks beyond it for approveForMe', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server);
   collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'approveForMe' });
-  assert.equal(server.lastPermission, 'allow');
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('approveForMe'));
+});
+
+test("a conversation's access mode reaches its session when it changes, both ways", async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  const turnOn = async (turnId: string, accessMode: AccessMode) => {
+    const run = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId, text: 'go', accessMode });
+    server.emit('session.idle', { sessionID: 'ses_1' });
+    await run.done;
+  };
+
+  await turnOn('u1', 'requestApproval');
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('requestApproval'), 'created asking');
+  await turnOn('u2', 'requestApproval');
+  assert.deepEqual(server.permissionChanges, [], 'unchanged: nothing to set');
+  // Switched to full access: the session made to ask must stop asking…
+  await turnOn('u3', 'fullAccess');
+  // …and set back to ask, it must ask again (the unsafe direction).
+  await turnOn('u4', 'requestApproval');
+  assert.deepEqual(server.permissionChanges, [
+    { sessionId: 'ses_1', permission: permissionPolicyFor('fullAccess') },
+    { sessionId: 'ses_1', permission: permissionPolicyFor('requestApproval') },
+  ]);
+  assert.equal(server.sessions.length, 1, 'the same session throughout');
+});
+
+test('a session this process did not create gets the conversation access mode first', async () => {
+  const server = new FakeServer();
+  server.known.add('ses_stored');
+  const adapter = makeAdapter(server);
+  adapter.adoptNativeSession('t1', 'ses_stored');
+  collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
+  // Its rules are whatever it was created with, days ago or in a terminal.
+  assert.deepEqual(server.permissionChanges, [
+    { sessionId: 'ses_stored', permission: permissionPolicyFor('fullAccess') },
+  ]);
+  assert.equal(server.prompts[0]?.sessionId, 'ses_stored');
 });
 
 test('OpenCodeAdapter reuses the session id on the next turn', async () => {

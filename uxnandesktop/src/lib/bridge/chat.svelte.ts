@@ -544,9 +544,8 @@ export class ChatStore {
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
     });
     this.threads.set(thread.id, thread);
-    // Same starting posture as a thread started on the phone, so a
-    // conversation behaves alike whichever client opened it.
-    void this.setAccessMode(thread.id, 'fullAccess').catch(() => undefined);
+    // It starts in its agent's default mode, set by the bridge — the desktop
+    // does not choose one for it.
     return this.threads.get(thread.id) ?? thread;
   }
 

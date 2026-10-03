@@ -42,12 +42,11 @@ on:
         description: 'Cut @uxnan/shared'
         type: boolean
         default: false
+      # The relay Worker has no box of its own: it ships inside the bridge, so
+      # a relay change is released by cutting the bridge, which also moves the
+      # Worker's version when the Worker changed (scripts/release → `carries`).
       bridge:
-        description: 'Cut uxnan-bridge'
-        type: boolean
-        default: false
-      relay:
-        description: 'Cut uxnan-relay'
+        description: 'Cut uxnan-bridge (carries the relay Worker)'
         type: boolean
         default: false
       mobile:
@@ -127,7 +126,6 @@ jobs:
             components=""
             [ "${{ inputs.shared }}" = "true" ] && components="$components,shared"
             [ "${{ inputs.bridge }}" = "true" ] && components="$components,bridge"
-            [ "${{ inputs.relay }}"  = "true" ] && components="$components,relay"
             [ "${{ inputs.mobile }}" = "true" ] && components="$components,mobile"
             [ "${{ inputs.desktop }}" != "none" ] && components="$components,desktop"
             components="${components#,}"
@@ -153,7 +151,7 @@ jobs:
           {
             echo "### Release plan"
             echo
-            jq -r '.cuts[] | "- **\(.id)** → `\(.tag)`"' plan.json
+            jq -r '.cuts[] | "- **\(.id)** → `\(.tag)`" + ([.carries[]? | " — carries \(.id) `\(.version)`"] | join(""))' plan.json
             jq -r '.skipped[] | "- _\(.id)_ skipped — \(.reason)"' plan.json
             echo
             if [ "${{ github.event_name }}" = "schedule" ]; then

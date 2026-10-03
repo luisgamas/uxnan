@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
+import 'package:uxnan/core/errors/relay_exception.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
@@ -14,6 +15,7 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -219,11 +221,12 @@ class SessionCoordinator {
     _intentionalDisconnect = false;
     _connectingDevice.add(device);
     try {
+      final current = await _withStoredRelay(device);
       final session = await _openSession(
-        device,
+        current,
         HandshakeMode.trustedReconnect,
       );
-      await _commitSession(device, session);
+      await _commitSession(current, session);
     } on Object {
       _connectingDevice.add(null);
       rethrow;
@@ -254,14 +257,23 @@ class SessionCoordinator {
       macDeviceId: payload.macDeviceId,
       displayName: payload.displayName,
       macIdentityPublicKey: payload.macIdentityPublicKey,
-      relayUrl: payload.relayUrl,
+      relay: payload.relay,
       hosts: payload.hosts,
       sessionId: payload.sessionId,
       pairedAt: DateTime.now(),
     );
     await repository.saveDevice(device);
     setActiveDevice(device);
-    await connect(forceQrBootstrap: true);
+    _intentionalDisconnect = false;
+    // The QR's one-time relay ticket lets a phone that is not on the PC's
+    // network pair through the relay. It serves this first connection only:
+    // once paired, the bridge trusts this phone's key on its relay, so the
+    // ticket is never stored.
+    await _establish(
+      device,
+      HandshakeMode.qrBootstrap,
+      relayTicket: payload.relayTicket,
+    );
   }
 
   /// Cancels an in-progress pairing by tearing down the connection.
@@ -274,13 +286,18 @@ class SessionCoordinator {
   /// post-resume liveness probe is in flight ([_verifyingAfterResume]) the
   /// request is held in the buffer rather than risk a write to a half-open
   /// socket.
+  ///
+  /// [timeout] replaces the correlator's default wait for a request the
+  /// bridge answers only after slow outside work — deploying the relay to the
+  /// user's Cloudflare account takes up to a minute.
   Future<RpcMessage> sendRequest(
     String method, [
     Map<String, dynamic>? params,
+    Duration? timeout,
   ]) {
     final id = _uuid.v4();
     final request = RpcMessage.request(id: id, method: method, params: params);
-    final future = _correlator.register(id);
+    final future = _correlator.register(id, within: timeout);
     if (_verifyingAfterResume) {
       _outboundBuffer.enqueue(request);
     } else {
@@ -398,8 +415,9 @@ class SessionCoordinator {
     final now = DateTime.now();
     final id = _uuid.v4();
     _connectionSessionId = id;
-    // Direct unless the winning endpoint is exactly the device's relay URL.
-    final isRelay = device.relayUrl.isNotEmpty && url == device.relayUrl;
+    // Direct unless the winning endpoint is the device's relay.
+    final isRelay = classifyEndpoint(url, relayUrl: device.relay?.url ?? '') ==
+        NetworkKind.relay;
     unawaited(
       repo
           .startSession(
@@ -595,13 +613,18 @@ class SessionCoordinator {
 
     for (var attempt = 1; attempt <= _maxReconnectAttempts; attempt++) {
       final wait = _backoff.compute(attempt);
+      final previous = _recoveryState.value;
+      // The last failure stands while the next attempt waits, so the UI can
+      // keep saying why ("your PC is offline") instead of going blank.
       _recoveryState.add(
         ConnectionRecoveryState(
           isRecovering: true,
           attempt: attempt,
           maxAttempts: _maxReconnectAttempts,
           nextRetryIn: wait,
-          lastConnectedAt: _recoveryState.value.lastConnectedAt,
+          lastConnectedAt: previous.lastConnectedAt,
+          lastErrorMessage: previous.lastErrorMessage,
+          lastRelayFailure: previous.lastRelayFailure,
         ),
       );
       await _waitForRetry(wait);
@@ -610,8 +633,19 @@ class SessionCoordinator {
         await _establish(device, HandshakeMode.trustedReconnect);
         return;
       } on Object catch (error) {
+        final current = _recoveryState.value;
+        // Built whole rather than copied: a failure that was not the relay's
+        // must clear the relay reason the attempt before left behind.
         _recoveryState.add(
-          _recoveryState.value.copyWith(lastErrorMessage: error.toString()),
+          ConnectionRecoveryState(
+            isRecovering: current.isRecovering,
+            attempt: current.attempt,
+            maxAttempts: current.maxAttempts,
+            nextRetryIn: current.nextRetryIn,
+            lastConnectedAt: current.lastConnectedAt,
+            lastErrorMessage: error.toString(),
+            lastRelayFailure: error is RelayException ? error.failure : null,
+          ),
         );
       }
     }
@@ -650,12 +684,21 @@ class SessionCoordinator {
   /// Connect/reconnect path: drives the global phase (`connecting`), opens a
   /// session and commits it. On failure the global phase is left for the caller
   /// (reconnect loop) or the error handler to resolve.
-  Future<void> _establish(TrustedDevice device, HandshakeMode mode) async {
+  Future<void> _establish(
+    TrustedDevice target,
+    HandshakeMode mode, {
+    String? relayTicket,
+  }) async {
     _connectionPhase.add(ConnectionPhase.connecting);
-    _connectingDevice.add(device);
+    _connectingDevice.add(target);
     try {
       _connectionPhase.add(ConnectionPhase.handshaking);
-      final session = await _openSession(device, mode);
+      final device = await _withStoredRelay(target);
+      final session = await _openSession(
+        device,
+        mode,
+        relayTicket: relayTicket,
+      );
       await _commitSession(device, session);
     } on Object {
       _connectingDevice.add(null);
@@ -668,9 +711,13 @@ class SessionCoordinator {
   /// unreachable device during a switch) leaves any existing session untouched.
   Future<(WebSocketTransport, SecureChannel)> _openSession(
     TrustedDevice device,
-    HandshakeMode mode,
-  ) async {
-    final transport = await _transportSelector.select(device);
+    HandshakeMode mode, {
+    String? relayTicket,
+  }) async {
+    final transport = await _transportSelector.select(
+      device,
+      relayTicket: relayTicket,
+    );
     try {
       final identity = await _identityResolver();
       final session = await _secureTransport.performHandshake(
@@ -688,6 +735,30 @@ class SessionCoordinator {
       await transport.disconnect().catchError((_) {});
       rethrow;
     }
+  }
+
+  /// [device] with the relay the store holds for it now. The bridge shares its
+  /// relay in its settings, and the replica writes it to the store
+  /// (`BridgeReplica`) while the in-memory copy here is older — so a PC paired
+  /// on the LAN is dialled through the relay it announced since, the moment
+  /// the phone leaves home. The rest of the copy stands (its applied sequence
+  /// is ahead of the store's).
+  Future<TrustedDevice> _withStoredRelay(TrustedDevice device) async {
+    final repository = _trustedDeviceRepository;
+    if (repository == null) return device;
+    final TrustedDevice? stored;
+    try {
+      stored = await repository.getDevice(device.macDeviceId);
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('Reading the stored relay failed', error, stackTrace);
+      return device;
+    }
+    if (stored == null || stored.relay == device.relay) return device;
+    final active = _activeMac.value;
+    if (active != null && active.macDeviceId == device.macDeviceId) {
+      _activeMac.add(active.withRelay(stored.relay));
+    }
+    return device.withRelay(stored.relay);
   }
 
   /// Commits a freshly-opened [session] as the live one: tears down the

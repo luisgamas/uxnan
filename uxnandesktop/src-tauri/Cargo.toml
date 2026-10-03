@@ -14,7 +14,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.0.72"
+version = "0.0.73"
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
 rust-version = "1.85"

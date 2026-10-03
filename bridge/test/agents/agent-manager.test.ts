@@ -26,7 +26,6 @@ import { rmrf } from '../helpers/fs.js';
 
 /** Caps for the controllable test adapter (streaming, no approvals/images). */
 const CONTROLLED_CAPS: AgentCapabilities = {
-  planMode: false,
   streaming: true,
   approvals: false,
   forking: false,
@@ -346,14 +345,18 @@ test('respondApproval drives the echo demo approval to completion', async () => 
 test('requestApproval emits an approval block and resolves on respondApproval (hook flow)', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-hook-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
-  const blocks: { content: { type?: string; approvalId?: string; action?: string } }[] = [];
+  const blocks: {
+    content: { type?: string; approvalId?: string; action?: string; blockId?: string };
+  }[] = [];
   const manager = new AgentManager({
     store,
     notify: (message) => {
       const m = message as { method: string; params?: unknown };
       if (m.method === StreamNotification.ContentBlock) {
         blocks.push(
-          m.params as { content: { type?: string; approvalId?: string; action?: string } },
+          m.params as {
+            content: { type?: string; approvalId?: string; action?: string; blockId?: string };
+          },
         );
       }
     },
@@ -378,6 +381,9 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
   const writeBlock = blocks.find((b) => b.content.action?.includes('Write'))!;
   assert.equal(writeBlock.content.type, 'approval');
   const approvalId = writeBlock.content.approvalId!;
+  // Its own id is its step id: a second copy of it (a client reloading the
+  // turn while the live block is on its way) replaces the first in place.
+  assert.equal(writeBlock.content.blockId, approvalId);
 
   // Approving resolves the hook to 'allow'; rejecting would resolve 'deny'.
   await manager.respondApproval(thread.id, approvalId, 'approve');
@@ -389,13 +395,15 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
 test('requestQuestion emits a question block and resolves on respondQuestion', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-q-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
-  const blocks: { content: { type?: string; questionId?: string } }[] = [];
+  const blocks: { content: { type?: string; questionId?: string; blockId?: string } }[] = [];
   const manager = new AgentManager({
     store,
     notify: (message) => {
       const m = message as { method: string; params?: unknown };
       if (m.method === StreamNotification.ContentBlock) {
-        blocks.push(m.params as { content: { type?: string; questionId?: string } });
+        blocks.push(
+          m.params as { content: { type?: string; questionId?: string; blockId?: string } },
+        );
       }
     },
     now: () => 1000,
@@ -419,6 +427,7 @@ test('requestQuestion emits a question block and resolves on respondQuestion', a
   const qBlock = blocks.find((b) => b.content.type === 'question')!;
   const questionId = qBlock.content.questionId!;
   assert.ok(questionId.length > 0);
+  assert.equal(qBlock.content.blockId, questionId, 'a question is one request, by its id');
 
   await manager.respondQuestion(thread.id, questionId, [['Python']]);
   assert.deepEqual(await answersPromise, [['Python']]);

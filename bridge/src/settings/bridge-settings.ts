@@ -7,8 +7,11 @@
  *   the desktop both start browsing from it.
  * - `name`, what every client calls this PC — the machine's own name until
  *   someone renames it, on any client.
+ * - `relay`, where a phone reaches this PC from another network — set only by
+ *   the relay service (`relay/*`), never by `settings/set`, so a phone paired
+ *   on the LAN learns it and can leave home without pairing again.
  *
- * Both live in `daemon-config.json`, so the bridge's own CLI edits the same
+ * All three live in `daemon-config.json`, so the bridge's own CLI edits the same
  * values the clients do; a change takes a sync revision and is announced to
  * every client. When each was last decided is kept beside them
  * (`settings-decided.json`), so a change a client made offline and sends late
@@ -17,7 +20,7 @@
 import { stat, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, resolve } from 'node:path';
-import { JsonRpcErrorCode, RpcError, type BridgeSettings } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError, type BridgeSettings, type RelayEndpoint } from '@uxnan/shared';
 import type { DaemonConfig } from '../daemon-config.js';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { machineName } from '../presence/host-info.js';
@@ -62,6 +65,8 @@ export function validateName(name: string): string {
 export interface SettingsChangeRequest {
   home?: string;
   name?: string;
+  /** Only the relay service sets this (`null` removes the relay). */
+  relay?: RelayEndpoint | null;
 }
 
 type DecidedAt = Partial<Record<keyof BridgeSettings, number>>;
@@ -98,6 +103,7 @@ export class BridgeSettingsStore {
     this.#settings = {
       home: configuredHome(options.config),
       name: configuredName(options.config),
+      relay: options.config.relay ?? null,
     };
   }
 
@@ -107,7 +113,8 @@ export class BridgeSettingsStore {
   }
 
   get(): BridgeSettings {
-    return { ...this.#settings };
+    const relay = this.#settings.relay;
+    return { ...this.#settings, relay: relay ? { ...relay } : null };
   }
 
   /** The revision the settings last changed at. */
@@ -128,7 +135,7 @@ export class BridgeSettingsStore {
   set(request: SettingsChangeRequest, at: number): Promise<BridgeSettings> {
     const run = this.#lock.then(async () => {
       const next: Partial<BridgeSettings> = {};
-      const stored: Partial<Pick<DaemonConfig, 'home' | 'name'>> = {};
+      const stored: Partial<Pick<DaemonConfig, 'home' | 'name' | 'relay'>> = {};
       if (request.home !== undefined && this.#isLatest('home', at)) {
         next.home = await validateHome(request.home);
         stored.home = next.home;
@@ -139,14 +146,23 @@ export class BridgeSettingsStore {
         // Empty restores the machine's name: nothing is kept in the config.
         stored.name = name.length > 0 ? name : undefined;
       }
+      if (request.relay !== undefined && this.#isLatest('relay', at)) {
+        next.relay = request.relay;
+        stored.relay = request.relay ?? undefined;
+      }
       const decided = Object.keys(next) as (keyof BridgeSettings)[];
       if (decided.length === 0) return this.get();
       for (const key of decided) this.#decidedAt[key] = at;
       await this.#state.writeJson(DAEMON_FILES.settingsDecided, this.#decidedAt);
-      const changed = decided.filter((key) => next[key] !== this.#settings[key]);
+      const changed = decided.filter(
+        (key) => JSON.stringify(next[key]) !== JSON.stringify(this.#settings[key]),
+      );
       if (changed.length === 0) return this.get();
       const config = await this.#state.readConfig();
-      await this.#state.writeConfig({ ...config, ...stored });
+      const written: DaemonConfig = { ...config, ...stored };
+      // `undefined` drops the key: a removed relay leaves nothing behind.
+      if ('relay' in stored && stored.relay === undefined) delete written.relay;
+      await this.#state.writeConfig(written);
       this.#settings = { ...this.#settings, ...next };
       const rev = this.#ledger.stamp(SETTINGS_MARK);
       await this.#ledger.flush();

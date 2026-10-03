@@ -11,6 +11,7 @@ import {
   OpenCodeAdapter,
   OpenCodeV2Server,
   OpenCodeV2Translator,
+  permissionPolicyFor,
   formAnswer,
   openCodeV2History,
   openCodeV2Models,
@@ -326,7 +327,11 @@ test('OpenCodeV2Server speaks /api behind the password it set, and translates th
     assert.deepEqual(await server.models(), [{ id: 'opencode/big-pickle', contextWindow: 200000 }]);
 
     const model = { providerID: 'opencode', modelID: 'big-pickle' };
-    const id = await server.createSession({ title: 't', permission: 'ask', model });
+    const id = await server.createSession({
+      title: 't',
+      permission: permissionPolicyFor('requestApproval'),
+      model,
+    });
     assert.equal(id, S);
     const create = fake.requests().find((r) => r.method === 'POST' && r.url === '/api/session');
     assert.deepEqual(create?.body, {
@@ -340,14 +345,34 @@ test('OpenCodeV2Server speaks /api behind the password it set, and translates th
       })),
     });
 
-    // Same model: no switch. Another: switched before the prompt.
-    await server.prompt(S, { text: 'go', model });
-    await server.prompt(S, { text: 'again', model: { providerID: 'openrouter', modelID: 'x/y' } });
+    // Same model: no switch. Another: switched before the prompt. The agent
+    // is set once, then only when it changes ("plan only" runs on `plan`).
+    await server.prompt(S, { text: 'go', model, agent: 'build' });
+    await server.prompt(S, {
+      text: 'again',
+      model: { providerID: 'openrouter', modelID: 'x/y' },
+      agent: 'build',
+    });
+    await server.prompt(S, { text: 'plan it', agent: 'plan' });
     const turnCalls = fake
       .requests()
       .filter((r) => r.url.startsWith(`/api/session/${S}/`))
       .map((r) => `${r.method} ${r.url.replace(`/api/session/${S}`, '')}`);
-    assert.deepEqual(turnCalls, ['POST /prompt', 'POST /model', 'POST /prompt']);
+    assert.deepEqual(turnCalls, [
+      'POST /agent',
+      'POST /prompt',
+      'POST /model',
+      'POST /prompt',
+      'POST /agent',
+      'POST /prompt',
+    ]);
+    assert.deepEqual(
+      fake
+        .requests()
+        .filter((r) => r.url === `/api/session/${S}/agent`)
+        .map((r) => r.body),
+      [{ agent: 'build' }, { agent: 'plan' }],
+    );
 
     await server.steer(S, 'more');
     await server.interrupt(S);
@@ -676,6 +701,7 @@ test('OpenCode 1: one list for commands and skills, run through /command without
       command: 'probecmd',
       arguments: 'hello',
       model: 'opencode/big-pickle',
+      agent: 'build',
     });
     const completed = events.find((e) => e.type === 'turn_completed');
     assert.equal((completed?.data as { text?: string } | undefined)?.text, 'PROBE-hello');

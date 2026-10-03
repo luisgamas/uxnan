@@ -18,6 +18,7 @@
  * `update` asks the running bridge to update itself and `self-update` is the
  * helper it hands that over to (`self-update.ts`).
  */
+import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import {
   agentLocation,
@@ -25,6 +26,7 @@ import {
   locateAgent,
   type BridgeSettings,
   type BridgeUpdate,
+  type RelayStatus,
 } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
@@ -74,6 +76,16 @@ Commands:
   config get [key]           Print the shared settings (or one of them)
   config set home <folder>   Set the start folder new projects are explored from
   config set name <name>     Set what every client calls this PC
+  relay status               Print the relay's state (JSON)
+  relay setup --account <id> [--remember]
+                             Deploy your own relay to your Cloudflare account
+                             (asks for an API token; never pass it as an argument)
+  relay use <wss-url>        Use a relay you deployed yourself
+  relay enable | disable     Serve phones on other networks through the relay, or stop
+  relay update [--remember]  Deploy the relay version this bridge ships
+  relay rotate               Give this PC a new address on the relay
+  relay remove [--delete-worker]
+                             Stop using the relay (optionally take it off Cloudflare)
   update             Ask the running bridge to update itself to the published version
   version            Print the installed version (no daemon is started)
   help               Show this help
@@ -216,18 +228,13 @@ async function cmdStart(): Promise<void> {
   if (payload.hosts && payload.hosts.length > 0) {
     process.stdout.write(`Direct addresses (LAN/Tailscale): ${payload.hosts.join(', ')}\n`);
   }
-  if (bridge.context.config.relayEnabled && payload.relay) {
-    try {
-      await bridge.connectRelay(payload.sessionId);
-      process.stdout.write(`Connected to relay ${payload.relay}; waiting for a phone.\n`);
-    } catch (err) {
-      process.stderr.write(
-        `Relay connection failed (${errText(err)}); the direct LAN/Tailscale path remains available.\n`,
-      );
-    }
-  } else {
-    process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
-  }
+  await bridge.startRelay();
+  const relay = bridge.context.relay().status();
+  process.stdout.write(
+    relay.endpoint?.enabled
+      ? `Relay: ${relay.endpoint.url} (phones on other networks connect through it).\n`
+      : "No relay: phones connect on the LAN or Tailscale. Set one up with 'uxnan-bridge relay setup'.\n",
+  );
 
   await printUpdateNotice({ force: true });
   if (!asService) process.stdout.write('Press Ctrl+C to stop.\n');
@@ -409,6 +416,7 @@ async function cmdConfig(args: string[]): Promise<void> {
     const settings = (live?.result as BridgeSettings | undefined) ?? {
       home: configuredHome(config),
       name: configuredName(config),
+      relay: config.relay ?? null,
     };
     if (key === undefined) process.stdout.write(`${JSON.stringify(settings, null, 2)}\n`);
     else if (key === 'home' || key === 'name') process.stdout.write(`${settings[key]}\n`);
@@ -439,6 +447,122 @@ async function cmdConfig(args: string[]): Promise<void> {
   throw new Error(
     'usage: uxnan-bridge config get [home|name] | config set home <folder> | config set name <name>',
   );
+}
+
+/** How long a relay action may take: a fresh deploy waits for workers.dev. */
+const RELAY_CALL_TIMEOUT_MS = 120_000;
+
+async function cmdRelay(args: string[]): Promise<void> {
+  const [action, ...rest] = args;
+  const flag = (name: string): boolean => rest.includes(name);
+  const option = (name: string): string | undefined => {
+    const at = rest.indexOf(name);
+    return at >= 0 ? rest[at + 1] : undefined;
+  };
+  const state = new DaemonState();
+  const call = async (method: string, params?: unknown): Promise<RelayStatus> => {
+    const live = await callRunningBridge(state, method, params, {
+      timeoutMs: RELAY_CALL_TIMEOUT_MS,
+    });
+    if (!live) {
+      throw new Error("the bridge is not running; start it first ('uxnan-bridge start')");
+    }
+    return live.result as RelayStatus;
+  };
+  const print = (status: RelayStatus): void => {
+    process.stdout.write(`${JSON.stringify(status, null, 2)}\n`);
+  };
+  // A token is asked for when the action needs one and none is remembered.
+  const tokenIfNeeded = async (): Promise<string | undefined> => {
+    const status = await call('relay/status');
+    return status.tokenRemembered ? undefined : readSecret('Cloudflare API token: ');
+  };
+  switch (action) {
+    case 'status':
+      return print(await call('relay/status'));
+    case 'setup': {
+      const accountId = option('--account') ?? (await readLine('Cloudflare account id: '));
+      const apiToken = await readSecret('Cloudflare API token: ');
+      process.stdout.write('Deploying your relay…\n');
+      return print(
+        await call('relay/setup', {
+          provider: 'cloudflare',
+          accountId,
+          apiToken,
+          remember: flag('--remember'),
+        }),
+      );
+    }
+    case 'use': {
+      const url = rest[0];
+      if (!url) break;
+      return print(await call('relay/use', { url }));
+    }
+    case 'enable':
+    case 'disable':
+      return print(await call('relay/set', { enabled: action === 'enable' }));
+    case 'update': {
+      const apiToken = await tokenIfNeeded();
+      return print(
+        await call('relay/update', {
+          ...(apiToken ? { apiToken } : {}),
+          ...(flag('--remember') ? { remember: true } : {}),
+        }),
+      );
+    }
+    case 'rotate':
+      return print(await call('relay/rotate'));
+    case 'remove': {
+      const deleteWorker = flag('--delete-worker');
+      const apiToken = deleteWorker ? await tokenIfNeeded() : undefined;
+      return print(await call('relay/remove', { deleteWorker, ...(apiToken ? { apiToken } : {}) }));
+    }
+    default:
+      break;
+  }
+  throw new Error(
+    'usage: uxnan-bridge relay status | setup --account <id> [--remember] | use <wss-url> | ' +
+      'enable | disable | update [--remember] | rotate | remove [--delete-worker]',
+  );
+}
+
+/** One line from the terminal. */
+async function readLine(prompt: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return (await rl.question(prompt)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+/** A secret from the terminal, without echoing it (piped stdin works too). */
+async function readSecret(prompt: string): Promise<string> {
+  const input = process.stdin;
+  if (!input.isTTY) return readLine(prompt);
+  process.stderr.write(prompt);
+  input.setRawMode(true);
+  input.resume();
+  input.setEncoding('utf8');
+  return new Promise((resolve, reject) => {
+    let value = '';
+    const done = (fn: () => void): void => {
+      input.setRawMode(false);
+      input.pause();
+      input.off('data', onData);
+      process.stderr.write('\n');
+      fn();
+    };
+    const onData = (chunk: string): void => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done(() => resolve(value.trim()));
+        if (ch === '\u0003') return done(() => reject(new Error('cancelled')));
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
+        else value += ch;
+      }
+    };
+    input.on('data', onData);
+  });
 }
 
 async function main(): Promise<number> {
@@ -473,6 +597,9 @@ async function main(): Promise<number> {
       return 0;
     case 'config':
       await cmdConfig(process.argv.slice(3));
+      return 0;
+    case 'relay':
+      await cmdRelay(process.argv.slice(3));
       return 0;
     case 'update':
       await cmdUpdate();

@@ -24,7 +24,6 @@ import { rmrf, seedProject } from '../helpers/fs.js';
 class ControlledAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'echo';
   readonly capabilities: AgentCapabilities = {
-    planMode: false,
     streaming: true,
     approvals: false,
     forking: false,
@@ -589,6 +588,64 @@ test('thread/read of an unknown id returns -32008', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('3', 'thread/read', { threadId: 'nope' }));
   assert.ok('error' in res && res.error.code === -32008);
+  await bridge.stop();
+  await rmrf(baseDir);
+});
+
+/** A controllable agent that offers two access modes and records each turn's. */
+class TwoModeAdapter extends ControlledAdapter {
+  override readonly capabilities: AgentCapabilities = {
+    streaming: true,
+    approvals: true,
+    forking: false,
+    images: false,
+    accessModes: ['approveForMe', 'fullAccess'],
+    defaultAccessMode: 'approveForMe',
+  };
+  readonly modes: (string | undefined)[] = [];
+  override sendTurn(options: SendTurnOptions): Promise<void> {
+    this.modes.push(options.accessMode);
+    return super.sendTurn(options);
+  }
+}
+
+test('a conversation starts in its agent default mode, keeps to the modes it offers, and runs a retired one as the default', async () => {
+  const { bridge, baseDir } = await boot();
+  const adapter = new TwoModeAdapter();
+  bridge.context.agentManager.register(adapter);
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+
+  // The bridge sets the starting mode — no client has to.
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const thread = startRes.result as { id: string; accessMode?: string };
+  assert.equal(thread.accessMode, 'approveForMe');
+
+  // A mode the agent cannot keep is refused, not stored.
+  const refused = await bridge.router.dispatch(
+    makeRequest('2', 'thread/setAccessMode', { threadId: thread.id, mode: 'plan' }),
+  );
+  assert.ok('error' in refused);
+  assert.match(refused.error.message, /offers approveForMe \| fullAccess, not plan/);
+  const taken = await bridge.router.dispatch(
+    makeRequest('3', 'thread/setAccessMode', { threadId: thread.id, mode: 'fullAccess' }),
+  );
+  assert.ok('result' in taken);
+
+  // A mode stored before the agent stopped offering it runs as its default.
+  await bridge.context.threadStore.setAccessMode(thread.id, 'plan');
+  const sendRes = await bridge.router.dispatch(
+    makeRequest('4', 'turn/send', { threadId: thread.id, text: 'go' }),
+  );
+  assert.ok('result' in sendRes);
+  await waitFor(() => Promise.resolve(adapter.modes.length === 1));
+  assert.deepEqual(adapter.modes, ['approveForMe']);
+  adapter.complete(thread.id, (sendRes.result as { turnId: string }).turnId, 'done');
+
   await bridge.stop();
   await rmrf(baseDir);
 });

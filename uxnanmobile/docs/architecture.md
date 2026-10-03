@@ -55,7 +55,34 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   notifications into `DomainEvent`s.
 - `infrastructure/transport/` — `WebSocketTransport`, `SecureTransportLayer`
   (handshake), `SecureChannel` (AES-256-GCM + seq/replay), `RequestCorrelator`,
-  `BackoffCalculator`, `OutboundMessageBuffer`.
+  `BackoffCalculator`, `OutboundMessageBuffer`, and how a PC is reached:
+  `DirectTransportSelector` races the PC's direct LAN/Tailscale hosts and only
+  then dials the PC's own relay through `RelayClient` (`relay_protocol.dart`
+  mirrors `shared/src/relay/protocol.ts`). The relay client answers the
+  relay's challenge with the phone's identity key, waits for `ready`, and
+  hands back the socket — the E2EE handshake runs over it exactly as over a
+  direct one. A refusal is a `RelayException` naming why (`RelayFailure`, one
+  per relay close code).
+- Each PC record (`TrustedDevice.relay`, a `RelayEndpoint`) is written only
+  by `BridgeReplica`, from the bridge's shared settings (`sync/changes`,
+  `stream/settings/updated`), and re-read by `SessionCoordinator` before
+  every dial; the pairing QR's one-time relay ticket is passed to the first
+  dial and never stored. `RelayManager` mirrors the relay's status
+  (`relay/status`, `stream/relay/updated`) and asks the bridge for the
+  `relay/*` actions — the bridge owns the relay. The calls that wait on
+  Cloudflare (set up, update, delete) get `RelayManager.cloudflareTimeout`
+  instead of the correlator's 30 s. The relay switch, turned while its PC is
+  out of reach, goes through the `ActionOutbox` like a rename
+  (`PendingActionKind.setRelay`, sent with `ageMs`).
+- The relay's screens: **Remote access** on a PC's details
+  (`screens/profile/remote_access_section.dart`, its dialogs in
+  `relay_dialogs.dart`) and the setup page (`relay_setup_screen.dart`, a child
+  pushed from it). A Cloudflare token typed there goes straight into the
+  E2EE request and is cleared when the call returns — never stored on the
+  phone. Why the relay refused a connection reaches the UI as
+  `ConnectionRecoveryState.lastRelayFailure` (the reconnect loop) or the
+  thrown `RelayException` (a Connect action); `connect_failure_text.dart` is
+  the one place that turns either into words.
 - `infrastructure/storage/local_database.dart` — the drift schema + migrations.
 - `infrastructure/storage/secure_store.dart` — OS-backed secrets. Android backup
   rules exclude the plugin's encrypted preference files; iOS uses a non-migrating
