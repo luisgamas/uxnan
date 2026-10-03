@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.37-alpha.20261003+20261004] - 20261003
 ### Changed
 
 - **The access sheet offers what the agent can do.** It lists only the modes
