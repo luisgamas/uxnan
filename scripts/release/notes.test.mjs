@@ -61,10 +61,10 @@ describe('previousTagFor', () => {
 
   it('returns null for the first release a component ever cuts', () => {
     assert.equal(
-      previousTagFor('relay-v0.0.1-alpha.20260627', ['relay-v0.0.1-alpha.20260627']),
+      previousTagFor('shared-v0.0.1-alpha.20260621', ['shared-v0.0.1-alpha.20260621']),
       null,
     );
-    assert.equal(previousTagFor('relay-v0.0.1-alpha.20260627', []), null);
+    assert.equal(previousTagFor('shared-v0.0.1-alpha.20260621', []), null);
   });
 });
 
@@ -72,10 +72,14 @@ describe('componentOf', () => {
   it('recognises every tag scheme in use', () => {
     assert.equal(componentOf('shared-v0.0.13-alpha.20260804'), 'shared');
     assert.equal(componentOf('bridge-v0.0.18-alpha.20260805'), 'bridge');
-    assert.equal(componentOf('relay-v0.0.2-alpha.20260720'), 'relay');
     assert.equal(componentOf('mobile-v0.0.18-alpha.20260805+20260805'), 'mobile');
     assert.equal(componentOf('desktop-stable-v0.0.28'), 'desktop');
     assert.equal(componentOf('desktop-nightly-v0.0.22-nightly.20260724.1'), 'desktop');
+  });
+
+  it('claims no historical relay tag — the relay is no longer released on its own', () => {
+    // `relay-v*` tags stay in git; nothing may write release notes for one.
+    assert.equal(componentOf('relay-v0.0.2-alpha.20260720'), null);
   });
 
   it('does not guess at something that is not a release tag', () => {

@@ -29,7 +29,15 @@ Runner: Node's built-in `node:test` over the compiled output (`dist/test`), with
 
 Covered: JSON-RPC contracts + validators; E2EE crypto/handshake/replay; pairing
 payload; mDNS wire encoding/query handling plus explicit per-IPv4
-membership/announcements for multi-homed hosts; relay forwarding/rate-limit/health;
+membership/announcements for multi-homed hosts; the **relay**: the Cloudflare
+deploy against a fake of its API (`test/relay/cloudflare.test.ts`: first deploy
+vs redeploy, several PCs on one Worker, actionable errors, the token never in
+an error), the relay service (`test/relay/relay-service.test.ts`: setup,
+remembered token, remove, URL rules) and, end to end, a real bridge with the
+real relay Worker on the Workers runtime and a fake phone
+(`test/transport/relay-e2e.test.ts`: pairing through the relay with a ticket,
+trusted reconnect, cut-off on removal, a phone without a ticket refused, the
+endpoint as a shared setting);
 daemon state, identity (keychain via a
 fake backend), lock file; the **agent-process record and orphan reap**
 (`child-ledger.test.ts`, `orphan-reaper.test.ts` — a real harmless `node` child
@@ -73,14 +81,23 @@ The suite proves bridge-side correctness with an independent Node "fake phone"
 (`test/helpers/fake-phone.ts`) that follows the documented byte contract. Before a
 release, validate against the real Flutter app (`uxnanmobile` branch):
 
-1. Run a relay locally: `node relay/dist/src/cli.js 8787`.
-2. Point the bridge at it: `relayUrl: "ws://<pc-ip>:8787"` in
-   `~/.uxnan/daemon-config.json` (or use the deployed relay).
-3. Start the bridge + show the QR: `node bridge/dist/src/cli.js qr` (or `start`).
-4. Scan with the app and confirm: pairing/handshake completes; trusted reconnect
-   works without re-scan; a JSON-RPC round-trip (Git panel → `git/status`);
-   streaming (`stream/message/delta` + `stream/turn/completed`, using the `echo`
-   agent until a real CLI is configured); and the LAN path (same Wi-Fi, no relay).
+1. Start the bridge + show the QR: `node bridge/dist/src/cli.js start` (then
+   `qr` from another terminal, or scan the one `start` prints).
+2. Scan with the app on the same Wi-Fi and confirm: pairing/handshake completes;
+   trusted reconnect works without re-scan; a JSON-RPC round-trip (Git panel →
+   `git/status`); streaming (`stream/message/delta` + `stream/turn/completed`,
+   using the `echo` agent until a real CLI is configured).
+3. **The relay path.** Set up a relay in your own Cloudflare account
+   (`node bridge/dist/src/cli.js relay setup --account <id>`, see
+   [`connectivity.md`](./connectivity.md#3-your-own-relay)) — or a disposable
+   one deployed by hand ([`../../relay/docs/deploy.md`](../../relay/docs/deploy.md))
+   with `relay use`. With the phone paired on the LAN, confirm `relay status`
+   shows `connected`; switch the phone to mobile data and confirm it reconnects
+   through the relay (`connectedPhones: 1`) and the same round-trips work. Then
+   show a new QR and pair a second phone **from mobile data** (the QR's ticket),
+   and remove one phone from the trusted devices (`bridge/removeTrustedDevice`)
+   to confirm its relay channel is cut at once.
+4. The LAN path (same Wi-Fi, relay disabled with `relay disable`).
 5. Open manual pairing → **Browse nearby bridges** while the phone and PC share
    the LAN. Confirm the bridge appears and selecting it only fills the host field:
    no code is exposed, no request is sent until the user supplies the code, and no
@@ -162,6 +179,7 @@ from the chosen ref instead of a published one. The scripts are in
 
 The push path is implemented but gated on Firebase/APNs creds. Test the logic
 without devices: bridge `test/push/push-service.test.ts` (register + turn-end notify
-+ gating); relay side + live smoke in
-[`../../relay/docs/testing.md`](../../relay/docs/testing.md). Real delivery needs the
-user's Firebase project — setup in `relay/FOR-HUMAN.md` and `uxnanmobile/FOR-HUMAN.md`.
++ gating, with a fake FCM sender). The relay carries no push, so there is no relay
+side to test. Real delivery needs the user's Firebase project — setup in
+[`push-notifications.md`](./push-notifications.md), `bridge/FOR-HUMAN.md` and
+`uxnanmobile/FOR-HUMAN.md`.

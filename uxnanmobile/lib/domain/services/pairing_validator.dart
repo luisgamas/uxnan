@@ -88,10 +88,10 @@ class PairingValidator {
         payload.macIdentityPublicKey.isEmpty) {
       return PairingValidationResult.malformed('Missing required fields');
     }
-    // At least one transport must be advertised: a relay URL and/or direct
-    // LAN/Tailscale hosts (mirrors `shared` `validatePairingPayload`). A pure
-    // LAN/Tailscale QR carries only `hosts`.
-    final hasRelay = payload.relayUrl.isNotEmpty;
+    // At least one transport must be advertised: the bridge's relay and/or
+    // direct LAN/Tailscale hosts (mirrors `shared` `validatePairingPayload`).
+    // A pure LAN/Tailscale QR carries only `hosts`.
+    final hasRelay = payload.relay != null;
     final hasHosts = payload.hosts.isNotEmpty;
     if (!hasRelay && !hasHosts) {
       return PairingValidationResult.malformed('No transport advertised');

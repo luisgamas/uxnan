@@ -3383,4 +3383,237 @@ class AppLocalizationsEn extends AppLocalizations {
   String composerPlanLine(String plan, String window, int percent) {
     return '$plan · $window $percent% used';
   }
+
+  @override
+  String get relayFailureBridgeOffline =>
+      'Your PC is offline or its bridge is stopped.';
+
+  @override
+  String get relayFailureNotPaired =>
+      'This phone is no longer paired with the PC — pair again.';
+
+  @override
+  String get relayFailureFull =>
+      'Too many phones are connected through the relay.';
+
+  @override
+  String get relayFailureUnreachable => 'Can\'t reach your relay.';
+
+  @override
+  String get remoteAccessTitle => 'Remote access';
+
+  @override
+  String get remoteAccessIntro =>
+      'Three ways to reach this PC from your phone:';
+
+  @override
+  String get remoteAccessSameNetworkTitle => 'Same network';
+
+  @override
+  String get remoteAccessSameNetworkBody =>
+      'Works already — nothing to set up.';
+
+  @override
+  String get remoteAccessTailscaleTitle => 'Tailscale';
+
+  @override
+  String get remoteAccessTailscaleBody =>
+      'Works automatically when it\'s on both this phone and the PC.';
+
+  @override
+  String get remoteAccessRelayTitle => 'Your own relay';
+
+  @override
+  String get remoteAccessRelayBody =>
+      'Works from any network. Needs a free Cloudflare account.';
+
+  @override
+  String get relaySetUpAction => 'Set up your relay';
+
+  @override
+  String get relayConnectToManage =>
+      'Connect to this PC to set up or manage its relay.';
+
+  @override
+  String get relayYourRelay => 'Your relay';
+
+  @override
+  String get relayStateConnected => 'Connected';
+
+  @override
+  String get relayStateConnecting => 'Connecting…';
+
+  @override
+  String get relayStateError => 'Not working';
+
+  @override
+  String get relayStateOn => 'On';
+
+  @override
+  String get relayStateOff => 'Off';
+
+  @override
+  String relayPhonesConnected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count phones connected through it',
+      one: '1 phone connected through it',
+      zero: 'No phones connected through it',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get relayEnabledTitle => 'Reach this PC from anywhere';
+
+  @override
+  String get relayEnabledSubtitle =>
+      'Phones away from home connect through your relay.';
+
+  @override
+  String get relaySwitchPendingOn => 'Turns on when the PC is reachable again.';
+
+  @override
+  String get relaySwitchPendingOff =>
+      'Turns off when the PC is reachable again.';
+
+  @override
+  String get relaySwitchKept =>
+      'Saved. Your PC hears it the next time it\'s reachable.';
+
+  @override
+  String get relayUpdateTitle => 'Update relay';
+
+  @override
+  String relayUpdateSubtitle(String version) {
+    return 'Version $version is available';
+  }
+
+  @override
+  String get relayUpdating => 'Updating your relay…';
+
+  @override
+  String get relayUpdated => 'Your relay is up to date.';
+
+  @override
+  String get relayRotateTitle => 'New address';
+
+  @override
+  String get relayRotateSubtitle => 'The current address stops working.';
+
+  @override
+  String get relayRotateConfirmTitle => 'Give your relay a new address?';
+
+  @override
+  String get relayRotateConfirmBody =>
+      'The current address stops working right away. A phone that is away from home reconnects after it next connects to this PC on your home network.';
+
+  @override
+  String get relayRotateConfirm => 'New address';
+
+  @override
+  String get relayRotated => 'Your relay has a new address.';
+
+  @override
+  String get relayRemoveTitle => 'Remove relay';
+
+  @override
+  String get relayRemoveSubtitle =>
+      'Phones then reach this PC only on the same network or Tailscale.';
+
+  @override
+  String get relayRemoveConfirmTitle => 'Remove your relay?';
+
+  @override
+  String get relayRemoveConfirmBody =>
+      'Phones away from home can\'t reach this PC until you set up a relay again.';
+
+  @override
+  String get relayRemoveDeleteWorker =>
+      'Also delete it from your Cloudflare account';
+
+  @override
+  String get relayRemoveConfirm => 'Remove';
+
+  @override
+  String get relayRemoving => 'Removing your relay…';
+
+  @override
+  String get relayRemoved => 'Relay removed.';
+
+  @override
+  String get relayTokenTitle => 'Cloudflare API token';
+
+  @override
+  String get relayTokenBody =>
+      'Your PC needs the token for this. It travels end-to-end encrypted to your PC and is never kept on this phone.';
+
+  @override
+  String get relayTokenLabel => 'API token';
+
+  @override
+  String get relayTokenShow => 'Show token';
+
+  @override
+  String get relayTokenHide => 'Hide token';
+
+  @override
+  String get relayRememberToken => 'Remember the token on the PC';
+
+  @override
+  String get relayRememberTokenHint =>
+      'Kept in the PC\'s system keychain, so updating or removing the relay won\'t ask for it again.';
+
+  @override
+  String get relayTokenContinue => 'Continue';
+
+  @override
+  String get relayActionNoAnswer => 'Your PC didn\'t answer. Try again.';
+
+  @override
+  String get relaySetupTitle => 'Set up your relay';
+
+  @override
+  String get relaySetupIntro =>
+      'Your PC deploys a small relay into your own free Cloudflare account. Then this phone reaches your PC from any network — end-to-end encrypted, so the relay only ever sees sealed envelopes.';
+
+  @override
+  String get relaySetupStepToken => 'Create an API token';
+
+  @override
+  String get relaySetupStepTokenBody =>
+      'In Cloudflare, open API Tokens, choose Create Token and use the template “Edit Cloudflare Workers”.';
+
+  @override
+  String get relaySetupOpenCloudflare => 'Open Cloudflare API tokens';
+
+  @override
+  String get relaySetupStepAccount => 'Copy your account ID';
+
+  @override
+  String get relaySetupStepAccountBody =>
+      'It\'s the long code after dash.cloudflare.com/ in the address bar once you\'re signed in, and it\'s also on the Workers & Pages overview.';
+
+  @override
+  String get relaySetupAccountLabel => 'Account ID';
+
+  @override
+  String get relaySetupAccountHint => '32 letters and numbers';
+
+  @override
+  String get relaySetupMissingFields => 'Enter the account ID and the token.';
+
+  @override
+  String get relaySetupDeploy => 'Deploy relay';
+
+  @override
+  String get relaySetupDeploying => 'Deploying…';
+
+  @override
+  String get relaySetupDeployingHint =>
+      'This can take up to a minute. Keep the app open.';
+
+  @override
+  String get relaySetupDone => 'Your relay is ready.';
 }

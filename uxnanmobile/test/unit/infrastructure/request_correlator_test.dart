@@ -39,6 +39,20 @@ void main() {
       expect(correlator.pendingCount, 0);
     });
 
+    test('a request given its own limit waits that long instead', () async {
+      final correlator =
+          RequestCorrelator(timeout: const Duration(milliseconds: 20));
+      final slow = correlator.register(
+        'deploy',
+        within: const Duration(milliseconds: 200),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      // Past the default limit, still pending.
+      expect(correlator.pendingCount, 1);
+      correlator.resolve(RpcMessage.response(id: 'deploy', result: 1));
+      expect((await slow).result, 1);
+    });
+
     test('rejectAll fails every pending request', () async {
       final correlator = RequestCorrelator();
       final a = correlator.register('a');

@@ -11,6 +11,7 @@ test('redactSecrets masks JWTs, secret key=values and PEM blocks', () => {
   assert.match(redactSecrets('auth aaaaaaaa.bbbbbbbb.cccccccc done'), /\[REDACTED-JWT\]/);
   assert.equal(redactSecrets('token=supersecret123'), 'token=[REDACTED]');
   assert.match(redactSecrets('"notificationSecret":"abc123xyz"'), /\[REDACTED\]/);
+  assert.match(redactSecrets('{"apiToken":"cf-abc123xyz"}'), /\[REDACTED\]/);
   const pem = '-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----';
   assert.equal(redactSecrets(pem), '[REDACTED-KEY]');
   // ordinary text is untouched

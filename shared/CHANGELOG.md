@@ -20,6 +20,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `LiveBlock` id, so a second copy of the same request — the stored one a
   client just reloaded, then the live one — replaces the first in place.
 
+### Added
+
+- **The relay control protocol, `src/relay/protocol.ts`**, exported as the
+  dependency-free subpath **`@uxnan/shared/relay`** (and from the root): the
+  routes `/v1/host/<routingId>` (bridge), `/v1/connect/<routingId>` (phone),
+  `/v1/channel/<routingId>/<channelId>` and `GET /v1/version`; the challenge →
+  Ed25519-signed auth (`relaySigningMessage`, binding route, relay host,
+  routing id, channel id and nonce) → `ready` exchange; the bridge's `allow`
+  (trusted phone keys) and `ticket` (SHA-256 of a one-time pairing ticket, with
+  a `ttlMs` age) frames and the relay's `dial`; `RELAY_CLOSE` codes 4001–4011;
+  the `ping`/`pong` keepalive; limits and timeouts; strict frame parsers.
+  `RELAY_PROTOCOL_VERSION = 1`, `RELAY_WORKER_NAME`, `RELAY_COMPATIBILITY_DATE`.
+- **Relay models (`src/models/relay.ts`)**: `RelayEndpoint`, `RelayStatus`
+  (incl. `hostKey`, the bridge's public identity key a hand-deployed relay must
+  list), `RelaySetupParams`, `RelayUseParams`, `RelaySetParams`,
+  `RelayCredentialParams`, `RelayRemoveParams`, `RelayUpdatedNotification`.
+- **Seven methods — `relay/status`, `relay/setup`, `relay/use`, `relay/set`,
+  `relay/update`, `relay/rotate`, `relay/remove`** — and the notification
+  **`stream/relay/updated`**. 101 methods, 25 notifications.
+- **`BridgeSettings.relay`** (`RelayEndpoint | null`): the bridge's relay as a
+  shared setting, so a phone paired on the LAN learns it through
+  `sync/changes`. Read-only for clients — it changes through `relay/*`, never
+  `settings/set`.
+
+### Changed
+
+- **Pairing QR v3 (`PAIRING_QR_VERSION = 3`).** `PairingPayload.relay` is now an
+  object, `PairingRelay { url, routingId, ticket? }`, instead of a bare URL
+  string; the optional `ticket` lets a phone that is not on the PC's network
+  pair through the relay while the pairing window is open. The schema and
+  `validatePairingPayload` reject the old string form, so a v2 QR reads as an
+  unsupported version.
+
+### Removed
+
+- **`DEFAULT_RELAY_URL`.** There is no shared relay: each user's bridge deploys
+  its own into their Cloudflare account.
+- **The relay push contracts:** `PushNotifyRequest`, `PushRegisterRequest`,
+  `PushRegisterResult`, `validatePushPayload` and `pushPayloadSchema`. The relay
+  no longer carries push — the bridge delivers background push straight to FCM —
+  so nothing sends or validates them. `PushPlatform` stays, for
+  `notifications/register`.
+
 ## [0.0.28-alpha.20260930] - 20260930
 ### Added
 

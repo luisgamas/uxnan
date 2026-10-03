@@ -3,6 +3,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
@@ -396,6 +397,72 @@ void main() {
       expect(
         processor.classify(note('stream/project/removed', {})),
         isA<UnknownDomainEvent>(),
+      );
+    });
+
+    test("stream/settings carries the PC's relay, or says it has none", () {
+      final relay = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {
+            'home': '/work',
+            'name': 'Studio',
+            'relay': {
+              'url': 'wss://uxnan-relay.example.workers.dev',
+              'routingId': '0123456789abcdef0123456789abcdef',
+              'enabled': true,
+            },
+          },
+          'rev': 11,
+        }),
+      ) as SettingsUpdatedEvent;
+      expect(relay.carriesRelay, isTrue);
+      expect(
+        relay.relay,
+        const RelayEndpoint(
+          url: 'wss://uxnan-relay.example.workers.dev',
+          routingId: '0123456789abcdef0123456789abcdef',
+          enabled: true,
+        ),
+      );
+
+      final none = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work', 'name': 'Studio', 'relay': null},
+          'rev': 12,
+        }),
+      ) as SettingsUpdatedEvent;
+      expect(none.carriesRelay, isTrue);
+      expect(none.relay, isNull);
+
+      final silent = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work', 'name': 'Studio'},
+          'rev': 13,
+        }),
+      ) as SettingsUpdatedEvent;
+      expect(silent.carriesRelay, isFalse);
+
+      final malformed = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {
+            'home': '/work',
+            'relay': {'url': 'wss://x', 'routingId': 'nope', 'enabled': true},
+          },
+          'rev': 14,
+        }),
+      ) as SettingsUpdatedEvent;
+      expect(malformed.carriesRelay, isFalse);
+    });
+
+    test('stream/relay/updated carries the whole status', () {
+      final event = processor.classify(
+        note('stream/relay/updated', {
+          'status': {'state': 'connected', 'bundledVersion': '1.0.0'},
+        }),
+      );
+      expect(
+        (event as RelayUpdatedEvent).status,
+        {'state': 'connected', 'bundledVersion': '1.0.0'},
       );
     });
 

@@ -14,7 +14,6 @@ TrustedDevice _pc(String id) => TrustedDevice(
       macDeviceId: id,
       displayName: id,
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: 'wss://relay.example',
       sessionId: 's-$id',
       pairedAt: DateTime(2026, 3),
     );

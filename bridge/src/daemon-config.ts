@@ -3,7 +3,13 @@
  *
  * Source: uxnandesktop/architecture/02e-bridge-integration.md §6.1.
  */
-import { DEFAULT_LAN_PORT, DEFAULT_RELAY_URL, type AgentConfig, type AgentId } from '@uxnan/shared';
+import {
+  DEFAULT_LAN_PORT,
+  isRelayId,
+  type AgentConfig,
+  type AgentId,
+  type RelayEndpoint,
+} from '@uxnan/shared';
 
 /**
  * Headless permission posture for agents that gate tool use (e.g. Claude Code):
@@ -68,16 +74,14 @@ export interface AgentSettings {
 }
 
 export interface DaemonConfig {
-  relayUrl: string;
   /**
-   * Use a relay as an off-LAN fallback. **Default `false`** — the bridge is
-   * LAN/Tailscale-direct out of the box (no hosting), and the pairing QR
-   * advertises only the direct `hosts` (see {@link lanEnabled}). The relay is
-   * **optional and self-hosted**: set `true` (and point {@link relayUrl} at your
-   * own relay) to also fall back through it for users who don't run a mesh VPN.
-   * See `docs/connectivity.md` and `relay/docs/deploy.md`.
+   * The user's own relay — how phones reach this bridge from another network.
+   * **Absent by default**: the bridge is LAN/Tailscale-direct out of the box.
+   * Set by `relay/setup` (the bridge deploys it into the user's Cloudflare
+   * account) or `relay/use`, and shared with every client as
+   * `BridgeSettings.relay`. See `docs/connectivity.md`.
    */
-  relayEnabled: boolean;
+  relay?: RelayEndpoint;
   lanEnabled: boolean;
   lanPort: number;
   /**
@@ -166,9 +170,6 @@ export interface DaemonConfig {
 }
 
 export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
-  relayUrl: DEFAULT_RELAY_URL,
-  // Relay is optional + self-hosted; off by default (LAN/Tailscale-direct).
-  relayEnabled: false,
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
   mdnsEnabled: true,
@@ -266,6 +267,12 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
     projectAgents?: Array<Omit<AgentConfig, 'agentId'> & { agentId: AgentId | 'gemini-cli' }>;
   };
   const merged = { ...DEFAULT_DAEMON_CONFIG, ...raw } as DaemonConfig;
+  // The relay used to be a bare URL plus a switch. Both are retired (there is
+  // no shared relay to point at); a relay is now an endpoint the bridge set up.
+  const retired = merged as DaemonConfig & { relayUrl?: unknown; relayEnabled?: unknown };
+  delete retired.relayUrl;
+  delete retired.relayEnabled;
+  if (merged.relay !== undefined && !isRelayEndpoint(merged.relay)) delete merged.relay;
   if ((raw.defaultAgent as string | undefined) === 'gemini-cli') {
     merged.defaultAgent = DEFAULT_DAEMON_CONFIG.defaultAgent;
   }
@@ -299,4 +306,15 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
   }
   merged.agents = agents;
   return merged;
+}
+
+function isRelayEndpoint(value: unknown): value is RelayEndpoint {
+  if (typeof value !== 'object' || value === null) return false;
+  const relay = value as Record<string, unknown>;
+  return (
+    typeof relay['url'] === 'string' &&
+    /^wss?:\/\/[^/\s]+$/.test(relay['url']) &&
+    isRelayId(relay['routingId']) &&
+    typeof relay['enabled'] === 'boolean'
+  );
 }

@@ -1112,7 +1112,7 @@ Solo los Tauri commands necesarios se exponen al frontend. Cada command debe est
 
 - **No hay acceso arbitrario al filesystem desde el frontend**: El frontend solo puede leer/escribir archivos a traves de los Tauri commands definidos, no directamente.
 - **Solo los commands registrados son accesibles**: Intentar invocar un command no registrado genera un error.
-- **Acceso de red limitado**: El frontend solo puede comunicarse con localhost (servidor de hooks) y la URL del relay configurada para el bridge. No puede hacer requests arbitrarios a internet.
+- **Acceso de red limitado**: El frontend solo puede comunicarse con localhost (servidor de hooks); el relay lo usa solo el bridge, nunca el desktop. No puede hacer requests arbitrarios a internet.
 
 ### 4.3 Procesos de Agente
 

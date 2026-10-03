@@ -18,12 +18,10 @@ import {
   jsonRpcRequestSchema,
   jsonRpcResponseSchema,
   pairingPayloadSchema,
-  pushPayloadSchema,
 } from './json-schema/schemas.js';
 import type { JsonRpcRequest, JsonRpcResponse } from '../jsonrpc/envelope.js';
 import type { SecureEnvelope } from '../e2ee/envelope.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
-import type { PushNotifyRequest } from '../notifications/push-payload.js';
 
 export interface ValidationError {
   path: string;
@@ -40,7 +38,6 @@ const validateRequestFn = ajv.compile(jsonRpcRequestSchema);
 const validateResponseFn = ajv.compile(jsonRpcResponseSchema);
 const validateEnvelopeFn = ajv.compile(e2eeEnvelopeSchema);
 const validatePairingFn = ajv.compile(pairingPayloadSchema);
-const validatePushFn = ajv.compile(pushPayloadSchema);
 
 function run<T>(fn: ValidateFunction, data: unknown): ValidationResult<T> {
   if (fn(data)) {
@@ -67,8 +64,4 @@ export function validateE2EEnvelope(data: unknown): ValidationResult<SecureEnvel
 
 export function validatePairingPayloadSchema(data: unknown): ValidationResult<PairingPayload> {
   return run<PairingPayload>(validatePairingFn, data);
-}
-
-export function validatePushPayload(data: unknown): ValidationResult<PushNotifyRequest> {
-  return run<PushNotifyRequest>(validatePushFn, data);
 }

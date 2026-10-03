@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -109,11 +110,15 @@ class _DeviceHeader extends ConsumerWidget {
       if (context.mounted && await context.clearPane() && context.mounted) {
         context.go(AppRoutes.home);
       }
-    } on Object {
+    } on Object catch (error) {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text(l10n.deviceConnectFailed(target.displayName))),
+          SnackBar(
+            content: Text(
+              connectFailureText(l10n, target.displayName, error),
+            ),
+          ),
         );
     }
   }

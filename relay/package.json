@@ -1,17 +1,21 @@
 {
   "name": "uxnan-relay",
   "version": "0.0.2-alpha.20260720",
-  "description": "Uxnan Relay — forwards opaque E2EE envelopes between the mobile app and the bridge by sessionId.",
+  "private": true,
+  "description": "Uxnan Relay — a Cloudflare Worker each user deploys into their own account; pairs a phone with its bridge across networks and forwards opaque E2EE frames.",
   "license": "MPL-2.0",
   "author": "Luis Donaldo Gamas Vazquez",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "bin": {
-    "uxnan-relay": "dist/src/cli.js"
+  "exports": {
+    "./local": {
+      "types": "./dist/src/local/start-local-relay.d.ts",
+      "default": "./dist/src/local/start-local-relay.js"
+    },
+    "./worker-bundle": "./dist/worker/uxnan-relay.js"
   },
   "files": [
-    "dist/src"
+    "dist/worker",
+    "dist/src/local"
   ],
   "engines": {
     "node": ">=18"
@@ -22,20 +26,18 @@
     "directory": "relay"
   },
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
-    "start": "node dist/src/cli.js",
-    "prepublishOnly": "tsc"
+    "build": "node scripts/build.mjs && tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
   },
   "dependencies": {
-    "@uxnan/shared": "*",
-    "ws": "^8.18.0"
-  },
-  "optionalDependencies": {
-    "firebase-admin": "^13.0.0"
+    "@uxnan/shared": "*"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12"
+    "@cloudflare/workers-types": "5.20261002.1",
+    "@types/ws": "^8.5.12",
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260730.0",
+    "ws": "^8.18.0"
   }
 }

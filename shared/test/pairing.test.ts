@@ -14,7 +14,7 @@ const NOW = 1_000_000;
 function freshPayload(overrides: Partial<PairingPayload> = {}): PairingPayload {
   return {
     v: PAIRING_QR_VERSION,
-    relay: 'wss://relay.uxnan.io',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'f'.repeat(32) },
     sessionId: 'sess-1',
     macDeviceId: 'mac-1',
     macIdentityPublicKey: 'a'.repeat(64),
@@ -63,7 +63,7 @@ test('the QR string is Base64 of the UTF-8 JSON (mobile fromQrString contract)',
   // Must be decodable as Base64 → JSON with the documented field names.
   const json = JSON.parse(Buffer.from(qr, 'base64').toString('utf-8')) as Record<string, unknown>;
   assert.equal(json['v'], PAIRING_QR_VERSION);
-  assert.equal(json['relay'], payload.relay);
+  assert.deepEqual(json['relay'], payload.relay);
   assert.equal(json['macIdentityPublicKey'], payload.macIdentityPublicKey);
 });
 
@@ -93,4 +93,29 @@ test('validatePairingPayload rejects a non-array / non-string hosts', () => {
   assert.equal(bad.valid === false && bad.error, 'missing_field');
   const empty = validatePairingPayload(freshPayload({ hosts: [''] }), NOW);
   assert.equal(empty.valid === false && empty.error, 'missing_field');
+});
+
+test('validatePairingPayload accepts a relay with a pairing ticket', () => {
+  const relay = {
+    url: 'wss://uxnan-relay.example.workers.dev',
+    routingId: 'f'.repeat(32),
+    ticket: 'T'.repeat(43),
+  };
+  assert.ok(validatePairingPayload(freshPayload({ relay }), NOW).valid);
+});
+
+test('validatePairingPayload rejects a malformed relay', () => {
+  for (const relay of [
+    'wss://uxnan-relay.example.workers.dev',
+    { url: 'https://r.example', routingId: 'f'.repeat(32) },
+    { url: 'wss://r.example/path', routingId: 'f'.repeat(32) },
+    { url: 'wss://r.example', routingId: 'short' },
+    { url: 'wss://r.example', routingId: 'f'.repeat(32), ticket: 'bad' },
+  ]) {
+    const result = validatePairingPayload(
+      freshPayload({ relay: relay as unknown as PairingPayload['relay'] }),
+      NOW,
+    );
+    assert.equal(result.valid === false && result.error, 'missing_field', JSON.stringify(relay));
+  }
 });

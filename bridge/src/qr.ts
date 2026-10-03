@@ -10,11 +10,12 @@ import {
   defaultPairingExpiry,
   encodePairingQr,
   type PairingPayload,
+  type PairingRelay,
 } from '@uxnan/shared';
 
 export interface GeneratePairingOptions {
-  /** Relay URL (remote fallback). Omit for a LAN/Tailscale-only QR. */
-  relayUrl?: string;
+  /** The bridge's relay (off-network transport). Omit for a LAN/Tailscale-only QR. */
+  relay?: PairingRelay;
   /** Direct `host:port` addresses the phone should try first (LAN/Tailscale). */
   hosts?: string[];
   macDeviceId: string;
@@ -35,7 +36,7 @@ export function generatePairingPayload(options: GeneratePairingOptions): Pairing
     expiresAt: defaultPairingExpiry(options.now),
     displayName: options.displayName,
   };
-  if (options.relayUrl) payload.relay = options.relayUrl;
+  if (options.relay) payload.relay = options.relay;
   if (options.hosts && options.hosts.length > 0) payload.hosts = options.hosts;
   return payload;
 }

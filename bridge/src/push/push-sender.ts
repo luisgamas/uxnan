@@ -2,20 +2,19 @@
  * Bridge-side direct push delivery (FOR-DEV → *Direct FCM from the bridge*).
  *
  * Background push is sent **by the bridge itself** so it works on ANY transport —
- * direct LAN, Tailscale, or relay — not only when a hosted relay is in the loop.
+ * direct LAN, Tailscale, or relay.
  * Delivery goes through a {@link PushSender} seam so {@link PushService} can be
  * unit-tested with a fake sender (no Firebase credentials required).
  *
  * The real FCM sender is loaded lazily and only when a Firebase service account is
  * available (`UXNAN_FCM_SERVICE_ACCOUNT`, falling back to the documented
  * `~/.uxnan/firebase-service-account.json`); without it the factory returns
- * `null` and the bridge degrades to the relay fallback — or, with neither, a
- * silent no-op (foreground local notifications still work, relay-free).
+ * `null` and background push is a silent no-op (foreground local notifications
+ * still work).
  *
- * Same trust model as the relay owning the credential today: a local, gitignored
- * JSON the user provides (see bridge/FOR-HUMAN.md). Push payloads stay minimal —
- * title + short body + thread/turn ids — no conversation plaintext beyond the
- * already-truncated turn summary the relay path also carries.
+ * The credential is a local, gitignored JSON the user provides (see
+ * bridge/FOR-HUMAN.md). Push payloads stay minimal — title + short body +
+ * thread/turn ids — and go only to FCM; the relay carries no push traffic.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -53,8 +52,8 @@ function resolveServiceAccountPath(): string {
 /**
  * Build the bridge's direct FCM sender. Returns a {@link PushSender} when a
  * Firebase service account is present and `firebase-admin` loads; returns `null`
- * (no direct path) when the credential is missing or init fails — the caller then
- * falls back to the relay. Kept async + dynamic so the bridge never hard-depends
+ * when the credential is missing or init fails — background push is then off.
+ * Kept async + dynamic so the bridge never hard-depends
  * on `firebase-admin`.
  */
 export async function createBridgePushSender(logger: Logger): Promise<PushSender | null> {
@@ -64,7 +63,7 @@ export async function createBridgePushSender(logger: Logger): Promise<PushSender
     credentialRaw = await readFile(serviceAccountPath, 'utf-8');
   } catch {
     logger.info(
-      `push: no Firebase service account at ${serviceAccountPath} — direct FCM disabled (relay fallback only)`,
+      `push: no Firebase service account at ${serviceAccountPath} — background push disabled`,
     );
     return null;
   }
@@ -74,7 +73,7 @@ export async function createBridgePushSender(logger: Logger): Promise<PushSender
     return sender;
   } catch (err) {
     logger.warn(
-      `push: failed to init direct FCM (${errorMessage(err)}) — falling back to relay/noop`,
+      `push: failed to init direct FCM (${errorMessage(err)}) — background push disabled`,
     );
     return null;
   }

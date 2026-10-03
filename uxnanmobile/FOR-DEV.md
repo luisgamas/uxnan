@@ -103,7 +103,40 @@ connected to live bridge data, validated on-device against a real bridge.
   the actual live endpoint rather than the coarser relay/direct
   `bridge/status` flag.
 - **Direct LAN/Tailscale transport** — `DirectTransportSelector` tries each direct
-  `hosts` entry from the QR first, falls back to the relay.
+  `hosts` entry from the QR first, falls back to the PC's own relay.
+- **The PC's own relay** (architecture/02a §5.10). Pairing QR v3 carries the
+  relay as `{url, routingId, ticket?}`; a v2 QR reads as an unsupported version.
+  `RelayClient` speaks the relay's phone route (`/v1/connect/<routingId>`:
+  challenge → `phone-auth` signed with the phone's identity key → `ready`) and
+  hands the socket to the unchanged E2EE layer; the relay's close codes come
+  back as a typed `RelayException` (`RelayFailure`: PC offline, phone not
+  paired / revoked, relay full, …). The QR's one-time ticket goes with the
+  first dial only and is never stored. Each PC record keeps its
+  `RelayEndpoint` (drift v12), written only by `BridgeReplica` from the
+  bridge's shared settings (`sync/changes`, `stream/settings/updated`) and
+  re-read before every dial — a PC paired on the LAN is reachable away from
+  home without pairing again. `RelayManager` mirrors `relay/status` /
+  `stream/relay/updated` and wraps the `relay/*` actions. **Remote access**
+  on a PC's details (`remote_access_section.dart`) shows the three ways to
+  reach the PC and the PC's relay — address, state and the bridge's
+  `lastError`, phones through it, on/off switch, update (when the deployed
+  version is not the bundled one), new address, remove (optionally deleting
+  the Worker) — asking for the Cloudflare token only when the PC remembers
+  none; `RelaySetupScreen` deploys it (`relay/setup`, with a 120 s wait
+  instead of the default 30 s). The token goes to the bridge in the E2EE
+  channel and is cleared from the phone when the call returns. The switch,
+  turned while the PC is out of reach, is kept in the `ActionOutbox`
+  (`PendingActionKind.setRelay`) and sent dated (`relay/set { ageMs }`). The
+  reconnect loop carries the typed `RelayFailure`
+  (`ConnectionRecoveryState.lastRelayFailure`), and every Connect snackbar
+  and the threads' offline banner say it in words (`connect_failure_text.dart`).
+  Covered by `relay_client_test`, `transport_selector_test`,
+  `session_coordinator_test`, `bridge_replica_names_test`, `relay_manager_test`,
+  `remote_access_section_test`, `relay_setup_screen_test`, the pairing tests,
+  the v11 → v12 migration test, and `test/integration/relay_local_test.dart`
+  against the real relay on the Workers runtime (opt-in, see
+  [`docs/testing.md`](docs/testing.md)). **Not yet device-verified** against a
+  relay deployed to Cloudflare.
 - **Multi-PC connection-targeting** — all live actions target the PC we actually
   hold a channel to; browsing is read-only. `bridge/status` consumed (Relay /
   Direct transport indicator). The devices card shows the **real connected
@@ -411,16 +444,26 @@ shipping.
 
 ## App-side pending work (needs relay/bridge changes to start)
 
-- [ ] **Manual pairing over the relay for a phone with no direct path to the
-      PC at all.** `ManualPairingService.resolve`
-      (`infrastructure/pairing/manual_pairing_service.dart`) needs a direct
-      HTTP path (LAN or Tailscale) to the chosen host, reachable from the
-      phone right now. A phone with neither — cellular data only,
-      the PC not yet joined to Tailscale — can't resolve a pairing code at
-      all. Fetching the payload through the relay instead of the current
-      direct `GET /pair/resolve` would remove that requirement entirely, but
-      needs a new relay+bridge+shared contract (the relay has no route to
-      reach an unpaired bridge on the phone's behalf today). Not started.
+- [ ] **Manual-code pairing over the relay for a phone with no direct path
+      to the PC at all.** Scanning the QR already pairs through the relay (its
+      one-time ticket), but `ManualPairingService.resolve`
+      (`infrastructure/pairing/manual_pairing_service.dart`) still needs a
+      direct HTTP path (LAN or Tailscale) to the chosen host to turn a typed
+      code into the payload. A phone with neither — cellular data only, the PC
+      not yet joined to Tailscale — can't resolve a pairing code. Resolving it
+      through the relay needs a new relay+bridge+shared contract (the relay
+      forwards nothing but the phone route's E2EE pipe today). Not started.
+
+- [ ] **Using a relay the person deployed by hand (`relay/use`).** The
+      phone's *Remote access* section sets the relay up through Cloudflare
+      only; `RelayManager.use` exists but no screen offers pasting the URL of
+      a relay deployed by hand, and the phone does not read
+      `RelayStatus.hostKey` (the key such a relay must list in
+      `UXNAN_HOST_KEYS`). Left out
+      of the relay UI step on purpose (it covers the Cloudflare path);
+      add a "Use my own relay" entry to `remote_access_section.dart` (URL
+      field + the host key to copy) if the hand-deployed path is to be
+      offered from the phone too.
 
 - [ ] **`git/statusBatch(cwds[])`, if the per-folder git turns out to cost
       too much.** The folder list asks `git/status` once per visible folder;
@@ -455,6 +498,18 @@ shipping.
       questions the list is actually asked.
 
 ## App+bridge seams (need a live bridge to finish/verify)
+
+- [ ] **Relay UI — on-device verification and visual review.** Remote access,
+      the setup page, the token / remove dialogs and the relay reasons in the
+      connection errors are implemented and widget-tested against a fake that
+      answers in the `shared/` shape (renders for review in
+      `~/Pictures/Uxnan/relay-ui-review/mobile/`). Remaining: the maintainer's
+      visual review, then on a device against a bridge that deploys a real
+      relay — set up, switch off and on (also with the PC asleep, confirming the
+      kept switch lands dated on reconnect), update, new address (a phone away
+      from home reconnects after its next LAN connection), remove with and
+      without deleting the Worker, and see each connection error's words by
+      stopping the bridge, revoking the phone and leaving the network.
 
 - [ ] **Replica mirror — on-device verification with Uxnan Desktop.** The
       replica, project registry, start folder, presence line and origin mark are

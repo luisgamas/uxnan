@@ -1,10 +1,15 @@
 # Uxnan Desktop — Visión del Producto
 
-> **Versión:** 1.0.0  
-> **Fecha:** 2026-06-05  
+> **Versión:** 1.0.1  
+> **Fecha:** 2026-10-02  
 > **Estado:** Definición inicial — borrador técnico completo  
 > **Plataformas objetivo:** Windows, macOS, Linux  
 > **Stack:** Rust + Tauri 2 + Svelte 5 + shadcn-svelte + Tailwind CSS
+
+> **Resumen ejecutivo (1.0.1):** el relay es el **propio del usuario** — un
+> Cloudflare Worker que el bridge despliega en la cuenta del usuario —, no un
+> servidor Node.js ni un servicio de Uxnan (ver *El Relay* abajo y
+> `../../architecture/02a-system-architecture.md` §5.10).
 
 > Este documento forma parte de la documentación técnica de Uxnan Desktop. Ver también: [00 — Índice](00-index.md) | [02a — Arquitectura del Sistema](02a-system-architecture.md) | [02b — Motor de Terminales y PTY](02b-terminal-engine.md) | [02c — Git, Worktrees y Diffs](02c-git-worktrees.md) | [02d — Monitoreo y Orquestación de Agentes](02d-agent-monitoring.md) | [02e — Integración del Bridge](02e-bridge-integration.md) | [03 — Guía de Implementación](03-implementation-guide.md) | [04 — Referencia Técnica](04-technical-reference.md)
 
@@ -201,13 +206,13 @@ La decisión de usar bridge standalone o embebido depende del usuario:
 
 ### El Relay — Conectividad WAN con E2EE
 
-El **Uxnan Relay** es un servidor Node.js que facilita la comunicación entre la app móvil y el bridge/desktop cuando no están en la misma red local (LAN). El relay:
+El **Uxnan Relay** permite que la app móvil llegue al bridge cuando no están en la misma red local (LAN) y no hay VPN. Es **el relay propio de cada usuario**: un Cloudflare Worker con un Durable Object que el bridge despliega en la cuenta de Cloudflare del usuario (el plan gratuito basta) con `uxnan-bridge relay setup`. Uxnan no hospeda ningún relay. El relay:
 
-- Retransmite **envelopes cifrados opacos** — nunca ve el contenido en texto claro.
-- Soporta las tres topologías de conexión:
-  - **LAN directa:** Móvil -> Bridge/Desktop (sin relay).
-  - **WAN via relay:** Móvil -> Relay -> Bridge/Desktop.
-  - **Self-hosted:** El usuario puede desplegar su propio relay en un VPS o servidor doméstico.
+- Autentica al bridge y a cada teléfono con una firma Ed25519 y después retransmite **frames cifrados opacos** — nunca ve el contenido en texto claro.
+- Es el último de los tres caminos; el teléfono prueba los otros primero:
+  - **LAN directa:** Móvil -> Bridge (sin relay).
+  - **Tailscale:** Móvil -> Bridge por la tailnet (sin relay).
+  - **Relay propio:** Móvil -> Relay del usuario <- Bridge.
 
 ### Diagrama de Interacción del Ecosistema
 
@@ -242,9 +247,9 @@ El **Uxnan Relay** es un servidor Node.js que facilita la comunicación entre la
                           E2EE WebSocket
                                  │
                     ┌────────────▼────────────┐
-                    │    Uxnan Relay (WAN)     │
-                    │  Retransmite envelopes   │
-                    │  cifrados opacos         │
+                    │ Relay propio (opcional)  │
+                    │ Worker en la cuenta de   │
+                    │ Cloudflare del usuario   │
                     └────────────┬────────────┘
                                  │
                           E2EE WebSocket

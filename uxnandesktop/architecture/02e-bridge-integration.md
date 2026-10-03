@@ -1,8 +1,31 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.3.0
-> **Fecha:** 2026-09-26
+> **Version:** 1.5.0
+> **Fecha:** 2026-10-02
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.5.0):** el desktop ya muestra el relay propio como
+> cliente del bridge: Ajustes → Bridge y movil → *Acceso remoto* (§5.4). Una
+> sola replica (`$lib/bridge/relay.svelte.ts`) alimentada por `relay/status` en
+> cada (re)conexion y por `stream/relay/updated`; cada cambio es una llamada
+> `relay/*`. El token de Cloudflare solo viaja como parametro y el campo se
+> vacia al responder el bridge. Pendiente: revision visual y una ejecucion real
+> contra Cloudflare (`uxnandesktop/FOR-DEV.md` → *Remote access*).
+
+> **Resumen ejecutivo (1.4.0):** no existe relay hospedado por Uxnan ni URL
+> por defecto (`wss://relay.uxnan.io` y `customRelayUrl` desaparecen). El relay
+> es el **propio del usuario**: un Worker que el bridge despliega en la cuenta
+> de Cloudflare del usuario y gestiona por `relay/*` + `stream/relay/updated`
+> (`02a` §5.10); su endpoint es el ajuste compartido `BridgeSettings.relay`. El
+> desktop lo muestra como cliente de esos metodos en *Acceso remoto* (§5.4,
+> construido en 1.5.0); el CLI `uxnan-bridge relay …` hace lo mismo. Las
+> topologias (§5.1) son LAN, Tailscale y relay propio; el QR pasa a v3. Los
+> conteos de §4.4 suben a 101 metodos y 25 notificaciones.
+
+> **Resumen ejecutivo (1.3.1):** el push en background lo envia solo el bridge,
+> directo a FCM; el relay no tiene push ni estado en disco. Se
+> retiraron de `shared/` los contratos de push del relay (`validatePushPayload`
+> y su schema); queda solo `PushPlatform`.
 
 > **Resumen ejecutivo (1.3.0):** el bridge se actualiza a si mismo (`02a`
 > §5.8.18) y el desktop se lo pide: `bridge/update` desde una fila de la barra
@@ -116,6 +139,8 @@ uxnan-bridge stop             # Detiene el daemon
 uxnan-bridge status           # Muestra estado actual (conectado, sesiones, agentes)
 uxnan-bridge qr               # Muestra el QR de pairing en la terminal
 uxnan-bridge install-service  # Configura autostart en la plataforma actual
+uxnan-bridge relay setup --account <id> [--remember]  # Despliega el relay propio en la cuenta de Cloudflare del usuario
+uxnan-bridge relay status     # Tambien: use <wss-url> · enable · disable · update · rotate · remove [--delete-worker]
 ```
 
 ### 2.2 Funcionamiento como daemon
@@ -124,7 +149,10 @@ El bridge standalone corre como proceso en background en la PC del desarrollador
 
 1. Al iniciar, lee la configuracion de `~/.uxnan/daemon-config.json`.
 2. Genera o reutiliza la identidad Ed25519 del bridge (`~/.uxnan/secure-device-state.json`).
-3. Conecta al relay server via WebSocket (`wss://relay.uxnan.io` por defecto).
+3. Levanta su servidor LAN (`hosts` directos: LAN y Tailscale) y, si el usuario
+   configuro su relay propio y esta habilitado, abre el socket de control hacia
+   el (un Worker en la cuenta de Cloudflare del usuario, `02a` §5.10). No hay
+   relay por defecto.
 4. Queda en espera de conexiones del movil.
 5. Cuando el movil se conecta, completa el handshake E2EE y comienza a procesar metodos JSON-RPC.
 
@@ -138,10 +166,10 @@ El bridge mantiene todo su estado en `~/.uxnan/`:
 ├── pairing-session.json            # Payload de pairing activo
 ├── bridge-status.json              # Heartbeat y estado actual
 ├── secure-device-state.json        # Identidad Ed25519 del bridge
+├── relay.json                      # Como se configuro el relay propio (provider, accountId, version)
 ├── trusted-phones.json             # Telefonos de confianza registrados
 ├── managed-worktrees.json          # Worktrees administrados
-├── push-state.json                 # Estado de push notifications
-├── push-dedupe-keys.json           # Claves de deduplicacion
+├── push-state.json                 # Registros de push (token FCM por telefono; solo se envia a FCM)
 └── logs/
     └── bridge-YYYY-MM-DD.log
 ```
@@ -223,9 +251,9 @@ El ciclo de vida del bridge embebido esta completamente gestionado por el backen
 │     └─→ Carga identidad Ed25519                                   │
 │     └─→ Registra handlers JSON-RPC                                │
 │                                                                    │
-│  4. Bridge conecta al relay                                        │
-│     └─→ WebSocket a wss://relay.uxnan.io                          │
-│     └─→ Notifica al desktop: "relay_connected"                    │
+│  4. Bridge conecta a SU relay, si el usuario configuro uno         │
+│     └─→ wss://uxnan-relay.<subdominio>.workers.dev (cuenta propia)│
+│     └─→ Notifica: stream/relay/updated                            │
 │                                                                    │
 │  5. Pairing desde GUI del desktop                                  │
 │     └─→ Usuario abre Settings → Conexion Movil                   │
@@ -495,7 +523,7 @@ shared/
 │   │   ├── agent-capabilities.ts       # AgentCapabilities
 │   │   └── agent-config.ts             # AgentConfig por proyecto
 │   ├── notifications/
-│   │   └── push-payload.ts             # Formato de push notifications
+│   │   └── push-payload.ts             # PushPlatform (`notifications/register`)
 │   ├── models/
 │   │   ├── thread.ts                   # Thread, Turn, Message
 │   │   ├── project.ts                  # Project
@@ -507,8 +535,7 @@ shared/
 │       │   ├── jsonrpc-request.schema.json
 │       │   ├── jsonrpc-response.schema.json
 │       │   ├── e2ee-envelope.schema.json
-│       │   ├── pairing-payload.schema.json
-│       │   └── push-payload.schema.json
+│       │   └── pairing-payload.schema.json
 │       └── validate.ts                 # Funciones de validacion en runtime
 └── dist/                               # Compilado, consumido por bridge y relay
 ```
@@ -518,13 +545,13 @@ shared/
 | Componente | Como consume `shared/` |
 |---|---|
 | **Bridge** (Node.js) | Importa directamente como dependencia npm local. Usa tipos TypeScript y validadores JSON Schema en runtime. |
-| **Relay** (Node.js) | Importa directamente como dependencia npm local. Valida envelopes E2EE y payloads de push. |
+| **Relay** (Node.js) | Dependencia npm local. Reenvia los envelopes E2EE opacos sin abrirlos ni validarlos, y no tiene push (el bridge lo envia directo a FCM), asi que hoy no usa ningun validador de `shared/`. |
 | **Mobile** (Flutter/Dart) | No importa directamente. Las definiciones Dart en `lib/domain/entities/` son el equivalente manual en Dart de los tipos de `shared/`. Se mantienen sincronizadas manualmente. |
 | **Desktop** (Rust/Tauri) | No importa directamente los tipos TypeScript. El backend Rust define sus propios structs equivalentes (con Serde) para deserializar los mensajes del bridge. El frontend Svelte puede importar los tipos TypeScript para type-safety. |
 
 ### 4.3 Validacion en runtime
 
-El directorio `shared/src/validators/` exporta funciones de validacion que el bridge y el relay usan para verificar la integridad de los mensajes:
+El directorio `shared/src/validators/` exporta funciones de validacion que el bridge usa para verificar la integridad de los mensajes:
 
 ```typescript
 // shared/src/validators/validate.ts
@@ -535,8 +562,7 @@ const ajv = new Ajv();
 export function validateJsonRpcRequest(data: unknown): ValidationResult { ... }
 export function validateJsonRpcResponse(data: unknown): ValidationResult { ... }
 export function validateE2EEnvelope(data: unknown): ValidationResult { ... }
-export function validatePairingPayload(data: unknown): ValidationResult { ... }
-export function validatePushPayload(data: unknown): ValidationResult { ... }
+export function validatePairingPayloadSchema(data: unknown): ValidationResult { ... }
 ```
 
 Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: ValidationError[] }`. Los schemas JSON se compilan una sola vez al importar el modulo.
@@ -547,12 +573,12 @@ Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: Valid
 invocar y que el bridge (standalone o embebido) debe implementar.
 
 > **Fuente de verdad:** `shared/src/jsonrpc/methods.ts`
-> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **94
+> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **101
 > entradas**, bloqueadas entre si en build). El bloque de abajo es una copia de
 > lectura: si discrepa del paquete compartido, manda el paquete. La semantica de
 > cada metodo vive en
 > [`../../architecture/02b-contracts-and-requirements.md`](../../architecture/02b-contracts-and-requirements.md)
-> §1.2, y las 24 notificaciones de streaming en §1.4.
+> §1.2, y las 25 notificaciones de streaming en §1.4.
 
 ```typescript
 // shared/src/jsonrpc/methods.ts
@@ -652,6 +678,16 @@ export interface JsonRpcMethodRegistry {
   'bridge/trustedDevices':      { params: void;                 result: TrustedDevice[] };
   'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
   'bridge/update':              { params: void;                 result: BridgeUpdate };
+  'bridge/checkForUpdate':      { params: void;                 result: BridgeUpdate };
+
+  // El relay propio del usuario (02a §5.10): el bridge es el dueño; todo cliente pregunta
+  'relay/status':               { params: void;                  result: RelayStatus };
+  'relay/setup':                { params: RelaySetupParams;      result: RelayStatus };
+  'relay/use':                  { params: RelayUseParams;        result: RelayStatus };
+  'relay/set':                  { params: RelaySetParams;        result: RelayStatus };
+  'relay/update':               { params: RelayCredentialParams; result: RelayStatus };
+  'relay/rotate':               { params: void;                  result: RelayStatus };
+  'relay/remove':               { params: RelayRemoveParams;     result: RelayStatus };
 }
 ```
 
@@ -661,32 +697,37 @@ export interface JsonRpcMethodRegistry {
 
 ### 5.1 Topologias de conexion
 
-El movil puede conectarse al bridge (standalone o embebido) a traves de tres topologias:
+El movil llega al bridge (standalone o embebido) por tres caminos; prueba
+primero las direcciones directas y el relay al final (`02a` §2, §5.9.3):
 
 ```
-Topologia 1 — LAN directa (bridge embebido en desktop)
+Topologia 1 — LAN directa
 ┌──────────┐   WebSocket LAN   ┌──────────────────────┐
-│  Movil   │ ────────────────→ │  Desktop (bridge      │
-│          │   E2EE directo    │  embebido)            │
+│  Movil   │ ────────────────→ │  Bridge (PC)          │
+│          │   E2EE directo    │                       │
 └──────────┘                   └──────────────────────┘
-No requiere relay. El movil y el desktop estan en la misma red local.
+No requiere relay. El movil y la PC estan en la misma red local.
 
-Topologia 2 — WAN via relay (bridge embebido en desktop)
-┌──────────┐   WS E2EE   ┌─────────┐   WS E2EE   ┌──────────────────────┐
-│  Movil   │ ──────────→ │  Relay  │ ──────────→ │  Desktop (bridge      │
-│          │              │         │              │  embebido)            │
-└──────────┘              └─────────┘              └──────────────────────┘
-El movil esta fuera de la red local. El relay retransmite envelopes cifrados opacos.
+Topologia 2 — Tailscale (directa)
+┌──────────┐   WS 100.x (tailnet)   ┌──────────────────────┐
+│  Movil   │ ─────────────────────→ │  Bridge (PC)          │
+└──────────┘   E2EE directo         └──────────────────────┘
+La direccion Tailscale del bridge viaja en `hosts`; sin hosting.
 
-Topologia 3 — WAN via relay + bridge standalone (sin desktop)
-┌──────────┐   WS E2EE   ┌─────────┐   WS E2EE   ┌──────────────────────┐
-│  Movil   │ ──────────→ │  Relay  │ ──────────→ │  Bridge standalone    │
-│          │              │         │              │  (daemon Node.js)     │
-└──────────┘              └─────────┘              └──────────────────────┘
-No hay desktop ADE. El bridge corre como daemon independiente en la PC.
+Topologia 3 — Relay propio del usuario
+┌──────────┐   WSS   ┌──────────────────────────────┐   WSS   ┌──────────────┐
+│  Movil   │ ──────→ │ Worker + Durable Object en la │ ←────── │  Bridge (PC) │
+│          │         │ cuenta de Cloudflare del      │         │              │
+│          │         │ usuario (lo despliega el      │         │              │
+│          │         │ bridge)                       │         │              │
+└──────────┘         └──────────────────────────────┘         └──────────────┘
+Fuera de la red de la PC y sin VPN. Solo existe si el usuario lo configuro.
 ```
 
-En las tres topologias, la conexion siempre es E2EE. El relay solo ve envelopes cifrados y no puede descifrar el contenido.
+En las tres topologias, la conexion siempre es E2EE. El relay autentica a cada
+lado con una firma Ed25519 y despues solo reenvia frames cifrados; no puede
+descifrar el contenido. El desktop nunca usa el relay: habla con el bridge de su
+propia maquina por el canal de control local (§3.5).
 
 ### 5.2 Estado de conexion movil en la UI del desktop
 
@@ -705,7 +746,7 @@ El indicador de telefono en la barra de estado muestra:
 | Estado | Indicador | Descripcion |
 |---|---|---|
 | Bridge deshabilitado | Sin indicador | El modulo bridge esta desactivado en settings |
-| Bridge activo, sin telefono | `Esperando conexion` | Bridge conectado al relay, esperando movil |
+| Bridge activo, sin telefono | `Esperando conexion` | Bridge escuchando en la LAN (y conectado a su relay, si tiene), esperando movil |
 | Telefono conectado | `Conectado: iPhone de Jorge` | Sesion E2EE activa con el movil |
 | Telefono desconectado | `Desconectado` | Sesion E2EE cerrada, esperando reconexion |
 
@@ -732,9 +773,9 @@ El proceso de pairing cuando el bridge esta embebido en el desktop:
 │  Paso 3: Desktop envia al bridge embebido:                      │
 │          { method: "bridge.generatePairingQr" }                  │
 │                                                                  │
-│  Paso 4: Bridge genera PairingPayload:                          │
-│          { version: 2, relayUrl, sessionId,                     │
-│            macDeviceId, macIdentityPublicKey,                    │
+│  Paso 4: Bridge genera PairingPayload (v3):                     │
+│          { v: 3, hosts?, relay?: {url, routingId, ticket?},     │
+│            sessionId, macDeviceId, macIdentityPublicKey,        │
 │            displayName, expiresAt }                              │
 │                                                                  │
 │  Paso 5: Desktop renderiza el QR en un modal (PairingDialog)    │
@@ -753,8 +794,8 @@ El proceso de pairing cuando el bridge esta embebido en el desktop:
 │                                                                  │
 │  Paso 6: El usuario escanea el QR con la app movil Uxnan        │
 │                                                                  │
-│  Paso 7: Handshake E2EE a traves del relay                      │
-│          Movil → Relay → Bridge embebido                         │
+│  Paso 7: Handshake E2EE por la LAN/Tailscale o, fuera de la     │
+│          red y con relay propio, por el relay (ticket del QR)   │
 │                                                                  │
 │  Paso 8: Bridge notifica al desktop: "phone_paired"             │
 │          Desktop muestra: "Telefono pareado exitosamente"        │
@@ -767,21 +808,74 @@ El proceso de pairing cuando el bridge esta embebido en el desktop:
 
 El QR de pairing contiene la misma informacion que en el modo standalone (ver `PairingPayload` en `../../shared/`). La unica diferencia es que en modo embebido el QR se renderiza en una ventana grafica, no en texto ASCII en la terminal.
 
+### 5.4 Acceso remoto: el relay propio del usuario
+
+El bridge es el **dueño** del relay (`02a` §5.10): lo despliega en la cuenta
+de Cloudflare del usuario, lo mantiene conectado y lo reporta por `relay/*` y
+`stream/relay/updated`. El desktop es **un cliente mas** (como el telefono y el
+CLI `uxnan-bridge relay …`): nunca llama a Cloudflare ni guarda un ajuste de
+relay propio. Vive en Ajustes → Bridge y movil, como seccion *Acceso remoto*
+entre *Telefonos* y *Compartido con tus telefonos* — junto a los telefonos a
+los que sirve, en el mismo panel que ya agrupa todo lo que conecta el telefono
+con este equipo.
+
+**Una replica, un escritor.** `RelayStore` (`$lib/bridge/relay.svelte.ts`)
+guarda el ultimo `RelayStatus`: lo pide con `relay/status` en cada
+(re)conexion, lo reemplaza con cada `stream/relay/updated` y con la respuesta
+de cada `relay/*` (todas devuelven el estado completo), siempre por el mismo
+metodo. Una respuesta de `relay/status` que se cruzo con una notificacion no la
+deshace (la notificacion y la respuesta llegan a la ventana por canales
+distintos). Un bridge que responde *method not found* (-32601) marca la seccion
+como no soportada.
+
+**Lo que muestra:**
+
+- **Sin relay:** las tres formas de conectar — misma red (ya funciona),
+  Tailscale (automatico si esta en ambos; el QR lleva esas direcciones) y relay
+  propio (cualquier red, cuenta gratuita de Cloudflare) — con *Configurar tu
+  relay* y, plegado, *Usar un relay que desplegaste* (`relay/use`) junto con la
+  `hostKey` del bridge para copiar, que un relay desplegado a mano debe listar
+  en `UXNAN_HOST_KEYS`.
+- **Configurar** (dialogo): pasos con enlace a
+  `dash.cloudflare.com/profile/api-tokens` y la plantilla *Edit Cloudflare
+  Workers*, donde esta el id de cuenta, el id y el token (campo de
+  contraseña), *Recordar el token en este PC (llavero del sistema)* apagado por
+  defecto, y *Desplegar* con estado en curso (hasta ~1 min). El token se envia
+  una vez en `relay/setup` y el campo se vacia al responder, con exito o error;
+  el error es el texto del bridge tal cual.
+- **Con relay:** *Usar el relay* (`relay/set`), estado (`state`, `lastError`),
+  telefonos conectados por el relay, direccion y origen (tu cuenta de
+  Cloudflare / desplegado por ti), version (`deployedVersion` vs
+  `bundledVersion`; *Actualizar relay* → `relay/update` solo para un relay que
+  desplego el bridge, pidiendo el token si `tokenRemembered` es falso), *Nueva
+  direccion* (`relay/rotate`, con confirmacion) y *Quitar* (`relay/remove`, con
+  la opcion de borrarlo tambien de Cloudflare — `deleteWorker`, que pide el
+  token si no esta recordado).
+- **Sin bridge o con uno anterior a `relay/*`:** la seccion sigue visible,
+  deshabilitada, con la linea que dice por que.
+
+**Estado:** construido y con pruebas; falta la revision visual del mantenedor
+y una ejecucion real contra Cloudflare (`uxnandesktop/FOR-DEV.md` → *Remote
+access*).
+
 ---
 
 ## 6. Configuracion del bridge en desktop
 
 ### 6.1 Settings expuestos en la UI
 
-El ADE desktop expone la configuracion del bridge embebido en la seccion Settings → Conexion Movil:
+> **Nota (2026-10):** el bloque de abajo es el diseño original del modo
+> embebido. El relay ya **no** es una URL configurable con un valor oficial por
+> defecto: no existe relay hospedado por Uxnan. El relay es el propio del
+> usuario, lo gestiona el bridge (`relay/*`, §5.4) y su endpoint es el ajuste
+> compartido `BridgeSettings.relay` (clave `relay` de `daemon-config.json`).
 
 ```typescript
 // Configuracion del bridge gestionada desde el desktop
 interface BridgeDesktopConfig {
   // General
   enabled: boolean;                    // Habilitar/deshabilitar el modulo bridge
-  relayUrl: string;                    // URL del relay (default: "wss://relay.uxnan.io")
-  customRelayUrl: string | null;       // URL personalizada para relay self-hosted
+  // Relay: no vive aqui — se lee de relay/status y se cambia con relay/* (§5.4)
 
   // Red local
   lanEnabled: boolean;                 // Habilitar conexiones LAN directas
@@ -794,7 +888,6 @@ interface BridgeDesktopConfig {
 
   // Dispositivos de confianza
   trustedPhones: TrustedPhone[];       // Lista de telefonos pareados
-  autoReconnect: boolean;              // Reconectar automaticamente al iniciar
 
   // Sesiones
   maxConcurrentSessions: number;       // Maximo de sesiones simultaneas (default: 1)
@@ -824,11 +917,12 @@ Settings
 │   └── ...
 ├── Agentes
 │   └── ...
-└── Conexion Movil                    ← Seccion del bridge
+└── Bridge y movil                    ← Seccion del bridge
     ├── Habilitar conexion movil       [Toggle ON/OFF]
-    ├── Servidor relay
-    │   ├── Usar relay oficial         (wss://relay.uxnan.io)
-    │   └── Relay personalizado        [input URL]
+    ├── Acceso remoto (relay propio)   ← §5.4; cliente de relay/*
+    │   ├── Estado / endpoint / version
+    │   ├── Configurar (cuenta + token) · Usar un relay propio
+    │   └── Encender/apagar · Actualizar · Rotar · Quitar
     ├── Conexion LAN
     │   ├── Habilitar LAN directa      [Toggle]
     │   └── Puerto                     [19850]
@@ -877,7 +971,7 @@ Escenario: El usuario tiene el bridge standalone instalado con telefonos pareado
 │     [Importar] [Comenzar de cero]                                │
 │                                                                  │
 │  4. Si "Importar":                                               │
-│     └─→ Lee daemon-config.json → aplica relay URL, preferencias │
+│     └─→ Lee daemon-config.json → aplica relay propio, preferencias│
 │     └─→ Lee trusted-phones.json → importa telefonos pareados    │
 │     └─→ Reutiliza secure-device-state.json → misma identidad    │
 │     └─→ El telefono se reconecta automaticamente al bridge      │
@@ -916,7 +1010,7 @@ Escenario: El usuario desinstala el ADE desktop pero quiere seguir usando la con
 │  4. Al iniciar, el bridge standalone detecta ~/.uxnan/ existente │
 │     └─→ Carga la identidad Ed25519 existente                    │
 │     └─→ Carga los telefonos de confianza                        │
-│     └─→ Conecta al relay con la misma identidad                 │
+│     └─→ Conecta a su relay (si tiene) con la misma identidad    │
 │                                                                  │
 │  5. El telefono se reconecta automaticamente                     │
 │     └─→ Trusted reconnect, sin necesidad de re-pairing          │
@@ -925,7 +1019,7 @@ Escenario: El usuario desinstala el ADE desktop pero quiere seguir usando la con
 
 ### 7.3 Prevencion de conflictos
 
-Si ambos modos intentan correr simultaneamente (bridge standalone + desktop con bridge embebido), habra un conflicto porque ambos intentan conectarse al relay con la misma identidad y escuchar en el mismo puerto LAN.
+Si ambos modos intentan correr simultaneamente (bridge standalone + desktop con bridge embebido), habra un conflicto porque ambos intentan conectarse al relay del usuario con la misma identidad (el relay se queda con la conexion mas nueva: `replaced`) y escuchar en el mismo puerto LAN.
 
 Protecciones implementadas:
 
@@ -975,7 +1069,8 @@ El backend Rust del desktop tiene acceso al **estado operativo** del bridge (que
 | Identidad Ed25519 del bridge | `~/.uxnan/secure-device-state.json` (cifrado via OS keychain) | Solo el proceso bridge |
 | Claves de sesion X25519 | Memoria del proceso bridge (nunca persisten) | Solo el proceso bridge |
 | Tokens de API de agentes | `tauri-plugin-stronghold` o OS keychain | Solo el backend Rust |
-| Configuracion del relay | `~/.uxnan/daemon-config.json` | Bridge + desktop |
+| Endpoint del relay propio (publico) | `~/.uxnan/daemon-config.json` (`relay`) + `~/.uxnan/relay.json` | Bridge; los clientes lo leen por `relay/status` |
+| Token de Cloudflare (solo si se pidio recordarlo) | Llavero del sistema (`relay.cloudflare-token`) | Solo el proceso bridge |
 | Claves publicas de telefonos de confianza | `~/.uxnan/trusted-phones.json` | Bridge + desktop |
 
 ### 8.4 Sanitizacion de payloads

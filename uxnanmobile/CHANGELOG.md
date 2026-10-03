@@ -19,6 +19,73 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the PC stored before requests carried their own id is now recognized by its
   approval or question id, so a second copy replaces the first card.
 
+### Added
+
+- **Reach your PC from anywhere through your own relay.** When the PC's bridge
+  has a relay — one it deploys into your own Cloudflare account — the phone
+  uses it whenever no direct LAN or Tailscale address answers, so a phone
+  paired at home keeps working on mobile data without pairing again: the
+  bridge shares its relay with every paired phone, and the phone keeps each
+  PC's relay current from it. Scanning the QR away from the PC's network pairs
+  through the relay too. Under the hood: the relay client signs the relay's
+  challenge with the phone's own identity key, then runs the same end-to-end
+  encrypted handshake as a direct connection — the relay only ever forwards
+  opaque frames.
+- **Remote access on a PC's details.** A new *Remote access* section says how
+  the phone reaches the PC: the same network works already, Tailscale works
+  when it is on both, and your own relay works from any network with a free
+  Cloudflare account. With no relay it offers **Set up your relay**; with one
+  it shows its address, whether the PC is connected to it (and why not, in
+  the bridge's own words), how many phones use it, a switch to turn it on or
+  off, **Update relay** when the PC ships a newer version, **New address**
+  (asks first: a phone away from home reconnects after it next connects on the
+  home network) and **Remove relay** (optionally deleting it from Cloudflare
+  too). An action that needs Cloudflare asks for the token only when the PC
+  does not remember one.
+- **Set up your relay from the phone.** A setup page links to Cloudflare's API
+  tokens with the exact template to use (*Edit Cloudflare Workers*), says where
+  the account ID is, and deploys with progress (up to a minute). The token
+  travels end-to-end encrypted to the PC and is cleared from the phone as soon
+  as the call returns; keeping it in the PC's system keychain is opt-in.
+  A refusal is shown inline exactly as the PC wrote it.
+- **The relay switch works while the PC is away.** Turned on or off while the
+  PC cannot be reached, the choice is kept on the phone and sent, dated, the
+  next time it can — the latest decision wins, as with renaming.
+- **Connection errors say why.** When the relay refuses the phone, connecting
+  says so: *Your PC is offline or its bridge is stopped*, *This phone is no
+  longer paired with the PC — pair again*, *Too many phones are connected
+  through the relay*, or *Can't reach your relay* — in the snackbar of every
+  Connect action and in the "not connected" banner above a PC's conversations
+  while the app keeps retrying.
+
+### Changed
+
+- **Pairing QR version 3.** The QR's `relay` is now the object
+  `{url, routingId, ticket?}` of the PC's own relay; a version 2 QR reads as an
+  unsupported version (update the bridge). The local database moves to schema
+  12: each PC keeps its relay as a URL, a routing id and whether it is on. The
+  bare relay URL older versions stored pointed at a shared relay that no
+  longer exists, so it is dropped; the PC sends its relay again on the next
+  connection.
+
+### Removed
+
+- **The old relay connection.** The phone no longer dials a bare relay URL
+  with `x-role` / `x-session-id` headers, and no relay is assumed by default.
+
+- **An unused secure-storage key.** `SecureStoreKeys.notificationSecret`
+  (`uxnan.push.notification_secret`) was never written: the push secret belonged
+  to a relay push path that no longer exists. Background push is delivered by
+  the bridge alone, straight to FCM, so the app's push token never reaches the
+  relay.
+
+### Fixed
+
+- **Requests that wait on Cloudflare no longer time out on the phone.**
+  Setting up, updating or deleting the relay waits up to two minutes for the
+  PC's answer instead of the 30 seconds other requests get, since deploying
+  takes up to a minute.
+
 ## [0.0.36-alpha.20261002+20261003] - 20261002
 ### Changed
 

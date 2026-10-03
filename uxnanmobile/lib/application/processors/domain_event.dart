@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
 /// A classified event derived from an inbound bridge notification
@@ -309,7 +310,13 @@ class ProjectRemovedEvent extends DomainEvent {
 /// The PC's shared settings changed (`stream/settings/updated`).
 class SettingsUpdatedEvent extends DomainEvent {
   /// Creates a [SettingsUpdatedEvent].
-  const SettingsUpdatedEvent({this.home, this.name, this.rev});
+  const SettingsUpdatedEvent({
+    this.home,
+    this.name,
+    this.rev,
+    this.carriesRelay = false,
+    this.relay,
+  });
 
   /// The start folder new projects are explored from.
   final String? home;
@@ -320,8 +327,16 @@ class SettingsUpdatedEvent extends DomainEvent {
   /// Sync revision of the change.
   final int? rev;
 
+  /// Whether the settings said anything about the relay: [relay] is then the
+  /// PC's relay, `null` meaning it has none. False when the field was absent
+  /// or malformed — what the phone knows then stands.
+  final bool carriesRelay;
+
+  /// The PC's relay (`BridgeSettings.relay`), when [carriesRelay].
+  final RelayEndpoint? relay;
+
   @override
-  List<Object?> get props => [home, name, rev];
+  List<Object?> get props => [home, name, rev, carriesRelay, relay];
 }
 
 /// Who is connected to the PC's bridge changed (`stream/presence/updated`):
@@ -362,6 +377,20 @@ class BridgeUpdatedEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [update];
+}
+
+/// The PC's relay changed (`stream/relay/updated`): set up, connected,
+/// dropped, switched or removed. The whole `RelayStatus`, so applying it is
+/// idempotent.
+class RelayUpdatedEvent extends DomainEvent {
+  /// Creates a [RelayUpdatedEvent].
+  const RelayUpdatedEvent({required this.status});
+
+  /// The wire `RelayStatus`.
+  final Object? status;
+
+  @override
+  List<Object?> get props => [status];
 }
 
 /// A session's hold changed (`stream/agent/held`): a desktop terminal

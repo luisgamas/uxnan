@@ -50,6 +50,8 @@ export const DAEMON_FILES = {
   updateResult: 'update-result.json',
   metrics: 'metrics.json',
   settingsDecided: 'settings-decided.json',
+  // How the relay was set up (`relay/relay-service.ts`); its endpoint is a setting.
+  relay: 'relay.json',
   // Every agent process the running bridge started (`adapters/child-ledger.ts`).
   agentProcesses: 'agent-processes.json',
 } as const;

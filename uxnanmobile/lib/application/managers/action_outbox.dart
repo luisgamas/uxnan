@@ -7,7 +7,8 @@ import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// What the user did while the PC it belongs to was out of reach — renaming,
-/// archiving, unarchiving or deleting a conversation, renaming the PC — kept on
+/// archiving, unarchiving or deleting a conversation, renaming the PC,
+/// switching its relay on or off — kept on
 /// disk and sent when that PC is reachable again, before anything is read from
 /// it (architecture/02a §5.8.17).
 ///
@@ -31,6 +32,11 @@ class ActionOutbox {
 
   /// Keeps [action] for its PC.
   Future<void> keep(PendingAction action) => _repository.enqueueAction(action);
+
+  /// What is waiting for [deviceId], oldest first — for a screen that shows
+  /// a decision the PC has not heard yet.
+  Future<List<PendingAction>> pending(String deviceId) =>
+      _repository.pendingActions(deviceId);
 
   /// Sends [action] now if [reachable], and keeps it for later otherwise — or
   /// when it is lost on the way. One the bridge refuses is not kept: there is

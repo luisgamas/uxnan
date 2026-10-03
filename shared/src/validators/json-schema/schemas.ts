@@ -63,32 +63,26 @@ export const pairingPayloadSchema: SchemaObject = {
   $id: 'uxnan:pairing-payload',
   type: 'object',
   required: ['v', 'sessionId', 'macDeviceId', 'macIdentityPublicKey', 'expiresAt', 'displayName'],
-  // `relay` (string) and `hosts` (string[]) are optional transports — at least one.
+  // `relay` (object) and `hosts` (string[]) are optional transports — at least one.
   anyOf: [{ required: ['relay'] }, { required: ['hosts'] }],
   properties: {
     v: { const: PAIRING_QR_VERSION },
-    relay: { type: 'string', minLength: 1 },
+    relay: {
+      type: 'object',
+      required: ['url', 'routingId'],
+      properties: {
+        url: { type: 'string', pattern: '^wss?://[^/\\s]+$' },
+        routingId: { type: 'string', pattern: '^[0-9a-f]{32}$' },
+        ticket: { type: 'string', pattern: '^[A-Za-z0-9_-]{43}$' },
+      },
+      additionalProperties: false,
+    },
     hosts: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
     sessionId: { type: 'string', minLength: 1 },
     macDeviceId: { type: 'string', minLength: 1 },
     macIdentityPublicKey: { type: 'string', minLength: 1 },
     expiresAt: { type: 'integer' },
     displayName: { type: 'string', minLength: 1 },
-  },
-  additionalProperties: false,
-};
-
-export const pushPayloadSchema: SchemaObject = {
-  $id: 'uxnan:push-payload',
-  type: 'object',
-  required: ['sessionId', 'notificationSecret', 'threadId', 'turnId', 'title', 'body'],
-  properties: {
-    sessionId: { type: 'string', minLength: 1 },
-    notificationSecret: { type: 'string', minLength: 1 },
-    threadId: { type: 'string', minLength: 1 },
-    turnId: { type: 'string', minLength: 1 },
-    title: { type: 'string' },
-    body: { type: 'string' },
   },
   additionalProperties: false,
 };

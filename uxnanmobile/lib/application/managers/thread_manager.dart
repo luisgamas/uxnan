@@ -2293,6 +2293,7 @@ class ThreadManager {
             DevicesUpdatedEvent() ||
             AgentsUpdatedEvent() ||
             BridgeUpdatedEvent() ||
+            RelayUpdatedEvent() ||
             AgentSessionHeldEvent() ||
             UnknownDomainEvent():
         break;
@@ -2831,6 +2832,7 @@ class ThreadManager {
         DevicesUpdatedEvent() ||
         AgentsUpdatedEvent() ||
         BridgeUpdatedEvent() ||
+        RelayUpdatedEvent() ||
         AgentSessionHeldEvent() ||
         UnknownDomainEvent() =>
           null,

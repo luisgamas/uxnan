@@ -1,6 +1,7 @@
 /**
  * Shared context passed to every JSON-RPC handler.
  */
+import type { RelayService } from './relay/relay-service.js';
 import type { DaemonConfig } from './daemon-config.js';
 import type { DaemonState } from './daemon-state.js';
 import type { SecureDeviceState } from './secure-device-state.js';
@@ -66,6 +67,8 @@ export interface BridgeContext {
   readonly logger: Logger;
   /** Whether at least one relay connection is currently serving a phone. */
   relayConnected(): boolean;
+  /** The user's own relay — the one owner of setting it up and reaching it (`relay/*`). */
+  relay(): RelayService;
   /** Whether the loopback local control channel (§5.8.15) is listening. */
   localControlActive(): boolean;
   /**

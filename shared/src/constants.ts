@@ -33,7 +33,7 @@ export const ENVELOPE_DIRECTION_PHONE_TO_BRIDGE = 0x01;
 export const ENVELOPE_DIRECTION_BRIDGE_TO_PHONE = 0x02;
 
 /** Version stamped into the pairing QR payload. */
-export const PAIRING_QR_VERSION = 2;
+export const PAIRING_QR_VERSION = 3;
 
 /** HKDF `info` tag used when deriving the session key. */
 export const HKDF_INFO_TAG = 'uxnan-e2ee-v1';
@@ -52,9 +52,6 @@ export const MAX_BRIDGE_OUTBOUND_MESSAGES = 500;
 
 /** Bridge outbound buffer cap (bytes) for catch-up on reconnect — 10 MiB. */
 export const MAX_BRIDGE_OUTBOUND_BYTES = 10_485_760;
-
-/** Default relay endpoint. */
-export const DEFAULT_RELAY_URL = 'wss://relay.uxnan.io';
 
 /** Default LAN port for direct WebSocket connections. */
 export const DEFAULT_LAN_PORT = 19850;

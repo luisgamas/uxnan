@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
@@ -101,11 +102,15 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     try {
       await ref.read(sessionCoordinatorProvider).switchMac(device);
       unawaited(_refresh());
-    } on Object {
+    } on Object catch (error) {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text(l10n.deviceConnectFailed(device.displayName))),
+          SnackBar(
+            content: Text(
+              connectFailureText(l10n, device.displayName, error),
+            ),
+          ),
         );
     }
   }
@@ -170,6 +175,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     final connectingHere =
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
+    // While the reconnection loop works on this PC, the banner says why the
+    // relay refused the last attempt ("your PC is offline") rather than only
+    // that the list is not live.
+    final reconnectingHere =
+        ref.watch(activeMacProvider).value?.macDeviceId == widget.deviceId;
+    final relayFailure = ref.watch(
+      connectionRecoveryProvider.select((s) => s.value?.lastRelayFailure),
+    );
 
     final worktreeSort = ref.watch(listSortProvider(SortLevel.worktrees));
     final projectSort = ref.watch(listSortProvider(SortLevel.projects));
@@ -238,6 +251,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           child: _OfflineBanner(
             connecting: connectingHere,
             onConnect: _connectHere,
+            reason: reconnectingHere && relayFailure != null
+                ? relayFailureText(l10n, relayFailure)
+                : null,
           ),
         )
       else
@@ -578,10 +594,17 @@ class _ThreadRow extends _SpaceRow {
 
 /// Shown above the list when we are NOT connected to this PC: the threads are a
 /// cached, read-only view and going live needs a (validated) connection here.
+/// [reason] replaces the generic line when the relay said why the last attempt
+/// failed.
 class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner({required this.connecting, required this.onConnect});
+  const _OfflineBanner({
+    required this.connecting,
+    required this.onConnect,
+    this.reason,
+  });
   final bool connecting;
   final VoidCallback onConnect;
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
@@ -610,7 +633,7 @@ class _OfflineBanner extends StatelessWidget {
           const SizedBox(width: UxnanSpacing.sm),
           Expanded(
             child: Text(
-              l10n.threadsNotConnected,
+              reason ?? l10n.threadsNotConnected,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),

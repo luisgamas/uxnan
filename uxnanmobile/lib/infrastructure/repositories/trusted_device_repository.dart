@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 
@@ -23,7 +24,9 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
           TrustedDevicesTableCompanion(
             macDeviceId: Value(device.macDeviceId),
             displayName: Value(device.displayName),
-            relayUrl: Value(device.relayUrl),
+            relayUrl: Value(device.relay?.url),
+            relayRoutingId: Value(device.relay?.routingId),
+            relayEnabled: Value(device.relay?.enabled ?? false),
             hosts: Value(_encodeHosts(device.hosts)),
             sessionId: Value(device.sessionId),
             pairedAtMs: Value(device.pairedAt.millisecondsSinceEpoch),
@@ -43,6 +46,19 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
     await (_db.update(_db.trustedDevicesTable)
           ..where((d) => d.macDeviceId.equals(macDeviceId)))
         .write(TrustedDevicesTableCompanion(displayName: Value(name)));
+  }
+
+  @override
+  Future<void> recordRelay(String macDeviceId, RelayEndpoint? relay) async {
+    await (_db.update(_db.trustedDevicesTable)
+          ..where((d) => d.macDeviceId.equals(macDeviceId)))
+        .write(
+      TrustedDevicesTableCompanion(
+        relayUrl: Value(relay?.url),
+        relayRoutingId: Value(relay?.routingId),
+        relayEnabled: Value(relay?.enabled ?? false),
+      ),
+    );
   }
 
   @override
@@ -121,7 +137,7 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
         macDeviceId: row.macDeviceId,
         displayName: row.displayName,
         macIdentityPublicKey: macKey,
-        relayUrl: row.relayUrl,
+        relay: _relayOf(row),
         hosts: _decodeHosts(row.hosts),
         sessionId: row.sessionId,
         pairedAt: DateTime.fromMillisecondsSinceEpoch(row.pairedAtMs),
@@ -130,6 +146,20 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
             : null,
         lastAppliedBridgeOutboundSeq: row.lastAppliedBridgeOutboundSeq ?? 0,
       );
+
+  /// The stored relay, or `null` when none is (or it no longer validates).
+  static RelayEndpoint? _relayOf(TrustedDeviceRow row) {
+    final url = row.relayUrl;
+    final routingId = row.relayRoutingId;
+    if (!RelayEndpoint.isRelayUrl(url) || !RelayEndpoint.isRelayId(routingId)) {
+      return null;
+    }
+    return RelayEndpoint(
+      url: url!,
+      routingId: routingId!,
+      enabled: row.relayEnabled,
+    );
+  }
 
   /// Serializes hosts newline-separated; `null` for an empty list so older rows
   /// and relay-only devices stay indistinguishable on read.

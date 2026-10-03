@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-94_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-101_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -14,8 +14,10 @@ workspace on request, and drives the AI coding agents on your behalf, routing
 JSON-RPC methods to per-domain handlers.
 
 The product is **bridge-first**. The mobile app pairs with the bridge and tries
-its direct LAN / Tailscale addresses first; the [relay](../relay/README.md) is an
-optional, self-hosted off-LAN fallback. Background push notifications are sent
+its direct LAN / Tailscale addresses first; for a phone on another network the
+bridge can deploy **your own [relay](../relay/README.md)** into your free
+Cloudflare account (`uxnan-bridge relay setup`) — optional, off until you set it
+up. Background push notifications are sent
 **by the bridge itself** (FCM HTTP v1) over any transport, so the phone keeps
 receiving them whether it reached the bridge directly or through a relay.
 
@@ -63,8 +65,10 @@ Uxnan distinct actually live:
   only fills the host, and the normal operator-gated E2EE enrollment still runs.
 - **The transports it brings up.** On start, the bridge runs a direct LAN
   `http + ws` server (which also serves Tailscale addresses transparently) and,
-  optionally, maintains a relay pairing session for off-LAN reach. The phone
-  chooses the best available path; you do not have to.
+  when you have set one up, keeps a control socket open to your own relay so a
+  phone on any network can reach it. The relay is a shared setting, so a phone
+  paired at home learns it without pairing again. The phone chooses the best
+  available path; you do not have to.
 - **End-to-end encryption is not optional.** Every byte to and from the phone is
   sealed with the documented E2EE protocol (X25519 + HKDF + Ed25519 +
   AES-256-GCM). Responses are sanitized before they leave the machine — for
@@ -97,7 +101,7 @@ flowchart LR
   phone -- "E2EE" --> disc
   disc --> bridge
   phone -- "LAN / Tailscale (direct)" --> bridge
-  phone -- "relay (optional, off-LAN)" --> bridge
+  phone -- "your own relay (optional, off-LAN)" --> bridge
   desktop -- "local control channel (127.0.0.1)" --> bridge
   bridge --> p1
   bridge --> p2
@@ -164,7 +168,7 @@ npm install -g uxnan-bridge
 ## CLI
 
 ```bash
-uxnan-bridge start            # start the daemon: LAN server + (optional) relay pairing session
+uxnan-bridge start            # start the daemon: LAN server + your relay, if set up
 uxnan-bridge status           # the running bridge's status as JSON (asks it; starts nothing)
 uxnan-bridge qr               # print the pairing QR — the running bridge's (the service's) when one runs
 uxnan-bridge code             # print just the pairing code — the running bridge's when one runs
@@ -174,14 +178,18 @@ uxnan-bridge uninstall-service
 uxnan-bridge service-status   # installed / running, as JSON (Uxnan Desktop reads it)
 uxnan-bridge service-start    # start the installed service
 uxnan-bridge config get       # shared settings; `config set home <folder>` / `config set name <name>`
+uxnan-bridge relay setup --account <id> [--remember]  # deploy your own relay to Cloudflare (token prompted)
+uxnan-bridge relay status     # also: use <wss-url> · enable · disable · update · rotate · remove [--delete-worker]
 uxnan-bridge update           # ask the running bridge to update itself
 uxnan-bridge version          # print the installed version (starts nothing)
 ```
 
 **Pairing is time-boxed.** A first-time enrollment is only accepted while a
 pairing window is open, so a device that never saw your screen can't enroll
-itself over the LAN. The window opens for 5 minutes whenever you show the QR or
-the code — and also when a phone successfully looks up the code. Against a
+itself over the LAN or through your relay. The window opens for 5 minutes
+whenever you show the QR or the code — and also when a phone successfully looks
+up the code. Showing the QR also gives your relay a one-time ticket, so a phone
+on another network can pair by scanning it. Against a
 daemon started by `install-service`, `uxnan-bridge qr` and `uxnan-bridge code`
 ask that running bridge over its local control channel for its own QR or code,
 which opens *its* window, so a scan or a typed code pairs with the service.
@@ -223,27 +231,35 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **94 JSON-RPC methods +
-  24 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **101 JSON-RPC methods +
+  25 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
-  `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,
+  `daemon-config.json` (incl. the `relay` endpoint), `relay.json` (how the relay
+  was set up), `pairing-session.json`, `threads/<threadId>.json`,
   `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
   `agent-processes.json` (the agent processes the running bridge started, so the
   next one can end those a hard-killed bridge left behind), `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
   five rotating `.bak1` … `.bak5` generations and is not pruned when a thread is
   deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
-  `SecretStore`, never written in plaintext.
+  `SecretStore`, never written in plaintext — as is a Cloudflare token, and only
+  when you asked to remember it.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32010` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
   Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to every connected client (phones and desktops).
-- **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
-  directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay
-  `/push/notify` as a fallback.
+- **Relay.** `relay/relay-service.ts` is the one owner of your relay: it deploys
+  it (`relay/cloudflare.ts`, Cloudflare's REST API), keeps the control socket
+  (`relay/relay-host.ts`: 30 s keepalive, 2 s → 60 s reconnect backoff, one
+  channel per phone) and answers `relay/*` for every client. Each phone channel
+  runs the same secure session as the LAN, behind the same pairing window.
+- **Push.** `PushService` (persisted by secure-session `sessionId` in
+  `push-state.json`) delivers FCM HTTP v1 directly via `createBridgePushSender`
+  (lazy `firebase-admin`) — the only push path: the token goes nowhere but FCM,
+  and without a Firebase service account background push is off.
 
 The cross-component specification is `architecture/02a-system-architecture.md`
 §5.8 and

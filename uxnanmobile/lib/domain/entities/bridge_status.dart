@@ -40,7 +40,7 @@ class BridgeStatus extends Equatable {
     );
   }
 
-  /// Whether the bridge is currently serving this phone over the hosted relay
+  /// Whether the bridge is currently serving this phone over its own relay
   /// (false means a direct LAN/Tailscale connection).
   final bool relayConnected;
 

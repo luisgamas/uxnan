@@ -55,7 +55,7 @@ export const COMPONENTS = [
       { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'shared' },
     ],
     /** Consumers that resolve this from npm at build time — order matters. */
-    releaseBefore: ['bridge', 'relay'],
+    releaseBefore: ['bridge'],
   },
   {
     id: 'bridge',
@@ -68,18 +68,48 @@ export const COMPONENTS = [
       { file: 'bridge/package.json', adapter: 'json' },
       { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'bridge' },
     ],
-    releaseBefore: [],
-  },
-  {
-    id: 'relay',
-    name: 'uxnan-relay',
-    kind: 'npm',
-    path: 'relay',
-    tagPrefixes: ['relay-v'],
-    workspace: 'relay',
-    versionFiles: [
-      { file: 'relay/package.json', adapter: 'json' },
-      { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'relay' },
+    // `uxnan-relay/local` is the Miniflare harness the bridge's tests start the
+    // Worker with. The bridge takes `uxnan-relay` as a devDependency only, so
+    // nothing under it reaches the published package.
+    nonShipping: [/^relay\/src\/local\//],
+    /**
+     * Built elsewhere in the repo, published only inside this package.
+     *
+     * The relay is a Cloudflare Worker the bridge deploys into the user's own
+     * account (`relay/setup`, `relay/update`). `bridge/tools/copy-relay-worker.mjs`
+     * copies its bundle into `bridge/dist/relay-worker/` at build time, so a
+     * change to the Worker reaches users through a bridge release and no other
+     * way: `uxnan-relay` is private, carries no tag and is never published.
+     *
+     * Two consequences, both enforced by the tooling rather than remembered:
+     *
+     *  - a shipping change under `paths` makes the **bridge** need a release;
+     *  - that bridge cut also moves the Worker's own version (`versionFiles`),
+     *    which is what the deployed Worker reports at `GET /v1/version` and what
+     *    `relay/status.bundledVersion` compares against. It moves **only** when
+     *    the Worker changed: a bridge release that leaves the Worker alone must
+     *    not tell every user their relay is out of date.
+     *
+     * `shared/src/relay/` is listed because esbuild inlines `@uxnan/shared/relay`
+     * into the bundle — a protocol change there is a Worker change.
+     *
+     * `tagPrefixes` are historical: `relay-v*` tags were cut while the relay was
+     * a published Node server. They are read, never written, so the Worker's
+     * patch line can never fall back below a version that already shipped.
+     */
+    carries: [
+      {
+        id: 'relay',
+        name: 'uxnan-relay',
+        kind: 'npm',
+        paths: ['relay', 'shared/src/relay'],
+        tagPrefixes: ['relay-v'],
+        changelog: 'relay/CHANGELOG.md',
+        versionFiles: [
+          { file: 'relay/package.json', adapter: 'json' },
+          { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'relay' },
+        ],
+      },
     ],
     releaseBefore: [],
   },
@@ -127,12 +157,38 @@ export const COMPONENTS = [
 ];
 
 /** The order releases must be cut in: a component never precedes its provider. */
-export const RELEASE_ORDER = ['shared', 'bridge', 'relay', 'mobile', 'desktop'];
+export const RELEASE_ORDER = ['shared', 'bridge', 'mobile', 'desktop'];
+
+/**
+ * Ids that used to be released on their own, and where their changes go now.
+ * Kept so an old habit gets an answer instead of a bare "unknown component".
+ */
+export const RETIRED = {
+  relay: 'the relay Worker ships inside uxnan-bridge — cut the bridge',
+};
 
 export function component(id) {
   const found = COMPONENTS.find((c) => c.id === id);
-  if (!found) throw new Error(`unknown component: ${id}`);
+  if (!found) {
+    const hint = RETIRED[id] ? ` (${RETIRED[id]})` : '';
+    throw new Error(`unknown component: ${id}${hint}`);
+  }
   return found;
+}
+
+/** Every path whose change can reach this component's artifact. */
+export function pathsOf(meta) {
+  return [meta.path, ...(meta.carries ?? []).flatMap((part) => part.paths)];
+}
+
+/** True when `file` sits at or under `path` (a path segment, not a prefix). */
+export function within(file, path) {
+  return file === path || file.startsWith(`${path}/`);
+}
+
+/** Every file that carries a version for this component, carried parts included. */
+export function allVersionFiles(meta) {
+  return [...meta.versionFiles, ...(meta.carries ?? []).flatMap((part) => part.versionFiles)];
 }
 
 /**

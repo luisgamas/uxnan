@@ -26,10 +26,10 @@ export interface SecureConnectionOptions {
   transport: MetricsTransport;
   expectedSessionId?: string;
   /**
-   * Gate a `qr_bootstrap` handshake on an operator-armed pairing window (LAN
-   * only — see `PairingCodeService.arm`/`isArmed`). Omitted on the relay path,
-   * which is left ungated here: it already scopes bootstrap to one
-   * `expectedSessionId` per connection.
+   * Gate a `qr_bootstrap` handshake on an operator-armed pairing window (see
+   * `PairingCodeService.arm`/`isArmed`). Wired on both the LAN and the relay
+   * path; the relay additionally admits a new phone only with the window's
+   * one-time ticket.
    */
   isPairingArmed?: () => boolean;
 }

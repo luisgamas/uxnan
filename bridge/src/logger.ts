@@ -31,7 +31,7 @@ export function redactSecrets(text: string): string {
       .replace(/\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[REDACTED-JWT]')
       // key=value / "token": "value" for secret-ish keys
       .replace(
-        /\b(token|secret|password|passwd|api[_-]?key|authorization|bearer|notificationSecret|privateKey|private_key)\b(["']?\s*[:=]\s*["']?)([^\s"',}]+)/gi,
+        /\b(token|secret|password|passwd|api[_-]?key|authorization|bearer|notificationSecret|apiToken|privateKey|private_key)\b(["']?\s*[:=]\s*["']?)([^\s"',}]+)/gi,
         (_m, key: string, sep: string) => `${key}${sep}[REDACTED]`,
       )
       // PEM blocks

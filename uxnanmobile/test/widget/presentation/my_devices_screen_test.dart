@@ -9,6 +9,7 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
@@ -22,11 +23,18 @@ import '../../support/ux_icon_finder.dart';
 /// network-kind badge by passing `connectedEndpoint: kRelayUrl`.
 const kRelayUrl = 'wss://relay.uxnan.dev';
 
+/// The relay every [_device] reaches its bridge through.
+const kRelay = RelayEndpoint(
+  url: kRelayUrl,
+  routingId: '0123456789abcdef0123456789abcdef',
+  enabled: true,
+);
+
 TrustedDevice _device(String id, String name) => TrustedDevice(
       macDeviceId: id,
       displayName: name,
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: kRelayUrl,
+      relay: kRelay,
       sessionId: 's-$id',
       pairedAt: DateTime(2026, 6, 3),
       lastSeen: DateTime(2026, 6, 6, 9),
@@ -409,7 +417,7 @@ void main() {
             macDeviceId: 'mac-1',
             displayName: 'My Mac',
             macIdentityPublicKey: Uint8List(32),
-            relayUrl: kRelayUrl,
+            relay: kRelay,
             sessionId: 's-1',
             pairedAt: DateTime(2026, 6, 3),
           ),

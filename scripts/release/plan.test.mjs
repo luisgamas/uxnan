@@ -46,19 +46,19 @@ describe('planCuts', () => {
       ['shared', 'bridge'],
     );
     assert.equal(plan.cuts[0].waitFor, '@uxnan/shared');
-    assert.deepEqual(plan.cuts[0].blocks, ['bridge', 'relay']);
+    assert.deepEqual(plan.cuts[0].blocks, ['bridge']);
     assert.equal(plan.cuts[1].waitFor, null);
   });
 
   it('drops a component whose only changes cannot reach a build', () => {
     const plan = planCuts({
-      components: ['relay', 'desktop'],
+      components: ['bridge', 'desktop'],
       channel: 'nightly',
       inspector: inspectorFor({
-        relay: {
+        bridge: {
           worthy: false,
-          files: ['relay/FOR-DEV.md', 'relay/test/ws.test.ts'],
-          nonShipping: ['relay/FOR-DEV.md', 'relay/test/ws.test.ts'],
+          files: ['relay/FOR-DEV.md', 'relay/test/worker.test.ts'],
+          nonShipping: ['relay/FOR-DEV.md', 'relay/test/worker.test.ts'],
         },
         desktop: { worthy: true },
       }),
@@ -67,9 +67,46 @@ describe('planCuts', () => {
       plan.cuts.map((c) => c.id),
       ['desktop'],
     );
-    assert.equal(plan.skipped[0].id, 'relay');
+    assert.equal(plan.skipped[0].id, 'bridge');
     assert.equal(plan.skipped[0].reason, 'nothing that ships changed');
-    assert.deepEqual(plan.skipped[0].files, ['relay/FOR-DEV.md', 'relay/test/ws.test.ts']);
+    assert.deepEqual(plan.skipped[0].files, ['relay/FOR-DEV.md', 'relay/test/worker.test.ts']);
+  });
+
+  it('says which carried part a bridge cut also moves', () => {
+    const inspector = (id) => ({
+      id,
+      files: ['relay/src/room.ts'],
+      nonShipping: [],
+      substantive: ['relay/src/room.ts'],
+      worthy: true,
+      next: '0.0.44-alpha.20261003',
+      carried: [
+        {
+          id: 'relay',
+          substantive: ['relay/src/room.ts'],
+          worthy: true,
+          current: '0.0.2-alpha.20260720',
+          next: '0.0.3-alpha.20261003',
+        },
+      ],
+    });
+    const plan = planCuts({ components: ['bridge'], inspector });
+    assert.deepEqual(plan.cuts[0].carries, [{ id: 'relay', version: '0.0.3-alpha.20261003' }]);
+  });
+
+  it('lists no carried part when the Worker did not change', () => {
+    const plan = planCuts({
+      components: ['bridge'],
+      inspector: inspectorFor({ bridge: { worthy: true } }),
+    });
+    assert.deepEqual(plan.cuts[0].carries, []);
+  });
+
+  it('refuses the relay as a component of its own, and points at the bridge', () => {
+    assert.throws(
+      () => planCuts({ components: ['relay'], inspector: inspectorFor({}) }),
+      /unknown component\(s\): relay \(relay: the relay Worker ships inside uxnan-bridge/,
+    );
   });
 
   it('reports an untouched component as having no changes at all', () => {

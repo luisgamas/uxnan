@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { assertMovesForward, baseOf, dateStamp, highestBase, nextVersion } from './version.mjs';
+import {
+  assertMovesForward,
+  baseOf,
+  dateStamp,
+  highestBase,
+  nextCarriedVersion,
+  nextVersion,
+} from './version.mjs';
 
 /** The real tag history, so the rules are pinned against what actually shipped. */
 const NPM_TAGS = [
@@ -141,5 +148,35 @@ describe('assertMovesForward', () => {
 
   it('accepts anything when nothing has shipped yet', () => {
     assert.doesNotThrow(() => assertMovesForward({ version: '0.0.1', tags: [] }));
+  });
+});
+
+describe('nextCarriedVersion — the relay Worker inside the bridge', () => {
+  const date = new Date('2026-10-03T12:00:00Z');
+
+  it('continues from the version its files hold', () => {
+    assert.equal(
+      nextCarriedVersion({ kind: 'npm', current: '0.0.2-alpha.20260720', tags: [], date }),
+      '0.0.3-alpha.20261003',
+    );
+  });
+
+  it('moves forward twice on the same day', () => {
+    assert.equal(
+      nextCarriedVersion({ kind: 'npm', current: '0.0.3-alpha.20261003', tags: [], date }),
+      '0.0.4-alpha.20261003',
+    );
+  });
+
+  it('never falls below a historical tag', () => {
+    assert.equal(
+      nextCarriedVersion({
+        kind: 'npm',
+        current: '0.0.2-alpha.20260720',
+        tags: ['relay-v0.0.1-alpha.20260627', 'relay-v0.0.9-alpha.20260801'],
+        date,
+      }),
+      '0.0.10-alpha.20261003',
+    );
   });
 });

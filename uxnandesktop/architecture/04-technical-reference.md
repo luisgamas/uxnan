@@ -727,7 +727,7 @@ type(scope): mensaje descriptivo
 | **TabGroup** | Coleccion de tabs dentro de una region del area central. Cada TabGroup tiene su propia barra de tabs y puede contener multiples tabs de terminal, editor o diff. |
 | **Split** | Division del area central en regiones horizontales o verticales. Existe a dos niveles: splits de TabGroup (nivel alto) y splits de pane dentro de un tab (nivel bajo). |
 | **Bridge** | Daemon Node.js que conecta la app movil con los agentes CLI del PC. Gestiona la comunicacion bidireccional, tunelizacion de terminales y ejecucion de comandos remotos. |
-| **Relay** | Servidor intermediario para conectividad WAN con E2EE. Permite que el bridge y la app movil se comuniquen cuando no estan en la misma red local. |
+| **Relay** | Intermediario para conectividad WAN con E2EE: el relay propio de cada usuario, un Cloudflare Worker que el bridge despliega en la cuenta del usuario. Permite que el bridge y la app movil se comuniquen cuando no estan en la misma red local ni en una tailnet. |
 | **E2EE** | End-to-End Encryption. Cifrado de extremo a extremo que garantiza que solo el emisor y receptor pueden leer los mensajes, ni siquiera el relay intermediario. |
 | **Sidecar** | Proceso externo empaquetado y gestionado por Tauri. Se distribuye junto con la aplicacion y Tauri gestiona su ciclo de vida (inicio, detencion, reinicio). |
 | **OSC** | Operating System Command. Secuencia de escape de terminal que permite a los procesos comunicar metadatos al emulador de terminal (por ejemplo, cambiar el titulo o reportar estado). |

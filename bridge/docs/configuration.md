@@ -11,13 +11,12 @@ file is optional; create it to override. Defaults live in
 
 | Field | Default | Purpose |
 |---|---|---|
-| `relayUrl` | built-in default (placeholder) | WebSocket URL of the relay (remote/off-LAN fallback). The built-in default is a **placeholder** — set this to **your own** self-hosted relay's `wss://…` URL *before* you flip `relayEnabled`, so turning the relay on is a one-line change with nothing else to wire. |
-| `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`push-notifications.md`](./push-notifications.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
+| `relay` | *(absent)* | **Your own relay** — `{ "url": "wss://…", "routingId": "<32 hex>", "enabled": true }`, how phones reach this PC from another network. **Absent by default**: the bridge is LAN/Tailscale-direct and the pairing QR carries only the direct `hosts`. **Do not write it by hand** — `uxnan-bridge relay setup` (deploys the relay into your Cloudflare account) or `relay use <wss-url>` sets it, `relay enable`/`disable` flips `enabled`, `relay rotate` changes `routingId`, `relay remove` deletes it. It is shared with every client as `BridgeSettings.relay`. An entry that is not a valid endpoint is ignored, and the retired `relayUrl` / `relayEnabled` keys are dropped when the config is read. How it was set up lives beside it in `~/.uxnan/relay.json`; a remembered Cloudflare token only in the system keyring. See [`connectivity.md`](./connectivity.md#3-your-own-relay) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. On multi-homed hosts, the bridge joins and emits on every eligible advertised IPv4 rather than trusting the OS multicast route. Best-effort — an unavailable UDP 5353 interface is logged and pairing still works by QR or by typing the host. Discovery never advertises the pairing code and never creates trust. |
 | `localControlEnabled` | `true` | Serve the **local control channel** Uxnan Desktop uses on this machine: a WebSocket bound to `127.0.0.1` only, on a free port, authorized by a token written with the port to `~/.uxnan/local-control.json` (owner-only, fresh every start, removed on stop). Only `uxnan-bridge start` opens it. Set `false` to refuse the desktop entirely. See [connectivity](connectivity.md#4-uxnan-desktop-on-the-same-machine-local-control-channel). |
-| `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
+| `autoReconnect` | `true` | Not read by the current bridge: the relay control socket always reconnects (2 s → 60 s backoff) while a relay is enabled. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |
 | `defaultAgent` | `opencode` | Agent used when a thread doesn't pick one. |
@@ -30,7 +29,7 @@ file is optional; create it to override. Defaults live in
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
-| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
+| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (background delivery is gated on the bridge's Firebase service account — see [`push-notifications.md`](./push-notifications.md)). |
 
 ## Projects: one registry every client mirrors
 

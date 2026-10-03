@@ -5,9 +5,9 @@ import { generatePairingPayload } from '../src/index.js';
 
 const NOW = 1_700_000_000_000;
 
-test('generatePairingPayload produces a valid v2 payload', () => {
+test('generatePairingPayload produces a valid payload', () => {
   const payload = generatePairingPayload({
-    relayUrl: 'wss://relay.uxnan.io',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'a'.repeat(32) },
     macDeviceId: 'mac-1',
     macIdentityPublicKey: 'a'.repeat(64),
     displayName: 'Test PC',
@@ -21,14 +21,14 @@ test('generatePairingPayload produces a valid v2 payload', () => {
 
 test('generatePairingPayload assigns a session id when none is given', () => {
   const a = generatePairingPayload({
-    relayUrl: 'r',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'a'.repeat(32) },
     macDeviceId: 'm',
     macIdentityPublicKey: 'k',
     displayName: 'd',
     now: NOW,
   });
   const b = generatePairingPayload({
-    relayUrl: 'r',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'a'.repeat(32) },
     macDeviceId: 'm',
     macIdentityPublicKey: 'k',
     displayName: 'd',
@@ -39,7 +39,7 @@ test('generatePairingPayload assigns a session id when none is given', () => {
 
 test('generatePairingPayload honors an explicit session id', () => {
   const payload = generatePairingPayload({
-    relayUrl: 'r',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'a'.repeat(32) },
     macDeviceId: 'm',
     macIdentityPublicKey: 'k',
     displayName: 'd',
@@ -51,7 +51,7 @@ test('generatePairingPayload honors an explicit session id', () => {
 
 test('generatePairingPayload includes direct hosts when provided', () => {
   const payload = generatePairingPayload({
-    relayUrl: 'wss://relay.uxnan.io',
+    relay: { url: 'wss://uxnan-relay.example.workers.dev', routingId: 'a'.repeat(32) },
     hosts: ['192.168.1.20:7777', '100.64.0.5:7777'],
     macDeviceId: 'm',
     macIdentityPublicKey: 'k',
@@ -59,7 +59,7 @@ test('generatePairingPayload includes direct hosts when provided', () => {
     now: NOW,
   });
   assert.deepEqual(payload.hosts, ['192.168.1.20:7777', '100.64.0.5:7777']);
-  assert.equal(payload.relay, 'wss://relay.uxnan.io');
+  assert.equal(payload.relay?.url, 'wss://uxnan-relay.example.workers.dev');
 });
 
 test('generatePairingPayload omits relay for a LAN/Tailscale-only QR', () => {

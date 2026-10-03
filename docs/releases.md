@@ -83,8 +83,11 @@ your calendar. Cutting at 23:00 local would stamp it with the following day.
 
 ### The dispatch, for everything else
 
-Actions → **Release — cut versions**. Tick `shared`, `bridge`, `relay`, `mobile`;
-pick `none` / `nightly` / `stable` for the desktop. Two switches matter:
+Actions → **Release — cut versions**. Tick `shared`, `bridge`, `mobile`; pick
+`none` / `nightly` / `stable` for the desktop. There is no `relay` box: the relay
+Worker ships inside the bridge, so a relay change is released by ticking
+`bridge` (see [*The relay Worker ships inside the bridge*](#the-relay-worker-ships-inside-the-bridge)).
+Two switches matter:
 
 - **`dry_run`** — on by default. Computes and prints everything, tags nothing.
   Use it first when releasing several components together.
@@ -218,21 +221,24 @@ the same reason.
 | Environment name | *(leave empty — the workflow declares no `environment:`, and a name here that the job does not carry makes the id-token mismatch)* |
 | Allowed actions | **tick "Allow `npm publish`"** — unticked, the publisher may only `npm stage publish`, and the workflow publishes directly |
 
-for each of `@uxnan/shared`, `uxnan-bridge` and `uxnan-relay`. The filename is
-the top-level workflow, not the reusable `verify-node.yml` it calls. A package
+for each of `@uxnan/shared` and `uxnan-bridge`. (`uxnan-relay` had one too while
+it was published; it is not published any more — see
+[*The relay Worker ships inside the bridge*](#the-relay-worker-ships-inside-the-bridge).)
+The filename is the top-level workflow, not the reusable `verify-node.yml` it
+calls. A package
 whose publisher is missing fails its publish with `ENEEDAUTH`; the fix is that
 form, never a token. On the same page, set *Publishing access* to **"Require
 two-factor authentication and disallow bypass 2fa tokens"**: npm states it is
 compatible with trusted publishers, and with no token in use it closes that
-door entirely. Once all three are registered, delete the `NPM_TOKEN` secret: an
-unused expired token is only a thing to be confused by.
+door entirely. Once both are registered, delete the `NPM_TOKEN` secret: an unused
+expired token is only a thing to be confused by.
 
 What the workflow needs for the exchange to happen — each is commented in the
 file so it is not "simplified" away: npm 11.5.1 or newer (the runner's Node 22
 bundles an older one, so a step upgrades it), `id-token: write`, no
 `NODE_AUTH_TOKEN` (a token present is used *instead* of OIDC), and a
-`repository.url` in every `package.json` that matches this repository (all
-three have one).
+`repository.url` in every published `package.json` that matches this repository
+(both have one).
 
 **Publishing a tag that already exists** — after fixing a publisher, or any
 other cause that left a tag without its package — is a dispatch of
@@ -253,7 +259,8 @@ unstable, and breaking changes are allowed.
 
 | Component | Version form | Tag |
 |---|---|---|
-| shared / bridge / relay | `0.0.PATCH-alpha.YYYYMMDD` | `shared-v*`, `bridge-v*`, `relay-v*` |
+| shared / bridge | `0.0.PATCH-alpha.YYYYMMDD` | `shared-v*`, `bridge-v*` |
+| relay Worker (inside the bridge) | `0.0.PATCH-alpha.YYYYMMDD` | **none** — it moves with the bridge cut that ships it; the old `relay-v*` tags are history |
 | mobile | `0.0.PATCH-alpha.YYYYMMDD+BUILD` | `mobile-v*` (Play needs a rising integer) |
 | desktop — stable | `0.0.PATCH` | `desktop-stable-v0.0.PATCH` |
 | desktop — nightly | `0.0.PATCH-nightly.YYYYMMDD.N` | `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` |
@@ -282,7 +289,8 @@ committed lock. That is exactly how `uxnandesktop/package-lock.json` sat at
 
 | Component | Files |
 |---|---|
-| shared / bridge / relay | `<component>/package.json` **and the root `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`, which updates both |
+| shared / bridge | `<component>/package.json` **and the root `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`, which updates both |
+| relay Worker (carried by the bridge) | `relay/package.json` **and its entry in the root `package-lock.json`** — written by a **bridge** cut, and only when the Worker changed |
 | desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (the `[workspace.package]` version, which the app and the two member crates `uxnan-control-protocol` / `uxnan-cli` inherit), `src-tauri/Cargo.lock` (the `uxnan-desktop`, `uxnan-control-protocol` and `uxnan-cli` entries), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
 | mobile | `uxnanmobile/pubspec.yaml` (its lock carries no app version) |
 
@@ -309,8 +317,8 @@ This was once wrong in a way worth remembering: the workflow published under
 `npm install` handed you the first version ever released. Fixed in the workflow,
 and the affected packages were moved forward by hand
 (`npm dist-tag add <pkg>@<version> latest`, which needs publish rights and is not
-something CI does). All three now resolve correctly; verify any time with
-`npm view <pkg> dist-tags`.
+something CI does). Both published packages now resolve correctly; verify any
+time with `npm view <pkg> dist-tags`.
 
 ---
 
@@ -342,6 +350,47 @@ run at all.
 
 ---
 
+## The relay Worker ships inside the bridge
+
+The relay used to be a Node server published to npm as `uxnan-relay`, with its
+own `relay-v*` tags. It is now a **Cloudflare Worker that each user's bridge
+deploys into the user's own Cloudflare account**, and it reaches users one way
+only: inside `uxnan-bridge`. The bridge build (`bridge/tools/copy-relay-worker.mjs`)
+copies the bundle `npm run build -w uxnan-relay` produced into
+`bridge/dist/relay-worker/`, which the bridge's `files` publishes; `relay/setup`
+and `relay/update` upload exactly that file.
+
+So:
+
+- **`uxnan-relay` is private and never published.** No tag, no GitHub release,
+  no npm package. `release-npm.yml` refuses a `relay-v*` tag, and the cut has no
+  `relay` box. The historical `relay-v*` tags stay in git untouched.
+- **A shipping change to the Worker makes the bridge owe a release.** The bridge
+  is measured over `bridge/`, `relay/` and `shared/src/relay/` (esbuild inlines
+  `@uxnan/shared/relay` into the bundle, so a protocol change there is a Worker
+  change). The usual exclusions apply — prose, docs and tests do not count — and
+  so does `relay/src/local/`, the Miniflare harness the bridge's tests start the
+  Worker with (the bridge takes `uxnan-relay` as a devDependency only).
+- **The Worker keeps its own version, and the bridge cut moves it.** That version
+  is what the deployed Worker reports at `GET /v1/version` and what
+  `relay/status.bundledVersion` shows next to the deployed one, so it must change
+  when the Worker does — and **only** then: a bridge release that leaves the
+  Worker alone must not tell every user their relay is out of date. A bridge cut
+  whose changes include the Worker therefore also writes the next Worker version
+  into `relay/package.json` and its root lock entry, in the same commit, and heads
+  `relay/CHANGELOG.md` with it; a cut without Worker changes leaves all three
+  alone. The Worker's patch line continues from the higher of what
+  `relay/package.json` holds and the old `relay-v*` tags (so `0.0.2` → `0.0.3`),
+  with the same `-alpha.YYYYMMDD` stamp as the bridge it ships in.
+
+`npm run release:status` prints, under the bridge, whether it carries a Worker
+change and what the Worker version would become; the cut's plan lists it next to
+the bridge tag. `release-npm.yml` checks, before publishing, that the bundle and
+its `meta.json` are in the tarball at the version `relay/package.json` carries.
+The registry entry is `carries` on the bridge in `scripts/release/components.mjs`.
+
+---
+
 ## Order, and why it is not negotiable
 
 `release-npm.yml` resolves `@uxnan/shared` **from npm at build time**. Tagging
@@ -360,12 +409,14 @@ better than publishing them against the wrong dependency.
 ## What each tag triggers
 
 ```
-shared-v* / bridge-v* / relay-v*   → release-npm.yml      → npm, `latest` dist-tag
+shared-v* / bridge-v*              → release-npm.yml      → npm, `latest` dist-tag (the bridge carries the relay Worker)
 mobile-v*                          → release-mobile.yml   → Play, open testing
 desktop-stable-v*                  → release-desktop.yml  → installers + DRAFT release
 desktop-nightly-v*                 → release-desktop.yml  → installers + published pre-release
 publishing any desktop release     → release-desktop-manifest.yml → rolls latest.json onto that channel
 ```
+
+`relay-v*` triggers nothing any more.
 
 That last line is the one worth remembering: **the in-app updater only sees a
 build once its release is published**, because publishing is what copies
@@ -474,8 +525,9 @@ a new one — the base must still move forward, so the next nightly gets a highe
 
 ## Proven, and still to prove
 
-Every component except the relay has now been through the whole path for real,
-and the defects that found are fixed and pinned by tests.
+Every component has now been through the whole path for real, and the defects
+that found are fixed and pinned by tests. (The relay is no longer one: it ships
+inside the bridge.)
 
 | Component | Exercised | What is still unproven |
 |---|---|---|
@@ -483,7 +535,7 @@ and the defects that found are fixed and pinned by tests.
 | shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved. ✅ 0.0.16-alpha.20260919 — published through **Trusted Publishing** with signed provenance, via the `release-npm.yml` dispatch on an already-existing tag | — |
 | bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow. ✅ 0.0.25-alpha.20260920 — Trusted Publishing, pinned to 0.0.16, verified by a clean `npm install uxnan-bridge@latest` (`npm audit signatures` reports the attestations) | — |
 | mobile | ✅ 0.0.19-alpha.20260810+20260810 — pubspec↔tag gate passed on a pubspec `prepare.mjs` wrote, notes gate passed, uploaded to Play open testing | — |
-| relay | ❌ | nothing has changed in `relay/` that reaches a build since the automation existed, so it has never been cut by it |
+| relay Worker (inside the bridge) | ❌ | a bridge cut that carries a Worker change — and so moves `relay/package.json` with it — has not run for real yet; `prepare.test.mjs` drives it end to end in a scratch repository |
 
 **The npm-visibility wait ran for real** on that cut, and it is the one thing no
 dry run could have shown: the run tagged shared, waited (`waiting for npm to

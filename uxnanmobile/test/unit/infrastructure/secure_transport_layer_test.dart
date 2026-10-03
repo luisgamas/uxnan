@@ -32,7 +32,10 @@ class _InMemoryTransport implements WebSocketTransport {
   Stream<TransportState> get stateChanges => const Stream.empty();
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) async {
+  int? get closeCode => null;
+
+  @override
+  Future<void> connect(String url) async {
     connectedUrl = url;
   }
 
@@ -45,6 +48,10 @@ class _InMemoryTransport implements WebSocketTransport {
   Future<void> send(Uint8List data) async {
     peer._incoming.add(data);
   }
+
+  @override
+  Future<void> sendText(String text) =>
+      send(Uint8List.fromList(utf8.encode(text)));
 }
 
 ({_InMemoryTransport phone, _InMemoryTransport bridge}) _pair() {
@@ -162,7 +169,6 @@ void main() {
         macDeviceId: 'mac-1',
         displayName: 'Test Bridge',
         macIdentityPublicKey: macIdentityPublicKey,
-        relayUrl: 'wss://relay.test',
         sessionId: 'session-xyz',
         pairedAt: DateTime(2026),
       );

@@ -34,9 +34,9 @@ export interface ServerHandshakeOptions {
   expectedSessionId?: string;
   /**
    * Gate a `qr_bootstrap` handshake on an operator-armed pairing window
-   * (`PairingCodeService.arm`/`isArmed`). When omitted, bootstrap is NOT gated
-   * here (used by the relay path, which already scopes bootstrap to one
-   * `expectedSessionId` per connection). Never affects `trusted_reconnect`.
+   * (`PairingCodeService.arm`/`isArmed`). The LAN and relay paths both pass it;
+   * when omitted (tests), bootstrap is not gated here. Never affects
+   * `trusted_reconnect`.
    */
   isPairingArmed?: () => boolean;
   /** Key epoch to advertise (default 1). */
@@ -174,9 +174,8 @@ export async function performServerHandshake(
     // pairing window (showed the QR or the manual code) recently. Checked here,
     // BEFORE any trust mutation and before `ready` is sent, so a reachable
     // device that never saw the QR/code cannot self-enroll just by reaching the
-    // LAN socket. `options.isPairingArmed` is only wired on the LAN path (the
-    // relay path leaves it unset and stays gated by `expectedSessionId` alone,
-    // as before); `trusted_reconnect` never reaches this branch.
+    // LAN socket or the relay. Both paths wire `options.isPairingArmed`;
+    // `trusted_reconnect` never reaches this branch.
     //
     // FOR-DEV: this only proves the operator opened pairing recently, not that
     // THIS phone is the one they meant to pair (any device that reaches the LAN

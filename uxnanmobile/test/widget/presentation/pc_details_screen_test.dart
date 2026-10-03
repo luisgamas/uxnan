@@ -33,7 +33,6 @@ TrustedDevice _device(String id) => TrustedDevice(
       macDeviceId: id,
       displayName: "Jorge's MacBook",
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: 'wss://relay.uxnan.dev',
       sessionId: 's-$id',
       pairedAt: DateTime(2026, 3, 3),
       lastSeen: DateTime(2026, 6, 6, 9),
@@ -74,6 +73,8 @@ void main() {
           activityHeatmapProvider.overrideWith((ref, arg) async => const {}),
           agentsProvider.overrideWith((ref) async => const <AgentDescriptor>[]),
           metricsSnapshotsProvider.overrideWith(_NoMetrics.new),
+          relayStatusProvider.overrideWith((ref) => Stream.value(null)),
+          pendingRelaySwitchProvider.overrideWith((ref, id) async => null),
         ],
         child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -114,6 +115,8 @@ void main() {
                 .overrideWith((ref) async => const <AgentDescriptor>[]),
             metricsSnapshotsProvider.overrideWith(_NoMetrics.new),
             usageStatsProvider.overrideWith(_NoUsage.new),
+            relayStatusProvider.overrideWith((ref) => Stream.value(null)),
+            pendingRelaySwitchProvider.overrideWith((ref, id) async => null),
           ],
           child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,

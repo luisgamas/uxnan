@@ -6,7 +6,9 @@ import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/core/constants/protocol_constants.dart';
+import 'package:uxnan/core/errors/relay_exception.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
+import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/connection_session.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
@@ -17,6 +19,7 @@ import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/crypto/handshake_crypto.dart';
@@ -24,6 +27,15 @@ import 'package:uxnan/infrastructure/crypto/key_generation.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
+
+const _relay = RelayEndpoint(
+  url: 'wss://relay.test',
+  routingId: '0123456789abcdef0123456789abcdef',
+  enabled: true,
+);
+
+const _relayPhoneUrl =
+    'wss://relay.test/v1/connect/0123456789abcdef0123456789abcdef';
 
 class _InMemoryTransport implements WebSocketTransport {
   final StreamController<Uint8List> incomingController =
@@ -40,7 +52,10 @@ class _InMemoryTransport implements WebSocketTransport {
   Stream<TransportState> get stateChanges => const Stream.empty();
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) async {
+  int? closeCode;
+
+  @override
+  Future<void> connect(String url) async {
     connectedUrl = url;
   }
 
@@ -51,6 +66,10 @@ class _InMemoryTransport implements WebSocketTransport {
   Future<void> send(Uint8List data) async {
     if (!peer.incomingController.isClosed) peer.incomingController.add(data);
   }
+
+  @override
+  Future<void> sendText(String text) =>
+      send(Uint8List.fromList(utf8.encode(text)));
 
   Future<void> forceClose() async {
     if (!incomingController.isClosed) await incomingController.close();
@@ -197,8 +216,23 @@ class _FakeSelector implements TransportSelector {
   /// Device ids the selector should treat as unreachable (throws on select).
   final Set<String> unreachable = {};
 
+  /// Errors the next selects throw, in order (a relay refusing, say).
+  final List<Object> failNext = [];
+
+  /// Every device asked for, with the relay ticket it came with, in order.
+  final List<(TrustedDevice, String?)> selected = [];
+
   @override
-  Future<WebSocketTransport> select(TrustedDevice device) async {
+  Future<WebSocketTransport> select(
+    TrustedDevice device, {
+    String? relayTicket,
+  }) async {
+    selected.add((device, relayTicket));
+    if (failNext.isNotEmpty) {
+      final failure = failNext.removeAt(0);
+      if (failure is Exception) throw failure;
+      throw failure as Error;
+    }
     if (unreachable.contains(device.macDeviceId)) {
       throw StateError('unreachable: ${device.macDeviceId}');
     }
@@ -209,8 +243,9 @@ class _FakeSelector implements TransportSelector {
     // Mirror the real selector: the winning transport records the endpoint it
     // connected through (the relay here, or a direct ws:// host), so the
     // coordinator can surface the real address in use.
-    phone.connectedUrl = device.relayUrl.isNotEmpty
-        ? device.relayUrl
+    final relay = device.relay;
+    phone.connectedUrl = relay != null
+        ? '${relay.url}/v1/connect/${relay.routingId}'
         : (device.hosts.isNotEmpty ? 'ws://${device.hosts.first}' : null);
     phoneSides.add(phone);
     final fakeBridge = _FakeBridge(bridge, identity, handler);
@@ -296,6 +331,12 @@ class _FakeTrustedDeviceRepo implements ITrustedDeviceRepository {
   }
 
   @override
+  Future<void> recordRelay(String macDeviceId, RelayEndpoint? relay) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.withRelay(relay);
+  }
+
+  @override
   Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
     final d = devices[macDeviceId];
     if (d != null) devices[macDeviceId] = d.copyWith(lastSeen: at);
@@ -352,7 +393,7 @@ void main() {
         macDeviceId: 'mac-1',
         displayName: 'Test Bridge',
         macIdentityPublicKey: bridgeId.publicKey,
-        relayUrl: 'wss://relay.test',
+        relay: _relay,
         sessionId: 'session-xyz',
         pairedAt: DateTime(2026),
       );
@@ -409,7 +450,7 @@ void main() {
     await harness.coordinator.connect(forceQrBootstrap: true);
     // The winning transport's endpoint is surfaced so the UI can show the real
     // address in use (the relay here, per the active device).
-    expect(harness.coordinator.connectedEndpoint, 'wss://relay.test');
+    expect(harness.coordinator.connectedEndpoint, _relayPhoneUrl);
 
     await harness.coordinator.disconnect();
     expect(harness.coordinator.connectedEndpoint, isNull);
@@ -428,7 +469,7 @@ void main() {
       macDeviceId: 'mac-2',
       displayName: 'PC2',
       macIdentityPublicKey: bridgeId.publicKey,
-      relayUrl: 'wss://relay.test',
+      relay: _relay,
       sessionId: 'session-2',
       pairedAt: DateTime(2026),
     );
@@ -506,6 +547,49 @@ void main() {
           const Duration(seconds: 5),
         );
     expect((response.result! as Map)['echo'], 'ping');
+  });
+
+  test(
+      "the reconnect loop keeps the relay's reason while it retries, and "
+      'drops it once the failure is something else', () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    final states = <ConnectionRecoveryState>[];
+    final sub = harness.coordinator.recoveryStateStream.listen(states.add);
+    addTearDown(sub.cancel);
+    harness.selector.failNext.addAll([
+      const RelayException(RelayFailure.bridgeOffline, 'bridge offline'),
+      StateError('no route'),
+    ]);
+    await harness.selector.dropCurrent();
+    await harness.coordinator.connectionPhaseStream
+        .firstWhere((p) => p == ConnectionPhase.connected)
+        .timeout(const Duration(seconds: 5));
+    await pumpEventQueue();
+
+    final reasons = [for (final s in states) s.lastRelayFailure];
+    // Attempt 1 fails at the relay; attempt 2 waits still saying why; its
+    // own failure is not the relay's, which clears the reason.
+    expect(
+      reasons,
+      containsAllInOrder([
+        RelayFailure.bridgeOffline,
+        RelayFailure.bridgeOffline,
+        null,
+      ]),
+    );
+    expect(
+      states
+          .where((s) => s.attempt == 2 && s.isRecovering)
+          .first
+          .lastRelayFailure,
+      RelayFailure.bridgeOffline,
+    );
+    // Back online: nothing to explain any more.
+    expect(states.last.lastRelayFailure, isNull);
+    expect(states.last.isRecovering, isFalse);
   });
 
   test('resume() retries immediately when a reconnect backoff is pending',
@@ -589,7 +673,7 @@ void main() {
         macDeviceId: 'mac-1',
         displayName: 'Test Bridge',
         macIdentityPublicKey: bridgeId.publicKey,
-        relayUrl: 'wss://relay.test',
+        relay: _relay,
         sessionId: 'session-xyz',
         pairedAt: DateTime(2026),
       ),
@@ -618,7 +702,7 @@ void main() {
         macDeviceId: 'mac-other',
         displayName: 'Other PC',
         macIdentityPublicKey: bridgeId.publicKey,
-        relayUrl: 'wss://relay.test',
+        relay: _relay,
         sessionId: 'session-other',
         pairedAt: DateTime(2026),
       ),
@@ -707,8 +791,9 @@ void main() {
     addTearDown(harness.coordinator.dispose);
 
     final payload = PairingPayload(
-      version: 2,
-      relayUrl: 'wss://relay.test',
+      version: 3,
+      relay: _relay,
+      relayTicket: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
       hosts: const [],
       sessionId: 'session-xyz',
       macDeviceId: 'mac-1',
@@ -724,5 +809,53 @@ void main() {
     final saved = await harness.repo.getDevice('mac-1');
     expect(saved, isNotNull);
     expect(saved!.macIdentityPublicKey, bridgeId.publicKey);
+    expect(saved.relay, _relay);
+    // The relay's one-time pairing ticket goes with the first dial only.
+    expect(harness.selector.selected.single.$2, isNotNull);
+
+    await harness.selector.dropCurrent();
+    await _until(() => harness.selector.selected.length == 2);
+    expect(harness.selector.selected.last.$2, isNull);
   });
+
+  test('dials through the relay the PC announced since it was paired',
+      () async {
+    final harness = await build(echo, setActive: false);
+    addTearDown(harness.coordinator.dispose);
+    // Paired on the LAN: no relay yet.
+    final pc = TrustedDevice(
+      macDeviceId: 'mac-1',
+      displayName: 'Test Bridge',
+      macIdentityPublicKey: bridgeId.publicKey,
+      hosts: const ['192.168.1.5:19850'],
+      sessionId: 'session-xyz',
+      pairedAt: DateTime(2026),
+    );
+    await harness.repo.saveDevice(pc);
+    harness.coordinator.setActiveDevice(pc);
+    await harness.coordinator.connect();
+    expect(harness.selector.selected.single.$1.relay, isNull);
+
+    // Its bridge then shares a relay (stored by the replica), and the
+    // connection drops — the phone left home.
+    await harness.repo.recordRelay('mac-1', _relay);
+    await harness.selector.dropCurrent();
+    await _until(() => harness.selector.selected.length == 2);
+    await _until(
+      () => harness.coordinator.connectionPhase == ConnectionPhase.connected,
+    );
+
+    expect(harness.selector.selected.last.$1.relay, _relay);
+    expect(harness.coordinator.activeMac?.relay, _relay);
+    expect(harness.coordinator.connectedDevice?.relay, _relay);
+    final sessions = await harness.connectionRepo.getAll();
+    expect(sessions.last.transport, ConnectionTransport.relay);
+  });
+}
+
+Future<void> _until(bool Function() condition) async {
+  for (var i = 0; i < 200 && !condition(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  expect(condition(), isTrue);
 }

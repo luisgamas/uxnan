@@ -153,6 +153,26 @@ void main() {
     expect(await pending(), ['pc-1:renamePc=Studio']);
   });
 
+  test('a relay switch keeps only the latest decision and sends it dated',
+      () async {
+    await keep('pc-1', PendingActionKind.setRelay, value: 'false');
+    await keep('pc-1', PendingActionKind.setRelay, value: 'true');
+    expect(await pending(), ['pc-1:setRelay=true']);
+    expect(
+      (await outbox.pending('pc-1')).single.kind,
+      PendingActionKind.setRelay,
+    );
+
+    now = now.add(const Duration(seconds: 90));
+    final sent = <(String, Map<String, dynamic>?)>[];
+    await outbox.flush('pc-1', (method, [params]) async {
+      sent.add((method, params));
+      return _ok;
+    });
+    expect(sent.single.$1, 'relay/set');
+    expect(sent.single.$2, {'enabled': true, 'ageMs': 90000});
+  });
+
   test('forgetting a PC drops its waiting actions', () async {
     await keep('a', PendingActionKind.archiveThread);
     await repo.forgetDevice('pc-1');

@@ -352,10 +352,12 @@ uxnan-bridge start
 
 That boots the daemon and prints the pairing QR right there in the terminal.
 Scan it from the app (or type the short code it prints) and you're paired. The
-phone connects **directly** over your LAN or Tailscale first, and only falls back
-to an optional, self-hosted relay when you're off that network — either way, every
-byte is sealed end-to-end before it leaves your phone. Full setup in
-**[bridge/README.md](bridge/README.md)**.
+phone connects **directly** over your LAN or Tailscale first. To reach your PC
+from any other network without a VPN, the bridge can deploy **your own relay**
+into your free Cloudflare account (`uxnan-bridge relay setup`) — nothing is
+hosted by uxnan. Either way, every byte is sealed end-to-end before it leaves
+your phone. How to pick: **[connecting your phone](docs/connecting.md)**; full
+setup in **[bridge/README.md](bridge/README.md)**.
 
 ---
 
@@ -409,8 +411,9 @@ per-agent sign-in prerequisites.
 ## Security
 
 Every byte between your phone and your PC is sealed end-to-end — an X25519 key
-exchange, Ed25519-signed identities, and AES-256-GCM encryption; the optional
-relay only ever sees sealed envelopes, never your code. GitHub actions route
+exchange, Ed25519-signed identities, and AES-256-GCM encryption; your optional
+relay, which runs in your own Cloudflare account, only ever sees sealed
+envelopes, never your code. GitHub actions route
 through your own `gh` CLI, which keeps its OAuth token in your OS keychain —
 uxnan reads a sanitized login status and nothing else. Found a vulnerability?
 Please don't open a public issue — see **[SECURITY.md](SECURITY.md)**.

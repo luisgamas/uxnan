@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
@@ -23,10 +24,16 @@ class _InMemorySecureStore implements SecureStore {
   Future<void> clearAll() async => data.clear();
 }
 
+const _relay = RelayEndpoint(
+  url: 'wss://uxnan-relay.example.workers.dev',
+  routingId: '0123456789abcdef0123456789abcdef',
+  enabled: true,
+);
+
 TrustedDevice _device(
   String id, {
   Uint8List? key,
-  String relayUrl = 'wss://relay.test',
+  RelayEndpoint? relay = _relay,
   List<String> hosts = const [],
   int lastAppliedBridgeOutboundSeq = 0,
 }) =>
@@ -35,7 +42,7 @@ TrustedDevice _device(
       displayName: 'Device $id',
       macIdentityPublicKey:
           key ?? Uint8List.fromList(List<int>.generate(32, (i) => i)),
-      relayUrl: relayUrl,
+      relay: relay,
       hosts: hosts,
       sessionId: 'session-$id',
       pairedAt: DateTime(2026),
@@ -93,7 +100,29 @@ void main() {
       expect(loaded, isNotNull);
       expect(loaded!.displayName, 'Device mac-1');
       expect(loaded.macIdentityPublicKey, key);
-      expect(loaded.relayUrl, 'wss://relay.test');
+      expect(loaded.relay, _relay);
+    });
+
+    test("stores the PC's relay as it changes, and clears it", () async {
+      await repo.saveDevice(_device('mac-1', relay: null));
+      expect((await repo.getDevice('mac-1'))!.relay, isNull);
+
+      await repo.recordLastSeen('mac-1', DateTime(2026, 10));
+      await repo.recordRelay('mac-1', _relay);
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.relay, _relay);
+      expect(loaded.lastSeen, DateTime(2026, 10));
+
+      const off = RelayEndpoint(
+        url: 'wss://uxnan-relay.example.workers.dev',
+        routingId: 'fedcba9876543210fedcba9876543210',
+        enabled: false,
+      );
+      await repo.recordRelay('mac-1', off);
+      expect((await repo.getDevice('mac-1'))!.relay, off);
+
+      await repo.recordRelay('mac-1', null);
+      expect((await repo.getDevice('mac-1'))!.relay, isNull);
     });
 
     test('round-trips direct LAN/Tailscale hosts', () async {

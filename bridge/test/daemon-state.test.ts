@@ -37,7 +37,33 @@ test('initConfig writes defaults and merges a partial on next read', async () =>
   await state.writeJson('daemon-config.json', { lanPort: 20000 });
   const merged = await state.readConfig();
   assert.equal(merged.lanPort, 20000);
-  assert.equal(merged.relayUrl, DEFAULT_DAEMON_CONFIG.relayUrl);
+  assert.equal(merged.lanEnabled, DEFAULT_DAEMON_CONFIG.lanEnabled);
+  await rmrf(state.baseDir);
+});
+
+test('readConfig drops the retired relay URL and switch, and a malformed relay', async () => {
+  const state = freshState();
+  await state.writeJson('daemon-config.json', {
+    relayUrl: 'wss://relay.uxnan.io',
+    relayEnabled: true,
+    relay: { url: 'https://not-a-relay', routingId: 'x', enabled: true },
+  });
+  const config = (await state.readConfig()) as unknown as Record<string, unknown>;
+  assert.equal('relayUrl' in config, false);
+  assert.equal('relayEnabled' in config, false);
+  assert.equal('relay' in config, false);
+  await rmrf(state.baseDir);
+});
+
+test('readConfig keeps a well-formed relay endpoint', async () => {
+  const state = freshState();
+  const relay = {
+    url: 'wss://uxnan-relay.example.workers.dev',
+    routingId: 'a'.repeat(32),
+    enabled: false,
+  };
+  await state.writeJson('daemon-config.json', { relay });
+  assert.deepEqual((await state.readConfig()).relay, relay);
   await rmrf(state.baseDir);
 });
 

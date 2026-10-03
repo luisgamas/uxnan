@@ -1,26 +1,32 @@
 # Connectivity — how the phone reaches the bridge
 
 ![LAN](https://img.shields.io/badge/LAN-direct-2ea44f?style=for-the-badge)
-![Tailscale](https://img.shields.io/badge/Tailscale-direct_(recommended_off--LAN)-blue?style=for-the-badge&logo=tailscale&logoColor=white)
-![Relay](https://img.shields.io/badge/relay-optional_%2F_self--hosted-lightgrey?style=for-the-badge)
+![Tailscale](https://img.shields.io/badge/Tailscale-direct-blue?style=for-the-badge&logo=tailscale&logoColor=white)
+![Relay](https://img.shields.io/badge/relay-your_own_Cloudflare_account-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
 
 The phone and bridge always speak the **same E2EE protocol**; only the *transport*
-to reach the bridge differs. The pairing QR advertises the available transports and
-the phone picks one. There are three modes — pick by where you need to use it.
+to reach the bridge differs. There are three ways, and the phone uses the first
+that answers — direct addresses first, the relay last. (The user-facing version
+of this page is [`docs/connecting.md`](../../docs/connecting.md).)
 
-| Mode | Hosting | When |
+| Way | What you set up | When |
 |---|---|---|
-| **1. Direct LAN** | none | Phone + PC on the same network. **Primary plug-and-play path.** |
-| **2. Tailscale (or any mesh VPN)** | none | Remote, recommended. Puts both devices on one virtual network so the direct path "just works". |
-| **3. Self-hosted relay** | a server you run | Remote, **optional and off by default** — for users who don't want to install a VPN. |
+| **1. Same network (direct LAN)** | nothing | Phone and PC on the same Wi-Fi/LAN. The default. |
+| **2. Tailscale (direct)** | Tailscale on both devices | Away from home, if you already use Tailscale or are happy to install it. Lowest latency off the LAN, nothing to deploy. |
+| **3. Your own relay** | `uxnan-bridge relay setup` — a free Cloudflare account | Away from home with no VPN on the phone. The bridge deploys the relay into **your** account; paired phones then reach the PC from any network. |
 
-The pairing QR carries:
+The pairing QR (v3) carries:
 - **`hosts`** — the bridge's direct `host:port` addresses (its non-internal IPv4s:
   LAN address(es) and, if Tailscale is up, the `100.x` tailnet address). The phone
   tries these **first**.
-- **`relay`** — the relay URL, used as a **fallback**. Present **only when you
-  enable a (self-hosted) relay** (`relayEnabled: true`); it is **off by default**.
-  At least one of `hosts`/`relay` is always present.
+- **`relay`** — `{ url, routingId, ticket? }`, present **only while a relay is
+  set up and enabled**. `ticket` is a one-time pairing ticket, there while the
+  pairing window is open, so a phone that is not on the PC's network can pair
+  through the relay. At least one of `hosts`/`relay` is always present.
+
+A phone paired on the LAN does not need a new QR when a relay is set up later:
+the relay is a **shared setting** (`BridgeSettings.relay`), so every paired phone
+learns it the next time it syncs with the bridge.
 
 ## 1. Direct LAN (default, no hosting)
 
@@ -76,12 +82,12 @@ UDP 5353 for the bridge on the active network profile; the bridge does not add
 an elevated firewall rule automatically. A blocked/unsupported mDNS path never
 weakens pairing: scan the QR or type the printed host and code instead.
 
-## 2. Tailscale — remote with no hosting (recommended)
+## 2. Tailscale — direct from anywhere, no hosting
 
-[Tailscale](https://tailscale.com) (or ZeroTier / WireGuard) puts your phone and PC
-on one private virtual network. The bridge already listens on all interfaces, so its
+[Tailscale](https://tailscale.com) puts your phone and PC on one private
+virtual network. The bridge already listens on all interfaces, so its
 Tailscale `100.x` address is advertised in `hosts` automatically — a phone on the
-same tailnet reaches the bridge directly from anywhere, **with no hosted relay**.
+same tailnet reaches the bridge directly from anywhere, **with no relay**.
 
 1. Install Tailscale on the **PC** and the **phone**; sign both into the same
    tailnet (free for personal use).
@@ -95,23 +101,69 @@ same tailnet reaches the bridge directly from anywhere, **with no hosted relay**
 > (it is printed as a "Direct address" when the bridge starts). This is inherent
 > to mDNS, not a bug — and once paired, reconnecting needs no discovery at all.
 
-No extra config needed: the relay is **off by default**, so this mode is pure
-direct (the QR carries only `hosts`).
+No extra config needed: with no relay set up, the QR carries only `hosts`.
 
-## 3. Self-hosted relay (optional — off by default)
+## 3. Your own relay
 
-The relay is **disabled by default** (`relayEnabled: false`) — install-and-run is
-LAN/Tailscale-direct with zero hosting. Enable it only if you'd rather not put a
-VPN on the phone and want an internet-reachable fallback. **To turn it on:**
+For a phone on another network with no VPN. The relay is a Cloudflare Worker
+that **the bridge deploys into your own Cloudflare account** (the free plan is
+enough); Uxnan hosts nothing. Off until you set it up.
 
-1. **Run your own relay** — it's the `uxnan-relay` package in this repo. Hosting
-   options (Cloudflare Tunnel, Fly.io, a small VPS, …) are in
-   [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). The relay only ever
-   sees opaque E2EE envelopes, so it needs no secrets or trust.
-2. **Point the bridge at it and enable it** — in [`configuration.md`](./configuration.md)
-   set `relayEnabled: true` and `relayUrl` to your relay's `wss://…` URL.
-3. Re-pair (or regenerate the QR): it now carries your `relay` as a fallback after
-   the direct `hosts`.
+**Set it up** (the bridge must be running — these commands ask it over the
+local control channel):
+
+1. In Cloudflare, create an **API token from the "Edit Cloudflare Workers"
+   template** for your account, and copy your **account id** (*Workers & Pages*
+   overview).
+2. Run:
+
+   ```bash
+   uxnan-bridge relay setup --account <account-id>   # prompts for the token (not echoed)
+   ```
+
+   Add `--remember` to keep the token in the system keyring for later
+   `relay update` / `relay remove --delete-worker`; otherwise it is used once and
+   dropped. It is never an argument, never written to a file or a log.
+3. The bridge deploys the Worker, waits for `wss://uxnan-relay.<subdomain>.workers.dev`
+   to answer, saves the endpoint as the shared setting `relay` and connects.
+   Phones already paired learn it at their next sync; a new pairing QR carries
+   it with a ticket.
+
+**Manage it:**
+
+```bash
+uxnan-bridge relay status                  # state, endpoint, versions, connected phones, hostKey
+uxnan-bridge relay disable | enable        # stop / resume serving phones through it
+uxnan-bridge relay update [--remember]     # deploy the relay version this bridge ships
+uxnan-bridge relay rotate                  # new routing id; the old one stops working
+uxnan-bridge relay remove [--delete-worker]
+uxnan-bridge relay use wss://<host>        # a relay you deployed yourself (same Worker)
+```
+
+The same actions are JSON-RPC methods every client can call — `relay/status`,
+`relay/setup`, `relay/use`, `relay/set`, `relay/update`, `relay/rotate`,
+`relay/remove` — and every change is announced as `stream/relay/updated`
+(architecture/02a §5.10). The desktop and phone screens for them are not built
+yet; the CLI is the way in today.
+
+**How it works.** The bridge keeps one control socket open to its room on the
+relay (`/v1/host/<routingId>`), signs the relay's challenge with its Ed25519
+identity, sends it the trusted phones' keys, and pings every 30 s (answered
+without waking the relay). It reconnects on its own, backing off from 2 s to
+60 s. When a trusted phone dials in, the relay asks the bridge to open a
+channel for it; the bridge runs **the same secure session as on the LAN** over
+that channel. Showing the QR or the pairing code also hands the relay the hash
+of a one-time ticket, so a new phone can pair from another network while the
+pairing window is open.
+
+**What the relay can and cannot see.** It sees the bridge's and phones' public
+keys, when they connect and how large the encrypted frames are. It never sees
+content: everything after its auth step is the E2EE handshake and AES-256-GCM
+envelopes. It stores only the bound bridge key, the trusted phone keys and the
+hash of an open ticket. Removing a trusted phone cuts its relay channel at once.
+
+Deployment details, the manual path and free-plan limits:
+[`../../relay/docs/deploy.md`](../../relay/docs/deploy.md).
 
 ## 4. Uxnan Desktop on the same machine (local control channel)
 
@@ -149,24 +201,29 @@ In the desktop: **Settings → Bridge & mobile** (see
 
 ## Notes
 
-- **First-time pairing is time-boxed (LAN/Tailscale).** Enrollment of a *new*
+- **First-time pairing is time-boxed — on every path.** Enrollment of a *new*
   device is only accepted for 5 minutes after an operator action opens the
   window — showing the QR, showing the code, or a phone successfully looking the
   code up. This is what stops any peer that can reach the always-listening LAN
-  port from enrolling itself as trusted. Already-paired devices reconnect at any
-  time, unaffected. Against a console-less daemon (`install-service`),
-  `uxnan-bridge qr` asks the running bridge for its payload over the local
-  control channel (`bridge/generatePairingQr`), which opens THAT bridge's
-  window — the same thing Uxnan Desktop's "Pair a phone" does. The service
-  itself never prints a QR or a code: its output goes to a log file.
-
-- All modes are E2EE end-to-end; the relay only ever sees opaque envelopes.
+  port, or the relay, from enrolling itself as trusted. Through the relay a new
+  phone also needs the one-time ticket from the QR. Already-paired devices
+  reconnect at any time, unaffected. Against a console-less daemon
+  (`install-service`), `uxnan-bridge qr` asks the running bridge for its payload
+  over the local control channel (`bridge/generatePairingQr`), which opens THAT
+  bridge's window — the same thing Uxnan Desktop's "Pair a phone" does. The
+  service itself never prints a QR or a code: its output goes to a log file.
+- **Pairing by typed code needs a direct path.** The phone resolves a code with
+  `GET /pair/resolve?code=` on the LAN or Tailscale address; away from the PC's
+  network, pair by scanning the QR (it carries the relay ticket).
+- All ways are E2EE end-to-end; the relay only ever forwards opaque envelopes.
 - `hosts` may include virtual-NIC addresses (Docker/WSL/Hyper-V) the phone can't
   reach — harmless, it just tries the next one (each with a short timeout) and
-  finally falls back to the relay when one is configured.
-- **Mobile side:** the app consumes `hosts` (tries each direct address first,
-  then the relay), tolerates a relay-less QR, and persists the hosts on the
-  trusted device — implemented and verified on Android over LAN and Tailscale.
+  finally dials the relay when one is set up.
+- **Mobile side:** the app tries each direct address first, then the PC's relay,
+  tolerates a relay-less QR, keeps the hosts and the relay on the trusted device,
+  and keeps the relay current from the bridge's shared settings. Verified on
+  Android over LAN and Tailscale; the relay path is tested against the real
+  relay runtime and still owes a device run (`relay/FOR-DEV.md`).
 
 ## Troubleshooting Direct LAN
 
@@ -196,4 +253,4 @@ not on the same Wi-Fi, or the phone can't even ping the PC), it's almost always
   Required" page is fine — the port is open). Also check both devices are on the
   same subnet (guest/AP-isolated Wi-Fi blocks device-to-device traffic).
 - **Tailscale always works** even when the LAN is blocked — its `100.x` address
-  is advertised in the QR, so it's the reliable fallback with no hosting.
+  is advertised in the QR — and so does your own relay, once set up.

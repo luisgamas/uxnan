@@ -10,6 +10,7 @@ import 'package:uxnan/application/managers/file_browser_manager.dart'
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/phone_name_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
+import 'package:uxnan/application/managers/relay_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
@@ -53,10 +54,12 @@ import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/relay_status.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/domain/value_objects/usage_summary.dart';
+import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
@@ -80,9 +83,15 @@ final secureTransportLayerProvider =
     Provider<SecureTransportLayer>((ref) => SecureTransportLayer());
 
 /// Chooses and opens the transport for a device: direct LAN/Tailscale hosts
-/// first, then the relay fallback (spec 02a §5.9.3).
+/// first, then the bridge's own relay (spec 02a §5.9.3, §5.10).
 final transportSelectorProvider = Provider<TransportSelector>(
-  (ref) => DirectTransportSelector(WebSocketChannelTransport.new),
+  (ref) => DirectTransportSelector(
+    WebSocketChannelTransport.new,
+    relayClient: RelayClient(
+      createTransport: WebSocketChannelTransport.new,
+      identity: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
+    ),
+  ),
 );
 
 /// Validates pairing QR payloads.
@@ -141,8 +150,8 @@ final connectedEndpointProvider = StreamProvider<String?>(
 
 /// The network path the LIVE channel is actually using — LAN, Tailscale, a
 /// direct address, or the relay — classified client-side from
-/// [connectedEndpointProvider] against the connected device's advertised
-/// `relayUrl` (see [classifyEndpoint]). [NetworkKind.unknown] while no device
+/// [connectedEndpointProvider] against the connected device's relay
+/// (see [classifyEndpoint]). [NetworkKind.unknown] while no device
 /// holds the live channel.
 ///
 /// Deliberately NOT derived from [bridgeStatusProvider].relayConnected: that
@@ -155,7 +164,7 @@ final networkKindProvider = Provider<NetworkKind>((ref) {
   final device = ref.watch(connectedDeviceProvider).value;
   if (device == null) return NetworkKind.unknown;
   final endpoint = ref.watch(connectedEndpointProvider).value;
-  return classifyEndpoint(endpoint, relayUrl: device.relayUrl);
+  return classifyEndpoint(endpoint, relayUrl: device.relay?.url ?? '');
 });
 
 /// The connected bridge's status (`bridge/status`), re-read on every
@@ -895,6 +904,43 @@ final bridgeReplicaProvider = Provider<BridgeReplica>((ref) {
   );
   ref.onDispose(replica.dispose);
   return replica;
+});
+
+/// The connected PC's relay as its bridge reports it, and the `relay/*`
+/// actions the phone can ask for (architecture/02a §5.10).
+final relayManagerProvider = Provider<RelayManager>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  final processor = ref.watch(incomingMessageProcessorProvider);
+  final manager = RelayManager(
+    sendRequest: coordinator.sendRequest,
+    sendCloudflareRequest: (method, [params]) => coordinator.sendRequest(
+      method,
+      params,
+      RelayManager.cloudflareTimeout,
+    ),
+    domainEvents: processor.bind(coordinator.incomingMessages),
+    connectionPhases: coordinator.connectionPhaseStream,
+    currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
+    outbox: ref.watch(actionOutboxProvider),
+  );
+  ref.onDispose(manager.dispose);
+  return manager;
+});
+
+/// The connected PC's relay status (`null` while unknown).
+final relayStatusProvider = StreamProvider<RelayStatus?>(
+  (ref) => ref.watch(relayManagerProvider).statusStream,
+);
+
+/// The relay switch this phone keeps for the PC with this `macDeviceId` until
+/// it is reachable (`true` on, `false` off), or `null` when none is waiting.
+///
+/// Re-read whenever the connected PC changes — reconnecting is when a kept
+/// switch is sent — and invalidated by the screen that keeps a new one.
+final pendingRelaySwitchProvider =
+    FutureProvider.family<bool?, String>((ref, deviceId) {
+  ref.watch(connectedDeviceProvider);
+  return ref.watch(relayManagerProvider).pendingEnabled(deviceId);
 });
 
 /// The phones paired to the connected PC (this one among them).

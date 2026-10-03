@@ -1,10 +1,22 @@
 # Uxnan — Guia de Referencia Tecnica
 
-> **Version:** 1.0.1
-> **Fecha:** 2026-07-21
+> **Version:** 1.0.3
+> **Fecha:** 2026-10-02
 > **Estado:** Documento activo — se actualiza con cada cambio arquitectonico relevante
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.0.3):** the relay is the user's own Cloudflare
+> Worker, deployed by the bridge (`02a` §5.10): it reads no environment
+> variables (`RELAY_PORT` is gone) — its only configuration is the
+> `UXNAN_HOST_KEYS` binding the bridge sets. The pairing QR is v3 and the
+> glossary entries for `relay`, `PairingPayload`, `routingId` and pairing
+> tickets follow.
+
+> **Executive summary (1.0.2):** the relay's environment is just
+> `RELAY_PORT`: it has no push and no state on disk, so it reads no Firebase
+> credential. Background push is the bridge's alone, straight to FCM, and the
+> `notificationSecret` glossary entry is gone.
 
 > **Executive summary (1.0.1):** platform discovery references now match the
 > implemented `_uxnan._tcp` service. Android uses NsdManager with a multicast
@@ -259,7 +271,7 @@ Todos los commits siguen el formato [Conventional Commits](https://www.conventio
 | `infra` | Capa de infraestructura: repositorios concretos, transporte, storage, crypto |
 | `ui` | Capa de presentacion: pantallas, widgets, providers, theme, router |
 | `bridge` | Bridge daemon (Node.js): adapters, handlers, estado |
-| `relay` | Relay server (Node.js, opcional / self-hosted; solo como fallback off-LAN) |
+| `relay` | Relay propio del usuario (Cloudflare Worker + Durable Object que despliega el bridge; opcional, fallback off-LAN) |
 | `transport` | Transporte seguro: WebSocket, SecureTransport, handshake |
 | `crypto` | Criptografia: key generation, envelope crypto, handshake crypto |
 | `git` | Integracion Git: handler, modelos, UI de Git |
@@ -279,7 +291,7 @@ perf(ui): virtualize timeline list for 100+ messages
 ci: add iOS release build to GitHub Actions
 build: configure drift code generation in build.yaml
 feat(bridge): add pi-agent adapter
-fix(relay): prevent duplicate push on rapid reconnect
+fix(relay): close the paired socket when a peer is superseded
 ```
 
 #### Breaking changes
@@ -830,8 +842,9 @@ GoRoute(
 El proyecto usa `--dart-define` para inyectar configuracion en tiempo de compilacion. No se usan archivos `.env` ni paquetes de configuracion adicionales.
 
 > **Direccion (2026-06):** el producto es **bridge-first**. La direccion del
-> bridge y (opcionalmente) la URL del relay **vienen del `PairingPayload`
-> del QR** — no se inyectan en tiempo de compilacion. Esto permite que un
+> bridge y (opcionalmente) el relay propio del PC **vienen del `PairingPayload`
+> del QR** y de los ajustes compartidos del bridge — no se inyectan en tiempo
+> de compilacion. Esto permite que un
 > mismo APK funcione contra cualquier bridge (LAN / Tailscale / relay)
 > sin recompilar. `RELAY_URL` se elimino de la lista de variables de
 > compilacion.
@@ -978,29 +991,27 @@ El bridge no usa variables de entorno propias obligatorias. Las credenciales de 
 
 El bridge lee estas variables del entorno del proceso. La app movil **nunca** las conoce.
 
-#### Variables del relay (opcional, self-hosted)
+#### Configuracion del relay (opcional, propio del usuario)
 
-> **Direccion (2026-06):** el relay es **opcional y self-hosted**. La
-> ruta primaria del producto es LAN-direct / Tailscale-direct. Si
-> despliegas tu propio relay off-LAN, estas son sus variables de entorno
-> (documentadas tambien en `relay/docs/`):
+> **Direccion (2026-10):** el relay es un Cloudflare Worker que **el bridge
+> despliega** en la cuenta del usuario (`02a` §5.10); no lee variables de
+> entorno. Su unica configuracion es la del despliegue, que pone el bridge:
 
-| Variable | Descripcion | Ejemplo |
+| Binding | Descripcion | Ejemplo |
 |---|---|---|
-| `PORT` | Puerto HTTP/WS del relay | `8787` |
-| `UXNAN_FCM_SERVICE_ACCOUNT` | Ruta al service account de Firebase (opcional; si esta, activa el sender FCM del relay). **Equivalente para el bridge:** `~/.uxnan/firebase-service-account.json` | `/secrets/firebase-sa.json` |
-| `RELAY_LOG` | Nivel de log (`debug` / `info` / `warn` / `error`) | `info` |
+| `RELAY` | Namespace del Durable Object `RelayRoom` (SQLite) | — |
+| `UXNAN_HOST_KEYS` | Claves publicas Ed25519 (hex, separadas por comas) de los bridges que pueden alojarse | `ab12…,cd34…` |
 
-> **APNs** ya no se usa directamente desde el relay: la ruta recomendada
-> es **FCM-for-both** (iOS via FCM gateway). Por eso las variables APNs
-> (`APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_PRIVATE_KEY_PATH` /
-> `APNS_ENVIRONMENT` / `APNS_TOPIC`) **se eliminaron** del relay. Si
-> el Firebase project no tiene un APNs `.p8` key uploaded, el relay
-> solo entrega a Android.
+> El relay **no tiene push**: no lee credenciales de Firebase/APNs. El push lo
+> envia solo el bridge, directo a FCM, con su service account en
+> `~/.uxnan/firebase-service-account.json` (override:
+> `UXNAN_FCM_SERVICE_ACCOUNT` en el entorno del **bridge**). La ruta es
+> **FCM-for-both** (iOS via el gateway de FCM con la APNs `.p8` subida a
+> Firebase). El token de Cloudflare no es una variable: se teclea en
+> `uxnan-bridge relay setup` y solo se guarda (en el llavero) si se pide.
 >
-> **Multi-sesion / auth-on-forwarding / dedupe-persistence** del relay
-> siguen siendo **opcionales** (solo importan para un relay publico/
-> compartido; ver `relay/FOR-DEV.md`).
+> Para correr la suite del relay contra un relay desplegado:
+> `UXNAN_RELAY_TEST_URL` + `UXNAN_RELAY_TEST_HOST_KEYS` (`relay/docs/testing.md`).
 
 ### 3.6 Secuencia de DI wiring en el primer arranque
 
@@ -1311,20 +1322,21 @@ enum AgentId {
 | **keyEpoch** | Contador de renegociaciones de clave; incrementa si se derivan nuevas claves |
 | **local-first** | Arquitectura donde el estado primario vive en el dispositivo del usuario, no en un servidor central |
 | **MCP** | Model Context Protocol — protocolo estandar para conectar agentes LLM con herramientas externas |
-| **notificationSecret** | Secreto compartido para autorizar `POST /push/notify` al relay (fallback de push) |
 | **outbound buffer** | Buffer circular del bridge (max 500 msgs / 10 MB) para reenvio al reconectar |
 | **pairing** | Proceso de vincular criptograficamente el telefono con un bridge especifico en una PC (QR o codigo manual) |
-| **PairingPayload** | Estructura v2 transportada en el QR (Base64(utf8(JSON))) o devuelta por `GET /pair/resolve?code=`. Campos: `v:2`, `relay?` (opcional), `hosts?: string[]` (LAN + Tailscale), `sessionId`, `macDeviceId`, `macIdentityPublicKey`, `expiresAt`, `displayName` |
+| **PairingPayload** | Estructura v3 transportada en el QR (Base64(utf8(JSON))) o devuelta por `GET /pair/resolve?code=`. Campos: `v:3`, `relay?: { url, routingId, ticket? }` (opcional), `hosts?: string[]` (LAN + Tailscale), `sessionId`, `macDeviceId`, `macIdentityPublicKey`, `expiresAt`, `displayName` |
 | **phoneDeviceId** | UUID unico generado al instalar la app en un telefono concreto |
 | **PhoneIdentity** | Par de claves Ed25519 que identifican permanentemente al telefono |
 | **plan mode** | Modo de operacion de algunos agentes donde proponen un plan antes de ejecutar cambios |
 | **QR bootstrap** | Modo de handshake inicial que requiere escanear el QR del bridge |
 | **ReAct** | Reason and Act — paradigma de agentes que alterna entre razonamiento y accion |
-| **relay** | (Opcional, self-hosted) Servidor WebSocket stateless que reenvia envelopes E2EE opacos como fallback off-LAN. La ruta primaria del producto es LAN-direct / Tailscale-direct y no usa relay. |
+| **relay** | (Opcional) Relay propio del usuario: un Cloudflare Worker + Durable Object que el bridge despliega en la cuenta de Cloudflare del usuario. Autentica al bridge y a los telefonos (Ed25519) y reenvia frames E2EE opacos como fallback off-LAN. La ruta primaria del producto es LAN-direct / Tailscale-direct y no usa relay. |
+| **routingId** | 32 hex que identifican la sala de un bridge en su relay; `relay rotate` lo cambia |
+| **ticket de pairing** | 32 bytes aleatorios (base64url) en el QR v3 que permiten a un telefono fuera de la red del PC emparejar por el relay una sola vez, mientras la ventana de pairing esta abierta; el relay solo conoce su SHA-256 |
 | **Riverpod** | Framework de gestion de estado reactivo para Flutter basado en providers (3.x manual en este proyecto) |
 | **rollout** | Proceso de entrega de eventos del runtime del agente al bridge |
-| **seq** | Numero de secuencia monotonico por lado (bridge/iphone) para prevenir replay attacks |
-| **sessionId** | UUID que identifica una sesion de conexion bridge-relay-movil |
+| **seq** | Numero de secuencia monotonico por lado (bridge/telefono) para prevenir replay attacks |
+| **sessionId** | UUID que identifica una sesion de pairing/conexion bridge-movil (va en el QR y en el handshake) |
 | **SecureSession** | Objeto inmutable que encapsula el material criptografico de una sesion E2EE activa |
 | **subagent** | Agente subordinado lanzado por el agente principal para una subtarea |
 | **transcript** | Concatenacion de valores del handshake sobre los que se firma con Ed25519 |
