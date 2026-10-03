@@ -9,6 +9,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
+import 'package:uxnan/presentation/screens/profile/remote_access_section.dart';
 import 'package:uxnan/presentation/screens/profile/spend_section.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
@@ -27,7 +28,9 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// to this PC. Reached from the profile's PC list and the device card's
 /// overflow menu. While this PC is connected the screen also shows its shared
 /// start folder (`settings/set`, architecture/02a §5.8.17), which the phone
-/// can change.
+/// can change. Its *Remote access* section ([RemoteAccessSection]) says how
+/// the phone reaches this PC from other networks and manages the PC's own
+/// relay (architecture/02a §5.10).
 ///
 /// A **child** of whatever opened it, not a route: opened from the profile
 /// inside Settings' pane on a tablet, a routed screen escaped that pane —
@@ -125,14 +128,22 @@ class PcDetailsScreen extends ConsumerWidget {
               const NeEntranceRow(index: 1, child: _StartFolderCard()),
             ],
             const SizedBox(height: UxnanSpacing.xl),
-            NeEntranceRow(index: 2, child: SpendSection(deviceId: deviceId)),
+            NeEntranceRow(
+              index: 2,
+              child: RemoteAccessSection(
+                deviceId: deviceId,
+                isConnected: isConnected,
+              ),
+            ),
+            const SizedBox(height: UxnanSpacing.xl),
+            NeEntranceRow(index: 3, child: SpendSection(deviceId: deviceId)),
             if (isConnected) ...[
               const SizedBox(height: UxnanSpacing.xl),
-              const NeEntranceRow(index: 3, child: UsageSection()),
+              const NeEntranceRow(index: 4, child: UsageSection()),
             ],
             const SizedBox(height: UxnanSpacing.xl),
             NeEntranceRow(
-              index: 4,
+              index: 5,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

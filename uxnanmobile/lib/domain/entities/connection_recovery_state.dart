@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/core/errors/relay_exception.dart';
 
 /// Observable state of the automatic reconnection process.
 ///
@@ -14,6 +15,7 @@ class ConnectionRecoveryState extends Equatable {
     this.nextRetryIn = Duration.zero,
     this.lastConnectedAt,
     this.lastErrorMessage,
+    this.lastRelayFailure,
     this.requiresManualIntervention = false,
   });
 
@@ -35,6 +37,13 @@ class ConnectionRecoveryState extends Equatable {
   /// The most recent error message, if any.
   final String? lastErrorMessage;
 
+  /// Why the user's relay refused or dropped the last attempt, when it was the
+  /// relay that said no (the PC is offline, this phone is no longer paired,
+  /// the relay is full…). Null when the last attempt failed some other way or
+  /// nothing has failed yet. It stands until a later attempt fails differently
+  /// or the connection is back, so the UI can say why while it waits.
+  final RelayFailure? lastRelayFailure;
+
   /// Whether [maxAttempts] was exceeded and the user must intervene.
   final bool requiresManualIntervention;
 
@@ -46,6 +55,7 @@ class ConnectionRecoveryState extends Equatable {
     Duration? nextRetryIn,
     DateTime? lastConnectedAt,
     String? lastErrorMessage,
+    RelayFailure? lastRelayFailure,
     bool? requiresManualIntervention,
   }) {
     return ConnectionRecoveryState(
@@ -55,6 +65,7 @@ class ConnectionRecoveryState extends Equatable {
       nextRetryIn: nextRetryIn ?? this.nextRetryIn,
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       lastErrorMessage: lastErrorMessage ?? this.lastErrorMessage,
+      lastRelayFailure: lastRelayFailure ?? this.lastRelayFailure,
       requiresManualIntervention:
           requiresManualIntervention ?? this.requiresManualIntervention,
     );
@@ -68,6 +79,7 @@ class ConnectionRecoveryState extends Equatable {
         nextRetryIn,
         lastConnectedAt,
         lastErrorMessage,
+        lastRelayFailure,
         requiresManualIntervention,
       ];
 }

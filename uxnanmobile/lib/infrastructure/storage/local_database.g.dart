@@ -2173,8 +2173,24 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
       const VerificationMeta('relayUrl');
   @override
   late final GeneratedColumn<String> relayUrl = GeneratedColumn<String>(
-      'relay_url', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      'relay_url', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _relayRoutingIdMeta =
+      const VerificationMeta('relayRoutingId');
+  @override
+  late final GeneratedColumn<String> relayRoutingId = GeneratedColumn<String>(
+      'relay_routing_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _relayEnabledMeta =
+      const VerificationMeta('relayEnabled');
+  @override
+  late final GeneratedColumn<bool> relayEnabled = GeneratedColumn<bool>(
+      'relay_enabled', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("relay_enabled" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _hostsMeta = const VerificationMeta('hosts');
   @override
   late final GeneratedColumn<String> hosts = GeneratedColumn<String>(
@@ -2210,6 +2226,8 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
         macDeviceId,
         displayName,
         relayUrl,
+        relayRoutingId,
+        relayEnabled,
         hosts,
         sessionId,
         pairedAtMs,
@@ -2245,8 +2263,18 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
     if (data.containsKey('relay_url')) {
       context.handle(_relayUrlMeta,
           relayUrl.isAcceptableOrUnknown(data['relay_url']!, _relayUrlMeta));
-    } else if (isInserting) {
-      context.missing(_relayUrlMeta);
+    }
+    if (data.containsKey('relay_routing_id')) {
+      context.handle(
+          _relayRoutingIdMeta,
+          relayRoutingId.isAcceptableOrUnknown(
+              data['relay_routing_id']!, _relayRoutingIdMeta));
+    }
+    if (data.containsKey('relay_enabled')) {
+      context.handle(
+          _relayEnabledMeta,
+          relayEnabled.isAcceptableOrUnknown(
+              data['relay_enabled']!, _relayEnabledMeta));
     }
     if (data.containsKey('hosts')) {
       context.handle(
@@ -2293,7 +2321,11 @@ class $TrustedDevicesTableTable extends TrustedDevicesTable
       displayName: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}display_name'])!,
       relayUrl: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}relay_url'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}relay_url']),
+      relayRoutingId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}relay_routing_id']),
+      relayEnabled: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}relay_enabled'])!,
       hosts: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}hosts']),
       sessionId: attachedDatabase.typeMapping
@@ -2322,8 +2354,16 @@ class TrustedDeviceRow extends DataClass
   /// Human readable device name.
   final String displayName;
 
-  /// Relay URL used to reach the bridge (empty for a LAN/Tailscale-only device).
-  final String relayUrl;
+  /// The bridge's relay (`RelayEndpoint`): its `wss://` base URL, or null
+  /// while the bridge has none. Schema < 12 stored a bare URL of the retired
+  /// shared relay here (non-null, often empty); v12 clears it.
+  final String? relayUrl;
+
+  /// The bridge's room on [relayUrl] (32 lowercase hex chars); null with it.
+  final String? relayRoutingId;
+
+  /// Whether the bridge serves phones through [relayUrl] right now.
+  final bool relayEnabled;
 
   /// Direct `host:port` addresses (LAN / Tailscale) advertised in the pairing
   /// QR, stored newline-separated. Nullable/absent for older rows (schema < 4).
@@ -2346,7 +2386,9 @@ class TrustedDeviceRow extends DataClass
   const TrustedDeviceRow(
       {required this.macDeviceId,
       required this.displayName,
-      required this.relayUrl,
+      this.relayUrl,
+      this.relayRoutingId,
+      required this.relayEnabled,
       this.hosts,
       required this.sessionId,
       required this.pairedAtMs,
@@ -2357,7 +2399,13 @@ class TrustedDeviceRow extends DataClass
     final map = <String, Expression>{};
     map['mac_device_id'] = Variable<String>(macDeviceId);
     map['display_name'] = Variable<String>(displayName);
-    map['relay_url'] = Variable<String>(relayUrl);
+    if (!nullToAbsent || relayUrl != null) {
+      map['relay_url'] = Variable<String>(relayUrl);
+    }
+    if (!nullToAbsent || relayRoutingId != null) {
+      map['relay_routing_id'] = Variable<String>(relayRoutingId);
+    }
+    map['relay_enabled'] = Variable<bool>(relayEnabled);
     if (!nullToAbsent || hosts != null) {
       map['hosts'] = Variable<String>(hosts);
     }
@@ -2377,7 +2425,13 @@ class TrustedDeviceRow extends DataClass
     return TrustedDevicesTableCompanion(
       macDeviceId: Value(macDeviceId),
       displayName: Value(displayName),
-      relayUrl: Value(relayUrl),
+      relayUrl: relayUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(relayUrl),
+      relayRoutingId: relayRoutingId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(relayRoutingId),
+      relayEnabled: Value(relayEnabled),
       hosts:
           hosts == null && nullToAbsent ? const Value.absent() : Value(hosts),
       sessionId: Value(sessionId),
@@ -2398,7 +2452,9 @@ class TrustedDeviceRow extends DataClass
     return TrustedDeviceRow(
       macDeviceId: serializer.fromJson<String>(json['macDeviceId']),
       displayName: serializer.fromJson<String>(json['displayName']),
-      relayUrl: serializer.fromJson<String>(json['relayUrl']),
+      relayUrl: serializer.fromJson<String?>(json['relayUrl']),
+      relayRoutingId: serializer.fromJson<String?>(json['relayRoutingId']),
+      relayEnabled: serializer.fromJson<bool>(json['relayEnabled']),
       hosts: serializer.fromJson<String?>(json['hosts']),
       sessionId: serializer.fromJson<String>(json['sessionId']),
       pairedAtMs: serializer.fromJson<int>(json['pairedAtMs']),
@@ -2413,7 +2469,9 @@ class TrustedDeviceRow extends DataClass
     return <String, dynamic>{
       'macDeviceId': serializer.toJson<String>(macDeviceId),
       'displayName': serializer.toJson<String>(displayName),
-      'relayUrl': serializer.toJson<String>(relayUrl),
+      'relayUrl': serializer.toJson<String?>(relayUrl),
+      'relayRoutingId': serializer.toJson<String?>(relayRoutingId),
+      'relayEnabled': serializer.toJson<bool>(relayEnabled),
       'hosts': serializer.toJson<String?>(hosts),
       'sessionId': serializer.toJson<String>(sessionId),
       'pairedAtMs': serializer.toJson<int>(pairedAtMs),
@@ -2426,7 +2484,9 @@ class TrustedDeviceRow extends DataClass
   TrustedDeviceRow copyWith(
           {String? macDeviceId,
           String? displayName,
-          String? relayUrl,
+          Value<String?> relayUrl = const Value.absent(),
+          Value<String?> relayRoutingId = const Value.absent(),
+          bool? relayEnabled,
           Value<String?> hosts = const Value.absent(),
           String? sessionId,
           int? pairedAtMs,
@@ -2435,7 +2495,10 @@ class TrustedDeviceRow extends DataClass
       TrustedDeviceRow(
         macDeviceId: macDeviceId ?? this.macDeviceId,
         displayName: displayName ?? this.displayName,
-        relayUrl: relayUrl ?? this.relayUrl,
+        relayUrl: relayUrl.present ? relayUrl.value : this.relayUrl,
+        relayRoutingId:
+            relayRoutingId.present ? relayRoutingId.value : this.relayRoutingId,
+        relayEnabled: relayEnabled ?? this.relayEnabled,
         hosts: hosts.present ? hosts.value : this.hosts,
         sessionId: sessionId ?? this.sessionId,
         pairedAtMs: pairedAtMs ?? this.pairedAtMs,
@@ -2451,6 +2514,12 @@ class TrustedDeviceRow extends DataClass
       displayName:
           data.displayName.present ? data.displayName.value : this.displayName,
       relayUrl: data.relayUrl.present ? data.relayUrl.value : this.relayUrl,
+      relayRoutingId: data.relayRoutingId.present
+          ? data.relayRoutingId.value
+          : this.relayRoutingId,
+      relayEnabled: data.relayEnabled.present
+          ? data.relayEnabled.value
+          : this.relayEnabled,
       hosts: data.hosts.present ? data.hosts.value : this.hosts,
       sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       pairedAtMs:
@@ -2469,6 +2538,8 @@ class TrustedDeviceRow extends DataClass
           ..write('macDeviceId: $macDeviceId, ')
           ..write('displayName: $displayName, ')
           ..write('relayUrl: $relayUrl, ')
+          ..write('relayRoutingId: $relayRoutingId, ')
+          ..write('relayEnabled: $relayEnabled, ')
           ..write('hosts: $hosts, ')
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
@@ -2479,8 +2550,17 @@ class TrustedDeviceRow extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(macDeviceId, displayName, relayUrl, hosts,
-      sessionId, pairedAtMs, lastSeenMs, lastAppliedBridgeOutboundSeq);
+  int get hashCode => Object.hash(
+      macDeviceId,
+      displayName,
+      relayUrl,
+      relayRoutingId,
+      relayEnabled,
+      hosts,
+      sessionId,
+      pairedAtMs,
+      lastSeenMs,
+      lastAppliedBridgeOutboundSeq);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2488,6 +2568,8 @@ class TrustedDeviceRow extends DataClass
           other.macDeviceId == this.macDeviceId &&
           other.displayName == this.displayName &&
           other.relayUrl == this.relayUrl &&
+          other.relayRoutingId == this.relayRoutingId &&
+          other.relayEnabled == this.relayEnabled &&
           other.hosts == this.hosts &&
           other.sessionId == this.sessionId &&
           other.pairedAtMs == this.pairedAtMs &&
@@ -2499,7 +2581,9 @@ class TrustedDeviceRow extends DataClass
 class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
   final Value<String> macDeviceId;
   final Value<String> displayName;
-  final Value<String> relayUrl;
+  final Value<String?> relayUrl;
+  final Value<String?> relayRoutingId;
+  final Value<bool> relayEnabled;
   final Value<String?> hosts;
   final Value<String> sessionId;
   final Value<int> pairedAtMs;
@@ -2510,6 +2594,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     this.macDeviceId = const Value.absent(),
     this.displayName = const Value.absent(),
     this.relayUrl = const Value.absent(),
+    this.relayRoutingId = const Value.absent(),
+    this.relayEnabled = const Value.absent(),
     this.hosts = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.pairedAtMs = const Value.absent(),
@@ -2520,7 +2606,9 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
   TrustedDevicesTableCompanion.insert({
     required String macDeviceId,
     required String displayName,
-    required String relayUrl,
+    this.relayUrl = const Value.absent(),
+    this.relayRoutingId = const Value.absent(),
+    this.relayEnabled = const Value.absent(),
     this.hosts = const Value.absent(),
     required String sessionId,
     required int pairedAtMs,
@@ -2529,13 +2617,14 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     this.rowid = const Value.absent(),
   })  : macDeviceId = Value(macDeviceId),
         displayName = Value(displayName),
-        relayUrl = Value(relayUrl),
         sessionId = Value(sessionId),
         pairedAtMs = Value(pairedAtMs);
   static Insertable<TrustedDeviceRow> custom({
     Expression<String>? macDeviceId,
     Expression<String>? displayName,
     Expression<String>? relayUrl,
+    Expression<String>? relayRoutingId,
+    Expression<bool>? relayEnabled,
     Expression<String>? hosts,
     Expression<String>? sessionId,
     Expression<int>? pairedAtMs,
@@ -2547,6 +2636,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       if (macDeviceId != null) 'mac_device_id': macDeviceId,
       if (displayName != null) 'display_name': displayName,
       if (relayUrl != null) 'relay_url': relayUrl,
+      if (relayRoutingId != null) 'relay_routing_id': relayRoutingId,
+      if (relayEnabled != null) 'relay_enabled': relayEnabled,
       if (hosts != null) 'hosts': hosts,
       if (sessionId != null) 'session_id': sessionId,
       if (pairedAtMs != null) 'paired_at_ms': pairedAtMs,
@@ -2560,7 +2651,9 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
   TrustedDevicesTableCompanion copyWith(
       {Value<String>? macDeviceId,
       Value<String>? displayName,
-      Value<String>? relayUrl,
+      Value<String?>? relayUrl,
+      Value<String?>? relayRoutingId,
+      Value<bool>? relayEnabled,
       Value<String?>? hosts,
       Value<String>? sessionId,
       Value<int>? pairedAtMs,
@@ -2571,6 +2664,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
       macDeviceId: macDeviceId ?? this.macDeviceId,
       displayName: displayName ?? this.displayName,
       relayUrl: relayUrl ?? this.relayUrl,
+      relayRoutingId: relayRoutingId ?? this.relayRoutingId,
+      relayEnabled: relayEnabled ?? this.relayEnabled,
       hosts: hosts ?? this.hosts,
       sessionId: sessionId ?? this.sessionId,
       pairedAtMs: pairedAtMs ?? this.pairedAtMs,
@@ -2592,6 +2687,12 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
     }
     if (relayUrl.present) {
       map['relay_url'] = Variable<String>(relayUrl.value);
+    }
+    if (relayRoutingId.present) {
+      map['relay_routing_id'] = Variable<String>(relayRoutingId.value);
+    }
+    if (relayEnabled.present) {
+      map['relay_enabled'] = Variable<bool>(relayEnabled.value);
     }
     if (hosts.present) {
       map['hosts'] = Variable<String>(hosts.value);
@@ -2621,6 +2722,8 @@ class TrustedDevicesTableCompanion extends UpdateCompanion<TrustedDeviceRow> {
           ..write('macDeviceId: $macDeviceId, ')
           ..write('displayName: $displayName, ')
           ..write('relayUrl: $relayUrl, ')
+          ..write('relayRoutingId: $relayRoutingId, ')
+          ..write('relayEnabled: $relayEnabled, ')
           ..write('hosts: $hosts, ')
           ..write('sessionId: $sessionId, ')
           ..write('pairedAtMs: $pairedAtMs, ')
@@ -5447,7 +5550,9 @@ typedef $$TrustedDevicesTableTableCreateCompanionBuilder
     = TrustedDevicesTableCompanion Function({
   required String macDeviceId,
   required String displayName,
-  required String relayUrl,
+  Value<String?> relayUrl,
+  Value<String?> relayRoutingId,
+  Value<bool> relayEnabled,
   Value<String?> hosts,
   required String sessionId,
   required int pairedAtMs,
@@ -5459,7 +5564,9 @@ typedef $$TrustedDevicesTableTableUpdateCompanionBuilder
     = TrustedDevicesTableCompanion Function({
   Value<String> macDeviceId,
   Value<String> displayName,
-  Value<String> relayUrl,
+  Value<String?> relayUrl,
+  Value<String?> relayRoutingId,
+  Value<bool> relayEnabled,
   Value<String?> hosts,
   Value<String> sessionId,
   Value<int> pairedAtMs,
@@ -5485,6 +5592,13 @@ class $$TrustedDevicesTableTableFilterComposer
 
   ColumnFilters<String> get relayUrl => $composableBuilder(
       column: $table.relayUrl, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get relayRoutingId => $composableBuilder(
+      column: $table.relayRoutingId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get relayEnabled => $composableBuilder(
+      column: $table.relayEnabled, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get hosts => $composableBuilder(
       column: $table.hosts, builder: (column) => ColumnFilters(column));
@@ -5521,6 +5635,14 @@ class $$TrustedDevicesTableTableOrderingComposer
   ColumnOrderings<String> get relayUrl => $composableBuilder(
       column: $table.relayUrl, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get relayRoutingId => $composableBuilder(
+      column: $table.relayRoutingId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get relayEnabled => $composableBuilder(
+      column: $table.relayEnabled,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get hosts => $composableBuilder(
       column: $table.hosts, builder: (column) => ColumnOrderings(column));
 
@@ -5555,6 +5677,12 @@ class $$TrustedDevicesTableTableAnnotationComposer
 
   GeneratedColumn<String> get relayUrl =>
       $composableBuilder(column: $table.relayUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get relayRoutingId => $composableBuilder(
+      column: $table.relayRoutingId, builder: (column) => column);
+
+  GeneratedColumn<bool> get relayEnabled => $composableBuilder(
+      column: $table.relayEnabled, builder: (column) => column);
 
   GeneratedColumn<String> get hosts =>
       $composableBuilder(column: $table.hosts, builder: (column) => column);
@@ -5604,7 +5732,9 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> macDeviceId = const Value.absent(),
             Value<String> displayName = const Value.absent(),
-            Value<String> relayUrl = const Value.absent(),
+            Value<String?> relayUrl = const Value.absent(),
+            Value<String?> relayRoutingId = const Value.absent(),
+            Value<bool> relayEnabled = const Value.absent(),
             Value<String?> hosts = const Value.absent(),
             Value<String> sessionId = const Value.absent(),
             Value<int> pairedAtMs = const Value.absent(),
@@ -5616,6 +5746,8 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             macDeviceId: macDeviceId,
             displayName: displayName,
             relayUrl: relayUrl,
+            relayRoutingId: relayRoutingId,
+            relayEnabled: relayEnabled,
             hosts: hosts,
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,
@@ -5626,7 +5758,9 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String macDeviceId,
             required String displayName,
-            required String relayUrl,
+            Value<String?> relayUrl = const Value.absent(),
+            Value<String?> relayRoutingId = const Value.absent(),
+            Value<bool> relayEnabled = const Value.absent(),
             Value<String?> hosts = const Value.absent(),
             required String sessionId,
             required int pairedAtMs,
@@ -5638,6 +5772,8 @@ class $$TrustedDevicesTableTableTableManager extends RootTableManager<
             macDeviceId: macDeviceId,
             displayName: displayName,
             relayUrl: relayUrl,
+            relayRoutingId: relayRoutingId,
+            relayEnabled: relayEnabled,
             hosts: hosts,
             sessionId: sessionId,
             pairedAtMs: pairedAtMs,

@@ -1,32 +1,83 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/core/errors/relay_exception.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
+import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
+import 'package:uxnan/infrastructure/crypto/key_generation.dart';
+import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 
-/// Records the URL/headers it was asked to connect to and resolves according to
+const _relay = RelayEndpoint(
+  url: 'wss://relay.test',
+  routingId: '0123456789abcdef0123456789abcdef',
+  enabled: true,
+);
+const _relayPhoneUrl =
+    'wss://relay.test/v1/connect/0123456789abcdef0123456789abcdef';
+
+/// Records the URL it was asked to connect to and resolves according to
 /// [onConnect] — either completing, throwing, or hanging (to exercise the
-/// per-host timeout).
+/// per-host timeout). Dialled at the relay's phone route, it answers like the
+/// relay (`relay/src/room.ts`): a challenge, then `ready` once authenticated,
+/// or [relayClose] — without checking the signature, which
+/// `relay_client_test.dart` covers.
 class _FakeTransport implements WebSocketTransport {
-  _FakeTransport(this.onConnect);
+  _FakeTransport(this.onConnect, {this.relayClose});
 
   /// Given a URL, returns a future that completes (success), throws (failure),
   /// or never completes (to trip the timeout).
   final Future<void> Function(String url) onConnect;
 
-  @override
-  String? connectedUrl;
-  Map<String, String>? connectedHeaders;
-  bool disconnected = false;
+  /// The close code the relay answers the auth frame with, if it refuses.
+  final int? relayClose;
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) {
+  String? connectedUrl;
+  bool disconnected = false;
+  Map<String, dynamic>? relayAuth;
+
+  final List<Uint8List> _unheard = [];
+  late final StreamController<Uint8List> _incoming =
+      StreamController<Uint8List>.broadcast(
+    onListen: () {
+      _unheard.forEach(_incoming.add);
+      _unheard.clear();
+    },
+  );
+
+  void _emit(Map<String, Object> frame) {
+    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(frame)));
+    _incoming.hasListener ? _incoming.add(bytes) : _unheard.add(bytes);
+  }
+
+  @override
+  int? closeCode;
+
+  @override
+  Future<void> connect(String url) async {
     connectedUrl = url;
-    connectedHeaders = headers;
-    return onConnect(url);
+    await onConnect(url);
+    if (url.contains('/v1/connect/')) {
+      _emit({'t': 'challenge', 'v': 1, 'nonce': 'cd' * 32});
+    }
+  }
+
+  @override
+  Future<void> sendText(String text) async {
+    relayAuth = jsonDecode(text) as Map<String, dynamic>;
+    final code = relayClose;
+    if (code != null) {
+      closeCode = code;
+      unawaited(_incoming.close());
+    } else {
+      _emit({'t': 'ready'});
+    }
   }
 
   @override
@@ -36,46 +87,69 @@ class _FakeTransport implements WebSocketTransport {
   Future<void> send(Uint8List data) async {}
 
   @override
-  Stream<Uint8List> get incoming => const Stream.empty();
+  Stream<Uint8List> get incoming => _incoming.stream;
 
   @override
   Stream<TransportState> get stateChanges => const Stream.empty();
 }
 
 TrustedDevice _device({
-  String relayUrl = 'wss://relay.test',
+  RelayEndpoint? relay = _relay,
   List<String> hosts = const [],
 }) =>
     TrustedDevice(
       macDeviceId: 'mac-1',
       displayName: 'Bridge',
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: relayUrl,
+      relay: relay,
       hosts: hosts,
       sessionId: 'session-1',
       pairedAt: DateTime(2026),
     );
 
 void main() {
+  late PhoneIdentity phone;
+
+  setUpAll(() async {
+    final keys = await KeyGeneration().generateIdentityKeyPair();
+    phone = PhoneIdentity(
+      phoneDeviceId: 'phone-1',
+      publicKey: keys.publicKey,
+      privateSeed: keys.privateSeed,
+    );
+  });
+
+  /// A selector whose direct and relay dials both come from [create].
+  DirectTransportSelector selector(
+    _FakeTransport Function() create, {
+    Duration directTimeout = const Duration(seconds: 2),
+  }) =>
+      DirectTransportSelector(
+        create,
+        relayClient: RelayClient(
+          createTransport: create,
+          identity: () async => phone,
+        ),
+        directTimeout: directTimeout,
+      );
+
   group('DirectTransportSelector', () {
-    test('connects to a reachable direct host without relay headers', () async {
+    test('connects to a reachable direct host, never the relay', () async {
       final created = <_FakeTransport>[];
-      final selector = DirectTransportSelector(() {
+      final transport = await selector(() {
         final t = _FakeTransport((_) async {});
         created.add(t);
         return t;
-      });
-
-      final transport = await selector.select(
+      }).select(
         _device(hosts: const ['192.168.1.5:8765', '100.64.0.2:8765']),
       ) as _FakeTransport;
 
-      // A direct ws:// host won (never the relay), with no relay headers.
+      // A direct ws:// host won (never the relay).
       expect(
         transport.connectedUrl,
         anyOf('ws://192.168.1.5:8765', 'ws://100.64.0.2:8765'),
       );
-      expect(transport.connectedHeaders, isNull);
+      expect(transport.relayAuth, isNull);
       // Both hosts were dialed concurrently; the loser was disconnected so only
       // the winner stays open.
       expect(created, hasLength(2));
@@ -88,16 +162,14 @@ void main() {
         // host[0] never completes; host[1] connects. Serial dialing would wait
         // out host[0]'s full 30 s timeout first (hanging the test past its own
         // 5 s budget); parallel dialing returns host[1] at once.
-        final selector = DirectTransportSelector(
+        final transport = await selector(
           () => _FakeTransport((url) async {
             if (url.contains('192.168.1.5')) {
               return Completer<void>().future; // never completes
             }
           }),
           directTimeout: const Duration(seconds: 30),
-        );
-
-        final transport = await selector.select(
+        ).select(
           _device(hosts: const ['192.168.1.5:8765', '10.0.0.9:8765']),
         ) as _FakeTransport;
 
@@ -108,77 +180,100 @@ void main() {
 
     test('falls back to the next host, then the relay', () async {
       final created = <_FakeTransport>[];
-      final selector = DirectTransportSelector(() {
+      final transport = await selector(() {
         final t = _FakeTransport((url) async {
           if (url.startsWith('ws://')) throw StateError('unreachable');
         });
         created.add(t);
         return t;
-      });
-
-      final transport = await selector.select(
+      }).select(
         _device(hosts: const ['192.168.1.5:8765', '10.0.0.9:8765']),
       ) as _FakeTransport;
 
-      // Two direct attempts failed (and were disconnected), then the relay.
+      // Two direct attempts failed (and were disconnected), then the relay's
+      // phone route, authenticated before it was handed back.
       expect(created, hasLength(3));
       expect(created[0].disconnected, isTrue);
       expect(created[1].disconnected, isTrue);
-      expect(transport.connectedUrl, 'wss://relay.test');
-      expect(transport.connectedHeaders, {
-        'x-role': 'iphone',
-        'x-session-id': 'session-1',
-      });
+      expect(transport.connectedUrl, _relayPhoneUrl);
+      expect(transport.relayAuth?['t'], 'phone-auth');
+      expect(transport.relayAuth?.containsKey('ticket'), isFalse);
     });
 
     test('times out a hanging direct host and falls back to the relay',
         () async {
-      final selector = DirectTransportSelector(
+      final transport = await selector(
         () => _FakeTransport((url) async {
           if (url.startsWith('ws://')) {
             return Completer<void>().future; // never completes
           }
         }),
         directTimeout: const Duration(milliseconds: 20),
+      ).select(_device(hosts: const ['192.168.1.5:8765'])) as _FakeTransport;
+
+      expect(transport.connectedUrl, _relayPhoneUrl);
+    });
+
+    test('passes the pairing ticket to the relay', () async {
+      const ticket = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+      final transport = await selector(() => _FakeTransport((_) async {}))
+          .select(_device(), relayTicket: ticket) as _FakeTransport;
+      expect(transport.relayAuth?['ticket'], ticket);
+    });
+
+    test("surfaces the relay's refusal as a typed RelayException", () async {
+      await expectLater(
+        selector(() => _FakeTransport((_) async {}, relayClose: 4004))
+            .select(_device()),
+        throwsA(
+          isA<RelayException>().having(
+            (e) => e.failure,
+            'failure',
+            RelayFailure.bridgeOffline,
+          ),
+        ),
       );
-
-      final transport = await selector.select(
-        _device(hosts: const ['192.168.1.5:8765']),
-      ) as _FakeTransport;
-
-      expect(transport.connectedUrl, 'wss://relay.test');
     });
 
     test('throws when every direct host fails and no relay is set', () async {
-      final selector = DirectTransportSelector(
-        () => _FakeTransport((_) async => throw StateError('unreachable')),
-      );
-
       expect(
-        () => selector.select(
-          _device(relayUrl: '', hosts: const ['192.168.1.5:8765']),
-        ),
+        () => selector(
+          () => _FakeTransport((_) async => throw StateError('unreachable')),
+        ).select(_device(relay: null, hosts: const ['192.168.1.5:8765'])),
         throwsA(isA<TransportException>()),
       );
     });
 
-    test('uses the relay directly when there are no hosts', () async {
-      final selector = DirectTransportSelector(
-        () => _FakeTransport((_) async {}),
+    test('never dials a relay the bridge switched off', () async {
+      final created = <_FakeTransport>[];
+      const off = RelayEndpoint(
+        url: 'wss://relay.test',
+        routingId: '0123456789abcdef0123456789abcdef',
+        enabled: false,
       );
+      await expectLater(
+        selector(() {
+          final t = _FakeTransport((url) async {
+            if (url.startsWith('ws://')) throw StateError('unreachable');
+          });
+          created.add(t);
+          return t;
+        }).select(_device(relay: off, hosts: const ['192.168.1.5:8765'])),
+        throwsA(isA<TransportException>()),
+      );
+      expect(created.map((t) => t.connectedUrl), ['ws://192.168.1.5:8765']);
+    });
 
-      final transport = await selector.select(_device()) as _FakeTransport;
-      expect(transport.connectedUrl, 'wss://relay.test');
+    test('uses the relay directly when there are no hosts', () async {
+      final transport = await selector(() => _FakeTransport((_) async {}))
+          .select(_device()) as _FakeTransport;
+      expect(transport.connectedUrl, _relayPhoneUrl);
     });
 
     test('leaves an explicit ws:// host scheme untouched', () async {
-      final selector = DirectTransportSelector(
-        () => _FakeTransport((_) async {}),
-      );
-
-      final transport = await selector.select(
-        _device(hosts: const ['ws://192.168.1.5:8765']),
-      ) as _FakeTransport;
+      final transport = await selector(() => _FakeTransport((_) async {}))
+              .select(_device(hosts: const ['ws://192.168.1.5:8765']))
+          as _FakeTransport;
       expect(transport.connectedUrl, 'ws://192.168.1.5:8765');
     });
   });

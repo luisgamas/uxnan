@@ -2,24 +2,27 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 
 /// The data carried in a bridge pairing QR code.
 ///
 /// Transported as Base64-encoded JSON (spec 02a §5.5.4). `version` is the QR
-/// format version (`PAIRING_QR_VERSION` = 2). Validation lives in
+/// format version (`PAIRING_QR_VERSION` = 3). Validation lives in
 /// `PairingValidator`; this type only parses.
 class PairingPayload extends Equatable {
   /// Creates a [PairingPayload].
   const PairingPayload({
     required this.version,
-    required this.relayUrl,
     required this.hosts,
     required this.sessionId,
     required this.macDeviceId,
     required this.macIdentityPublicKey,
     required this.expiresAt,
     required this.displayName,
+    this.relay,
+    this.relayTicket,
   });
 
   /// Parses a [PairingPayload] from a raw Base64 QR string.
@@ -42,6 +45,10 @@ class PairingPayload extends Equatable {
   /// structural parse here is tolerant; the "at least one transport" rule is
   /// enforced by `PairingValidator`. A pure LAN/Tailscale QR carries only
   /// `hosts`.
+  ///
+  /// `relay` is the object `{url, routingId, ticket?}` since version 3. A QR
+  /// of another version is parsed without it, so the validator can say the
+  /// version is unsupported instead of calling the code malformed.
   factory PairingPayload.fromJson(Map<String, dynamic> json) {
     T field<T>(String key) {
       final value = json[key];
@@ -51,9 +58,18 @@ class PairingPayload extends Equatable {
       return value;
     }
 
-    final rawRelay = json['relay'];
-    if (rawRelay != null && rawRelay is! String) {
+    final version = field<int>('v');
+    final current = version == ProtocolConstants.pairingQrVersion;
+    final rawRelay = current ? json['relay'] : null;
+    // The QR's relay has no `enabled`: the bridge only advertises a relay it
+    // is serving phones through.
+    final relay = RelayEndpoint.fromJson(rawRelay, defaultEnabled: true);
+    if (rawRelay != null && relay == null) {
       throw const FormatException('Invalid pairing field: relay');
+    }
+    final rawTicket = rawRelay is Map ? rawRelay['ticket'] : null;
+    if (rawTicket != null && !RelayEndpoint.isPairingTicket(rawTicket)) {
+      throw const FormatException('Invalid pairing field: relay.ticket');
     }
     final rawHosts = json['hosts'];
     if (rawHosts != null && rawHosts is! List) {
@@ -69,8 +85,9 @@ class PairingPayload extends Equatable {
           }).toList(growable: false);
 
     return PairingPayload(
-      version: field<int>('v'),
-      relayUrl: rawRelay as String? ?? '',
+      version: version,
+      relay: relay,
+      relayTicket: rawTicket as String?,
       hosts: hosts,
       sessionId: field<String>('sessionId'),
       macDeviceId: field<String>('macDeviceId'),
@@ -83,13 +100,18 @@ class PairingPayload extends Equatable {
   /// QR format version.
   final int version;
 
-  /// Relay URL the bridge is reachable through, or empty for a pure
-  /// LAN/Tailscale setup that advertises only [hosts].
-  final String relayUrl;
+  /// The bridge's own relay, or `null` for a LAN/Tailscale setup that
+  /// advertises only [hosts].
+  final RelayEndpoint? relay;
+
+  /// One-time ticket the relay accepts while this pairing window is open, so
+  /// a phone that is NOT on the PC's network can pair through the relay for
+  /// the first time. Used for that first connection only and never stored.
+  final String? relayTicket;
 
   /// Direct `host:port` addresses where the bridge's LAN server listens (its
   /// non-internal IPv4s — LAN and, if up, a Tailscale `100.x` address). The
-  /// phone tries these FIRST and falls back to [relayUrl]. May be empty.
+  /// phone tries these FIRST and falls back to [relay]. May be empty.
   final List<String> hosts;
 
   /// Session id to use for the connection.
@@ -114,7 +136,8 @@ class PairingPayload extends Equatable {
   @override
   List<Object?> get props => [
         version,
-        relayUrl,
+        relay,
+        relayTicket,
         hosts,
         sessionId,
         macDeviceId,

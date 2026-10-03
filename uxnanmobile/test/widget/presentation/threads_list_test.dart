@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
+import 'package:uxnan/core/errors/relay_exception.dart';
+import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -60,6 +62,7 @@ Widget _wrap({
   bool connected = false,
   bool embedded = false,
   List<ClientPresence> presence = const [],
+  RelayFailure? relayFailure,
 }) {
   final router = GoRouter(
     routes: [
@@ -135,7 +138,6 @@ Widget _wrap({
                   macDeviceId: 'mac-1',
                   displayName: 'PC',
                   macIdentityPublicKey: Uint8List(32),
-                  relayUrl: 'wss://relay.test',
                   sessionId: 'session-1',
                   pairedAt: DateTime(2026),
                 )
@@ -152,6 +154,27 @@ Widget _wrap({
         (ref, cwd) async => (git: null, stale: false),
       ),
       connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      // The PC the reconnection loop works on, and why its last attempt
+      // failed: the offline banner says the relay's reason for this PC.
+      activeMacProvider.overrideWith(
+        (ref) => Stream.value(
+          TrustedDevice(
+            macDeviceId: 'mac-1',
+            displayName: 'PC',
+            macIdentityPublicKey: Uint8List(32),
+            sessionId: 'session-1',
+            pairedAt: DateTime(2026),
+          ),
+        ),
+      ),
+      connectionRecoveryProvider.overrideWith(
+        (ref) => Stream.value(
+          ConnectionRecoveryState(
+            isRecovering: relayFailure != null,
+            lastRelayFailure: relayFailure,
+          ),
+        ),
+      ),
     ],
     child: MaterialApp.router(
       routerConfig: router,
@@ -162,6 +185,41 @@ Widget _wrap({
 }
 
 void main() {
+  testWidgets('the offline banner says why the relay refused this PC', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        threads: [_thread('a', 'One', 'codex')],
+        relayFailure: RelayFailure.bridgeOffline,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.text('Your PC is offline or its bridge is stopped.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Not connected to this PC — showing a cached view.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('without a relay reason the banner keeps its plain line', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(threads: [_thread('a', 'One', 'codex')]));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.text('Not connected to this PC — showing a cached view.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a conversation started in Uxnan Desktop is marked', (
     tester,
   ) async {

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 
 /// A bridge (PC) the phone has paired with and trusts.
 ///
@@ -13,9 +14,9 @@ class TrustedDevice extends Equatable {
     required this.macDeviceId,
     required this.displayName,
     required this.macIdentityPublicKey,
-    required this.relayUrl,
     required this.sessionId,
     required this.pairedAt,
+    this.relay,
     this.hosts = const [],
     this.lastSeen,
     this.lastAppliedBridgeOutboundSeq = 0,
@@ -30,12 +31,14 @@ class TrustedDevice extends Equatable {
   /// Bridge's Ed25519 identity public key (32 bytes).
   final Uint8List macIdentityPublicKey;
 
-  /// Relay URL used to reach the bridge, or empty for a pure LAN/Tailscale
-  /// device that is only reachable through [hosts].
-  final String relayUrl;
+  /// The bridge's own relay, used to reach it from another network, or `null`
+  /// while it has none. Learned from the pairing QR and kept current from the
+  /// bridge's shared settings (`BridgeSettings.relay`), so a PC paired on the
+  /// LAN stays reachable away from it.
+  final RelayEndpoint? relay;
 
   /// Direct `host:port` addresses (LAN / Tailscale `100.x`) advertised in the
-  /// pairing QR. The transport selector tries these before [relayUrl]. May be
+  /// pairing QR. The transport selector tries these before [relay]. May be
   /// empty (relay-only device).
   final List<String> hosts;
 
@@ -54,10 +57,10 @@ class TrustedDevice extends Equatable {
   /// replay only the outbound it missed (spec 02a §5.9.2). 0 = none yet.
   final int lastAppliedBridgeOutboundSeq;
 
-  /// Returns a copy with selected fields replaced.
+  /// Returns a copy with selected fields replaced. [relay] is replaced by
+  /// [withRelay], which can also clear it.
   TrustedDevice copyWith({
     String? displayName,
-    String? relayUrl,
     List<String>? hosts,
     String? sessionId,
     DateTime? lastSeen,
@@ -67,7 +70,7 @@ class TrustedDevice extends Equatable {
       macDeviceId: macDeviceId,
       displayName: displayName ?? this.displayName,
       macIdentityPublicKey: macIdentityPublicKey,
-      relayUrl: relayUrl ?? this.relayUrl,
+      relay: relay,
       hosts: hosts ?? this.hosts,
       sessionId: sessionId ?? this.sessionId,
       pairedAt: pairedAt,
@@ -77,12 +80,25 @@ class TrustedDevice extends Equatable {
     );
   }
 
+  /// Returns a copy that reaches the bridge through [relay] (`null`: none).
+  TrustedDevice withRelay(RelayEndpoint? relay) => TrustedDevice(
+        macDeviceId: macDeviceId,
+        displayName: displayName,
+        macIdentityPublicKey: macIdentityPublicKey,
+        relay: relay,
+        hosts: hosts,
+        sessionId: sessionId,
+        pairedAt: pairedAt,
+        lastSeen: lastSeen,
+        lastAppliedBridgeOutboundSeq: lastAppliedBridgeOutboundSeq,
+      );
+
   @override
   List<Object?> get props => [
         macDeviceId,
         displayName,
         macIdentityPublicKey,
-        relayUrl,
+        relay,
         hosts,
         sessionId,
         pairedAt,

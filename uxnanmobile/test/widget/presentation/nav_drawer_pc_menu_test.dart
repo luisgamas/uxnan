@@ -21,7 +21,6 @@ void main() {
         macDeviceId: id,
         displayName: 'PC $id',
         macIdentityPublicKey: Uint8List(32),
-        relayUrl: 'wss://relay.test',
         sessionId: 's-$id',
         pairedAt: DateTime(2026),
       );

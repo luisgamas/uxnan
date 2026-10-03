@@ -20,19 +20,22 @@ class RequestCorrelator {
   /// Registers a pending request [id] and returns its response future.
   ///
   /// The future fails with a [TimeoutException] if no response arrives within
-  /// [timeout].
-  Future<RpcMessage> register(String id) {
+  /// [within], or the correlator's [timeout] when none is given — a request
+  /// the bridge answers only after slow outside work (deploying the relay to
+  /// Cloudflare) passes a longer one.
+  Future<RpcMessage> register(String id, {Duration? within}) {
     final existing = _pending[id];
     if (existing != null) {
       return existing.future;
     }
     final completer = Completer<RpcMessage>();
     _pending[id] = completer;
-    Timer(timeout, () {
+    final limit = within ?? timeout;
+    Timer(limit, () {
       if (!completer.isCompleted) {
         _pending.remove(id);
         completer.completeError(
-          TimeoutException('RPC request $id timed out', timeout),
+          TimeoutException('RPC request $id timed out', limit),
         );
       }
     });

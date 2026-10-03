@@ -5,6 +5,7 @@ import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/phone_name_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/paired_phone.dart';
 import 'package:uxnan/domain/entities/project.dart';
@@ -16,13 +17,18 @@ import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
+import 'package:uxnan/domain/value_objects/relay_endpoint.dart';
 import 'package:uxnan/domain/value_objects/replica_cursor.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// This phone's copy of what the connected PC's bridge shares — its
 /// conversations, its project registry (the same list Uxnan Desktop shows on
-/// that PC), its start folder and who is connected — kept converged
-/// (architecture/02a §5.8.17).
+/// that PC), its start folder, its name, its relay and who is connected —
+/// kept converged (architecture/02a §5.8.17).
+///
+/// It is the one writer of what the PC's shared settings say about the PC
+/// record the phone keeps: its name and its relay (`BridgeSettings.relay`), so
+/// a PC paired on the LAN is reachable from anywhere once it has a relay.
 ///
 /// The bridge numbers every change with one global revision. This replica
 /// remembers the last one applied per PC and asks `sync/changes { since }`:
@@ -284,6 +290,9 @@ class BridgeReplica {
     if (settings case {'name': final String name}) {
       await _adoptPcName(deviceId, name);
     }
+    final (carriesRelay, relay) =
+        IncomingMessageProcessor.relayOfSettings(settings);
+    if (carriesRelay) await _adoptRelay(deviceId, relay);
     _applyDevices(changes['devices']);
     _presence.add(ClientPresence.listFromJson(changes['clients']));
     final storeId = changes['storeId'];
@@ -372,10 +381,17 @@ class BridgeReplica {
             return _repository.deleteProjects(deviceId, [projectId]);
           }),
         );
-      case SettingsUpdatedEvent(:final home, :final name, :final rev):
+      case SettingsUpdatedEvent(
+          :final home,
+          :final name,
+          :final rev,
+          :final carriesRelay,
+          :final relay,
+        ):
         unawaited(
           _whenAdmitted(deviceId, rev, () async {
             if (name != null) await _adoptPcName(deviceId, name);
+            if (carriesRelay) await _adoptRelay(deviceId, relay);
             _home.add(home);
             final cursor = _cursor;
             if (cursor != null) {
@@ -513,6 +529,17 @@ class BridgeReplica {
     final pc = await pcs.getDevice(deviceId);
     if (pc == null || pc.displayName == name) return;
     await pcs.rename(deviceId, name);
+  }
+
+  /// Stores [relay] as how this phone reaches the PC [deviceId] from another
+  /// network (`null`: the PC has none). The connection reads it from the
+  /// store on its next dial.
+  Future<void> _adoptRelay(String deviceId, RelayEndpoint? relay) async {
+    final pcs = _pcs;
+    if (pcs == null) return;
+    final pc = await pcs.getDevice(deviceId);
+    if (pc == null || pc.relay == relay) return;
+    await pcs.recordRelay(deviceId, relay);
   }
 
   void _applyDevices(Object? json) {

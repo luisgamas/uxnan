@@ -40,7 +40,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -126,6 +126,28 @@ class UxnanDatabase extends _$UxnanDatabase {
           // earlier responses of an answer are labelled with.
           if (from < 11) {
             await m.addColumn(messagesTable, messagesTable.turnDurationMs);
+          }
+          // v12: a PC is reached through its bridge's own relay — a URL plus
+          // the bridge's routing id on it, and whether it is on — instead of
+          // one bare URL of a shared relay that no longer exists. The old URL
+          // cannot be dialled any more, so it is dropped (the bridge sends the
+          // new endpoint in its settings on the next connection).
+          if (from < 12) {
+            await customStatement(
+              'ALTER TABLE trusted_devices_table DROP COLUMN relay_url',
+            );
+            await m.addColumn(
+              trustedDevicesTable,
+              trustedDevicesTable.relayUrl,
+            );
+            await m.addColumn(
+              trustedDevicesTable,
+              trustedDevicesTable.relayRoutingId,
+            );
+            await m.addColumn(
+              trustedDevicesTable,
+              trustedDevicesTable.relayEnabled,
+            );
           }
         },
         beforeOpen: (details) async {

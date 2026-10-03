@@ -3386,4 +3386,240 @@ class AppLocalizationsEs extends AppLocalizations {
   String composerPlanLine(String plan, String window, int percent) {
     return '$plan · $window $percent% usado';
   }
+
+  @override
+  String get relayFailureBridgeOffline =>
+      'Tu PC está sin conexión o su bridge está detenido.';
+
+  @override
+  String get relayFailureNotPaired =>
+      'Este teléfono ya no está emparejado con la PC: vuelve a emparejarlo.';
+
+  @override
+  String get relayFailureFull =>
+      'Hay demasiados teléfonos conectados a través del relay.';
+
+  @override
+  String get relayFailureUnreachable => 'No se puede llegar a tu relay.';
+
+  @override
+  String get remoteAccessTitle => 'Acceso remoto';
+
+  @override
+  String get remoteAccessIntro =>
+      'Tres formas de llegar a esta PC desde tu teléfono:';
+
+  @override
+  String get remoteAccessSameNetworkTitle => 'Misma red';
+
+  @override
+  String get remoteAccessSameNetworkBody =>
+      'Ya funciona, no hay nada que configurar.';
+
+  @override
+  String get remoteAccessTailscaleTitle => 'Tailscale';
+
+  @override
+  String get remoteAccessTailscaleBody =>
+      'Funciona automáticamente si está en este teléfono y en la PC.';
+
+  @override
+  String get remoteAccessRelayTitle => 'Tu propio relay';
+
+  @override
+  String get remoteAccessRelayBody =>
+      'Funciona desde cualquier red. Necesita una cuenta gratuita de Cloudflare.';
+
+  @override
+  String get relaySetUpAction => 'Configurar tu relay';
+
+  @override
+  String get relayConnectToManage =>
+      'Conéctate a esta PC para configurar o administrar su relay.';
+
+  @override
+  String get relayYourRelay => 'Tu relay';
+
+  @override
+  String get relayStateConnected => 'Conectado';
+
+  @override
+  String get relayStateConnecting => 'Conectando…';
+
+  @override
+  String get relayStateError => 'Con problemas';
+
+  @override
+  String get relayStateOn => 'Activado';
+
+  @override
+  String get relayStateOff => 'Apagado';
+
+  @override
+  String relayPhonesConnected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count teléfonos conectados a través de él',
+      one: '1 teléfono conectado a través de él',
+      zero: 'Ningún teléfono conectado a través de él',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get relayEnabledTitle => 'Llegar a esta PC desde cualquier red';
+
+  @override
+  String get relayEnabledSubtitle =>
+      'Los teléfonos fuera de casa se conectan a través de tu relay.';
+
+  @override
+  String get relaySwitchPendingOn =>
+      'Se activará cuando la PC vuelva a estar al alcance.';
+
+  @override
+  String get relaySwitchPendingOff =>
+      'Se desactivará cuando la PC vuelva a estar al alcance.';
+
+  @override
+  String get relaySwitchKept =>
+      'Guardado. Tu PC lo recibirá la próxima vez que esté al alcance.';
+
+  @override
+  String get relayUpdateTitle => 'Actualizar relay';
+
+  @override
+  String relayUpdateSubtitle(String version) {
+    return 'La versión $version está disponible';
+  }
+
+  @override
+  String get relayUpdating => 'Actualizando tu relay…';
+
+  @override
+  String get relayUpdated => 'Tu relay está actualizado.';
+
+  @override
+  String get relayRotateTitle => 'Nueva dirección';
+
+  @override
+  String get relayRotateSubtitle => 'La dirección actual deja de funcionar.';
+
+  @override
+  String get relayRotateConfirmTitle =>
+      '¿Darle a tu relay una dirección nueva?';
+
+  @override
+  String get relayRotateConfirmBody =>
+      'La dirección actual deja de funcionar de inmediato. Un teléfono que está fuera de casa vuelve a conectarse después de conectarse a esta PC en tu red de casa.';
+
+  @override
+  String get relayRotateConfirm => 'Nueva dirección';
+
+  @override
+  String get relayRotated => 'Tu relay tiene una dirección nueva.';
+
+  @override
+  String get relayRemoveTitle => 'Quitar relay';
+
+  @override
+  String get relayRemoveSubtitle =>
+      'Así los teléfonos solo llegan a esta PC en la misma red o por Tailscale.';
+
+  @override
+  String get relayRemoveConfirmTitle => '¿Quitar tu relay?';
+
+  @override
+  String get relayRemoveConfirmBody =>
+      'Los teléfonos fuera de casa no podrán llegar a esta PC hasta que vuelvas a configurar un relay.';
+
+  @override
+  String get relayRemoveDeleteWorker =>
+      'También eliminarlo de tu cuenta de Cloudflare';
+
+  @override
+  String get relayRemoveConfirm => 'Quitar';
+
+  @override
+  String get relayRemoving => 'Quitando tu relay…';
+
+  @override
+  String get relayRemoved => 'Relay quitado.';
+
+  @override
+  String get relayTokenTitle => 'Token de API de Cloudflare';
+
+  @override
+  String get relayTokenBody =>
+      'Tu PC necesita el token para esto. Viaja cifrado de extremo a extremo hasta tu PC y nunca se guarda en este teléfono.';
+
+  @override
+  String get relayTokenLabel => 'Token de API';
+
+  @override
+  String get relayTokenShow => 'Mostrar token';
+
+  @override
+  String get relayTokenHide => 'Ocultar token';
+
+  @override
+  String get relayRememberToken => 'Recordar el token en la PC';
+
+  @override
+  String get relayRememberTokenHint =>
+      'Se guarda en el llavero del sistema de la PC, así actualizar o quitar el relay no lo vuelve a pedir.';
+
+  @override
+  String get relayTokenContinue => 'Continuar';
+
+  @override
+  String get relayActionNoAnswer => 'Tu PC no respondió. Inténtalo de nuevo.';
+
+  @override
+  String get relaySetupTitle => 'Configura tu relay';
+
+  @override
+  String get relaySetupIntro =>
+      'Tu PC despliega un pequeño relay en tu propia cuenta gratuita de Cloudflare. Así este teléfono llega a tu PC desde cualquier red, con cifrado de extremo a extremo: el relay solo ve sobres sellados.';
+
+  @override
+  String get relaySetupStepToken => 'Crea un token de API';
+
+  @override
+  String get relaySetupStepTokenBody =>
+      'En Cloudflare, abre API Tokens, elige Create Token y usa la plantilla “Edit Cloudflare Workers”.';
+
+  @override
+  String get relaySetupOpenCloudflare =>
+      'Abrir los tokens de API de Cloudflare';
+
+  @override
+  String get relaySetupStepAccount => 'Copia tu ID de cuenta';
+
+  @override
+  String get relaySetupStepAccountBody =>
+      'Es el código largo después de dash.cloudflare.com/ en la barra de direcciones cuando inicias sesión, y también aparece en la vista general de Workers & Pages.';
+
+  @override
+  String get relaySetupAccountLabel => 'ID de cuenta';
+
+  @override
+  String get relaySetupAccountHint => '32 letras y números';
+
+  @override
+  String get relaySetupMissingFields => 'Ingresa el ID de cuenta y el token.';
+
+  @override
+  String get relaySetupDeploy => 'Desplegar relay';
+
+  @override
+  String get relaySetupDeploying => 'Desplegando…';
+
+  @override
+  String get relaySetupDeployingHint =>
+      'Puede tardar hasta un minuto. Mantén la app abierta.';
+
+  @override
+  String get relaySetupDone => 'Tu relay está listo.';
 }

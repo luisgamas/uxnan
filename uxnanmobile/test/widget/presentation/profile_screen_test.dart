@@ -68,7 +68,6 @@ TrustedDevice _device() => TrustedDevice(
       macDeviceId: 'pc-1',
       displayName: 'My PC',
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: 'wss://relay.example',
       sessionId: 'sess-1',
       pairedAt: DateTime(2026, 3),
     );
@@ -149,7 +148,6 @@ void main() {
         macDeviceId: 'pc-1',
         displayName: 'My PC',
         macIdentityPublicKey: Uint8List(32),
-        relayUrl: 'wss://relay.example',
         sessionId: 'sess-1',
         pairedAt: DateTime(2026, 3),
       );

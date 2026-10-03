@@ -20,7 +20,7 @@ enum NetworkKind {
   /// private network the phone can identify.
   direct,
 
-  /// The hosted relay fallback.
+  /// The bridge's own relay, which the user runs in their own account.
   relay,
 
   /// Not connected yet, or the endpoint couldn't be classified (e.g. it was
@@ -31,7 +31,8 @@ enum NetworkKind {
 }
 
 /// Classifies [endpointUrl] — the URL the live channel is actually served
-/// through — against [relayUrl] (the paired device's advertised relay). Pure
+/// through — against [relayUrl] (the base URL of the paired device's relay,
+/// `RelayEndpoint.url`; the phone dials a path under it). Pure
 /// and side-effect free (no DNS/host resolution, no I/O), so it's trivially
 /// unit-testable; the UI derives the transport badge from this.
 ///

@@ -26,7 +26,11 @@ class ProtocolConstants {
   static const int envelopeDirectionBridgeToPhone = 0x02;
 
   /// `PAIRING_QR_VERSION` — version of the QR pairing payload (`v` field).
-  static const int pairingQrVersion = 2;
+  ///
+  /// - `2` — `relay` was a bare URL string.
+  /// - `3` — `relay` is the object `{url, routingId, ticket?}` of the user's
+  ///   own relay (architecture/02a §5.10).
+  static const int pairingQrVersion = 3;
 
   /// `HKDF_INFO_TAG` — HKDF info string used when deriving the session key.
   static const String hkdfInfoTag = 'uxnan-e2ee-v1';
