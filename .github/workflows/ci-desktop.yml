@@ -121,12 +121,17 @@ jobs:
 
   # The host engine on a Windows host: this runner turns on its own OpenSSH
   # Server and is reached as a host, so the named pipe, the daemon leaving the
-  # SSH session's job, cmd as the default shell and the `.exe` install all run
-  # for real — the live terminal suite, against Windows.
+  # SSH session's job, the `.exe` install and both shells a Windows sshd is
+  # commonly set to start — cmd (its default) and Windows PowerShell, through
+  # `DefaultShell` — all run for real: the live terminal suite, against Windows.
   windows-ssh-host:
-    name: live SSH against a Windows host
+    name: live SSH against a Windows host (${{ matrix.shell }})
     runs-on: windows-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [cmd, powershell]
     if: >-
       (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
       !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/'))
@@ -171,6 +176,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) {
             Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+          }
+          if ('${{ matrix.shell }}' -eq 'powershell') {
+            # What an owner sets to get PowerShell over SSH: every command and
+            # every login then starts in it, which is the shell the engine has
+            # to be installed and started through.
+            New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell `
+              -Value "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" `
+              -PropertyType String -Force | Out-Null
           }
           Start-Service sshd
           $dir = Join-Path $env:USERPROFILE '.ssh'
