@@ -1,4 +1,11 @@
-//! Files on a host, over SFTP.
+//! Files on a host, over SFTP — for what has to reach a host **before** its
+//! engine runs there, or without one.
+//!
+//! A project's files are the host engine's (`commands::files_on`): it lists,
+//! saves and searches with the code this app runs on its own disk. What is left
+//! here is what cannot wait for that: putting the engine on the host in the
+//! first place, the folder picker that adds a project, and the bytes the
+//! command-driven git half moves in and out of a host.
 //!
 //! **Why SFTP and not commands.** Everything else this layer sends to a host has
 //! to survive whatever shell that machine starts, because its owner switches
@@ -6,20 +13,6 @@
 //! question entirely: it is an SSH *subsystem* — a program the server runs, with
 //! a binary protocol — so listing a directory or reading a file behaves the same
 //! on every host, and needs nothing installed there.
-//!
-//! That is the whole argument for building remote files on it rather than on
-//! `ls` / `dir` / `Get-ChildItem`: no syntax to choose, no quoting to get wrong,
-//! no output to parse, and no shell to blame.
-//!
-//! **Shape.** The results are the local file layer's own types
-//! ([`crate::fs::FsEntry`], [`crate::fs::FileContent`]), so the file tree and the
-//! editor render a host's files with the components they already have — the same
-//! reason the folder picker reuses the local browser.
-//!
-//! **What is deliberately missing.** Git-ignored marking (`ignored`) is always
-//! `false` here: it is computed by asking git about a working tree, and remote
-//! git is its own piece of work. A tree that dims nothing is honest; a tree that
-//! guessed would be quietly wrong.
 //!
 //! **A session outlives no more than its channel.** An SFTP session is one SSH
 //! channel, and a channel can end while its connection lives on: the host's
@@ -45,7 +38,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::conn::Connection;
 use crate::error::AppError;
-use crate::fs::{FileContent, FsEntry, MAX_EDIT_BYTES};
+use crate::fs::FsEntry;
 
 /// Why an SFTP call failed, split by what the caller can do about it.
 #[derive(Debug)]
@@ -304,33 +297,6 @@ fn strip_sftp_drive_root(path: &str) -> String {
     }
 }
 
-/// Largest file the tree will copy over the connection for a "Duplicate".
-///
-/// SFTP v3 has no server-side copy, so every byte crosses the link twice. The
-/// cap is generous for source files and small enough that a menu item cannot
-/// quietly pull a video through someone's uplink.
-const MAX_DUPLICATE_BYTES: u64 = 64 * 1024 * 1024;
-
-/// How many "… copy N" names to try before giving up rather than asking the host
-/// forever.
-const MAX_COPY_ATTEMPTS: u32 = 100;
-
-/// The `n`-th duplicate name for `file_name`: `name copy.ext`, `name copy 2.ext`,
-/// … — the local layer's sequence, so the same file duplicated on either machine
-/// ends up called the same thing. A leading-dot file (`.env`) has no extension.
-fn copy_name(file_name: &str, n: u32) -> String {
-    let dot = file_name.rfind('.').filter(|&i| i > 0);
-    let (stem, ext) = match dot {
-        Some(i) => (&file_name[..i], &file_name[i..]),
-        None => (file_name, ""),
-    };
-    if n <= 1 {
-        format!("{stem} copy{ext}")
-    } else {
-        format!("{stem} copy {n}{ext}")
-    }
-}
-
 /// The folder a path is in, or `None` when it names a filesystem root — which is
 /// what keeps a delete from being aimed at one.
 fn parent_of(path: &str) -> Option<String> {
@@ -480,89 +446,6 @@ impl RemoteFiles {
             ))));
         }
         Ok(())
-    }
-
-    /// Create an empty file at `rel` inside `dir`, answering its path.
-    ///
-    /// `rel` may be an intercalated path (`sub/dir/leaf.ts`), the same as the
-    /// local tree's: the parent segments are created as folders. The names are
-    /// validated by the **local** validator (`crate::fs::split_new_entry_path`),
-    /// not a second one written here — a path that cannot escape its folder is
-    /// exactly as important on someone else's machine, and two validators is two
-    /// chances to disagree about `..`.
-    ///
-    /// `EXCLUDE` is SFTP's own "fail if it exists", so the *server* decides,
-    /// atomically. Checking first and creating after would be a race we would
-    /// lose to the agent working in that folder — which is the entire reason
-    /// somebody has this tree open.
-    pub async fn create_file(&self, dir: &str, rel: &str) -> Result<String, SftpFailure> {
-        use russh_sftp::protocol::OpenFlags;
-
-        let (parent, leaf) = self.prepare_new_entry(dir, rel).await?;
-        let target = join(&parent, leaf);
-        let handle = self
-            .session
-            .open_with_flags(
-                target.clone(),
-                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
-            )
-            .await
-            .map_err(|e| self.failed(&format!("could not create {target} on that host"), e))?;
-        if let Err(e) = handle.close().await {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "the host did not finish creating {target}: {e}"
-            ))));
-        }
-        Ok(target)
-    }
-
-    /// Create a folder at `rel` inside `dir` (intercalated parents included).
-    pub async fn create_dir(&self, dir: &str, rel: &str) -> Result<String, SftpFailure> {
-        let (parent, leaf) = self.prepare_new_entry(dir, rel).await?;
-        let target = join(&parent, leaf);
-        // The leaf is the one segment that must not already exist: `mkdir` fails
-        // on the server when it does, which is the answer we want.
-        self.session
-            .create_dir(target.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not create {target} on that host"), e))?;
-        Ok(target)
-    }
-
-    /// Validate `rel`, make sure `dir` is a directory on the host, create the
-    /// intermediate folders, and answer `(parent, leaf)`.
-    async fn prepare_new_entry<'a>(
-        &self,
-        dir: &str,
-        rel: &'a str,
-    ) -> Result<(String, &'a str), SftpFailure> {
-        let segments =
-            crate::fs::split_new_entry_path(rel).map_err(|e| SftpFailure::Refused(e.into()))?;
-        let base = normalize(dir);
-        let meta = self
-            .session
-            .metadata(base.clone())
-            .await
-            .map_err(|e| self.failed(&format!("{base} is not there on that host"), e))?;
-        if !meta.is_dir() {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "{base} is not a folder on that host"
-            ))));
-        }
-        let (leaf, parents) = segments.split_last().expect("at least one segment");
-        let mut parent = base;
-        for segment in parents {
-            parent = join(&parent, segment);
-            // Already there is fine for an intermediate folder — the point of an
-            // intercalated path is to fill in what is missing, not to insist that
-            // nothing exists.
-            if !self.exists(&parent).await? {
-                self.session.create_dir(parent.clone()).await.map_err(|e| {
-                    self.failed(&format!("could not create {parent} on that host"), e)
-                })?;
-            }
-        }
-        Ok((parent, leaf))
     }
 
     /// Rename an entry within its folder, answering the new path.
@@ -734,156 +617,6 @@ impl RemoteFiles {
         Ok(target)
     }
 
-    /// Delete a file or folder on the host — **permanently**.
-    ///
-    /// There is no trash here. The local tree moves an entry to the Recycle Bin
-    /// (recoverable by design); SSH offers no such thing, and inventing one — a
-    /// hidden `.uxnan-trash` on someone else's machine — would be a folder we
-    /// create, never empty, and never mention. So this unlinks, and the dialog
-    /// that calls it says which of the two it is about to do.
-    ///
-    /// A folder is walked depth-first, because SFTP's `rmdir` only removes an
-    /// empty one. Symlinked directories are unlinked, never descended into: the
-    /// listing distinguishes them, and following one would delete whatever it
-    /// points at somewhere else entirely.
-    pub async fn delete(&self, path: &str) -> Result<(), SftpFailure> {
-        let target = normalize(path);
-        if parent_of(&target).is_none() {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "refusing to delete {target}, which is the root of that host's filesystem"
-            ))));
-        }
-        // `symlink_metadata` rather than `metadata`: a symlink to a directory
-        // must be removed as the link it is.
-        let meta = self
-            .session
-            .symlink_metadata(target.clone())
-            .await
-            .map_err(|e| self.failed(&format!("{target} is not there on that host"), e))?;
-        if meta.is_dir() {
-            self.delete_dir(&target).await
-        } else {
-            self.session
-                .remove_file(target.clone())
-                .await
-                .map_err(|e| self.failed(&format!("could not delete {target} on that host"), e))
-        }
-    }
-
-    /// Empty a folder and remove it. Iterative rather than recursive: an `async
-    /// fn` that calls itself needs boxing, and a deep tree would grow the stack
-    /// for no reason.
-    async fn delete_dir(&self, root: &str) -> Result<(), SftpFailure> {
-        // Every folder found, deepest last, so they can be removed in reverse.
-        let mut folders = vec![root.to_string()];
-        let mut queue = vec![root.to_string()];
-        while let Some(dir) = queue.pop() {
-            let entries = self
-                .session
-                .read_dir(dir.clone())
-                .await
-                .map_err(|e| self.failed(&format!("could not read {dir} on that host"), e))?;
-            for entry in entries {
-                let child = join(&dir, entry.file_name().as_str());
-                // A symlink is removed as a file whatever it points at.
-                if entry.file_type().is_dir() {
-                    folders.push(child.clone());
-                    queue.push(child);
-                } else {
-                    self.session.remove_file(child.clone()).await.map_err(|e| {
-                        self.failed(&format!("could not delete {child} on that host"), e)
-                    })?;
-                }
-            }
-        }
-        for dir in folders.iter().rev() {
-            self.session.remove_dir(dir.clone()).await.map_err(|e| {
-                self.failed(
-                    &format!("could not delete the folder {dir} on that host"),
-                    e,
-                )
-            })?;
-        }
-        Ok(())
-    }
-
-    /// Copy a file next to itself under a free "… copy" name, answering it.
-    ///
-    /// Bytes, not text: the local layer copies the file whatever is in it, and a
-    /// duplicate that mangled a PNG into replacement characters would be worse
-    /// than no duplicate at all. The whole file goes through this machine (SFTP
-    /// has no server-side copy in v3), so it is capped — a host is reached over
-    /// a link the user may be paying for, and silently pulling a gigabyte
-    /// through it is not a menu item's business.
-    pub async fn duplicate(&self, path: &str) -> Result<String, SftpFailure> {
-        use russh_sftp::protocol::OpenFlags;
-        use tokio::io::AsyncWriteExt;
-
-        let source = normalize(path);
-        let meta = self
-            .session
-            .metadata(source.clone())
-            .await
-            .map_err(|e| self.failed(&format!("{source} is not there on that host"), e))?;
-        if meta.is_dir() {
-            return Err(SftpFailure::Refused(AppError::Invalid(
-                "duplicating a folder on a host is not supported".to_string(),
-            )));
-        }
-        if meta.size.unwrap_or(0) > MAX_DUPLICATE_BYTES {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "{source} is larger than {} MB, so it is not copied over the connection",
-                MAX_DUPLICATE_BYTES / (1024 * 1024)
-            ))));
-        }
-        let parent = parent_of(&source).ok_or_else(|| {
-            SftpFailure::Refused(AppError::Invalid(format!("{source} has no parent folder")))
-        })?;
-        let name = source.rsplit('/').next().unwrap_or(&source);
-
-        // The free name is found by asking the host, one candidate at a time —
-        // the same sequence the local layer produces, so a folder that is
-        // duplicated on both machines ends up with the same names.
-        let mut candidate = String::new();
-        for n in 1..=MAX_COPY_ATTEMPTS {
-            candidate = join(&parent, &copy_name(name, n));
-            if !self.exists(&candidate).await? {
-                break;
-            }
-            if n == MAX_COPY_ATTEMPTS {
-                return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                    "there are already {MAX_COPY_ATTEMPTS} copies of {name} in that folder"
-                ))));
-            }
-        }
-
-        let bytes = self
-            .session
-            .read(source.clone())
-            .await
-            .map_err(|e| self.failed(&format!("could not read {source} on that host"), e))?;
-        let mut handle = self
-            .session
-            .open_with_flags(
-                candidate.clone(),
-                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
-            )
-            .await
-            .map_err(|e| self.failed(&format!("could not create {candidate} on that host"), e))?;
-        if let Err(e) = handle.write_all(&bytes).await {
-            let _ = handle.close().await;
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "{candidate} was created on that host but the copy failed partway                  ({e}); the file there is incomplete"
-            ))));
-        }
-        if let Err(e) = handle.close().await {
-            return Err(SftpFailure::Refused(AppError::Invalid(format!(
-                "the host did not finish writing {candidate}: {e}"
-            ))));
-        }
-        Ok(candidate)
-    }
-
     /// The user's home directory on the host, in the app's forward-slash form.
     ///
     /// Asked of SFTP, not of a shell: `realpath(".")` on a freshly opened
@@ -909,107 +642,15 @@ impl RemoteFiles {
             .map_err(|e| self.failed(&format!("could not look at {target} on that host"), e))
     }
 
-    /// Read a file's raw bytes.
-    ///
-    /// Distinct from [`read_file`], which is for the editor and answers text
-    /// with the binary / too-large flags the editor needs. The one caller here
-    /// is the image diff, which needs the bytes exactly as they are on that
-    /// machine — a PNG turned into replacement characters is not a smaller
-    /// picture, it is a broken one.
+    /// Read a file's raw bytes. The one caller is the image diff, which needs
+    /// the bytes exactly as they are on that machine — a PNG turned into
+    /// replacement characters is not a smaller picture, it is a broken one.
     pub async fn read_bytes(&self, path: &str) -> Result<Vec<u8>, SftpFailure> {
         let file = normalize(path);
         self.session
             .read(file.clone())
             .await
             .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))
-    }
-
-    /// Read a previewable file on the host as an inline `data:<mime>;base64,…`
-    /// URL — the image and PDF viewer, on the machine the file is on.
-    ///
-    /// The local reader ([`crate::fs::read_data_url`]) is not an option here for
-    /// the reason the whole router exists: it would read *this* machine's disk
-    /// at a path that belongs to another one, and the viewer would show whatever
-    /// that failure serialized to. The bytes travel as bytes — the same
-    /// requirement the image diff had (§5.10h) — and the mime is decided by the
-    /// shared sniffer, so a file previews identically on either machine.
-    ///
-    /// The size is asked **before** reading: the cap exists to keep a huge blob
-    /// out of the webview, and here it also keeps it off the link.
-    pub async fn read_data_url(&self, path: &str) -> Result<String, SftpFailure> {
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-
-        let file = normalize(path);
-        let size = self
-            .session
-            .metadata(&file)
-            .await
-            .map_err(|e| self.failed(&format!("could not open {file} on that host"), e))?
-            .size
-            .unwrap_or_default();
-        if size > crate::fs::MAX_PREVIEW_BYTES {
-            return Err(SftpFailure::Refused(AppError::Invalid(
-                "the file is too large to preview".into(),
-            )));
-        }
-        let bytes = self
-            .session
-            .read(&file)
-            .await
-            .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))?;
-        let mime = crate::fs::preview_mime(&file, &bytes).ok_or_else(|| {
-            SftpFailure::Refused(AppError::Invalid(format!(
-                "{file} is not a recognized image or PDF"
-            )))
-        })?;
-        Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
-    }
-
-    /// Read a file for the editor, honouring the same guards as the local layer:
-    /// a file that is not UTF-8 text, or is over the edit cap, comes back
-    /// flagged rather than truncated or mangled.
-    pub async fn read_file(&self, path: &str) -> Result<FileContent, SftpFailure> {
-        let file = normalize(path);
-        let size = self
-            .session
-            .metadata(&file)
-            .await
-            .map_err(|e| self.failed(&format!("could not open {file} on that host"), e))?
-            .size
-            .unwrap_or_default();
-        if size > MAX_EDIT_BYTES {
-            return Ok(FileContent {
-                content: String::new(),
-                binary: false,
-                too_large: true,
-            });
-        }
-        let bytes = self
-            .session
-            .read(&file)
-            .await
-            .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))?;
-        // NUL is the same "this is not text" signal the local reader uses, so a
-        // file opens (or refuses to) identically on either machine.
-        if bytes.contains(&0) {
-            return Ok(FileContent {
-                content: String::new(),
-                binary: true,
-                too_large: false,
-            });
-        }
-        match String::from_utf8(bytes) {
-            Ok(content) => Ok(FileContent {
-                content,
-                binary: false,
-                too_large: false,
-            }),
-            Err(_) => Ok(FileContent {
-                content: String::new(),
-                binary: true,
-                too_large: false,
-            }),
-        }
     }
 }
 
@@ -1072,46 +713,12 @@ mod tests {
 
         // Read something known back and check it is the real content.
         let manifest = format!("{dir}/Cargo.toml");
-        let file = sftp.read_file(&manifest).await.expect("the manifest");
+        let bytes = sftp.read_bytes(&manifest).await.expect("the manifest");
         assert!(
-            !file.binary && !file.too_large,
-            "a manifest is editable text"
-        );
-        assert!(
-            file.content.contains("uxnan-desktop"),
+            String::from_utf8_lossy(&bytes).contains("uxnan-desktop"),
             "read the actual file, not an empty buffer"
         );
-        println!("live: read {} bytes of Cargo.toml", file.content.len());
-
-        // And an image, the way the preview pane asks for one: the bytes have to
-        // be the file's, byte for byte, and the mime has to be decided from them
-        // rather than from this machine's copy.
-        let png = format!("{dir}/icons/32x32.png");
-        let url = sftp.read_data_url(&png).await.expect("a preview URL");
-        let encoded = url
-            .strip_prefix("data:image/png;base64,")
-            .expect("a PNG data URL");
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-        let bytes = BASE64.decode(encoded).expect("valid base64");
-        assert_eq!(
-            bytes,
-            std::fs::read(&png).expect("the same file on disk"),
-            "the preview must be the file, not a re-encoding of it"
-        );
-        println!("live: previewed {} bytes of 32x32.png", bytes.len());
-
-        // A manifest is not previewable, and says so instead of arriving as a
-        // broken picture.
-        let refused = sftp
-            .read_data_url(&manifest)
-            .await
-            .expect_err("a manifest is not an image");
-        assert!(
-            AppError::from(refused)
-                .to_string()
-                .contains("not a recognized image or PDF"),
-            "the refusal names what it refused"
-        );
+        println!("live: read {} bytes of Cargo.toml", bytes.len());
     }
 
     /// Saving on a host, against a real `sshd` — including the two things that
@@ -1121,6 +728,10 @@ mod tests {
     /// `TRUNCATE` leaves the old tail behind, and the editor would show text the
     /// host does not have. And the "atomic" alternative every local writer uses
     /// is shown here to be unavailable, not merely unattractive.
+    async fn text(files: &RemoteFiles, path: &str) -> String {
+        String::from_utf8(files.read_bytes(path).await.expect("the file back")).expect("text")
+    }
+
     #[tokio::test]
     #[ignore = "needs a local sshd that authorizes a key in the agent"]
     async fn sftp_live_writes_and_shortens_a_file() {
@@ -1155,17 +766,17 @@ mod tests {
         // A file that does not exist yet is created, not refused.
         let long = "LONG CONTENT — accents, ñ and a tail 0123456789";
         files.write_file(&path, long).await.expect("the first save");
-        assert_eq!(files.read_file(&path).await.unwrap().content, long);
+        assert_eq!(text(&files, &path).await, long);
 
         // The one that would silently corrupt: a shorter body over a longer file.
         let short = "SHORT";
         files.write_file(&path, short).await.expect("a second save");
-        let after = files.read_file(&path).await.unwrap().content;
+        let after = text(&files, &path).await;
         assert_eq!(after, short, "no tail of the previous content may survive");
 
         // Empty is a legitimate document, not a no-op.
         files.write_file(&path, "").await.expect("saving empty");
-        assert_eq!(files.read_file(&path).await.unwrap().content, "");
+        assert_eq!(text(&files, &path).await, "");
 
         // And the reason none of this goes through a temp file: renaming onto a
         // path that exists is refused by the protocol, so the local writer's

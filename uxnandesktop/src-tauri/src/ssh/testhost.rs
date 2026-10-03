@@ -115,48 +115,6 @@ async fn posix_host_reports_its_inventory() {
 
 #[tokio::test]
 #[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
-async fn posix_host_serves_its_files_over_sftp() {
-    let (conn, _) = host_or_skip!();
-    let files = super::sftp::open(&conn).await.expect("an SFTP session");
-
-    // Home comes from the protocol, not from a shell variable.
-    let home = files.home().await.expect("the host's home");
-    assert!(
-        home.starts_with('/'),
-        "a POSIX home is rooted at / — got {home}"
-    );
-    println!("linux: home is {home}");
-
-    let listing = files.list_dir(&home).await.expect("a listing");
-    let names: Vec<&str> = listing.iter().map(|e| e.name.as_str()).collect();
-    assert!(names.contains(&"project"), "{names:?}");
-
-    // Read, write, and read back — the save path, on a filesystem that is not
-    // this machine's.
-    let path = format!("{home}/project/README.md");
-    let original = files.read_file(&path).await.expect("the readme");
-    assert!(original.content.contains("hello"), "{:?}", original.content);
-
-    files
-        .write_file(&path, "hello\nedited on a linux host\n")
-        .await
-        .expect("saving on a POSIX host");
-    let after = files.read_file(&path).await.expect("the readme again");
-    assert_eq!(after.content, "hello\nedited on a linux host\n");
-
-    // Shorten it: the case that silently kept a tail before `TRUNCATE`.
-    files.write_file(&path, "hi\n").await.expect("shortening");
-    assert_eq!(files.read_file(&path).await.unwrap().content, "hi\n");
-
-    // Put it back so the git test below sees the repository it expects.
-    files
-        .write_file(&path, "hello\ndirty\n")
-        .await
-        .expect("restore");
-}
-
-#[tokio::test]
-#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
 async fn posix_host_browses_and_badges_a_repository() {
     let (conn, _) = host_or_skip!();
     let files = super::sftp::open(&conn).await.expect("an SFTP session");
@@ -447,11 +405,13 @@ async fn posix_host_stages_commits_and_discards() {
         "both are gone"
     );
     assert_eq!(
-        files
-            .read_file(&format!("{repo}/a.txt"))
-            .await
-            .expect("a.txt")
-            .content,
+        String::from_utf8(
+            files
+                .read_bytes(&format!("{repo}/a.txt"))
+                .await
+                .expect("a.txt")
+        )
+        .unwrap(),
         "one\ntwo\n",
         "the committed content is what came back"
     );
@@ -462,11 +422,13 @@ async fn posix_host_stages_commits_and_discards() {
         .await
         .expect("apply");
     assert_eq!(
-        files
-            .read_file(&format!("{repo}/a.txt"))
-            .await
-            .expect("a.txt")
-            .content,
+        String::from_utf8(
+            files
+                .read_bytes(&format!("{repo}/a.txt"))
+                .await
+                .expect("a.txt")
+        )
+        .unwrap(),
         "one\ntwo\nthree\n"
     );
     // And reversed, which is how "discard this hunk" is spelled.
@@ -474,11 +436,13 @@ async fn posix_host_stages_commits_and_discards() {
         .await
         .expect("reverse");
     assert_eq!(
-        files
-            .read_file(&format!("{repo}/a.txt"))
-            .await
-            .expect("a.txt")
-            .content,
+        String::from_utf8(
+            files
+                .read_bytes(&format!("{repo}/a.txt"))
+                .await
+                .expect("a.txt")
+        )
+        .unwrap(),
         "one\ntwo\n"
     );
 
@@ -488,239 +452,6 @@ async fn posix_host_stages_commits_and_discards() {
             .await
             .is_err(),
         "a refused apply is an error"
-    );
-
-    let _ = conn.exec(&format!("rm -rf {repo}")).await;
-}
-
-#[tokio::test]
-#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
-async fn posix_host_creates_renames_duplicates_and_deletes() {
-    let (conn, _) = host_or_skip!();
-    let files = super::sftp::open(&conn).await.expect("an SFTP session");
-    let home = files.home().await.expect("the host's home");
-
-    // Its own folder: these tests remove things, and the fixture the read tests
-    // assert on has to survive them.
-    let base = format!("{home}/tree-ops");
-    let _ = conn.exec(&format!("rm -rf {base}")).await;
-    conn.exec(&format!("mkdir -p {base}"))
-        .await
-        .expect("a folder to work in");
-
-    // A bare name, and an intercalated path whose parents do not exist yet.
-    let file = files
-        .create_file(&base, "notes.md")
-        .await
-        .expect("a new file");
-    assert_eq!(file, format!("{base}/notes.md"));
-    let nested = files
-        .create_file(&base, "src/deep/main.rs")
-        .await
-        .expect("an intercalated file");
-    assert_eq!(nested, format!("{base}/src/deep/main.rs"));
-    assert!(files.exists(&format!("{base}/src/deep")).await.unwrap());
-
-    let folder = files
-        .create_dir(&base, "assets/icons")
-        .await
-        .expect("a new folder");
-    assert_eq!(folder, format!("{base}/assets/icons"));
-
-    // The server refuses the second one — `EXCLUDE` is SFTP's own "must not
-    // exist", so nothing here has to look first and lose the race.
-    assert!(files.create_file(&base, "notes.md").await.is_err());
-    assert!(files.create_dir(&base, "assets/icons").await.is_err());
-
-    // A name that could escape the folder never reaches the host.
-    assert!(files.create_file(&base, "../escape.txt").await.is_err());
-    assert!(files.create_file(&base, "  ").await.is_err());
-
-    // Rename, and the refusal to land on a sibling that is already there.
-    files
-        .write_file(&file, "hello\n")
-        .await
-        .expect("something to move");
-    let renamed = files.rename(&file, "README.md").await.expect("a rename");
-    assert_eq!(renamed, format!("{base}/README.md"));
-    assert_eq!(files.read_file(&renamed).await.unwrap().content, "hello\n");
-    files
-        .create_file(&base, "taken.md")
-        .await
-        .expect("a sibling");
-    assert!(files.rename(&renamed, "taken.md").await.is_err());
-    // A case-only rename is a real rename on a case-sensitive host, and the
-    // two-step path is what covers the hosts where it is not.
-    let cased = files
-        .rename(&renamed, "readme.md")
-        .await
-        .expect("a case-only rename");
-    assert_eq!(cased, format!("{base}/readme.md"));
-    assert_eq!(files.read_file(&cased).await.unwrap().content, "hello\n");
-
-    // Duplicate: byte for byte, under the local layer's own naming sequence.
-    let copy = files.duplicate(&cased).await.expect("a duplicate");
-    assert_eq!(copy, format!("{base}/readme copy.md"));
-    assert_eq!(files.read_file(&copy).await.unwrap().content, "hello\n");
-    let second = files.duplicate(&cased).await.expect("a second duplicate");
-    assert_eq!(second, format!("{base}/readme copy 2.md"));
-    assert!(files.duplicate(&base).await.is_err(), "a folder is refused");
-
-    // Delete: a file, then a folder that is not empty — `rmdir` alone cannot,
-    // so this is the walk.
-    files.delete(&copy).await.expect("delete a file");
-    assert!(!files.exists(&copy).await.unwrap());
-    files
-        .delete(&format!("{base}/src"))
-        .await
-        .expect("delete a tree");
-    assert!(!files.exists(&format!("{base}/src")).await.unwrap());
-    assert!(!files
-        .exists(&format!("{base}/src/deep/main.rs"))
-        .await
-        .unwrap());
-
-    // What is gone is gone: no trash on a host, which is why the dialog says so.
-    assert!(files.delete(&format!("{base}/nothing-here")).await.is_err());
-    // And a filesystem root is refused before anything is sent.
-    assert!(files.delete("/").await.is_err());
-
-    files.delete(&base).await.expect("clean up");
-    assert!(!files.exists(&base).await.unwrap());
-}
-
-#[tokio::test]
-#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
-async fn posix_host_searches_its_project_by_name_and_by_content() {
-    let (conn, _) = host_or_skip!();
-    let kind = super::shellkind::classify(&conn).await;
-    let files = super::sftp::open(&conn).await.expect("an SFTP session");
-    let home = files.home().await.expect("the host's home");
-
-    // Its own repository: a search asserts on *what is in the project*, so it
-    // cannot share one with the tests that add and remove files.
-    let repo = format!("{home}/searchable");
-    conn.exec(&format!(
-        "rm -rf {repo} && mkdir -p {repo}/src {repo}/.github && cd {repo} && git init -q \
-         && printf 'alpha beta\\nBETA gamma\\n' > src/notes.txt \
-         && printf 'fn main() {{}}\\n' > src/main.rs \
-         && printf 'ignored beta\\n' > secret.log \
-         && printf 'beta in a dotfolder\\n' > .github/ci.yml \
-         && printf '*.log\\n' > .gitignore \
-         && git add -A && git commit -qm first \
-         && printf 'untracked beta\\n' > src/fresh.txt"
-    ))
-    .await
-    .expect("a repository to search");
-
-    let filters = crate::fs::SearchFilters::default();
-
-    // By name: tracked and untracked both, ignored never.
-    let by_name = super::search::files(&conn, kind, &repo, "src", false, &filters, 100)
-        .await
-        .expect("a filename search");
-    let names: Vec<&str> = by_name.entries.iter().map(|e| e.name.as_str()).collect();
-    assert!(names.contains(&"notes.txt"), "{names:?}");
-    assert!(
-        names.contains(&"fresh.txt"),
-        "untracked files count: {names:?}"
-    );
-    assert!(!names.contains(&"secret.log"), "ignored: {names:?}");
-    assert!(
-        by_name.entries.iter().all(|e| e.path.starts_with(&repo)),
-        "paths come back absolute, as that machine spells them"
-    );
-
-    // Hidden folders follow the same rule as locally: off unless asked for.
-    let hidden_off = super::search::files(&conn, kind, &repo, "ci", false, &filters, 100)
-        .await
-        .expect("a filename search");
-    assert!(hidden_off.entries.is_empty(), "{:?}", hidden_off.entries);
-    let hidden_on = super::search::files(&conn, kind, &repo, "ci", true, &filters, 100)
-        .await
-        .expect("a filename search");
-    assert_eq!(hidden_on.entries.len(), 1, "{:?}", hidden_on.entries);
-
-    // By content: case-insensitive by default, and the offsets are ours.
-    let query = crate::fs::ContentQuery {
-        query: "beta".to_string(),
-        ..Default::default()
-    };
-    let hits = super::search::content(&conn, kind, &repo, &query, false, &filters, 100)
-        .await
-        .expect("a content search");
-    let hit_files: Vec<&str> = hits.files.iter().map(|f| f.name.as_str()).collect();
-    assert!(hit_files.contains(&"notes.txt"), "{hit_files:?}");
-    assert!(hit_files.contains(&"fresh.txt"), "untracked: {hit_files:?}");
-    assert!(!hit_files.contains(&"secret.log"), "ignored: {hit_files:?}");
-
-    let notes = hits
-        .files
-        .iter()
-        .find(|f| f.name == "notes.txt")
-        .expect("the file with two matching lines");
-    assert_eq!(notes.matches.len(), 2, "both lines: {:?}", notes.matches);
-    assert_eq!(notes.matches[0].line, 1);
-    assert_eq!(notes.matches[1].line, 2);
-    // The highlight is computed here from the line the host sent — git grep
-    // reports lines, not columns.
-    let first = &notes.matches[0];
-    assert_eq!(
-        &first.text[first.start as usize..first.end as usize],
-        "beta"
-    );
-
-    // Case-sensitive drops the shouted one.
-    let cased = crate::fs::ContentQuery {
-        query: "beta".to_string(),
-        case_sensitive: true,
-        ..Default::default()
-    };
-    let strict = super::search::content(&conn, kind, &repo, &cased, false, &filters, 100)
-        .await
-        .expect("a content search");
-    let strict_notes = strict
-        .files
-        .iter()
-        .find(|f| f.name == "notes.txt")
-        .expect("still one file");
-    assert_eq!(strict_notes.matches.len(), 1);
-    assert_eq!(strict_notes.matches[0].line, 1);
-
-    // A word search does not match inside a longer word.
-    let worded = crate::fs::ContentQuery {
-        query: "bet".to_string(),
-        whole_word: true,
-        ..Default::default()
-    };
-    assert!(
-        super::search::content(&conn, kind, &repo, &worded, false, &filters, 100)
-            .await
-            .expect("a content search")
-            .files
-            .is_empty()
-    );
-
-    // Nothing matched is an empty answer, not a failure — `git grep` exits 1.
-    let absent = crate::fs::ContentQuery {
-        query: "nothing-is-here".to_string(),
-        ..Default::default()
-    };
-    assert_eq!(
-        super::search::content(&conn, kind, &repo, &absent, false, &filters, 100)
-            .await
-            .expect("an empty search")
-            .total,
-        0
-    );
-
-    // A folder that is not a repository says so, rather than answering nothing.
-    let plain = format!("{home}/plain-folder");
-    assert!(
-        super::search::files(&conn, kind, &plain, "x", false, &filters, 100)
-            .await
-            .is_err(),
-        "searching asks git, so a plain folder cannot be searched"
     );
 
     let _ = conn.exec(&format!("rm -rf {repo}")).await;
@@ -841,47 +572,4 @@ async fn posix_host_returns_an_image_diff_byte_for_byte() {
     assert!(added.new.is_some(), "but it is there on the host");
 
     let _ = conn.exec(&format!("rm -rf {repo}")).await;
-}
-
-#[tokio::test]
-#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
-async fn posix_host_previews_an_image_it_holds() {
-    let (conn, _) = host_or_skip!();
-    let files = super::sftp::open(&conn).await.expect("an SFTP session");
-    let home = files.home().await.expect("the host's home");
-
-    // Same non-UTF-8 bytes the diff test uses, for the same reason: the viewer
-    // must get the file, not a lossy rendering of it.
-    let path = format!("{home}/preview.png");
-    conn.exec(&format!(
-        "printf '\\x89PNG\\r\\n\\x1a\\n\\xde\\xad\\xbe\\xef' > {path}"
-    ))
-    .await
-    .expect("an image on the host");
-
-    let url = files.read_data_url(&path).await.expect("a preview URL");
-    let encoded = url
-        .strip_prefix("data:image/png;base64,")
-        .unwrap_or_else(|| panic!("a PNG data URL, got {}", &url[..url.len().min(40)]));
-    use base64::Engine as _;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .expect("valid base64");
-    println!("linux: previewed {} bytes over SFTP", bytes.len());
-    assert_eq!(bytes, b"\x89PNG\r\n\x1a\n\xde\xad\xbe\xef");
-
-    // Refused, and in the host's own words rather than this machine's: the
-    // preview is for images and PDFs, and a text file is neither.
-    let readme = format!("{home}/project/README.md");
-    let refused = files
-        .read_data_url(&readme)
-        .await
-        .expect_err("a README is not previewable");
-    let message = crate::error::AppError::from(refused).to_string();
-    assert!(
-        message.contains("not a recognized image or PDF"),
-        "{message}"
-    );
-
-    let _ = conn.exec(&format!("rm -f {path}")).await;
 }

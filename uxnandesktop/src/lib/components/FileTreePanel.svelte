@@ -88,10 +88,9 @@
   });
 
   let searching = $state(false);
-  // A host's tree cannot be searched yet (`fileTree.searchable`): the search
-  // walks this filesystem, so offering it there would answer "no matches" for
-  // every query. Closing it when the workspace changes machine keeps a stale
-  // search box from hanging over a tree it cannot search.
+  // A host's tree is searchable only while that host is connected
+  // (`fileTree.searchable`). Closing the search when that stops keeps a stale
+  // search box from hanging over a tree nothing can search.
   $effect(() => {
     if (!fileTree.searchable && searching) searching = false;
   });

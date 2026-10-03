@@ -146,11 +146,11 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.7 | terminal remota, keepalive y caidas | implementado |
 | §5.8 | explorar carpetas, por SFTP | implementado |
 | §5.9 | un proyecto que vive en el host | implementado |
-| §5.10 | ficheros del host: listar, abrir y guardar | implementado |
+| §5.10 | ficheros del host, servidos por su motor | `commands::files_on`, `uxnan-host/src/files.rs`, `fsRouter.ts` |
 | §5.10b | rama y estado de git en el host | implementado |
 | §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
-| §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
-| §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
+| §5.10d | Crear/renombrar/duplicar/borrar en el host | el motor, `fsRouter.ts` |
+| §5.10e | Buscar en el proyecto del host | el motor, `fsRouter.ts` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.10g | Presupuesto de canales | `ssh/conn.rs` |
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
@@ -843,26 +843,55 @@ y la interfaz escribe su lado de la misma bifurcacion. Una pestaña que desapare
 tiene tres causas indistinguibles una vez cerrada; solo el registro las separa.
 Solo ids, nunca rutas ni salida.
 
-## 5.10 Ficheros del host — IMPLEMENTADO (fase 3, primera parte)
+## 5.10 Ficheros del host — IMPLEMENTADO, servidos por el motor del host
 
-`src-tauri/src/ssh/sftp.rs`. **Los ficheros van por SFTP, no por comandos.** Es la
-consecuencia directa de la leccion de §5.7: cualquier cosa con forma de comando
-depende de la shell que ese `sshd` arranque, y su dueño la cambia cuando quiere.
-SFTP es un **subsistema** —un programa que el servidor ejecuta, con protocolo
-binario— asi que listar un directorio o leer un fichero se comporta igual con
-cmd, PowerShell, WSL o Git Bash, y **no hace falta instalar nada en el host**.
-Nada que entrecomillar, nada que parsear, ninguna shell a la que culpar.
+**Los ficheros de un proyecto del host los sirve su motor** (§5.16,
+`crate::commands::files_on` + `crates/uxnan-host/src/files.rs`). Hay **un solo
+juego** de comandos `fs_*`, y cada uno lleva el `target` de la maquina: este
+equipo, o un host, cuyo motor ejecuta alli **el mismo codigo** que la app ejecuta
+en su disco (`uxnan_workspace_engine::fs`, protocolo 9, `Call::Fs`). Listar, leer,
+previsualizar, guardar, crear, renombrar, duplicar, borrar y buscar se comportan
+igual en las dos maquinas porque son la misma funcion, no dos implementaciones
+que se parecen.
 
-**Misma forma que en local.** Devuelve los tipos del layer local (`FsEntry`,
-`FileContent`), de modo que el arbol de ficheros y el editor dibujan los ficheros
-de un host con los componentes que ya existen — el mismo criterio que el selector
-de carpetas. Una sesion SFTP por host, abierta al primer uso: es un canal sobre la
-conexion que ya esta autenticada (§5.3), asi que mantenerla no cuesta nada y
-reabrirla por listado costaria un viaje por carpeta.
+Asi fue hasta la fase 3: los ficheros iban por SFTP y la busqueda por `git` en la
+shell del host (§5.10d, §5.10e en su version anterior). Funcionaba, pero eran
+**dos capas** por funcion —la local y la remota— que discrepaban en los bordes:
+el modo de un fichero al guardar, que cuenta como ignorado, que se puede buscar en
+una carpeta que no es repositorio. Con el motor en el host eso desaparece, y la
+capa remota se borro entera (`ssh_fs_*`, `ssh/search.rs` y las operaciones de
+proyecto de `ssh/sftp.rs`).
 
-**Un solo sitio decide a que maquina se lee** (`src/lib/fsRouter.ts`): ruta +
-maquina, y el enrutado sale de ahi. La alternativa —que cada punto de uso
-pregunte "¿esto es remoto?"— es exactamente la forma que ya nos costo un fallo.
+**Un host sin motor no tiene ficheros de proyecto**, y se dice: los comandos
+contestan que los ficheros de ese host los sirve su motor y que alli no corre. Un
+host asi conserva sus terminales por un canal simple (§5.16, *Hosts donde el
+motor no corre*). SFTP sigue existiendo solo para lo que tiene que llegar
+**antes** que el motor o sin el: instalar el propio motor, el selector de
+carpetas (§5.8) y los bytes que mueve la mitad de git que aun va por comandos
+(§5.10b, §5.10c).
+
+**El fencing sigue en el backend** (`02a` §2.9). Toda mutacion sobre un host
+—guardar, crear, renombrar, duplicar, borrar— lleva la expectativa (maquina +
+generacion de conexion) y `files_on` la comprueba **antes** de mandar nada al
+motor: la misma ruta absoluta suele existir en las dos maquinas, y un borrado mal
+encaminado no se puede deshacer. La expectativa la construye un solo sitio,
+`src/lib/fsRouter.ts`, que ya no tiene ramas: llama a los mismos comandos con el
+`target` y el backend decide la maquina.
+
+**Borrar en un host es permanente.** En local va a la papelera del sistema; un
+host no tiene papelera que la app pueda usar, asi que alli el motor desenlaza
+(`fs::delete_permanently`, con la misma guarda contra la raiz del filesystem que
+la papelera local) y el dialogo dice cual de las dos va a pasar.
+
+**Lo que se probo en vivo.** `a_projects_files_are_served_by_the_hosts_engine`
+(en `ssh::terminals::tests::live`, que el job `windows-ssh-host` de CI ejecuta
+contra un `sshd` real): crear una carpeta y un fichero con su padre intercalado,
+guardar y releer, listar, duplicar, renombrar, buscar por nombre y por contenido,
+un patron que no compila contestado como `Invalid`, un fichero ausente como
+`NotFound`, y el borrado. Del lado del daemon,
+`a_projects_files_are_listed_saved_and_searched_on_the_host`
+(`crates/uxnan-host/tests/daemon.rs`) prueba el servicio en las tres
+plataformas.
 
 ### Una sesion de ficheros no dura mas que su canal
 
@@ -901,7 +930,7 @@ Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero
 
 ### Ver una imagen: por el mismo camino que leerla
 
-`RemoteFiles::read_data_url` + `ssh_fs_read_data_url`. Reportado desde la app:
+`fs_read_data_url` con el `target` del host. Reportado desde la app:
 abrir una imagen de un proyecto del host pintaba `[object Object]` en medio del
 visor. Dos fallos encadenados, y el primero es el que importa:
 
@@ -919,71 +948,37 @@ un `data:` URL. Ahora `readDataUrlOn` la enruta como a todas.
 que fallo. Vale la pena anotarlo: el sintoma que se ve no siempre pertenece al
 fallo que hay que arreglar, y aqui habia uno de cada.
 
-Del lado del host se hace lo minimo y por SFTP, sin instalar nada: se **pregunta
-el tamaño antes de leer** —el tope de 25 MiB existe para no meter un blob enorme
-en el webview, y aqui ademas evita arrastrarlo por el enlace—, se leen los bytes
-tal cual (la misma exigencia que el diff de imagenes, §5.10h) y el tipo se decide
-con el mismo olfateador que en local, de modo que un fichero se previsualiza —o
-se rechaza— igual en las dos maquinas. Verificado en vivo contra un `sshd` real:
-el PNG vuelve byte a byte identico al del disco y un `Cargo.toml` se rechaza
-diciendo que no es imagen ni PDF.
+Del lado del host lo hace hoy el motor con el lector local
+(`fs::read_data_url`): el tope de 25 MiB se comprueba **antes** de leer, los
+bytes viajan tal cual (la misma exigencia que el diff de imagenes, §5.10h) y el
+tipo se decide con el mismo olfateador, de modo que un fichero se previsualiza
+—o se rechaza— igual en las dos maquinas porque es la misma funcion.
 
-### Guardar: en el sitio, porque el reemplazo atomico no existe aqui
+### Guardar: atomico y conservando el modo, en cualquier maquina
 
-`RemoteFiles::write_file`. En local se escribe a un temporal y se renombra
-encima — atomico. **Sobre SFTP eso no se puede**, y no es opinion: medido contra
-un `sshd` real, en este orden.
+El motor guarda con el escritor local (`fs::write_file`): temporal en la misma
+carpeta y renombrado encima, **conservando el modo** del fichero que reemplaza
+(un script ejecutable sigue siendolo despues de editarlo). Esto cierra el motivo
+por el que el guardado remoto escribia **en el sitio**: sobre SFTP v3 el rename
+que sobrescribe no existe (`posix-rename@openssh.com` es una extension que la
+libreria cliente no implementa), asi que "temporal y renombra" habria fallado en
+todos los guardados salvo el primero. En el host el rename es el del sistema de
+ficheros, y vale lo mismo que aqui.
 
-| Medicion | Resultado |
-|---|---|
-| `SSH_FXP_RENAME` sobre una ruta **que ya existe** | **Falla** (`Status: Failure`) |
-| `write()` de la libreria (abre solo con `WRITE`) | Escribir `SHORT` sobre un fichero mas largo dejo `SHORTCONTENT-0123456789` |
-| `WRITE \| CREATE \| TRUNCATE` | Correcto, incluido acortar y vaciar |
-| `fsync@openssh.com` | Soportado por este servidor |
-
-El rename que **sobrescribe** es la extension `posix-rename@openssh.com`, que la
-libreria cliente no implementa (y que en OpenSSH para Windows fue durante años
-un `unlink`+`rename`, o sea tampoco atomico). Asi que "temporal y renombra"
-fallaria en **todos** los guardados salvo el primero.
-
-Y el plan B —borrar el destino y luego renombrar— cambia un fichero truncado por
-uno **inexistente**, que es el fallo peor: tras una escritura mala el editor
-sigue teniendo el texto, tras un borrado malo no lo tiene nadie. Un temporal
-ademas **pierde permisos y dueño** del destino, porque lo que sobrevive es el
-temporal.
-
-Por eso se escribe **en el sitio**: `WRITE | CREATE | TRUNCATE`, escribir, pedir
-`fsync` (best effort: un host sin la extension no es motivo para fallar un
-guardado que ya acepto), cerrar, y **preguntar el tamaño al host**. Ese ultimo
-paso es el unico que detecta un guardado que almaceno menos bytes de los que se
-enviaron — el editor no puede notarlo solo, y seguiria mostrando texto que el
-host no tiene. Conserva el fichero tal cual: modo, dueño, enlaces duros y a
-donde apunta un symlink.
-
-**Fenced** (`02a` §2.9): `ssh_fs_write` verifica maquina y generacion **antes**
-de abrir, porque abrir ya trunca. La generacion viaja al frontend en
+**Fenced** (`02a` §2.9): `fs_write_file` con un `target` de host verifica maquina
+y generacion **antes** de mandar nada. La generacion viaja al frontend en
 `ssh_hosts_connected` —no solo en el informe de conexion— porque la ventana se
 recarga mucho mas a menudo de lo que se conecta un host, y sin eso cada guardado
 posterior a una recarga llevaria una expectativa que no emitio nadie.
 
-**Lo que no hace, y se dice:**
-
 | | Estado |
 |---|---|
-| Listar y abrir ficheros | **Funciona** |
-| Previsualizar una imagen o un PDF | **Funciona** (arriba): se lee por SFTP de la maquina del fichero, con el mismo tope y el mismo criterio de tipo que en local |
-| Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
-| Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
-| Refresco automatico | **Si con el motor del host** (§5.16); sin el (Windows), el boton de refrescar es la recarga |
-| Guardar un fichero | **Funciona** — en el sitio y con fencing (arriba) |
-| Renombrar / borrar / crear desde el arbol | **Hecho** en §5.10d |
-
-Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
-rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
-leidos de un `Cargo.toml` que es el fichero de verdad. Y la recuperacion, tambien
-en vivo: una sesion muerta en la cache se sustituye y el listado sale igual, una
-que muere sin que nadie lo note se reintenta, y un "no existe" se reporta a la
-primera sin tocar la sesion que iba bien.
+| Listar, abrir y previsualizar | **Funciona**, por el motor |
+| Marcar ignorados por git (`ignored`) | **Funciona**: el motor lo pregunta a git alli (`git::ignored_flags`), igual que aqui |
+| Buscar en el arbol | **Funciona** (§5.10e) |
+| Refresco automatico | **Funciona**: el vigilante del motor (§5.16) |
+| Guardar, crear, renombrar, duplicar, borrar | **Funciona**, con fencing |
+| Un host donde el motor no corre | Sin ficheros de proyecto, y se dice; sus terminales siguen |
 
 ## 5.10b Git del host — IMPLEMENTADO (fase 3, segunda parte)
 
@@ -1150,102 +1145,46 @@ app resuelve sola, es ruido sobre el que el usuario no puede actuar. Y cuando el
 host se va, la lista se vacia y las acciones se deshabilitan, pero el mensaje de
 commit a medio escribir se respeta.
 
-## 5.10d Operaciones de fichero en el host — IMPLEMENTADO (fase 3, cuarta parte)
+## 5.10d Operaciones de fichero en el host — IMPLEMENTADO, por el motor
 
-`src-tauri/src/ssh/sftp.rs` + `src/lib/fsRouter.ts`. Crear, renombrar, duplicar y
-borrar, en la maquina de la que es el arbol. Todo por SFTP: no hay ni una linea
-de shell aqui, asi que se comporta igual en cualquier host y no exige instalar
-nada.
+Crear, renombrar, duplicar y borrar, en la maquina de la que es el arbol: los
+mismos `fs_*` con el `target` del host, servidos por su motor (§5.10). Los
+nombres los valida **el mismo validador** en las dos maquinas
+(`fs::split_new_entry_path`, `validate_bare_name`), porque es el mismo codigo:
+que una ruta no pueda escapar de su carpeta importa exactamente igual en la
+maquina de otro.
 
-**Esto tapa un agujero, no solo añade una funcion.** Esos elementos del menu
-nunca estuvieron condicionados, asi que sobre un arbol remoto llamaban al
-filesystem **local** con la ruta de la otra maquina. Casi siempre fallaba — pero
-la ruta de un host Windows (`C:/Users/…`) puede existir tambien aqui, y entonces
-un renombrado o un borrado caian sobre el fichero equivocado en el ordenador
-equivocado. Misma clase que el guardado mal encaminado que ya cercamos (§5.10).
+**Esto tapo un agujero, no solo añadio una funcion.** Antes de condicionarlos,
+esos elementos del menu llamaban al filesystem **local** con la ruta de la otra
+maquina. Casi siempre fallaba — pero la ruta de un host Windows (`C:/Users/…`)
+puede existir tambien aqui, y entonces un renombrado o un borrado caian sobre el
+fichero equivocado en el ordenador equivocado. Por eso toda mutacion lleva
+fencing (§5.10).
 
-**Los nombres los valida el validador local**, no un segundo escrito aqui
-(`crate::fs::split_new_entry_path`, `validate_bare_name`): que una ruta no pueda
-escapar de su carpeta importa exactamente igual en la maquina de otro, y dos
-validadores son dos oportunidades de discrepar sobre `..`.
+**Borrar es permanente en un host, y la interfaz lo dice** (§5.10). Duplicar
+copia bytes en el host, sin cruzar el enlace — ya no hace falta el tope que
+tenia cuando el fichero entero pasaba dos veces por SFTP.
 
-**"No debe existir" lo decide el servidor.** `OpenFlags::EXCLUDE` es el
-`SSH_FXF_EXCL` del protocolo: la comprobacion es atomica y del host. Mirar
-primero y crear despues seria una carrera que perderiamos contra el agente que
-esta trabajando en esa carpeta — que es justo la razon por la que alguien tiene
-ese arbol abierto.
+**Lo que solo puede hacer esta maquina no se ofrece** para una entrada remota:
+revelar en el explorador, abrir con un editor local y registrar como proyecto
+local. Y con el host desconectado, lo que cambia la maquina se deshabilita: se
+puede leer lo que ya se leyo, pero no mandarle nada.
 
-**Renombrar no puede pisar** (SFTP v3; la misma limitacion que hizo que guardar
-escriba en el sitio, §5.10), lo cual coincide con lo que el layer local quiere.
-El unico caso que cuesta es cambiar solo mayusculas/minusculas en un host cuyo
-filesystem las ignora, donde origen y destino **son el mismo fichero**: eso se
-hace en dos pasos, por un nombre que nada usa, y solo despues de que el intento
-directo haya fallado.
+## 5.10e Buscar en el proyecto del host — IMPLEMENTADO, por el motor
 
-**Borrar es permanente, y la interfaz lo dice.** El arbol local manda a la
-papelera del sistema (recuperable); SSH no ofrece nada asi, e inventar una
-papelera oculta en la maquina de otro seria una carpeta que creamos, nunca
-vaciamos y nunca mencionamos. Asi que se desenlaza — y el dialogo promete lo que
-va a pasar en vez de ofrecer "mover a la papelera". Una carpeta se recorre en
-anchura y se borra en orden inverso (el `rmdir` de SFTP solo quita carpetas
-vacias); un enlace simbolico se quita **como enlace**, nunca se entra en el, o se
-estaria borrando lo que apunta en otro sitio. La raiz del filesystem se rechaza
-antes de mandar nada.
+Por nombre de fichero y por contenido, con `fs_search_files` /
+`fs_search_content` y el `target` del host: el motor recorre el proyecto **alli**
+con el mismo recorrido que aqui (el crate `ignore`, que lee `.gitignore`), y solo
+vuelven los resultados. Mismo resaltado, mismos modos (mayusculas, palabra
+completa, regex), mismos filtros, mismo tope; un patron que no compila vuelve
+como `SEARCH_INVALID` para que el panel lo enseñe bajo el campo.
 
-**Duplicar mueve bytes, no texto** — un duplicado que convirtiera un PNG en
-caracteres de reemplazo seria peor que no tener duplicado — y va **con tope**:
-SFTP v3 no tiene copia en el servidor, asi que el fichero entero cruza el enlace
-dos veces, y un elemento de menu no tiene por que arrastrar un gigabyte por la
-conexion de nadie.
-
-**Lo que solo puede hacer esta maquina ya no se ofrece** para una entrada remota:
-revelar en el explorador, abrir con un editor local, buscar (recorre este
-filesystem) y registrar como proyecto local. Y con el host desconectado, lo que
-cambia la maquina se deshabilita: se puede leer lo que ya se leyo, pero no
-mandarle nada.
-
-## 5.10e Buscar en el proyecto del host — IMPLEMENTADO (fase 3, quinta parte)
-
-`src-tauri/src/ssh/search.rs` + `src/lib/fsRouter.ts`. Por nombre de fichero y
-por contenido.
-
-**Por que git y no SFTP.** Todo lo demas de ficheros va por SFTP porque es un
-subsistema y no exige instalar nada. Buscar es justo lo que SFTP **no** sabe
-hacer: no tiene "find", asi que buscar sobre el es listar cada carpeta y leer
-cada fichero, una peticion cada vez, a traves de la red. Un repositorio de
-cualquier tamaño son miles de idas y vueltas por pulsacion.
-
-Los clientes remotos maduros lo resuelven instalando en el host un servidor que
-lleva `ripgrep`. El ayudante en el host esta descartado (§5.11), y exigir `rg`
-pondria la funcion detras de algo que la mayoria de las maquinas no tiene. Asi
-que se le pregunta a **git**, que ya esta en todo host con el que esta app puede
-hacer algo util — la rama, la revision y el historial se ejecutan alli
-(§5.10b, §5.10c). Dos ordenes, un viaje cada una:
-
-- `git ls-files -co --exclude-standard -z`: cada fichero seguido y sin seguir que
-  no este ignorado. Es **exactamente** lo que recorre la busqueda local (el crate
-  `ignore` lee las mismas reglas de `.gitignore`), asi que las dos maquinas
-  contestan sobre el mismo proyecto y no sobre dos ideas distintas de "el
-  proyecto".
-- `git grep -n -I --no-color -z`: las lineas que casan. **Los ficheros no cruzan
-  el enlace**, solo las lineas.
-
-**Los offsets del resaltado se calculan aqui**, no alli: `git grep` informa de
-lineas, no de columnas, y el resaltado tiene que coincidir con lo que habria
-producido la busqueda local. Cada linea devuelta se vuelve a casar con **el
-mismo regex que construye la busqueda local** (`crate::fs::build_content_regex`),
-asi que "que cuenta como coincidencia" tiene una sola definicion en la app. Si el
-dialecto de git caso algo que el nuestro no (un regex exotico), la linea se
-descarta en vez de enseñar un acierto que nada puede resaltar.
-
-**El formato se midio contra el host, no se supuso**: `-z` deja `ruta NUL linea NUL texto`, terminado en salto de linea, y se lee campo a campo — partir primero por saltos de linea tiraria
-justo la garantia que `-z` da (una ruta puede contener un salto de linea). Un
-host con CRLF manda ademas el retorno de carro, que no es parte de la linea.
-
-**Alcance honesto:** una carpeta del host que no es repositorio no se puede
-buscar, y se dice — una lista vacia seria indistinguible de "no hay
-coincidencias". "Buscar en la carpeta" acota con `-C`, y git contesta rutas
-relativas a esa carpeta (medido tambien).
+La version anterior le preguntaba a **git** en la shell del host (`git ls-files`,
+`git grep`), porque SFTP no sabe buscar y el ayudante en el host estaba
+descartado. Tenia dos limites que el motor quita: una carpeta que no era
+repositorio no se podia buscar, y los offsets del resaltado se recalculaban aqui
+porque `git grep` informa de lineas y no de columnas. Ahora la respuesta es la
+misma funcion en las dos maquinas.
 
 ## 5.10f Avisar de una sesion caida — IMPLEMENTADO (fase 3, sexta parte)
 
@@ -1676,7 +1615,8 @@ de un turno terminado, leida en el host por el mismo lector que el desktop,
 la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
 (`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). 8 = los hooks de cada agente uno a uno (`HooksStatus`, `SetHook`,
 `HookConfig`: el mismo instalador corrido en el host, con el `PATH` de su shell de
-login). Imprime
+login); 9 = los ficheros del proyecto (`Call::Fs(FsCall)` → `Reply::Value`, el
+`workspace_engine::fs` de la app corrido alli, §5.10). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1834,21 +1774,21 @@ ficheros, git y busqueda servidos por el motor.
 | Capa de estado de agente (`02d`) | Remoto |
 |---|---|
 | Capa 2 — titulo / OSC | **Funciona sin trabajo extra**: viaja en el stream de bytes del PTY |
-| Capa 1 — hooks HTTP | **Funciona con el motor** (Linux, macOS): los reporters, cableados alli, postean al receptor del motor y el reporte viaja por su canal (§5.16). Sin el motor (Windows): no |
+| Capa 1 — hooks HTTP | **Funciona con el motor** (Linux, macOS, Windows): los reporters, cableados alli, postean al receptor del motor y el reporte viaja por su canal (§5.16). Sin el motor: no |
 | Capa 3 — deteccion de proceso | Requiere sondeo remoto de procesos. Fase posterior |
 
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
 | Terminal | **Funciona**: en Linux, macOS y Windows vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en un host donde el motor no puede correr (sin build, `home` con `noexec`), canal sobre la sesion (§5.7) |
-| Ficheros | **Funciona** por SFTP (§5.10): listar, abrir, **guardar** (en el sitio, con fencing) y **previsualizar** imagenes y PDF. Sin marcado de ignorados y sin refresco automatico |
+| Ficheros | **Funciona** por el motor (§5.10): listar con ignorados marcados, abrir, **guardar** (atomico, conservando el modo, con fencing) y **previsualizar** imagenes y PDF. Sin motor: no hay ficheros de proyecto, y se dice |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
-| Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
-| Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
+| Buscar (nombre y contenido) | **Funciona** por el motor, con el mismo recorrido que aqui (§5.10e), sea o no un repositorio. |
+| Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por el motor y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
-| Refresco automatico de cualquiera de los anteriores | **Si con el motor** (Linux, macOS): el motor vigila la carpeta **alli** y empuja los cambios —tambien los de `.git`— como el mismo `fs:changed`, con su target (§5.16). Sin el motor (Windows): al abrir, al actuar y con el boton; sondear cuesta ~2 s por `exec` (§5.3) |
+| Refresco automatico de cualquiera de los anteriores | **Si con el motor** (Linux, macOS, Windows): el motor vigila la carpeta **alli** y empuja los cambios —tambien los de `.git`— como el mismo `fs:changed`, con su target (§5.16). Sin el motor: al abrir, al actuar y con el boton; sondear cuesta ~2 s por `exec` (§5.3) |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
 marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.

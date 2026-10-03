@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,086 Rust tests (858 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 122
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 24 in `uxnan-host` (20 against the daemon itself) + 45
-integration), of which 59 are ignored probes that need something real to talk to
-(51 live SSH probes — 39 against a real `sshd` and 12 against a **Linux host in a
+`docs/chat.md`). 1,081 Rust tests (851 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 123
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 25 in `uxnan-host` (21 against the daemon itself) + 45
+integration), of which 56 are ignored probes that need something real to talk to
+(48 live SSH probes — 40 against a real `sshd` and 8 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests; and on Windows 1 real-scheduler probe) + 1,788 frontend Vitest tests across two
+GitHub tests; and on Windows 1 real-scheduler probe) + 1,787 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1121,9 +1121,9 @@ already written for the day phase 2 below lands — nothing to relax then.
       SSH channel for all of them (`ssh/engine.rs`, `ssh/terminals.rs`; proven
       against a real Linux host). Owed, in order:
       1. **The first release run of the host engines.** Every installer now
-         bundles all four (`scripts/build-host-engine.mjs`, `docs/build.md` →
+         bundles all six (`scripts/build-host-engine.mjs`, `docs/build.md` →
          *The host engines*); the `host-engine` job in `release-desktop.yml`
-         that builds them has never run on GitHub yet. Verify the four land in
+         that builds them has never run on GitHub yet. Verify the six land in
          each installer of the next release.
       2. **Windows hosts beyond the one proven.** The engine runs on a Windows
          host (named pipe, out of the session's job — CI's `windows-ssh-host`
@@ -1141,9 +1141,12 @@ already written for the day phase 2 below lands — nothing to relax then.
          host — its sessions are on the host, out of this machine's bridge's
          sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
          own bridge, plan phase F8. (Its tools — the control surface's MCP
-         server and the integrated browser — reach it through the engine.) Then files, git and search
-         served by the engine (removing `ssh/git.rs`, `ssh/search.rs`, the
-         remote half of `fsRouter.ts` / `gitRouter.ts`).
+         server and the integrated browser — reach it through the engine.)
+      4. **Git served by the engine.** Files and search already are (`02g`
+         §5.10, protocol 9); git still runs as commands through the host's
+         shell (`ssh/git.rs`, the remote half of `gitRouter.ts`), with its
+         patches and messages carried over SFTP. Moving it onto the engine's
+         `git` removes both and is what lets worktrees on a host follow.
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
       1. *Builds and packages on all three platforms, with no extra toolchain for
@@ -1194,14 +1197,14 @@ already written for the day phase 2 below lands — nothing to relax then.
       another one, and asking it anyway put a "folder is missing" warning on a
       perfectly healthy remote project. So a host's project is never marked,
       which is honest but incomplete: a folder really deleted on the host looks
-      fine until something fails. Asking the host is one SFTP `stat` per remote
-      project on a connected host (`ssh/sftp.rs`), with "not connected" reported
-      as unknown rather than missing — the disconnected state has its own
+      fine until something fails. Asking the host is one call to its engine per
+      remote project on a connected host, with "not connected" reported as
+      unknown rather than missing — the disconnected state has its own
       indicator already.
-**Landed from phase 3:** files over SFTP — listing, opening, **saving** (in
-place and fenced, because atomic rename does not exist over SFTP v3) and
-**previewing** an image or PDF, read from the machine the file is on with the
-size asked before the bytes cross the link (`02g` §5.10); the folder
+**Landed from phase 3:** a host's files — listing (git-ignored entries marked),
+opening, **saving** (atomic, keeping the file's mode, fenced) and **previewing**
+an image or PDF — served by its engine with the app's own file code, on one set
+of `fs_*` commands that name the machine (`02g` §5.10); the folder
 picker moved off the host's shell onto SFTP (336 ms → 6.6 ms on loopback, and it
 was paying for two failed shell starts per click on a Windows host); the branch
 and change count read by running git *on* the host; **Changes and History on a
@@ -1209,10 +1212,10 @@ host** — the changed-file list, per-file and per-hunk diffs, staging, discard,
 commit, log and fetch/push/pull, with the patch and the commit message travelling
 over SFTP because `exec` has no stdin, every mutation fenced, and the whole review
 answered in one command (`02g` §5.10c); **creating, renaming, duplicating and
-deleting in a host's tree**, over SFTP and fenced, with deletion permanent
-because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
-host's project** by name and by content, by asking git there rather than dragging
-the project across the link (`02g` §5.10e); **a reconnect ladder** with typed
+deleting in a host's tree**, by the engine and fenced, with deletion permanent
+because a host has no trash and the dialog saying so (`02g` §5.10d); **searching a
+host's project** by name and by content, walked there by the engine with the
+same `.gitignore` rules as here (`02g` §5.10e); **a reconnect ladder** with typed
 reachability failures, for the hosts that can come back without asking anything
 (`02g` §5.12); **the host's inventory in Settings** — its agents with the
 versions that machine reported, and the one absence that changes what uxnan can
@@ -1743,7 +1746,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,788 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,081 Rust + 1,787 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

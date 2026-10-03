@@ -873,26 +873,6 @@ export function sshGitSync(
   return invoke<WorktreeStatus>('ssh_git_sync', { hostId, path, action, expect: expect ?? null });
 }
 
-/** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it
- *  works the same whatever shell that machine starts, with nothing installed
- *  there. Shapes are the local layer's own, so the tree renders either machine. */
-export function sshFsList(hostId: string, path: string): Promise<FsEntry[]> {
-  return invoke<FsEntry[]>('ssh_fs_list', { hostId, path });
-}
-
-/** Read a text file on a host, for the editor. Same guards as the local reader:
- *  binary and over-cap files come back flagged rather than mangled. */
-export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
-  return invoke<FileContent>('ssh_fs_read', { hostId, path });
-}
-
-/** Read an image or PDF on a host as an inline `data:` URL, for the preview
- *  pane. Same guards as the local reader (25 MiB cap, known image/PDF only), and
- *  the size is asked before the bytes cross the link. */
-export function sshFsReadDataUrl(hostId: string, path: string): Promise<string> {
-  return invoke<string>('ssh_fs_read_data_url', { hostId, path });
-}
-
 /** Ask a host what TCP ports it is listening on, right now.
  *
  *  One command on that machine, so it runs when the user asks and never on a
@@ -925,118 +905,6 @@ export function sshForwards(): Promise<ForwardInfo[]> {
   return invoke<ForwardInfo[]>('ssh_forwards');
 }
 
-/** Save a text file on a host. Fenced: `expect` names the machine the caller
- *  prepared the save for, and the backend refuses the write outright when that
- *  no longer matches — the same absolute path usually exists on both machines,
- *  so a misrouted save is the one that looks like success. */
-export function sshFsWrite(
-  hostId: string,
-  path: string,
-  content: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_fs_write', { hostId, path, content, expect: expect ?? null });
-}
-
-/** Create an empty file on a host (the tree's "New File"). `path` is a bare name
- *  or an intercalated relative path (`sub/dir/file.ts`), validated by the same
- *  rules as locally — a name that could escape its folder never reaches the host.
- *  Fenced like every mutation. */
-export function sshFsCreateFile(
-  hostId: string,
-  dir: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_create_file', { hostId, dir, path, expect: expect ?? null });
-}
-
-/** Create a folder on a host (the tree's "New Folder"). */
-export function sshFsCreateDir(
-  hostId: string,
-  dir: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_create_dir', { hostId, dir, path, expect: expect ?? null });
-}
-
-/** Rename an entry on a host, within its folder. Answers the new path. */
-export function sshFsRename(
-  hostId: string,
-  path: string,
-  newName: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_rename', { hostId, path, newName, expect: expect ?? null });
-}
-
-/** Delete a file or folder on a host — **permanently**. SSH has no trash, so
- *  unlike the local delete this cannot be undone, and the dialog says so. */
-export function sshFsDelete(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_fs_delete', { hostId, path, expect: expect ?? null });
-}
-
-/** Copy a file next to itself on a host under a free "… copy" name. */
-export function sshFsDuplicate(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_duplicate', { hostId, path, expect: expect ?? null });
-}
-
-/** Filename search in a host's project.
- *
- *  Asks **git** on that machine (`git ls-files`) instead of walking it over
- *  SFTP: a walk would be one request per folder across a network, and "the files
- *  git would list" is already what the local search means, so both machines
- *  answer about the same project. A folder that is not a repository there is
- *  refused with that as the reason. */
-export function sshFsSearchFiles(
-  hostId: string,
-  root: string,
-  query: string,
-  includeHidden: boolean,
-  filters: SearchFilters,
-  limit: number,
-): Promise<FileSearch> {
-  return invoke<FileSearch>('ssh_fs_search_files', {
-    hostId,
-    root,
-    query,
-    includeHidden,
-    filters,
-    limit,
-  });
-}
-
-/** Content search in a host's project, through `git grep` — the matching lines
- *  come back, the files never cross the link. The highlight offsets are computed
- *  on this side with the same regex the local search uses, because `git grep`
- *  reports lines and not columns. */
-export function sshFsSearchContent(
-  hostId: string,
-  root: string,
-  query: ContentQuery,
-  includeHidden: boolean,
-  filters: SearchFilters,
-  limit: number,
-): Promise<ContentSearch> {
-  return invoke<ContentSearch>('ssh_fs_search_content', {
-    hostId,
-    root,
-    query,
-    includeHidden,
-    filters,
-    limit,
-  });
-}
-
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */
@@ -1062,33 +930,55 @@ export function sshHostsConnected(): Promise<SshHostSession[]> {
 
 // --- Filesystem: file tree + editor ----------------------------------------
 
+// Every `fs_*` call below names the machine it is for: `target` is this one
+// when absent, or a host, whose files its engine serves. A mutation on a host
+// carries `expect` — the machine and connection the caller prepared it for —
+// and the backend refuses it when that no longer holds. `$lib/fsRouter` is the
+// one caller that builds those.
+
 /** List the immediate children of a directory (sub-dirs first, then files) for
  *  the file-tree tab. Lazy — called per folder on expand. */
-export function fsListDir(path: string): Promise<FsEntry[]> {
-  return invoke<FsEntry[]>('fs_list_dir', { path });
+export function fsListDir(path: string, target?: TargetId | null): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>('fs_list_dir', { path, target: target ?? null });
 }
 
 /** Read a single text file for the editor (binary / too-large guards in flags). */
-export function fsReadFile(path: string): Promise<FileContent> {
-  return invoke<FileContent>('fs_read_file', { path });
+export function fsReadFile(path: string, target?: TargetId | null): Promise<FileContent> {
+  return invoke<FileContent>('fs_read_file', { path, target: target ?? null });
 }
 
-/** Read a local previewable file (image/PDF) as an inline
- *  `data:<mime>;base64,…` URL. Rejects other types and oversized files. */
-export function fsReadDataUrl(path: string): Promise<string> {
-  return invoke<string>('fs_read_data_url', { path });
+/** Read a previewable file (image/PDF) as an inline `data:<mime>;base64,…`
+ *  URL. Rejects other types and oversized files. */
+export function fsReadDataUrl(path: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('fs_read_data_url', { path, target: target ?? null });
 }
 
-/** Overwrite a file with the editor's content (atomic on the backend). */
-export function fsWriteFile(path: string, content: string): Promise<void> {
-  return invoke('fs_write_file', { path, content });
+/** Overwrite a file with the editor's content (atomic on the backend, keeping
+ *  the file's mode). */
+export function fsWriteFile(
+  path: string,
+  content: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('fs_write_file', { path, content, target: target ?? null, expect: expect ?? null });
 }
 
 /** Rename a file on disk to a new bare file name, keeping it in the same folder.
  *  Returns the new absolute, forward-slash path. Rejects path separators,
  *  traversal, and clobbering an existing sibling. */
-export function fsRename(path: string, newName: string): Promise<string> {
-  return invoke<string>('fs_rename', { path, newName });
+export function fsRename(
+  path: string,
+  newName: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_rename', {
+    path,
+    newName,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Whether `path` currently exists on disk. Used by the boot reconciler to drop
@@ -1119,27 +1009,46 @@ export function termBuffersSet(buffers: Record<string, string>): Promise<void> {
  *  File"). `path` is a bare name or a VSCode-style intercalated relative path
  *  (`sub/dir/file.js`) whose parent segments are created as folders; the leaf
  *  must not already exist. Returns the new absolute, forward-slash path. */
-export function fsCreateFile(dir: string, path: string): Promise<string> {
-  return invoke<string>('fs_create_file', { dir, path });
+export function fsCreateFile(
+  dir: string,
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_create_file', { dir, path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Create a new empty directory at `path` inside `dir` (file tree "New Folder").
  *  Same intercalated-path / no-clobber guards as {@link fsCreateFile}, with every
  *  segment created as a folder. */
-export function fsCreateDir(dir: string, path: string): Promise<string> {
-  return invoke<string>('fs_create_dir', { dir, path });
+export function fsCreateDir(
+  dir: string,
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_create_dir', { dir, path, target: target ?? null, expect: expect ?? null });
 }
 
-/** Move a file or directory to the OS trash (file tree "Delete") — recoverable,
- *  not a permanent unlink. Refuses a filesystem root. */
-export function fsDelete(path: string): Promise<void> {
-  return invoke('fs_delete', { path });
+/** The file tree's "Delete": to the OS trash on this machine (recoverable), for
+ *  good on a host, which has none — the dialog says which. Refuses a filesystem
+ *  root either way. */
+export function fsDelete(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('fs_delete', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Duplicate a single file next to itself under a unique "… copy" name (file tree
  *  "Duplicate"). Directories are refused. Returns the new absolute path. */
-export function fsDuplicate(path: string): Promise<string> {
-  return invoke<string>('fs_duplicate', { path });
+export function fsDuplicate(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_duplicate', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Project-wide filename search for the Files tab: recursively find files under
@@ -1153,8 +1062,16 @@ export function fsSearchFiles(
   includeHidden: boolean,
   filters: SearchFilters,
   limit: number,
+  target?: TargetId | null,
 ): Promise<FileSearch> {
-  return invoke<FileSearch>('fs_search_files', { root, query, includeHidden, filters, limit });
+  return invoke<FileSearch>('fs_search_files', {
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+    target: target ?? null,
+  });
 }
 
 /** Project-wide **content** search for the Files tab: find the lines under `root`
@@ -1168,8 +1085,16 @@ export function fsSearchContent(
   includeHidden: boolean,
   filters: SearchFilters,
   limit: number,
+  target?: TargetId | null,
 ): Promise<ContentSearch> {
-  return invoke<ContentSearch>('fs_search_content', { root, query, includeHidden, filters, limit });
+  return invoke<ContentSearch>('fs_search_content', {
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+    target: target ?? null,
+  });
 }
 
 /** The current conversation (title + coarse status) of the Zero agent running in

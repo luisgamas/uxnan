@@ -1231,3 +1231,120 @@ async fn one_agents_hook_is_read_installed_and_removed_on_the_host() {
     let settings = std::fs::read_to_string(home.join(".claude").join("settings.json")).unwrap();
     assert!(!settings.contains("uxnan-status-relay"), "{settings}");
 }
+
+/// One `Fs` call's answer, in the engine's own shape.
+async fn fs_call(client: &mut Client, call: uxnan_host_protocol::FsCall) -> serde_json::Value {
+    match client.call(Call::Fs(call)).await {
+        Outcome::Ok {
+            reply: Reply::Value { value },
+        } => value,
+        other => panic!("fs call failed: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_projects_files_are_listed_saved_and_searched_on_the_host() {
+    use uxnan_host_protocol::FsCall;
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let project = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(project.path())
+        .unwrap()
+        .display()
+        .to_string();
+    std::fs::create_dir(project.path().join("src")).unwrap();
+
+    let created = fs_call(
+        &mut client,
+        FsCall::CreateFile {
+            dir: root.clone(),
+            path: "src/main.rs".into(),
+        },
+    )
+    .await;
+    let file = created.as_str().unwrap().to_string();
+    fs_call(
+        &mut client,
+        FsCall::Write {
+            path: file.clone(),
+            content: "fn main() { println!(\"needle\"); }\n".into(),
+        },
+    )
+    .await;
+    let read = fs_call(&mut client, FsCall::Read { path: file.clone() }).await;
+    assert!(
+        read["content"].as_str().unwrap().contains("needle"),
+        "{read}"
+    );
+
+    let listed = fs_call(
+        &mut client,
+        FsCall::List {
+            path: format!("{root}/src"),
+        },
+    )
+    .await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+    assert_eq!(listed[0]["name"], "main.rs");
+
+    // Search works outside any repository — the engine walks the folder itself.
+    let by_name = fs_call(
+        &mut client,
+        FsCall::SearchFiles {
+            root: root.clone(),
+            query: "main".into(),
+            include_hidden: false,
+            filters: serde_json::json!({}),
+            limit: 50,
+        },
+    )
+    .await;
+    assert!(by_name.to_string().contains("main.rs"), "{by_name}");
+    let by_content = fs_call(
+        &mut client,
+        FsCall::SearchContent {
+            root: root.clone(),
+            query: serde_json::json!({ "query": "needle" }),
+            include_hidden: false,
+            filters: serde_json::json!({}),
+            limit: 50,
+        },
+    )
+    .await;
+    assert!(by_content.to_string().contains("main.rs"), "{by_content}");
+
+    let copy = fs_call(&mut client, FsCall::Duplicate { path: file.clone() }).await;
+    let renamed = fs_call(
+        &mut client,
+        FsCall::Rename {
+            path: file.clone(),
+            new_name: "lib.rs".into(),
+        },
+    )
+    .await;
+    assert!(renamed.as_str().unwrap().ends_with("src/lib.rs"));
+    fs_call(
+        &mut client,
+        FsCall::Delete {
+            path: copy.as_str().unwrap().to_string(),
+        },
+    )
+    .await;
+    let names: Vec<String> = std::fs::read_dir(project.path().join("src"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["lib.rs".to_string()],
+        "deleted for good, the rest kept"
+    );
+
+    // A missing file is reported as missing, not as a broken call.
+    let missing = client
+        .call(Call::Fs(FsCall::Read {
+            path: format!("{root}/nope.txt"),
+        }))
+        .await;
+    assert!(matches!(missing, Outcome::Error { .. }), "{missing:?}");
+}

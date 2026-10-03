@@ -84,12 +84,9 @@ class FileTreeStore {
     return isLocalTarget(this.target);
   }
 
-  /** Whether searching this tree is possible.
-   *
-   *  Local always. On a host it asks git there (`ssh::search`), so it needs a
-   *  live connection — and a folder that is not a repository on that machine
-   *  answers with that as the reason, which the panel shows in place of results
-   *  rather than pretending nothing matched. */
+  /** Whether searching this tree is possible: local always; on a host, while
+   *  it is connected — its engine walks the project there, the same walk as
+   *  here, and a host nothing can be sent to has no search to offer. */
   get searchable(): boolean {
     return isLocalTarget(this.target) || this.mutable;
   }

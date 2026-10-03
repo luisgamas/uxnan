@@ -50,7 +50,7 @@ beforeEach(() => {
       connected = connected.filter((s) => s.hostId !== args.hostId);
       return true;
     },
-    ssh_fs_list: () => [],
+    fs_list_dir: () => [],
   });
   hosts.hosts = [];
   hosts.connected = [];

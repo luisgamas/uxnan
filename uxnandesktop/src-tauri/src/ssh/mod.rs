@@ -35,7 +35,6 @@ pub mod inventory;
 pub mod ports;
 pub mod pty;
 pub mod registry;
-pub mod search;
 pub mod secrets;
 pub mod sftp;
 pub mod shellkind;

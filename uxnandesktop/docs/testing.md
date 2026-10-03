@@ -78,10 +78,11 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,086 backend tests**
-in total — 858 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 122 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 24 in
-`uxnan-host` (20 against the real daemon over its socket — among them an agent's
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,081 backend tests**
+in total — 851 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 123 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 25 in
+`uxnan-host` (21 against the real daemon over its socket — among them a project's
+files listed, saved and searched on the host, an agent's
 report sent by the real reporter script reaching only its own terminal, and the
 hooks wired into a temporary `HOME`, and a daemon run from a build folder
 removing the old builds nothing runs from, and a viewer that starts empty
@@ -90,8 +91,8 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,027 of which run everywhere; the other 59 are ignored probes that need something real to talk to
-(51 live SSH probes — 39 against a real `sshd`, one of which idles for five
+`tests/` — 1,025 of which run everywhere; the other 56 are ignored probes that need something real to talk to
+(48 live SSH probes — 40 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -105,8 +106,9 @@ tab that shows it after an app restart, and one — armed also by
 `UXNAN_SSH_TEST_WIRE=1`, because it wires that host's real agents — runs the
 host's own Claude Code once and hears its hooks — and one more has that Claude
 call this app's `uxnan_status` tool through the engine and print the tab the
-call was answered as, plus **12 against a Linux
-host in a container**;
+call was answered as, and one more has the engine serve a project's files there
+— create, save, list, duplicate, rename, search by name and content, delete —
+plus **8 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).
 
@@ -167,26 +169,17 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The twelve tests walk the whole stack on that machine: password authentication,
-the shell classification, the inventory probe, SFTP (list, read, save, and
-shortening a file), the folder picker with its repository badge, remote
-`git status` including the no-upstream case, the whole **review** (HEAD,
-ahead/behind, the changed files and their line counts in one command) with its
-diffs and log, a full **mutation** cycle over the tree — create (bare and intercalated), the
-server's own "must not exist" refusal, a name that tries to escape its folder,
-rename including the case-only one, duplicate, a recursive delete and the refusal
-to aim one at a filesystem root — **searching** it (by name and by content, with the `.gitignore` rules, the
-hidden-folder rule, case sensitivity, whole word, an empty result and a folder
-that is not a repository), **what the host does when it runs out of channels** (held open until it refuses,
-then the message has to name the number *it* enforced — this is what caught the
-off-by-one and the asynchronous release), **an image diff** (bytes that are not
-valid UTF-8, compared byte for byte — the text path would have replaced every one
-of them), **previewing an image the host holds** (the same non-UTF-8 bytes, back
-as a `data:` URL, with a text file refused as not previewable), and a full git
-**mutation** cycle:
-stage,
-unstage, stage all, commit
-a message containing a newline, quotes and `$VAR` and read it back verbatim,
+The eight tests walk what still runs through the host's own shell and SFTP:
+password authentication, the shell classification, the inventory probe, the
+folder picker with its repository badge, remote `git status` including the
+no-upstream case, the whole **review** (HEAD, ahead/behind, the changed files and
+their line counts in one command) with its diffs and log, **what the host does
+when it runs out of channels** (held open until it refuses, then the message has
+to name the number *it* enforced — this is what caught the off-by-one and the
+asynchronous release), **an image diff** (bytes that are not valid UTF-8,
+compared byte for byte — the text path would have replaced every one of them),
+and a full git **mutation** cycle: stage, unstage, stage all, commit a message
+containing a newline, quotes and `$VAR` and read it back verbatim,
 discard tracked and untracked files, apply a patch and reverse it, and require a
 patch that does not apply to fail. The mutating tests build their own repository
 on the host so the image's fixture is left as the image made it.
@@ -319,7 +312,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,788 tests** across both
+ships in every build and is never shown). **1,787 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

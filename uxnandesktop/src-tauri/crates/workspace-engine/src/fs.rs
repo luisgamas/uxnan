@@ -31,7 +31,7 @@ pub const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
 
 /// One entry in a directory listing (a sub-directory or a file).
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FsEntry {
     pub name: String,
@@ -49,7 +49,7 @@ pub struct FsEntry {
 }
 
 /// The content of a file opened in the editor, with guards the UI honors.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContent {
     /// UTF-8 text (empty when `binary` or `tooLarge`).
@@ -61,7 +61,7 @@ pub struct FileContent {
 }
 
 /// A page of file-tree project-wide search results.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSearch {
     /// Matching files (absolute, forward-slash paths), sorted by path.
@@ -100,7 +100,7 @@ const SNIPPET_LEAD_CHARS: usize = 40;
 /// folder of that name, which is what a user typing a folder name means. Matching
 /// is case-insensitive so `*.TS` and `*.ts` behave the same on every platform.
 /// Empty fields mean "no filter".
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchFilters {
     /// Only files matching one of these patterns are searched (empty = all).
@@ -112,7 +112,7 @@ pub struct SearchFilters {
 }
 
 /// One matching line inside a file.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentMatch {
     /// 1-based line number, for "go to line" when the hit is opened.
@@ -130,7 +130,7 @@ pub struct ContentMatch {
 }
 
 /// Every match found in one file.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentFileMatch {
     /// Absolute, forward-slash path.
@@ -142,7 +142,7 @@ pub struct ContentFileMatch {
 }
 
 /// A page of project-wide **content** search results.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentSearch {
     /// Files with at least one match, sorted by path.
@@ -763,7 +763,7 @@ pub fn search_files(
 }
 
 /// What the user typed in the content-search box, with its three match modes.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentQuery {
     pub query: String,

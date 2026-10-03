@@ -86,6 +86,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A host's files are served by its engine.** The file tree, the editor, the
+  previews and search on a project that lives on a host now run the same code
+  there that they run on this machine, through the host engine: git-ignored
+  files are dimmed, a save is atomic and keeps the file's permissions, search
+  works in a folder that is not a repository, and duplicating no longer pulls
+  the file across the connection. Every file action is one command that names
+  its machine, still fenced to the host and connection it was prepared for. A
+  host where the engine cannot run says it has no project files; its terminals
+  keep working.
 
 ### Fixed
 

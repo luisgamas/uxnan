@@ -33,7 +33,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///   the integrated browser reached from a terminal here (`Event::Mcp`,
 ///   `ClientMessage::McpAnswer`, `Event::OpenUrl`).
 /// - 8: the agents' hooks one by one — `HooksStatus`, `SetHook`, `HookConfig`.
-pub const PROTOCOL: u32 = 8;
+/// - 9: a project's files — `Fs` (list, read, save, create, rename, delete,
+///   duplicate, and search by name and by content).
+pub const PROTOCOL: u32 = 9;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -307,6 +309,66 @@ pub enum Call {
     HookConfig {
         agent: String,
     },
+    /// Something done to a project's files on this machine, with the
+    /// workspace engine's own `fs` — answered as [`Reply::Value`] in that
+    /// module's shapes.
+    Fs(FsCall),
+}
+
+/// What [`Call::Fs`] asks. The search filters and query are the engine's
+/// `fs::SearchFilters` / `fs::ContentQuery`, carried as they serialize.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum FsCall {
+    List {
+        path: String,
+    },
+    Read {
+        path: String,
+    },
+    ReadDataUrl {
+        path: String,
+    },
+    Write {
+        path: String,
+        content: String,
+    },
+    CreateFile {
+        dir: String,
+        path: String,
+    },
+    CreateDir {
+        dir: String,
+        path: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Rename {
+        path: String,
+        new_name: String,
+    },
+    /// For good: a host has no trash.
+    Delete {
+        path: String,
+    },
+    Duplicate {
+        path: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    SearchFiles {
+        root: String,
+        query: String,
+        include_hidden: bool,
+        filters: serde_json::Value,
+        limit: usize,
+    },
+    #[serde(rename_all = "camelCase")]
+    SearchContent {
+        root: String,
+        query: serde_json::Value,
+        include_hidden: bool,
+        filters: serde_json::Value,
+        limit: usize,
+    },
 }
 
 /// How a call ended.
@@ -359,6 +421,10 @@ pub enum Reply {
     },
     Text {
         text: String,
+    },
+    /// An answer in a workspace engine module's own shape.
+    Value {
+        value: serde_json::Value,
     },
     Transcript {
         prompt: Option<String>,

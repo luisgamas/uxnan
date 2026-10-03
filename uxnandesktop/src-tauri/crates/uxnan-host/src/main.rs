@@ -18,6 +18,7 @@ mod agents;
 mod attach;
 mod daemon;
 mod endpoint;
+mod files;
 mod log;
 mod paths;
 mod versions;

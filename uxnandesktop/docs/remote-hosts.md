@@ -214,8 +214,9 @@ change to this layer (`docs/testing.md`). Windows is what this is developed
 against day to day. macOS should work — it takes the same POSIX path Linux does —
 but nobody has run it, and this page will say so until someone has.
 
-Most of what the app does on a host needs no shell at all — files, the folder picker and the tree go over **SFTP**, a
-subsystem, so they behave identically everywhere. What genuinely needs a shell
+A project's files are served by the **host engine** (below); the folder picker
+and installing the engine itself go over **SFTP**, a subsystem, so they behave
+identically everywhere. What still needs a shell
 (git, and asking what is installed) is sent in the dialect **the host itself
 reported** when it connected, never in one guessed from what it claims to be:
 
@@ -275,8 +276,8 @@ Select it in the left panel and:
 
 | | |
 |---|---|
-| **Terminals** | Open on the host, in the project's folder, in your **login** shell there (so the `PATH` a version manager writes into your profile is there too). Splits and further terminals stay there too. On a Linux or macOS host they live in the **host engine** (below) and outlive a dropped connection and an app restart; elsewhere they are a channel on the connection and end with it. |
-| **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. **Creating, renaming, duplicating and deleting work too**, on that machine and fenced like every other mutation — but **deleting there is permanent**: SSH has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching works too** — by file name and by content — by asking git on that machine (`git ls-files` and `git grep`) instead of dragging the project across the link: matching lines come back, files never do. It follows the same `.gitignore` rules the local search does, so both machines answer about the same project, and a folder that is not a repository there says so rather than answering nothing. **Images and PDFs preview from the host as well** — they are read over the same SFTP session, capped at 25 MiB, and the size is asked before the file crosses the link. Gaps that remain: no git-ignored dimming, and automatic refresh only where the host engine runs (see *Automatic refresh*) — elsewhere the refresh button is the reload. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. The Changes view is offered on a host like anywhere else. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
+| **Terminals** | Open on the host, in the project's folder, in your **login** shell there (so the `PATH` a version manager writes into your profile is there too). Splits and further terminals stay there too. On a Linux, macOS or Windows host they live in the **host engine** (below) and outlive a dropped connection and an app restart; elsewhere they are a channel on the connection and end with it. |
+| **Files** | **Works — including saving and searching**, on a host where the **host engine** runs (below). The engine serves the project's files with the same code the app runs on its own disk, so the tree lists them (git-ignored files dimmed, as here), opens and previews them (images and PDFs up to 25 MiB), saves them (atomically, keeping the file's permissions), and **creates, renames, duplicates and deletes** them — on that machine, and fenced like every other change: refused outright if the host or its connection has moved on, since the same absolute path usually exists on both machines. **Deleting there is permanent**: a host has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching** by file name and by content walks the project *there*, following the same `.gitignore` rules as here, whether or not it is a repository — the results come back, the files never do. A host where the engine cannot run has no project files, and the panel says so; its terminals still work. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up. |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
 | **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run git *on the host*, through the shell that machine reported, with every argument quoted for it. Everything the panel draws arrives in **one** command, because each remote command costs a shell start there. Your commit message and any patch travel over SFTP rather than through that shell, so a message with quotes or several lines arrives exactly as you typed it. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** reads the diff on the host and runs your agent here, where its CLI and sign-in are. |
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
@@ -354,9 +355,9 @@ working. So:
 
 ## Terminals that outlive the connection: the host engine
 
-On a Linux or macOS host, the app runs a small program of its own there — the
-**host engine**, `uxnan-host` — that owns the terminals instead of the SSH
-session. That is what lets a terminal, and the agent in it, survive a closed
+On a Linux, macOS or Windows host, the app runs a small program of its own
+there — the **host engine**, `uxnan-host` — that owns the terminals instead of
+the SSH session, and serves the project's files. That is what lets a terminal, and the agent in it, survive a closed
 laptop lid, a Wi-Fi handover or an app restart.
 
 - **Nothing to install by hand.** The first terminal on a host uploads the
@@ -459,9 +460,8 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: handing a host agent's session over to
-a chat (the engine running the agents' hooks there), files, git and search served
-by the engine, and worktrees on a host.
+In order: git served by the engine, worktrees on a host, and handing a host
+agent's session over to a chat.
 
 Deliberately *not* coming: any mode that skips host-key verification.
 

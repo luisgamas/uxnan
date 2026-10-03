@@ -63,8 +63,9 @@ in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR
 
 - `lib/types.ts` — TS mirror of the Rust model (Serde emits `camelCase`).
 - `lib/api.ts` — typed wrappers over the Tauri commands.
-- `lib/fsRouter.ts` — the one place that decides *which machine* a file read or
-  write goes to (local filesystem vs a host's SFTP session).
+- `lib/fsRouter.ts` — the one place that names *which machine* a file call is
+  for (this one, or a host whose engine serves it) and builds the fencing
+  expectation a host mutation carries.
 - `lib/state/hosts.svelte.ts` + `lib/state/sessions.svelte.ts` — the registered
   SSH hosts and which of them have a live session (with its generation, which
   every mutation carries).

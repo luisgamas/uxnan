@@ -46,17 +46,16 @@ describe("FilePreview", () => {
     // need the provider the root layout supplies.
     const { screen, backend } = mountWithProviders(FilePreview, {
       props: { path: "C:/Users/gamas/app/logo.png", kind: "image", target: "ssh:h1" },
-      commands: { ssh_fs_read_data_url: () => png },
+      commands: { fs_read_data_url: () => png },
     });
 
-    await until(() => backend.called("ssh_fs_read_data_url"), {
+    await until(() => backend.called("fs_read_data_url"), {
       label: "the host image request",
     });
-    expect(backend.lastCallTo("ssh_fs_read_data_url")?.args).toEqual({
-      hostId: "h1",
+    expect(backend.lastCallTo("fs_read_data_url")?.args).toEqual({
       path: "C:/Users/gamas/app/logo.png",
+      target: "ssh:h1",
     });
-    expect(backend.lastCallTo("fs_read_data_url")).toBeUndefined();
     await until(() => screen.queryByRole("img", { name: "logo.png" })?.getAttribute("src") === png, {
       label: "the host's image",
     });

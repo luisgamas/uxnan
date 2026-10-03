@@ -515,7 +515,8 @@ impl Daemon {
             | Call::AgentTools
             | Call::HooksStatus
             | Call::SetHook { .. }
-            | Call::HookConfig { .. } => Outcome::Error {
+            | Call::HookConfig { .. }
+            | Call::Fs(_) => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -893,6 +894,13 @@ where
                                     },
                                 };
                                 viewer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Fs(call) }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let outcome = crate::files::serve(call).await;
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
                             }
                             Ok(ClientMessage::McpAnswer { ticket, status, body }) => {
                                 daemon.mcp_answered(ticket, status, body);

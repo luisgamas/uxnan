@@ -427,12 +427,11 @@ describe('a project that lives on a host', () => {
   });
 
   it("lists a host's folder in the file tree, and does not offer a search it cannot run", async () => {
-    // Phase 3's first slice: Files works on a host because it goes over SFTP —
-    // a subsystem, so the same code path serves cmd, PowerShell, WSL and Git
-    // Bash. Search does not, and is therefore not offered rather than offered
-    // broken (it walks *this* filesystem and would answer "no matches").
+    // The tree names the host, and the backend serves it from that machine's
+    // engine. Search needs the host to be reachable, so while it is not
+    // connected it is not offered rather than offered broken.
     const backend = installFakeBackend({
-      ssh_fs_list: () => [
+      fs_list_dir: () => [
         { name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false },
         { name: 'README.md', path: `${REMOTE_PATH}/README.md`, isDir: false, ignored: false },
       ],
@@ -443,11 +442,10 @@ describe('a project that lives on a host', () => {
     fileTree.setRoot(REMOTE_PATH, projects.activeWorktreeTarget);
     await fileTree.loadDir(REMOTE_PATH);
 
-    expect(backend.lastCallTo('ssh_fs_list')?.args).toEqual({
-      hostId: 'h1',
+    expect(backend.lastCallTo('fs_list_dir')?.args).toEqual({
       path: REMOTE_PATH,
+      target: 'ssh:h1',
     });
-    expect(backend.lastCallTo('fs_list_dir')).toBeUndefined();
     expect(fileTree.searchable).toBe(false);
 
     // …and a local workspace is unchanged.
@@ -493,7 +491,7 @@ describe('a project that lives on a host', () => {
     // retried, because the root never made it into the loaded set.
     let connected = false;
     installFakeBackend({
-      ssh_fs_list: () => {
+      fs_list_dir: () => {
         if (!connected) throw { code: 'NOT_CONNECTED', message: 'h1 is not connected' };
         return [{ name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false }];
       },

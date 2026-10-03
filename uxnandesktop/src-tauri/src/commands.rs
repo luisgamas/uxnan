@@ -20,6 +20,7 @@ use crate::state::{AppState, HookServerInfo};
 use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 use crate::worktreeclean;
 use crate::worktreeloc::{self, Resolved};
+use uxnan_host_protocol::FsCall;
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -2595,8 +2596,8 @@ async fn remote_git(
 /// Same, for a mutation: refuses unless the caller is still looking at the host
 /// and connection it thought it was.
 ///
-/// The check runs **before** anything is sent, for the reason `ssh_fs_write`
-/// gives — a stage or a discard cannot be taken back once the host has run it,
+/// The check runs **before** anything is sent, for the reason a save
+/// is fenced first — a stage or a discard cannot be taken back once the host has run it,
 /// so a late check would only be able to report the damage.
 async fn remote_git_fenced(
     state: &AppState,
@@ -2882,47 +2883,6 @@ pub async fn ssh_git_sync(
     Ok(ssh::git::review(&conn, shell, &path).await.status)
 }
 
-/// Filename search in a host's project.
-///
-/// Asks git on that machine rather than walking it over SFTP: a walk would be
-/// one request per folder across a network, and the local search already means
-/// "the files git would list" (`ssh::search`). A folder that is not a repository
-/// there is refused with that as the reason, rather than answering an empty list
-/// nobody can tell from "no matches".
-#[tauri::command]
-pub async fn ssh_fs_search_files(
-    state: State<'_, AppState>,
-    host_id: String,
-    root: String,
-    query: String,
-    include_hidden: bool,
-    filters: crate::fs::SearchFilters,
-    limit: usize,
-) -> Result<crate::fs::FileSearch, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::search::files(&conn, shell, &root, &query, include_hidden, &filters, limit)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Content search in a host's project, through `git grep` — the lines come back,
-/// the files never do.
-#[tauri::command]
-pub async fn ssh_fs_search_content(
-    state: State<'_, AppState>,
-    host_id: String,
-    root: String,
-    query: crate::fs::ContentQuery,
-    include_hidden: bool,
-    filters: crate::fs::SearchFilters,
-    limit: usize,
-) -> Result<crate::fs::ContentSearch, CommandError> {
-    let (conn, shell) = remote_git(&state, &host_id).await?;
-    ssh::search::content(&conn, shell, &root, &query, include_hidden, &filters, limit)
-        .await
-        .map_err(CommandError::from)
-}
-
 /// The file session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:
@@ -3034,24 +2994,6 @@ where
         .map_err(|failure| CommandError::from(AppError::from(failure)))
 }
 
-/// List a directory on a host, for the file tree.
-///
-/// Over SFTP rather than a shell command, deliberately: it is a subsystem, so it
-/// behaves the same whatever shell that machine starts and needs nothing
-/// installed there (`ssh::sftp`).
-#[tauri::command]
-pub async fn ssh_fs_list(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
-    let dir = path.as_str();
-    with_sftp(&state, &host_id, |session| async move {
-        session.list_dir(dir).await
-    })
-    .await
-}
-
 /// A host's live connection, cloned out of the registry.
 ///
 /// **The guard is released before this returns**, and that is the entire point.
@@ -3066,189 +3008,6 @@ async fn session_for(
     host_id: &str,
 ) -> Option<std::sync::Arc<ssh::conn::Connection>> {
     state.ssh_sessions.read().await.get(host_id).cloned()
-}
-
-/// Save a text file on a host, for the editor.
-///
-/// **Fenced** (`02a` §2.9), because this is a mutation: the expectation the
-/// caller prepared has to name the machine the write would actually land on. A
-/// save is the one operation where being pointed at the wrong host is silent —
-/// the same absolute path very often exists on both machines, and the editor
-/// would report success either way.
-///
-/// The **connection generation** is checked too, but note what it does and does
-/// not buy here: for a process or a worktree, a reconnect invalidates the world
-/// the caller saw. For an absolute path on a host, it does not — the file is the
-/// same file. It is checked because the contract says a stale expectation is
-/// stale; the value that matters in this command is the target id.
-#[tauri::command]
-pub async fn ssh_fs_write(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    content: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    // Refuse before anything is opened: `write_file` truncates to open, so a
-    // check that ran afterwards would have already destroyed the file.
-    let generation = {
-        let sessions = state.ssh_sessions.read().await;
-        let Some(conn) = sessions.get(&host_id) else {
-            return Err(CommandError::from(AppError::NotConnected(host_id.clone())));
-        };
-        conn.generation()
-    };
-    target::check(expect.as_ref(), &TargetId::Ssh(host_id.clone()), generation)
-        .map_err(CommandError::from)?;
-
-    let file = path.as_str();
-    let text = content.as_str();
-    with_sftp(&state, &host_id, |session| async move {
-        session.write_file(file, text).await
-    })
-    .await
-}
-
-/// Everything the file tree can do to a host's disk, fenced.
-///
-/// One entry point rather than five, because they share the only part that
-/// matters: the check that this is still the machine, and the connection, the
-/// user was looking at. The same absolute path usually exists on both machines,
-/// so a misrouted create is confusing and a misrouted **delete** is the one that
-/// cannot be taken back.
-async fn fenced_files(
-    state: &AppState,
-    host_id: &str,
-    expect: Option<TargetExpectation>,
-) -> Result<std::sync::Arc<ssh::sftp::RemoteFiles>, CommandError> {
-    let generation = {
-        let sessions = state.ssh_sessions.read().await;
-        let Some(conn) = sessions.get(host_id) else {
-            return Err(CommandError::from(AppError::NotConnected(
-                host_id.to_string(),
-            )));
-        };
-        conn.generation()
-    };
-    target::check(
-        expect.as_ref(),
-        &TargetId::Ssh(host_id.to_string()),
-        generation,
-    )
-    .map_err(CommandError::from)?;
-    sftp_for(state, host_id).await
-}
-
-/// Create an empty file on a host (the tree's "New File"). `path` is a bare name
-/// or an intercalated relative path, validated by the same rules as locally.
-#[tauri::command]
-pub async fn ssh_fs_create_file(
-    state: State<'_, AppState>,
-    host_id: String,
-    dir: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<String, CommandError> {
-    let files = fenced_files(&state, &host_id, expect).await?;
-    files
-        .create_file(&dir, &path)
-        .await
-        .map_err(|e| CommandError::from(AppError::from(e)))
-}
-
-/// Create a folder on a host (the tree's "New Folder").
-#[tauri::command]
-pub async fn ssh_fs_create_dir(
-    state: State<'_, AppState>,
-    host_id: String,
-    dir: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<String, CommandError> {
-    let files = fenced_files(&state, &host_id, expect).await?;
-    files
-        .create_dir(&dir, &path)
-        .await
-        .map_err(|e| CommandError::from(AppError::from(e)))
-}
-
-/// Rename an entry on a host, within its folder.
-#[tauri::command]
-pub async fn ssh_fs_rename(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    new_name: String,
-    expect: Option<TargetExpectation>,
-) -> Result<String, CommandError> {
-    let files = fenced_files(&state, &host_id, expect).await?;
-    files
-        .rename(&path, &new_name)
-        .await
-        .map_err(|e| CommandError::from(AppError::from(e)))
-}
-
-/// Delete a file or folder on a host. **Permanent** — a host has no trash, and
-/// the caller is expected to have said so (see `ssh::sftp::RemoteFiles::delete`).
-#[tauri::command]
-pub async fn ssh_fs_delete(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<(), CommandError> {
-    let files = fenced_files(&state, &host_id, expect).await?;
-    files
-        .delete(&path)
-        .await
-        .map_err(|e| CommandError::from(AppError::from(e)))
-}
-
-/// Copy a file next to itself on a host under a free "… copy" name.
-#[tauri::command]
-pub async fn ssh_fs_duplicate(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-    expect: Option<TargetExpectation>,
-) -> Result<String, CommandError> {
-    let files = fenced_files(&state, &host_id, expect).await?;
-    files
-        .duplicate(&path)
-        .await
-        .map_err(|e| CommandError::from(AppError::from(e)))
-}
-
-/// Read a text file on a host, for the editor. Same guards as the local reader:
-/// binary and over-cap files come back flagged rather than mangled.
-#[tauri::command]
-pub async fn ssh_fs_read(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<crate::fs::FileContent, CommandError> {
-    let file = path.as_str();
-    with_sftp(&state, &host_id, |session| async move {
-        session.read_file(file).await
-    })
-    .await
-}
-
-/// Read an image or PDF on a host as an inline `data:` URL, for the preview
-/// pane. Same guards as the local reader: over-cap and unrecognized files are
-/// refused, and the size is asked before the bytes cross the link
-/// (`ssh::sftp::RemoteFiles::read_data_url`).
-#[tauri::command]
-pub async fn ssh_fs_read_data_url(
-    state: State<'_, AppState>,
-    host_id: String,
-    path: String,
-) -> Result<String, CommandError> {
-    let file = path.as_str();
-    with_sftp(&state, &host_id, |session| async move {
-        session.read_data_url(file).await
-    })
-    .await
 }
 
 /// A port a terminal on a host just announced (`ports:announced`).
@@ -4249,30 +4008,106 @@ pub async fn browse_dirs(path: Option<String>) -> Result<crate::browse::DirListi
 // and the center file editor (read/write one text file). Paths are absolute, on
 // the user's own machine (not confined — mirrors `browse_dirs`).
 
+/// Where a project's files are: this machine, or a host's engine.
+enum FilesOn {
+    Here,
+    Host(std::sync::Arc<ssh::engine::HostEngine>),
+}
+
+/// The machine `target` names, for a file call. On a host, a **mutation** is
+/// fenced first (`02a` §2.9): the expectation the caller prepared has to name
+/// the machine and the connection the change would land on — the same absolute
+/// path usually exists on both machines, and a misrouted save or delete is
+/// silent. A host's files are its engine's: one where the engine cannot run
+/// says so, rather than being served some other way.
+async fn files_on<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    target: Option<&str>,
+    fence: Option<Option<&TargetExpectation>>,
+) -> Result<FilesOn, CommandError> {
+    let host = match target.filter(|t| !t.is_empty()).map(TargetId::parse) {
+        None | Some(Ok(TargetId::Local)) => return Ok(FilesOn::Here),
+        Some(Ok(TargetId::Ssh(host))) => host,
+        Some(Ok(other)) => {
+            return Err(CommandError::from(AppError::Invalid(format!(
+                "{other} is not a machine this app reaches"
+            ))))
+        }
+        Some(Err(e)) => return Err(CommandError::from(e)),
+    };
+    let Some(conn) = session_for(state, &host).await else {
+        return Err(CommandError::from(AppError::NotConnected(host)));
+    };
+    if let Some(expect) = fence {
+        target::check(expect, &TargetId::Ssh(host.clone()), conn.generation())
+            .map_err(CommandError::from)?;
+    }
+    match connected_engine(app, state, &host).await {
+        Some(engine) => Ok(FilesOn::Host(engine)),
+        None => Err(CommandError::from(AppError::Invalid(
+            "this host's files are served by its engine, which does not run there".to_string(),
+        ))),
+    }
+}
+
 /// List the immediate children of a directory (sub-dirs first, then files),
 /// for the file-tree tab. Lazy: the frontend calls this per folder on expand,
 /// so a huge tree (e.g. `node_modules`) never loads until opened.
 #[tauri::command]
-pub async fn fs_list_dir(path: String) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
-    crate::fs::list_dir(&path).await.map_err(CommandError::from)
+pub async fn fs_list_dir(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
+    match files_on(&app, &state, target.as_deref(), None).await? {
+        FilesOn::Here => crate::fs::list_dir(&path).await.map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::List { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Read a single text file for the editor (with binary / too-large guards).
 #[tauri::command]
-pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, CommandError> {
-    crate::fs::read_file(&path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_read_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+) -> Result<crate::fs::FileContent, CommandError> {
+    match files_on(&app, &state, target.as_deref(), None).await? {
+        FilesOn::Here => crate::fs::read_file(&path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::Read { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Read a local previewable file as an inline `data:<mime>;base64,…` URL for
 /// the multimodal viewer. Refuses anything except known images/PDFs and anything
 /// over the preview size cap (see [`crate::fs::read_data_url`]).
 #[tauri::command]
-pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
-    crate::fs::read_data_url(&path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_read_data_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+) -> Result<String, CommandError> {
+    match files_on(&app, &state, target.as_deref(), None).await? {
+        FilesOn::Here => crate::fs::read_data_url(&path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::ReadDataUrl { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Read any file to attach it to a chat message (name, MIME type, base64).
@@ -4290,12 +4125,26 @@ pub async fn fs_is_dir(path: String) -> Result<bool, CommandError> {
     Ok(crate::fs::is_dir(&path).await)
 }
 
-/// Overwrite a file with the editor's content (atomic temp-write + rename).
+/// Overwrite a file with the editor's content (atomic temp-write + rename,
+/// keeping the file's mode) — on the machine `target` names, fenced there.
 #[tauri::command]
-pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
-    crate::fs::write_file(&path, &content)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_write_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    content: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::write_file(&path, &content)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::Write { path, content })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Whether a filesystem path currently exists. Read-only; the frontend's boot
@@ -4348,10 +4197,23 @@ pub async fn term_buffers_set(
 /// separators, traversal and clobbering (see [`crate::fs::rename_path`]). Returns
 /// the new absolute, forward-slash path so the frontend can re-point the tab.
 #[tauri::command]
-pub async fn fs_rename(path: String, new_name: String) -> Result<String, CommandError> {
-    crate::fs::rename_path(&path, &new_name)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_rename(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    new_name: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::rename_path(&path, &new_name)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::Rename { path, new_name })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Create a new, empty file in `dir` (the file tree's "New File"). `path` is a bare
@@ -4359,38 +4221,89 @@ pub async fn fs_rename(path: String, new_name: String) -> Result<String, Command
 /// segments are created as folders; the leaf must not already exist (see
 /// [`crate::fs::create_file`]). Returns the new absolute, forward-slash path.
 #[tauri::command]
-pub async fn fs_create_file(dir: String, path: String) -> Result<String, CommandError> {
-    crate::fs::create_file(&dir, &path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_create_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dir: String,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::create_file(&dir, &path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::CreateFile { dir, path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Create a new empty directory in `dir` (the file tree's "New Folder"). Same
 /// intercalated-path / no-clobber guards as [`fs_create_file`], with every segment
 /// created as a folder. Returns the new path.
 #[tauri::command]
-pub async fn fs_create_dir(dir: String, path: String) -> Result<String, CommandError> {
-    crate::fs::create_dir(&dir, &path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_create_dir(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dir: String,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::create_dir(&dir, &path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::CreateDir { dir, path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
-/// Move a file or directory to the OS trash (the file tree's "Delete"). Recoverable
-/// by design; guarded against filesystem roots (see [`crate::fs::delete_to_trash`]).
+/// The file tree's "Delete": to the system trash on this machine (recoverable),
+/// for good on a host, which has none — the dialog says which. Guarded against
+/// filesystem roots either way (`crate::fs::check_deletable`).
 #[tauri::command]
-pub async fn fs_delete(path: String) -> Result<(), CommandError> {
-    crate::fs::delete_to_trash(&path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_delete(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::delete_to_trash(&path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::Delete { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// Duplicate a single file next to itself under a unique "… copy" name (the file
 /// tree's "Duplicate"). Directories are refused. Returns the new path.
 #[tauri::command]
-pub async fn fs_duplicate(path: String) -> Result<String, CommandError> {
-    crate::fs::duplicate_file(&path)
-        .await
-        .map_err(CommandError::from)
+pub async fn fs_duplicate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    target: Option<String>,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    match files_on(&app, &state, target.as_deref(), Some(expect.as_ref())).await? {
+        FilesOn::Here => crate::fs::duplicate_file(&path)
+            .await
+            .map_err(CommandError::from),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::Duplicate { path })
+            .await
+            .map_err(CommandError::from),
+    }
 }
 
 /// The current conversation of the **Zero** agent running in `cwd` (worktree
@@ -4412,18 +4325,34 @@ pub async fn zero_session(cwd: String) -> Result<Option<crate::zero::ZeroSession
 /// narrows by include/exclude globs, and `limit` caps the results. Runs the
 /// blocking walk on the blocking pool.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn fs_search_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
     root: String,
     query: String,
     include_hidden: bool,
     filters: crate::fs::SearchFilters,
     limit: usize,
+    target: Option<String>,
 ) -> Result<crate::fs::FileSearch, CommandError> {
-    tokio::task::spawn_blocking(move || {
-        crate::fs::search_files(&root, &query, include_hidden, &filters, limit)
-    })
-    .await
-    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))
+    match files_on(&app, &state, target.as_deref(), None).await? {
+        FilesOn::Here => tokio::task::spawn_blocking(move || {
+            crate::fs::search_files(&root, &query, include_hidden, &filters, limit)
+        })
+        .await
+        .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string())),
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::SearchFiles {
+                root,
+                query,
+                include_hidden,
+                filters: serde_json::to_value(filters).map_err(AppError::Serde)?,
+                limit,
+            })
+            .await
+            .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string())),
+    }
 }
 
 /// Project-wide **content** search for the file tree: find the lines under `root`
@@ -4433,19 +4362,40 @@ pub async fn fs_search_files(
 /// multi-threaded walk on the blocking pool. An unparsable pattern comes back as
 /// `SEARCH_INVALID` so the UI can show it under the input.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn fs_search_content(
+    app: AppHandle,
+    state: State<'_, AppState>,
     root: String,
     query: crate::fs::ContentQuery,
     include_hidden: bool,
     filters: crate::fs::SearchFilters,
     limit: usize,
+    target: Option<String>,
 ) -> Result<crate::fs::ContentSearch, CommandError> {
-    tokio::task::spawn_blocking(move || {
-        crate::fs::search_content(&root, &query, include_hidden, &filters, limit)
-    })
-    .await
-    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))?
-    .map_err(|e| CommandError::new("SEARCH_INVALID", e.to_string()))
+    match files_on(&app, &state, target.as_deref(), None).await? {
+        FilesOn::Here => tokio::task::spawn_blocking(move || {
+            crate::fs::search_content(&root, &query, include_hidden, &filters, limit)
+        })
+        .await
+        .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))?
+        .map_err(|e| CommandError::new("SEARCH_INVALID", e.to_string())),
+        // The host answers an unparsable pattern as an invalid call, which
+        // is the one way its content search fails on its own.
+        FilesOn::Host(engine) => engine
+            .fs(FsCall::SearchContent {
+                root,
+                query: serde_json::to_value(query).map_err(AppError::Serde)?,
+                include_hidden,
+                filters: serde_json::to_value(filters).map_err(AppError::Serde)?,
+                limit,
+            })
+            .await
+            .map_err(|e| match e {
+                AppError::Invalid(msg) => CommandError::new("SEARCH_INVALID", msg),
+                other => CommandError::new("SEARCH_FAILED", other.to_string()),
+            }),
+    }
 }
 
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
@@ -5847,6 +5797,43 @@ mod tests {
         term_buffers_path, worktree_status, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
+
+    /// A file call goes where its target says, and nowhere else: this machine
+    /// for none or `local`, and a host that is not connected is refused rather
+    /// than answered from this disk at the same path.
+    #[tokio::test]
+    async fn a_file_call_is_served_on_the_machine_it_names() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::state::AppState::new(
+            crate::persistence::PersistenceManager::new(dir.path()),
+            Default::default(),
+            dir.path().to_path_buf(),
+        );
+        let handle = app.handle();
+        for here in [None, Some(""), Some("local")] {
+            assert!(matches!(
+                super::files_on(handle, &state, here, None).await,
+                Ok(super::FilesOn::Here)
+            ));
+        }
+        let Err(away) = super::files_on(handle, &state, Some("ssh:gone"), None).await else {
+            panic!("a host that is not connected has no files to serve");
+        };
+        assert_eq!(away.code, "NOT_CONNECTED", "{}", away.message);
+        // A mutation is refused the same way before anything is checked.
+        assert!(
+            super::files_on(handle, &state, Some("ssh:gone"), Some(None))
+                .await
+                .is_err()
+        );
+        let Err(bad) = super::files_on(handle, &state, Some("ftp:box"), None).await else {
+            panic!("an unknown kind of machine is refused");
+        };
+        assert_ne!(bad.code, "NOT_CONNECTED");
+    }
 
     /// A watcher speaks only for its own incarnation.
     #[test]

@@ -15,11 +15,11 @@ you switch modes.
 | PDF | No | Native system-webview PDF viewer | Binary diff metadata |
 
 Images and PDFs are read from the machine the file lives on: `fs_read_data_url`
-here, `ssh_fs_read_data_url` over the host's SFTP session (both behind
-`readDataUrlOn`, the same router every other file read goes through). Either
-backend recognizes a known extension or file signature, rejects unrelated
-formats, and caps a preview at 25 MiB — the remote one asks the host for the size
-first, so an over-cap file is refused without crossing the link. PDF support
+with that machine's `target` — this one, or a host, whose engine runs the same
+reader there (`readDataUrlOn`, the same router every other file read goes
+through). The reader recognizes a known extension or file signature, rejects
+unrelated formats, and caps a preview at 25 MiB, checking the size first, so an
+over-cap file on a host is refused without crossing the link. PDF support
 therefore depends on the operating system webview's native renderer; an explicit
 fallback is shown when it is unavailable. A preview that fails states the reason
 it failed.

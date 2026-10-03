@@ -575,6 +575,155 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS; writes a scratch folder in that host's home"]
+        async fn a_projects_files_are_served_by_the_hosts_engine() {
+            use crate::fs::{ContentQuery, ContentSearch, FileContent, FileSearch, FsEntry};
+            use uxnan_host_protocol::FsCall;
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let none = || serde_json::json!({});
+
+            // A scratch project in the home, made through the engine itself.
+            let root: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.clone(),
+                    path: format!(".uxnan-live-fs-{}", std::process::id()),
+                })
+                .await
+                .expect("a scratch folder");
+            let note: String = engine
+                .fs(FsCall::CreateFile {
+                    dir: root.clone(),
+                    path: "src/note.txt".into(),
+                })
+                .await
+                .expect("a file, with its parent made on the way");
+            let () = engine
+                .fs(FsCall::Write {
+                    path: note.clone(),
+                    content: "first line\nneedle here\n".into(),
+                })
+                .await
+                .expect("a save");
+            let read: FileContent = engine
+                .fs(FsCall::Read { path: note.clone() })
+                .await
+                .unwrap();
+            assert_eq!(read.content, "first line\nneedle here\n");
+
+            let listed: Vec<FsEntry> = engine
+                .fs(FsCall::List { path: root.clone() })
+                .await
+                .unwrap();
+            assert_eq!(
+                listed.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+                ["src"]
+            );
+
+            let copy: String = engine
+                .fs(FsCall::Duplicate { path: note.clone() })
+                .await
+                .unwrap();
+            assert!(copy.ends_with("note copy.txt"), "{copy}");
+            let renamed: String = engine
+                .fs(FsCall::Rename {
+                    path: copy,
+                    new_name: "other.txt".into(),
+                })
+                .await
+                .unwrap();
+
+            let by_name: FileSearch = engine
+                .fs(FsCall::SearchFiles {
+                    root: root.clone(),
+                    query: "other".into(),
+                    include_hidden: false,
+                    filters: none(),
+                    limit: 50,
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                by_name
+                    .entries
+                    .iter()
+                    .map(|e| e.path.as_str())
+                    .collect::<Vec<_>>(),
+                [renamed.as_str()]
+            );
+            let query = ContentQuery {
+                query: "NEEDLE".into(),
+                ..Default::default()
+            };
+            let by_content: ContentSearch = engine
+                .fs(FsCall::SearchContent {
+                    root: root.clone(),
+                    query: serde_json::to_value(&query).unwrap(),
+                    include_hidden: false,
+                    filters: none(),
+                    limit: 50,
+                })
+                .await
+                .unwrap();
+            assert_eq!(by_content.total, 2, "the note and its copy, ignoring case");
+
+            // A pattern the host cannot parse is the caller's mistake, said so.
+            let broken = ContentQuery {
+                query: "(".into(),
+                is_regex: true,
+                ..Default::default()
+            };
+            let refused = engine
+                .fs::<ContentSearch>(FsCall::SearchContent {
+                    root: root.clone(),
+                    query: serde_json::to_value(&broken).unwrap(),
+                    include_hidden: false,
+                    filters: none(),
+                    limit: 50,
+                })
+                .await
+                .expect_err("an unparsable pattern");
+            assert!(
+                matches!(refused, crate::error::AppError::Invalid(_)),
+                "{refused:?}"
+            );
+            let missing = engine
+                .fs::<FileContent>(FsCall::Read {
+                    path: format!("{root}/absent.txt"),
+                })
+                .await
+                .expect_err("no such file");
+            assert!(
+                matches!(missing, crate::error::AppError::NotFound(_)),
+                "{missing:?}"
+            );
+
+            // Deleted for good — a host has no trash — and gone from the home.
+            let () = engine
+                .fs(FsCall::Delete { path: root.clone() })
+                .await
+                .expect("the scratch folder removed");
+            let after: Vec<FsEntry> = engine
+                .fs(FsCall::List { path: home.clone() })
+                .await
+                .unwrap();
+            assert!(
+                after.iter().all(|e| e.path != root),
+                "{root} is still there"
+            );
+            println!("live: {alias} engine served a project's files in {root}");
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the agent can reach"]
         async fn a_dropped_connection_detaches_and_the_return_reattaches_in_place() {
             let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {

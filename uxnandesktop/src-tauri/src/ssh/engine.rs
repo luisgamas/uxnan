@@ -667,7 +667,8 @@ impl HostEngine {
             Ok(Ok(Outcome::Ok { reply })) => Ok(reply),
             Ok(Ok(Outcome::Error { code, message })) => Err(match code {
                 uxnan_host_protocol::ErrorCode::NotFound => AppError::NotFound(message),
-                _ => AppError::Pty(message),
+                uxnan_host_protocol::ErrorCode::Invalid => AppError::Invalid(message),
+                uxnan_host_protocol::ErrorCode::SpawnFailed => AppError::Pty(message),
             }),
             Ok(Err(_)) => Err(AppError::NotConnected("the host engine".to_string())),
             Err(_) => {
@@ -886,6 +887,19 @@ impl HostEngine {
         {
             Reply::Text { text } => Ok(text),
             other => Err(unexpected("a hook config", &other)),
+        }
+    }
+
+    /// Something done to a project's files on the host, by the engine's own
+    /// `fs` there, answered in that module's shapes.
+    pub async fn fs<T: serde::de::DeserializeOwned>(
+        &self,
+        call: uxnan_host_protocol::FsCall,
+    ) -> Result<T, AppError> {
+        self.needs(9, "serve a project's files")?;
+        match self.request(Call::Fs(call), None).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a file call", &other)),
         }
     }
 
