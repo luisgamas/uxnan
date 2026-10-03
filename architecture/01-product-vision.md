@@ -201,7 +201,7 @@ Todos los adaptadores exponen un modelo de capacidades que la app consulta para 
 ```typescript
 // Fuente de verdad: shared/src/agents/agent-capabilities.ts
 interface AgentCapabilities {
-  planMode: boolean;                // agente soporta modo plan interactivo
+  accessModes?: AccessMode[];       // modos de acceso que el agente puede cumplir
   streaming: boolean;               // emite deltas de tokens en streaming
   approvals: boolean;               // emite content blocks `approval` (gating de tools)
   forking: boolean;                 // soporta forking / reanudar threads

@@ -462,15 +462,15 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
-  // Interactive approvals (opt-in): the Claude adapter injects a PreToolUse hook
-  // that round-trips each tool to this bridge's local HTTP endpoint. The hook
-  // URL is lazy (the LAN port is known only after `startLan`); the token guards
-  // the endpoint and the script is written under `~/.uxnan/hooks/`.
-  const claudeInteractiveApprovals =
-    (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
+  // "Request approval" on Claude Code is a `PreToolUse` hook that round-trips
+  // each tool to this bridge's local HTTP endpoint, so it is offered whenever
+  // that endpoint exists (the LAN server). The hook URL is lazy (the port is
+  // known only after `startLan`); the token guards the endpoint and the script
+  // is written under `~/.uxnan/hooks/`.
+  const claudeApprovals = config.lanEnabled;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
   const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
-  if (claudeInteractiveApprovals) {
+  if (claudeApprovals) {
     void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
       logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
     );
@@ -490,10 +490,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new ClaudeCodeAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
-        ...(claudeInteractiveApprovals
+        ...(claudeApprovals
           ? {
-              interactiveApprovals: true,
               approvalHook: {
                 token: hookState.token,
                 scriptPath: claudeHookScriptPath,
@@ -521,12 +519,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new CodexAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        // The app-server has its own approval channel; default to `interactive`
-        // so every tool gating is surfaced to the phone (the previous
-        // `acceptEdits` default silently auto-approved everything via
-        // `codex exec -s workspace-write`). `acceptEdits` is still accepted
-        // for back-compat and maps to the same no-prompt behavior.
-        permissionMode: codexSettings.permissionMode ?? 'interactive',
         // Route app-server approval elicitations to the bridge's shared
         // approval round-trip (the same one the Claude PreToolUse hook and
         // the Echo demo use).

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/project.dart';
+import 'package:uxnan/domain/enums/approval_mode.dart';
 
 void main() {
   group('Project.fromJson', () {
@@ -32,7 +33,8 @@ void main() {
         'displayName': 'Codex',
         'available': true,
         'capabilities': {
-          'planMode': true,
+          'accessModes': ['requestApproval', 'plan', 'retired'],
+          'defaultAccessMode': 'requestApproval',
           'streaming': true,
           'approvals': false,
           'forking': true,
@@ -43,7 +45,15 @@ void main() {
       expect(agent.agentId, 'codex');
       expect(agent.displayName, 'Codex');
       expect(agent.available, isTrue);
-      expect(agent.capabilities.planMode, isTrue);
+      // A mode this app does not know is dropped, not guessed at.
+      expect(
+        agent.capabilities.accessModes,
+        [ApprovalMode.requestApproval, ApprovalMode.plan],
+      );
+      expect(
+        agent.capabilities.defaultAccessMode,
+        ApprovalMode.requestApproval,
+      );
       expect(agent.capabilities.streaming, isTrue);
       expect(agent.capabilities.approvals, isFalse);
       expect(agent.defaultModel, 'gpt-5');

@@ -132,7 +132,6 @@ export {
   type CodexAdapterOptions,
   type CodexEvent,
   type SpawnedAppServer,
-  type CodexPermissionMode,
 } from './adapters/codex-adapter.js';
 export {
   PiAdapter,
@@ -260,7 +259,6 @@ export {
   type ClaudeCodeAdapterOptions,
   type ClaudeEvent,
   type ClaudeModelSpec,
-  type ClaudePermissionMode,
 } from './adapters/claude-adapter.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {

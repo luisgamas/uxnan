@@ -82,6 +82,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import type {
+  AccessMode,
   AgentCapabilities,
   AgentCommand,
   AgentConfig,
@@ -106,9 +107,8 @@ import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
-  buildReplyResult,
+  approvalReply,
   describeServerRequest,
-  decisionToReply,
   type ApprovalKind,
   type PendingCodexApproval,
 } from './codex-approval.js';
@@ -174,7 +174,8 @@ const CODEX_TITLE_MODEL = 'gpt-5.6-luna';
 const CODEX_TITLE_REASONING = ['-c', 'model_reasoning_effort=low'];
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
-  planMode: true,
+  accessModes: ['requestApproval', 'approveForMe', 'fullAccess', 'plan'],
+  defaultAccessMode: 'fullAccess',
   streaming: true,
   approvals: true,
   forking: true,
@@ -191,48 +192,53 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
 };
 
 /**
- * Headless sandbox + approval posture for the Codex app-server (v2 protocol).
- * Mirrors the bridge's other agent adapters:
- *  - `default`           → reads only; commands/writes denied by the sandbox.
- *  - `acceptEdits`       → workspace writes allowed; no prompts.
- *  - `bypassPermissions` → danger full access; no prompts.
- *  - `interactive`       → workspace writes allowed; the user is asked (this
- *                          is the recommended default for production use).
+ * How each access mode runs on `codex app-server` (schema of codex-cli 0.157.1):
+ * the approval policy, who reviews an approval request, and the sandbox.
+ *  - `requestApproval` → `untrusted`: anything but a known-safe read asks the
+ *    person; writes stay inside the workspace.
+ *  - `approveForMe`    → `on-request` reviewed by `auto_review`: the model works
+ *    in the workspace, and what it asks to do beyond it (a sandbox escape, the
+ *    network) goes to Codex's own reviewer instead of the person.
+ *  - `fullAccess`      → `never` + `danger-full-access`.
+ *  - `plan`            → `never` + `read-only`: it reads; the sandbox refuses
+ *    every write.
+ * Sent on `thread/start`, every `thread/resume` and every `turn/start`, so a
+ * change applies to the next turn whatever the app-server holds.
  */
-export type CodexPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'interactive';
-
-/** Internal: the `askForApproval` value passed to `thread/start`. */
-type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
-
-/** Internal: the `sandbox` value passed to `thread/start`. */
-type SandboxPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
-
-/**
- * Mapping of the bridge's {@link CodexPermissionMode} to the app-server
- * `(approvalPolicy, sandbox)` pair sent to `thread/start`. The default
- * switches to `interactive` so the bridge actually receives approvals (the
- * whole point of the app-server refactor) — the previous `acceptEdits`
- * default silently auto-approved everything.
- */
-function permissionToPolicies(mode: CodexPermissionMode): {
-  approvalPolicy: ApprovalPolicy;
-  sandbox: SandboxPolicy;
-} {
-  switch (mode) {
-    case 'default':
-      return { approvalPolicy: 'untrusted', sandbox: 'read-only' };
-    case 'acceptEdits':
-      // Back-compat: same effective behavior as the old `codex exec
-      // -s workspace-write` adapter (writes allowed, no prompts).
-      return { approvalPolicy: 'never', sandbox: 'workspace-write' };
-    case 'bypassPermissions':
-      return { approvalPolicy: 'never', sandbox: 'danger-full-access' };
-    case 'interactive':
-      // Workspace writes allowed; the bridge forwards every request
-      // approval to the phone so the user can decide.
-      return { approvalPolicy: 'on-request', sandbox: 'workspace-write' };
+const CODEX_POLICIES: Record<
+  AccessMode,
+  {
+    approvalPolicy: 'untrusted' | 'on-request' | 'never';
+    approvalsReviewer: 'user' | 'auto_review';
+    sandbox: 'read-only' | 'workspace-write' | 'danger-full-access';
+    sandboxPolicy: { type: 'readOnly' | 'workspaceWrite' | 'dangerFullAccess' };
   }
-}
+> = {
+  requestApproval: {
+    approvalPolicy: 'untrusted',
+    approvalsReviewer: 'user',
+    sandbox: 'workspace-write',
+    sandboxPolicy: { type: 'workspaceWrite' },
+  },
+  approveForMe: {
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'auto_review',
+    sandbox: 'workspace-write',
+    sandboxPolicy: { type: 'workspaceWrite' },
+  },
+  fullAccess: {
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+    sandbox: 'danger-full-access',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+  },
+  plan: {
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+    sandbox: 'read-only',
+    sandboxPolicy: { type: 'readOnly' },
+  },
+};
 
 /** Hard cap on the app-server handshake before falling back to config.toml. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -312,8 +318,6 @@ export interface CodexAdapterOptions {
   prependArgs?: string[];
   /** Default model when the thread/turn doesn't pick one. */
   defaultModel?: string;
-  /** Sandbox + approval posture (default `interactive`; see {@link CodexPermissionMode}). */
-  permissionMode?: CodexPermissionMode;
   /**
    * Callback that surfaces a Codex app-server approval to the bridge so the
    * phone can decide. Returns the user's `ApprovalDecision` (or
@@ -460,7 +464,6 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #binaryPath: string;
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
-  readonly #permissionMode: CodexPermissionMode;
   readonly #onApprovalRequest: CodexAdapterOptions['onApprovalRequest'];
   readonly #spawnAppServer: () => SpawnedAppServer;
   /**
@@ -562,7 +565,6 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#binaryPath = options.binaryPath ?? 'codex';
     this.#prependArgs = options.prependArgs ?? [];
     this.#defaultModel = options.defaultModel;
-    this.#permissionMode = options.permissionMode ?? 'interactive';
     this.#onApprovalRequest = options.onApprovalRequest;
     this.#spawnAppServer =
       options.spawnAppServer ?? defaultSpawnAppServer(this.#binaryPath, this.#prependArgs);
@@ -571,35 +573,6 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   get defaultModel(): string | undefined {
     return this.#defaultModel;
-  }
-
-  /**
-   * Resolve the Codex permission posture for a turn: the thread's `accessMode`
-   * (from the phone) wins when set, else the configured `permissionMode`.
-   *  - `requestApproval` → `interactive` (the app-server forwards each approval
-   *    elicitation to the phone);
-   *  - `approveForMe`    → `acceptEdits` (workspace writes, no prompts);
-   *  - `fullAccess`      → `bypassPermissions` (danger-full-access, no prompts).
-   * Absent → the configured posture (no behaviour change).
-   *
-   * The resulting `(approvalPolicy, sandbox)` is sent on `thread/start` AND on
-   * every `thread/resume`, and each turn re-attaches to its thread, so changing
-   * the access mode mid-conversation takes effect on the very next turn.
-   * Verified live against codex-cli 0.147.0: resuming with
-   * `on-request`/`workspace-write` a thread created `never`/`read-only` wrote the
-   * new pair into the rollout's `turn_context` for that turn.
-   */
-  #effectiveMode(accessMode: SendTurnOptions['accessMode']): CodexPermissionMode {
-    switch (accessMode) {
-      case 'approveForMe':
-        return 'acceptEdits';
-      case 'fullAccess':
-        return 'bypassPermissions';
-      case 'requestApproval':
-        return 'interactive';
-      default:
-        return this.#permissionMode;
-    }
   }
 
   start(config: AgentConfig): Promise<void> {
@@ -624,13 +597,9 @@ export class CodexAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const effort = reasoningValue(options);
-    // The thread's persisted access mode (chosen on the phone) overrides the
-    // configured posture. It is applied on `thread/start` AND on every
-    // `thread/resume`, so a mid-conversation change takes effect on the next
-    // turn (each turn re-attaches to the thread; see `#effectiveMode`).
-    const { approvalPolicy, sandbox } = permissionToPolicies(
-      this.#effectiveMode(options.accessMode),
-    );
+    // The conversation's access mode (see CODEX_POLICIES).
+    const { approvalPolicy, approvalsReviewer, sandbox, sandboxPolicy } =
+      CODEX_POLICIES[options.accessMode ?? 'fullAccess'];
 
     // Spawn or reuse the app-server. We await the initialization so a slow
     // first turn surfaces a clear error rather than racing the `turn/start`.
@@ -658,6 +627,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           threadId: codexThreadId,
           cwd,
           approvalPolicy,
+          approvalsReviewer,
           sandbox,
           ...(typeof model === 'string' ? { model } : {}),
           ...codexDesktopConfig(options.desktopTools, cwd),
@@ -696,6 +666,7 @@ export class CodexAdapter extends BaseAgentAdapter {
             model,
             cwd,
             approvalPolicy,
+            approvalsReviewer,
             sandbox,
             // A person typed this on their phone, so the thread is classified
             // like any other human-started one (the app-server otherwise leaves
@@ -756,6 +727,9 @@ export class CodexAdapter extends BaseAgentAdapter {
             : [{ type: 'text', text }],
         ...(typeof model === 'string' ? { model } : {}),
         ...(typeof effort === 'string' ? { effort } : {}),
+        approvalPolicy,
+        approvalsReviewer,
+        sandboxPolicy,
       });
       const run = this.#active.get(turnId);
       if (run) run.codexTurnId = response.turn.id;
@@ -1377,11 +1351,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!this.#onApprovalRequest) {
       // No bridge callback wired (unit test, or a caller that didn't pass
       // `onApprovalRequest`): default to denying to fail safe.
-      return buildReplyResult(draft.kind, decisionToReply('reject'));
+      return approvalReply(draft, 'reject');
     }
     const run = this.#currentRun();
     if (!run) {
-      return buildReplyResult(draft.kind, decisionToReply('reject'));
+      return approvalReply(draft, 'reject');
     }
     const approvalId = `codex-${run.turnId}-${(this.#approvalSeq += 1)}`;
     this.#pendingApprovals.set(approvalId, {
@@ -1395,7 +1369,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           setTimeout(() => resolve('reject'), APPROVAL_TIMEOUT_MS),
         ),
       ]);
-      return buildReplyResult(draft.kind, decisionToReply(decision));
+      return approvalReply(draft, decision);
     } finally {
       this.#pendingApprovals.delete(approvalId);
     }

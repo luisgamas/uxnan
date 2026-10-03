@@ -4,7 +4,36 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Each access mode means the same on every agent, and each agent offers only
+  the ones it can keep.** Verified live per CLI:
+  - Claude Code — *Request approval* always asks (the `PreToolUse` hook is no
+    longer opt-in; `interactiveApprovals` is gone), *Approve for me* runs
+    Claude's own reviewer (`--permission-mode auto`; a model without it, such
+    as haiku, is said so in the turn), *Plan only* is `--permission-mode plan`.
+  - Codex — *Request approval* asks for everything but safe reads, *Approve
+    for me* lets Codex's own reviewer decide what leaves the workspace, *Plan
+    only* runs read-only; the mode is sent on every turn.
+  - OpenCode — *Approve for me* works inside the project and asks beyond it,
+    *Plan only* runs on OpenCode's own `plan` agent.
+  - Zero — its own `ask` / `auto` / `plan` modes; no *Full access* (its sandbox
+    cannot be lifted over ACP).
+  - Grok — *Request approval* and *Full access* only.
+  - pi and Antigravity offer no modes and run as configured.
+- **A conversation starts in its agent's default mode**, set by the bridge on
+  `thread/start`; `thread/setAccessMode` refuses a mode the agent does not
+  offer, and a stored one it no longer offers runs as the default.
+- `permissionMode` in `daemon-config.json` now applies only to pi and
+  Antigravity.
+
 ### Fixed
+
+- **Approving a Codex request works.** The bridge answered Codex's approval
+  requests in the older protocol's words (`approved`), which Codex ignored and
+  asked again — so *Request approval* never got past the first question. Each
+  request is now answered in its own shape (`accept` / `acceptForSession` /
+  `decline`), and the card shows the command (now a plain string).
 
 - **An approval no longer shows up twice — or not at all on the desktop.**
   The bridge stores an approval or a question before announcing it, so a

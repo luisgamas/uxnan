@@ -2669,7 +2669,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalQuestion.
   ///
   /// In en, this message translates to:
-  /// **'How should actions be approved?'**
+  /// **'How much may the agent do before it asks?'**
   String get approvalQuestion;
 
   /// No description provided for @approvalRequestTitle.
@@ -2681,7 +2681,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalRequestBody.
   ///
   /// In en, this message translates to:
-  /// **'Always ask before editing external files or using the internet.'**
+  /// **'Every change, command and use of the internet waits for you.'**
   String get approvalRequestBody;
 
   /// No description provided for @approvalAutoTitle.
@@ -2693,7 +2693,7 @@ abstract class AppLocalizations {
   /// No description provided for @approvalAutoBody.
   ///
   /// In en, this message translates to:
-  /// **'Only ask for actions detected as potentially risky.'**
+  /// **'Works on its own inside the project; anything beyond it is checked by the agent\'s own review, or asks you.'**
   String get approvalAutoBody;
 
   /// No description provided for @approvalFullTitle.
@@ -2705,8 +2705,26 @@ abstract class AppLocalizations {
   /// No description provided for @approvalFullBody.
   ///
   /// In en, this message translates to:
-  /// **'Unrestricted access to the internet and any file.'**
+  /// **'No questions and no sandbox: any file, any command, the internet.'**
   String get approvalFullBody;
+
+  /// No description provided for @approvalPlanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan only'**
+  String get approvalPlanTitle;
+
+  /// No description provided for @approvalPlanBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads and plans; changes nothing and runs nothing.'**
+  String get approvalPlanBody;
+
+  /// Shown above the composer when a conversation's access mode is no longer offered by its agent.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} no longer offers {retired}. This conversation runs in {current}.'**
+  String approvalModeRetired(String agent, String retired, String current);
 
   /// Title shown on a pending approval card while it is still actionable.
   ///

@@ -6,6 +6,7 @@ import {
   OpenCodeAdapter,
   OpenCodeV1Translator,
   OpenCodeV2Translator,
+  permissionPolicyFor,
   parseModelList,
   parseOpenCodeModelWindows,
   openCodeUsageTokens,
@@ -694,9 +695,14 @@ test('OpenCodeAdapter routes permission.asked → approval → reply', async () 
   });
   collect(adapter);
 
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'edit a file' });
-  // interactive by default → gated tools set to `ask`
-  assert.equal(server.lastPermission, 'ask');
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'edit a file',
+    accessMode: 'requestApproval',
+  });
+  // Request approval → every gated action asks.
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('requestApproval'));
 
   server.emit('permission.asked', {
     id: 'per_1',
@@ -818,12 +824,12 @@ test('OpenCodeAdapter rejects a question when the user skips (empty answers)', a
   assert.deepEqual(server.questionReplies, []);
 });
 
-test('OpenCodeAdapter uses allow rules for approveForMe', async () => {
+test('OpenCodeAdapter works inside the project and asks beyond it for approveForMe', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server);
   collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'approveForMe' });
-  assert.equal(server.lastPermission, 'allow');
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('approveForMe'));
 });
 
 test("a conversation's access mode reaches its session when it changes, both ways", async () => {
@@ -837,7 +843,7 @@ test("a conversation's access mode reaches its session when it changes, both way
   };
 
   await turnOn('u1', 'requestApproval');
-  assert.equal(server.lastPermission, 'ask', 'created asking');
+  assert.deepEqual(server.lastPermission, permissionPolicyFor('requestApproval'), 'created asking');
   await turnOn('u2', 'requestApproval');
   assert.deepEqual(server.permissionChanges, [], 'unchanged: nothing to set');
   // Switched to full access: the session made to ask must stop asking…
@@ -845,8 +851,8 @@ test("a conversation's access mode reaches its session when it changes, both way
   // …and set back to ask, it must ask again (the unsafe direction).
   await turnOn('u4', 'requestApproval');
   assert.deepEqual(server.permissionChanges, [
-    { sessionId: 'ses_1', permission: 'allow' },
-    { sessionId: 'ses_1', permission: 'ask' },
+    { sessionId: 'ses_1', permission: permissionPolicyFor('fullAccess') },
+    { sessionId: 'ses_1', permission: permissionPolicyFor('requestApproval') },
   ]);
   assert.equal(server.sessions.length, 1, 'the same session throughout');
 });
@@ -859,7 +865,9 @@ test('a session this process did not create gets the conversation access mode fi
   collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
   // Its rules are whatever it was created with, days ago or in a terminal.
-  assert.deepEqual(server.permissionChanges, [{ sessionId: 'ses_stored', permission: 'allow' }]);
+  assert.deepEqual(server.permissionChanges, [
+    { sessionId: 'ses_stored', permission: permissionPolicyFor('fullAccess') },
+  ]);
   assert.equal(server.prompts[0]?.sessionId, 'ses_stored');
 });
 

@@ -360,8 +360,12 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (one per line) with the one it runs at by
   default marked (untouched, the bridge sends that default, so what the pill
   shows is what the turn uses; an agent that names no default offers
-  "Default") — and the access mode (*Ask first* / *Auto-approve edits* /
-  *Full access*; new chats start at *Full access*, like new chats on the phone)
+  "Default") — and the access mode — only the modes the conversation's agent offers, out of
+  *Request approval* / *Approve for me* / *Full access* / *Plan only* (the menu
+  is hidden for an agent with none; a new chat starts in the agent's default,
+  set by the bridge; a mode the agent no longer offers is said above the
+  composer, with the one it runs in; what each mode does per agent is in
+  `bridge/docs/agents.md` → *Access modes*)
   — and a ring showing how full the context window is, when the agent reports
   it (amber past 75%, red past 90%; the figures are in its tooltip). For an
   agent with a plan the bridge reads (Claude Code, Codex, Grok) the tooltip

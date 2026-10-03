@@ -322,7 +322,6 @@ async function readTurnsFromJSONL(threadId, { cursor, limit = 20 }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  planMode: true,
   streaming: true,
   approvals: true,
   forking: true,
@@ -403,7 +402,7 @@ fallback; direct SQLite reads are deliberately avoided.
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  planMode: true,                   // OpenCode tiene Plan/Build mode
+  accessModes: ['requestApproval', 'approveForMe', 'fullAccess', 'plan'], // plan = agente `plan` de OpenCode
   streaming: true,
   approvals: false,                 // sin pre-tool channel headless
   forking: true,
@@ -458,7 +457,6 @@ async function readSessionFromJSONL(sessionId, { cursor, limit }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  planMode: false,
   streaming: true,
   approvals: true,                  // Claude Code soporta subagentes + PreToolUse hook
   forking: true,
@@ -521,7 +519,6 @@ async function readPiSession(sessionId, { cursor, limit = 20 }) {
 **Capacidades declaradas:**
 ```javascript
 capabilities: {
-  planMode: false,
   streaming: true,
   approvals: false,                 // pi corre en modo autónomo (YOLO)
   forking: false,

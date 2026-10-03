@@ -1526,28 +1526,40 @@ class AppLocalizationsEs extends AppLocalizations {
   String get environmentCommitOrPush => 'Hacer commit o push';
 
   @override
-  String get approvalQuestion => '¿Cómo se deben aprobar las acciones?';
+  String get approvalQuestion =>
+      '¿Cuánto puede hacer el agente antes de preguntar?';
 
   @override
-  String get approvalRequestTitle => 'Solicitar aprobación';
+  String get approvalRequestTitle => 'Pedir aprobación';
 
   @override
   String get approvalRequestBody =>
-      'Preguntar siempre antes de editar archivos externos o usar internet.';
+      'Cada cambio, comando o uso de internet te espera.';
 
   @override
   String get approvalAutoTitle => 'Aprobar por mí';
 
   @override
   String get approvalAutoBody =>
-      'Solicitar aprobación solo para acciones detectadas como potencialmente riesgosas.';
+      'Trabaja solo dentro del proyecto; lo que va más allá lo revisa el propio agente o te pregunta.';
 
   @override
-  String get approvalFullTitle => 'Acceso completo';
+  String get approvalFullTitle => 'Acceso total';
 
   @override
   String get approvalFullBody =>
-      'Acceso sin restricciones a internet y a cualquier archivo.';
+      'Sin preguntas ni sandbox: cualquier archivo, comando o internet.';
+
+  @override
+  String get approvalPlanTitle => 'Solo planificar';
+
+  @override
+  String get approvalPlanBody => 'Lee y planifica; no cambia ni ejecuta nada.';
+
+  @override
+  String approvalModeRetired(String agent, String retired, String current) {
+    return '$agent ya no ofrece $retired. Esta conversación usa $current.';
+  }
 
   @override
   String get approvalNeedsApproval => 'Requiere aprobación';

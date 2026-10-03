@@ -4,6 +4,8 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (adapters).
  */
 
+import type { AccessMode } from '../models/thread.js';
+
 export type AgentId =
   | 'codex'
   | 'opencode'
@@ -19,8 +21,19 @@ export type AgentId =
   | 'echo';
 
 export interface AgentCapabilities {
-  /** Agent supports interactive plan mode. */
-  planMode: boolean;
+  /**
+   * The access modes this agent can honor, in the order the apps list them —
+   * only modes the adapter really enforces on its CLI (a mode it cannot keep,
+   * such as asking first on a CLI with no approval channel, is not listed).
+   * Empty or absent: the agent has no selectable mode and the apps show no
+   * selector; it runs as configured on the bridge.
+   */
+  accessModes?: AccessMode[];
+  /**
+   * The mode a conversation runs in when it has none, or has one this agent
+   * does not offer (the apps say so). One of {@link accessModes}.
+   */
+  defaultAccessMode?: AccessMode;
   /** Agent emits streaming token deltas. */
   streaming: boolean;
   /** Agent supports approval requests (tool gating). */
@@ -234,4 +247,21 @@ export interface AgentCommandInvocation {
   name: string;
   /** Raw argument string the user appended after the command, if any. */
   args?: string;
+}
+
+/**
+ * The mode a conversation actually runs in on an agent: its stored mode when
+ * the agent offers it, otherwise the agent's default (the apps say the stored
+ * one is no longer offered). Undefined when the agent offers no mode. The one
+ * rule the bridge applies before a turn and every client shows.
+ */
+export function effectiveAccessMode(
+  caps: Pick<AgentCapabilities, 'accessModes' | 'defaultAccessMode'>,
+  stored: AccessMode | undefined,
+): AccessMode | undefined {
+  const offered = caps.accessModes ?? [];
+  if (offered.length === 0) return undefined;
+  if (stored !== undefined && offered.includes(stored)) return stored;
+  const fallback = caps.defaultAccessMode;
+  return fallback !== undefined && offered.includes(fallback) ? fallback : offered[0];
 }

@@ -823,12 +823,7 @@ class ThreadManager {
       if (res.error != null) return null;
       final result = res.result;
       if (result is Map) {
-        final raw = result['accessMode'];
-        if (raw is String) {
-          for (final mode in ApprovalMode.values) {
-            if (mode.name == raw) return mode;
-          }
-        }
+        return ApprovalMode.fromName(result['accessMode']);
       }
       return null;
     } on Object catch (error, stackTrace) {
@@ -975,12 +970,8 @@ class ThreadManager {
       thread = thread.copyWith(worktreePath: worktreePath);
     }
     await _threadRepository.saveThread(thread);
-    // Persist the default access mode (full access) on the bridge at creation
-    // so the first turn runs without per-tool prompts — deterministic, with no
-    // race against the turn that would otherwise inherit the bridge's
-    // interactive default. Best-effort: a failure just falls back to seeding on
-    // open. The user can still change it per-thread from the composer.
-    unawaited(setAccessMode(thread.id, kDefaultApprovalMode));
+    // The bridge starts the conversation in its agent's default access mode
+    // (`thread/start`); the phone does not choose one for it.
     return thread;
   }
 

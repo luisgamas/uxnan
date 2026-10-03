@@ -41,6 +41,7 @@ import 'package:uxnan/presentation/screens/conversation/composer/turn_control_sh
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/access_mode_notice.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
@@ -81,11 +82,11 @@ class ConversationScreen extends ConsumerStatefulWidget {
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen>
     with WidgetsBindingObserver, RouteAware {
-  // Per-thread access (approval) mode. Seeded from the bridge on open
-  // (`thread/read`, source of truth) and persisted on change
-  // (`thread/setAccessMode`); the default here ([kDefaultApprovalMode], full
-  // access) is the pre-load fallback for a thread the bridge has no mode for.
-  ApprovalMode _approvalMode = kDefaultApprovalMode;
+  // The conversation's stored access mode, as the bridge holds it
+  // (`thread/read`; changed with `thread/setAccessMode`). Null until read, or
+  // when it has none. What it runs in is the agent's say: the stored mode if
+  // the agent offers it, else the agent's default (`effectiveAccessMode`).
+  ApprovalMode? _storedMode;
   final ScrollController _scroll = ScrollController();
   final ConversationAutoFollowPolicy _autoFollow =
       ConversationAutoFollowPolicy();
@@ -254,24 +255,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
-  /// Seeds [_approvalMode] from the bridge's persisted per-thread access mode
-  /// (`thread/read`). When the bridge reports none (older thread created before
-  /// the default existed / never set), persists [kDefaultApprovalMode] so the
-  /// thread settles on full access instead of the bridge's interactive default.
+  /// Reads the conversation's stored access mode from the bridge
+  /// (`thread/read`). A conversation without one runs in its agent's default,
+  /// which the bridge applies — the phone writes nothing on its behalf.
   Future<void> _seedAccessMode() async {
-    final manager = ref.read(threadManagerProvider);
-    final mode = await manager.readAccessMode(widget.threadId);
-    if (!mounted) return;
-    if (mode == null) {
-      // No persisted mode: adopt the default and write it back so the bridge
-      // stops prompting per tool on this legacy thread.
-      unawaited(manager.setAccessMode(widget.threadId, kDefaultApprovalMode));
-      if (_approvalMode != kDefaultApprovalMode) {
-        setState(() => _approvalMode = kDefaultApprovalMode);
-      }
-      return;
-    }
-    if (mode != _approvalMode) setState(() => _approvalMode = mode);
+    final mode =
+        await ref.read(threadManagerProvider).readAccessMode(widget.threadId);
+    if (!mounted || mode == _storedMode) return;
+    setState(() => _storedMode = mode);
   }
 
   /// Fetches `git/status` for the thread's [cwd] once it is known/changes.
@@ -711,10 +702,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
-  Future<void> _pickApprovalMode() async {
-    final mode = await ApprovalModeSheet.show(context, _approvalMode);
-    if (mode == null || !mounted || mode == _approvalMode) return;
-    setState(() => _approvalMode = mode);
+  Future<void> _pickApprovalMode(
+    List<ApprovalMode> offered,
+    ApprovalMode current,
+  ) async {
+    final mode = await ApprovalModeSheet.show(context, current, offered);
+    if (mode == null || !mounted || mode == _storedMode) return;
+    setState(() => _storedMode = mode);
     // Persist to the bridge (source of truth); best-effort offline.
     unawaited(
       ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
@@ -1003,6 +997,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final caps = thread != null
         ? ref.watch(agentCapabilitiesProvider(thread.agentId))
         : null;
+    final agentName = thread != null
+        ? ref.watch(agentDisplayNameProvider(thread.agentId)) ?? thread.agentId
+        : '';
     // The autonomous-mode banner shows for YOLO agents (e.g. pi) unless hidden
     // permanently in settings or closed for this visit.
     final showAutonomousBanner = ref.watch(showAutonomousBannerProvider);
@@ -1080,7 +1077,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Photos for an agent that takes images; a file for any agent.
     final showImages = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
-    final showApproval = caps?.approvals ?? false;
+    // Only the modes this agent can honor; none → no selector at all.
+    final offeredModes = caps?.accessModes ?? const <ApprovalMode>[];
+    final approvalMode = caps?.effectiveAccessMode(_storedMode);
+    final showApproval = approvalMode != null;
+    // A mode the conversation kept that its agent no longer offers: said
+    // above the composer, with the mode it runs in instead.
+    final retiredMode = _storedMode != null &&
+            approvalMode != null &&
+            !offeredModes.contains(_storedMode)
+        ? _storedMode
+        : null;
     final showTurnControls = showRunOptions || showApproval;
 
     // The thread's message queue, as the bridge reports it.
@@ -1332,6 +1339,18 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     // (not in the scrolling list) so they remain visible.
                     if (_cwdMissing)
                       const _Centered(child: _CwdMissingBanner()),
+                    if (retiredMode != null && approvalMode != null)
+                      _Centered(
+                        child: AccessModeNotice(
+                          retired: retiredMode,
+                          current: approvalMode,
+                          agentName: agentName,
+                          onChoose: () => _pickApprovalMode(
+                            offeredModes,
+                            approvalMode,
+                          ),
+                        ),
+                      ),
                     if ((caps?.autonomous ?? false) &&
                         showAutonomousBanner &&
                         !_autonomousBannerDismissed)
@@ -1389,12 +1408,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                     threadId: widget.threadId,
                                     options: runOptions,
                                     showApproval: showApproval,
-                                    approvalMode: _approvalMode,
+                                    approvalMode:
+                                        approvalMode ?? ApprovalMode.fullAccess,
                                     expanded: _turnControlsExpanded,
                                     onExpandedChanged: (value) => setState(
                                       () => _turnControlsExpanded = value,
                                     ),
-                                    onApprovalTap: _pickApprovalMode,
+                                    onApprovalTap: () => _pickApprovalMode(
+                                      offeredModes,
+                                      approvalMode ?? ApprovalMode.fullAccess,
+                                    ),
                                   )
                                 : null,
                             info: lastEdits != null ||

@@ -30,10 +30,9 @@
  *    so we add the thread's project dir as the workspace root.
  *  - permission flag: `agy`'s headless mode has NO interactive approval channel —
  *    a tool that needs permission is AUTO-DENIED unless we pass
- *    `--dangerously-skip-permissions`. So editing turns run with skip-permissions
- *    (autonomous, like pi); a `requestApproval` thread degrades to read-only
- *    `--mode plan` instead (the safe "can't ask you, so I'll only plan" posture).
- *    See {@link AntigravityAdapter.#effectiveMode}.
+ *    `--dangerously-skip-permissions`. Antigravity offers no access modes to
+ *    choose from (it cannot ask, and the apps show no selector for it): every
+ *    turn runs in the configured posture, `bypassPermissions` by default.
  *  - `--input-format stream-json`: "reads one NDJSON message per line from stdin
  *    and runs a turn for each" (`agy --help`), which is what keeps the process
  *    resident: the same authenticated process answers turn after turn. It
@@ -173,8 +172,6 @@ export function parseAntigravitySkills(output: string): AgentCommand[] {
 const ANTIGRAVITY_TITLE_MODEL = 'gemini-3.6-flash-low';
 
 const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
-  // `agy --mode plan` gives a real read-only planning mode.
-  planMode: true,
   streaming: true,
   // `agy` runs its tools without a per-turn approval RPC in headless mode (it
   // cannot prompt), so no interactive approval channel is advertised.
@@ -221,8 +218,7 @@ export function permissionArgs(mode: AntigravityPermissionMode): string[] {
  * bypassPermissions`) to an {@link AntigravityPermissionMode}. `agy` has no
  * "read-only tools" posture short of plan mode, so `default`/unset resolves to
  * autonomous `bypassPermissions` — the only posture that lets `agy` edit at all
- * headless. A read-only posture stays reachable per thread via the
- * `requestApproval` access mode ({@link AntigravityAdapter.#effectiveMode}).
+ * headless.
  */
 export function antigravityPermissionMode(
   configured?: 'default' | 'acceptEdits' | 'bypassPermissions',
@@ -708,28 +704,6 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  /**
-   * Resolve the permission posture for a turn: the thread's `accessMode` (from
-   * the phone) wins when set, else the adapter's configured `permissionMode`.
-   *  - `approveForMe`    → `acceptEdits` (autonomous edits — no finer headless gate);
-   *  - `fullAccess`      → `bypassPermissions` (autonomous edits);
-   *  - `requestApproval` → `plan` (read-only: `agy` cannot prompt for approval in
-   *    headless mode, so "ask me first" safely degrades to plan-only, no edits).
-   * Absent → the configured posture (no behaviour change).
-   */
-  #effectiveMode(accessMode: SendTurnOptions['accessMode']): AntigravityPermissionMode {
-    switch (accessMode) {
-      case 'approveForMe':
-        return 'acceptEdits';
-      case 'fullAccess':
-        return 'bypassPermissions';
-      case 'requestApproval':
-        return 'plan';
-      default:
-        return this.#permissionMode;
-    }
-  }
-
   start(config: AgentConfig): Promise<void> {
     if (config.cwd) this.#defaultCwd = config.cwd;
     return Promise.resolve();
@@ -984,7 +958,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = normalizeAntigravityModel(options.service ?? this.#defaultModel);
-    const mode = this.#effectiveMode(options.accessMode);
+    const mode = this.#permissionMode;
 
     let session: ActiveSession;
     try {

@@ -1,15 +1,17 @@
 <script lang="ts">
-  // How much the agent may do before it asks — the thread's access mode, the
-  // same three the phone offers, in the phone's colours: amber when it asks
-  // first, green when it approves edits on its own, red with full access. The
-  // trigger carries the colour so the mode reads at a glance; the menu shows
-  // each mode with its icon in its colour and one line saying what it means.
+  // How much the agent may do before it asks — the mode the conversation runs
+  // in, among the ones its agent offers (`capabilities.accessModes`, the same
+  // list the phone shows), in the phone's colours: amber when it asks first,
+  // green when it works on its own inside the project, red with full access,
+  // sky when it only plans. The trigger carries the colour so the mode reads
+  // at a glance; the menu shows each mode with one line saying what it means.
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
   import SquareLock02Icon from "@hugeicons/core-free-icons/SquareLock02Icon";
   import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import SquareUnlock02Icon from "@hugeicons/core-free-icons/SquareUnlock02Icon";
+  import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import type { AccessMode } from "$shared/models/thread";
   import { i18n } from "$lib/i18n";
@@ -18,10 +20,14 @@
 
   let {
     value,
+    modes,
     disabled = false,
     onChange,
   }: {
+    /** The mode the conversation runs in (one of `modes`). */
     value: AccessMode;
+    /** The modes its agent offers, in the order to list them. */
+    modes: readonly AccessMode[];
     disabled?: boolean;
     onChange: (mode: AccessMode) => void;
   } = $props();
@@ -45,9 +51,16 @@
       tone: "text-red-600 dark:text-red-400",
       pill: "bg-red-500/12 text-red-700 hover:bg-red-500/20 hover:text-red-800 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25 dark:hover:text-red-200",
     },
+    {
+      mode: "plan",
+      glyph: CheckListIcon,
+      tone: "text-sky-600 dark:text-sky-400",
+      pill: "bg-sky-500/12 text-sky-700 hover:bg-sky-500/20 hover:text-sky-800 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25 dark:hover:text-sky-200",
+    },
   ] as const satisfies readonly { mode: AccessMode; glyph: unknown; tone: string; pill: string }[];
 
   const current = $derived(MODES.find((m) => m.mode === value) ?? MODES[2]);
+  const offered = $derived(MODES.filter((m) => modes.includes(m.mode)));
 </script>
 
 <DropdownMenu.Root>
@@ -70,7 +83,7 @@
   <DropdownMenu.Content width="wide" align="start" side="top">
     <DropdownMenu.Label class={text.menuLabel}>{i18n.t("chat.accessLabel")}</DropdownMenu.Label>
     <DropdownMenu.RadioGroup {value} onValueChange={(v) => v && v !== value && onChange(v as AccessMode)}>
-      {#each MODES as m (m.mode)}
+      {#each offered as m (m.mode)}
         <DropdownMenu.RadioItem value={m.mode} class={cn(text.menu, "items-start")}>
           <Icon icon={m.glyph} class={cn(icon.decorative, "mt-0.5 shrink-0", m.tone)} />
           <div class="flex min-w-0 flex-col">
