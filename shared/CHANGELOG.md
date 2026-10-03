@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.29-alpha.20261003] - 20261003
 ### Changed
 
 - **Access modes are per agent.** `AccessMode` gains `plan` ("plan only");
