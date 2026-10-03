@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mountWithProviders, until } from "../../test/render";
 import { app } from "$lib/state/app.svelte";
+import { hosts } from "$lib/state/hosts.svelte";
+import { sessions } from "$lib/state/sessions.svelte";
 import GitSettings from "./GitSettings.svelte";
 
 // The test harness mounts no toaster, so what the user is TOLD is captured here
@@ -48,6 +50,9 @@ function lastSent(backend: {
 
 beforeEach(() => {
   document.body.style.pointerEvents = "";
+  hosts.hosts = [];
+  hosts.connected = [];
+  sessions.replace([]);
   app.settings.language = "en";
   app.settings.worktrees = { location: "managed", root: null };
   toasts.success.length = 0;
@@ -233,6 +238,45 @@ describe("GitSettings — cleanup", () => {
     await until(() => toasts.error.length > 0, { label: "refusal surfaced" });
     expect(toasts.error[0]).toContain("fix-nav was kept");
     expect(toasts.success[0]).toBe("1 worktree removed");
+  });
+
+  it("cleans up a connected host's worktrees on that host, fenced to its connection", async () => {
+    hosts.hosts = [{ id: "h1", label: "odoo box" } as never];
+    hosts.connected = ["h1"];
+    sessions.replace([{ hostId: "h1", generation: 5, label: "odoo box" }]);
+    const { screen, backend, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_cleanup_scan: () => [CANDIDATES[0]],
+        worktree_cleanup_sizes: () => [0],
+        worktree_cleanup_remove: () => ({ removed: [CANDIDATES[0].path], refused: [] }),
+      },
+    });
+    // This machine by default; the host is the entry after it.
+    await user.click(screen.getByLabelText("Whose worktrees to clean up"));
+    await screen.findByText("On odoo box");
+    await user.keyboard("{ArrowDown}{Enter}");
+    document.body.style.pointerEvents = "";
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+    await screen.findByText("No longer owned by git");
+    expect(backend.lastCallTo("worktree_cleanup_scan")?.args).toEqual({ target: "ssh:h1" });
+    await user.click(screen.getByRole("button", { name: "Clean up" }));
+    await until(() => backend.called("worktree_cleanup_remove"), { label: "removal" });
+    expect(backend.lastCallTo("worktree_cleanup_remove")?.args).toEqual({
+      paths: [CANDIDATES[0].path],
+      target: "ssh:h1",
+      expect: { targetId: "ssh:h1", generation: 5 },
+    });
+  });
+
+  it("offers no machine picker with no host connected, and scans this machine", async () => {
+    const { screen, backend, user } = mountWithProviders(GitSettings, {
+      commands: { ...baseCommands(), worktree_cleanup_scan: () => [] },
+    });
+    expect(screen.queryByLabelText("Whose worktrees to clean up")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+    await until(() => backend.called("worktree_cleanup_scan"), { label: "scan" });
+    expect(backend.lastCallTo("worktree_cleanup_scan")?.args).toEqual({ target: "local" });
   });
 
   it("says so plainly when there is nothing to clean", async () => {

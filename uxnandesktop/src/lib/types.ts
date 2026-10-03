@@ -873,6 +873,38 @@ export interface SshHostSession {
    *  mutation the app prepares, so a save prepared against one connection cannot
    *  execute against its replacement. */
   generation: number;
+  /** The link's latency as the host engine's heartbeat last measured it. */
+  latencyMs?: number | null;
+}
+
+/** A host's connection, step by step (mirror of Rust `ssh::doctor::HostDoctor`):
+ *  facts, which the host page words. */
+export interface HostDoctor {
+  /** Each bastion's label, then the host's. */
+  hops: string[];
+  proxyCommand: boolean;
+  routeError: string | null;
+  reachMs: number | null;
+  reachError: string | null;
+  keySettled: boolean;
+  connected: boolean;
+  shell: string | null;
+  engine: { version: string; protocol: number; os: string; arch: string } | null;
+  engineError: string | null;
+  roundTripMs: number | null;
+  forwardAgent: boolean;
+}
+
+/** One terminal a host's engine holds (mirror of Rust `HostSession`). */
+export interface HostSession {
+  session: number;
+  label: string;
+  cwd: string;
+  alive: boolean;
+  /** An age, never a timestamp: the two machines' clocks do not agree. */
+  startedAgoMs: number;
+  /** The tab of this window that shows it, if one does. */
+  tab: string | null;
 }
 
 /** What a host reported about itself (mirror of Rust `HostInventory`). */

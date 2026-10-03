@@ -11,6 +11,8 @@
   import { git } from "$lib/state/git.svelte";
   import { history } from "$lib/state/history.svelte";
   import { sessions } from "$lib/state/sessions.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import OfflineNote from "$lib/components/OfflineNote.svelte";
   import { sshHostId } from "$lib/target";
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -48,11 +50,15 @@
   $effect(() => {
     const target = projects.activeReviewTarget;
     // Same reason as the Changes panel: reading the connection here is what
-    // makes the log fill in when its host comes up, and clear when it goes.
+    // makes the log fill in when its host comes up. When it goes, a log that
+    // was read stays on screen, marked offline, instead of emptying.
     const host = sshHostId(target);
     const generation = host === null ? null : (sessions.generationOf(host) ?? null);
     if (generation !== lastGeneration) {
       lastGeneration = generation;
+      if (host !== null && generation === null && history.keepWhileAway(projects.activeWorktreePath, target)) {
+        return;
+      }
       void history.load(projects.activeWorktreePath, target);
       return;
     }
@@ -471,6 +477,10 @@
     {/if}
   </header>
 
+  {#if history.offline && history.readAt !== null}
+    <!-- Its host dropped: the log stays as it was read, and says so. -->
+    <OfflineNote host={hosts.labelOf(sshHostId(history.target) ?? "")} readAt={history.readAt} />
+  {/if}
   {#if !history.path}
     <p class={cn("p-3", text.meta)}>{i18n.t("history.selectWorktree")}</p>
   {:else if history.awaitingHost}

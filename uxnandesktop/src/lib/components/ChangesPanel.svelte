@@ -1,4 +1,7 @@
 <script lang="ts">
+  import OfflineNote from "$lib/components/OfflineNote.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId } from "$lib/target";
   // Version-control tab: the active worktree's changed files (staged / changes),
   // per-file stage / unstage / discard, a commit composer, push/pull, and a diff
   // viewer. Status updates live via the backend `git:status-changed` event.
@@ -390,6 +393,10 @@
       {git.notRepo ? i18n.t("rightPanel.notRepo") : i18n.t("rightPanel.selectWorktree")}
     </p>
   {:else}
+    {#if git.remote && !git.actionable && git.readAt !== null}
+      <!-- Its host dropped: the review stays as it was read, and says so. -->
+      <OfflineNote host={hosts.labelOf(sshHostId(git.target) ?? "")} readAt={git.readAt} />
+    {/if}
     {#if rows.length === 0}
       <p class={cn("p-3", text.meta)}>
         {git.awaitingHost

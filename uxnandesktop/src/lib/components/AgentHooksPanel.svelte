@@ -27,7 +27,6 @@
 
   import { onMount } from "svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import * as Select from "$lib/components/ui/select";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Switch } from "$lib/components/ui/switch";
@@ -51,9 +50,10 @@
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
-  import { field, focus, icon, panel, text } from "$lib/design";
+  import { focus, icon, panel, text } from "$lib/design";
   import AgentSettingsRow from "./AgentSettingsRow.svelte";
   import SettingsRow from "./SettingsRow.svelte";
+  import MachinePicker, { LOCAL_MACHINE } from "./MachinePicker.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
@@ -78,7 +78,7 @@
   let scripts = $state<HookScripts | null>(null);
   let agents = $state<HookAgentEntry[]>([]);
   /** Whose hooks the list shows: this machine, or a connected host's id. */
-  const LOCAL = "local";
+  const LOCAL = LOCAL_MACHINE;
   let machine = $state<string>(LOCAL);
   /** The picked host's agents, as its engine reports them. */
   let hostAgents = $state<HookAgentEntry[]>([]);
@@ -98,19 +98,8 @@
   }
 
   const onThisMachine = $derived(machine === LOCAL);
-  /** The machines the picker offers: this one, then each connected host. */
-  const machines = $derived([LOCAL, ...hosts.connected]);
-
-  function machineLabel(id: string): string {
-    return id === LOCAL
-      ? i18n.t("hooks.groupInstalled")
-      : i18n.t("hooks.groupHost", { host: hosts.labelOf(id) });
-  }
-
-  /** A host that went away is not left on screen as if it answered. */
-  $effect(() => {
-    if (machine !== LOCAL && !hosts.connected.includes(machine)) machine = LOCAL;
-  });
+  /** Whether there is a host to pick (the picker replaces the plain title). */
+  const anyHost = $derived(hosts.connected.length > 0);
 
   async function loadHost(id: string) {
     hostLoading = true;
@@ -362,26 +351,13 @@
 
   <!-- The agents of the machine picked — this one by default. -->
   <div class="space-y-2">
-    {#if machines.length > 1}
+    {#if anyHost}
       <div class="px-1">
-        <Select.Root type="single" value={machine} onValueChange={(v) => v && pick(v)}>
-          <Select.Trigger
-            size="sm"
-            class={field.selectStandard}
-            aria-label={i18n.t("hooks.machineAria")}
-          >
-            <span class="truncate">{machineLabel(machine)}</span>
-          </Select.Trigger>
-          <Select.Content>
-            {#each machines as id (id)}
-              <Select.Item value={id} label={machineLabel(id)}>{machineLabel(id)}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <MachinePicker value={machine} ariaLabel={i18n.t("hooks.machineAria")} onpick={pick} />
         {#if !onThisMachine}<p class={cn("mt-1", text.meta)}>{i18n.t("hooks.hostDesc")}</p>{/if}
       </div>
     {:else if mine.length > 0}
-      {@render groupHeader(i18n.t("hooks.groupInstalled"))}
+      {@render groupHeader(i18n.t("machine.here"))}
     {/if}
 
     {#if onThisMachine}

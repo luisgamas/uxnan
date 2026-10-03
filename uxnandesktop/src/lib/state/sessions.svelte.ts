@@ -15,6 +15,8 @@ export interface LiveSession {
   generation: number;
   /** The host's own name, so a message about it can say which machine. */
   label: string;
+  /** The link's latency as the host engine's heartbeat last measured it. */
+  latencyMs?: number | null;
 }
 
 class SessionRegistry {
@@ -40,6 +42,11 @@ class SessionRegistry {
    *  zero, which is an expectation nobody issued. */
   generationOf(hostId: string): number | undefined {
     return this.live[hostId]?.generation;
+  }
+
+  /** The link's latency in milliseconds, when it has been measured. */
+  latencyOf(hostId: string): number | null {
+    return this.live[hostId]?.latencyMs ?? null;
   }
 
   /** The host's name if it is connected; the id is the honest fallback. */

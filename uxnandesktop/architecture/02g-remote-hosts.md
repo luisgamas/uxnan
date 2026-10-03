@@ -415,9 +415,11 @@ que la exige.
 
 Corolarios:
 
-- El **doctor** mide este coste por host y lo dice, porque explica por que ese
-  host se siente lento y tiene arreglo del lado del usuario (poner `cmd` como
-  `DefaultShell` del `sshd`, o meter una guarda rapida en su perfil).
+- El **doctor** deberia medir este coste por host y decirlo, porque explica por
+  que ese host se siente lento y tiene arreglo del lado del usuario (poner `cmd`
+  como `DefaultShell` del `sshd`, o meter una guarda rapida en su perfil). El
+  doctor de hoy (§5.17) mide el primer salto y la ida y vuelta del motor, no este
+  coste: sigue pendiente en `FOR-DEV.md`.
 - Para trabajo repetido (por ejemplo sondear `git status`), un `exec` por vuelta
   es el patron equivocado en estos hosts. La alternativa —mantener un canal de
   shell abierto y escribirle los comandos— queda anotada como opcion para
@@ -1778,8 +1780,55 @@ motor e imprimio la pestana con la que se le respondio.
 empaquete los binarios del host; Windows con PowerShell como `DefaultShell` y ARM64
 sin probar en vivo;
 pasar la sesion de un agente del host a un chat (necesita el bridge del host,
-F8; el motor ya cierra el agente); las filas del host en Ajustes → Hooks; y
-ficheros, git y busqueda servidos por el motor.
+F8; el motor ya cierra el agente). Las filas del host en Ajustes → Hooks y los
+ficheros, git y busqueda servidos por el motor ya estan hechos (§5.10–§5.10i).
+
+## 5.17 La pagina del host, el doctor y el modo sin conexion — IMPLEMENTADO (F7)
+
+**La pagina del host** se abre con *Detalles* en su fila de Ajustes → Hosts
+(`HostDetailsDialog`). Tiene cuatro partes:
+
+- **La comprobacion** (`ssh_host_doctor` → `ssh/doctor.rs`), un paso por fila:
+  la ruta resuelta (directa, por bastiones, o un `ProxyCommand`, que no se sondea
+  aparte), si el primer salto contesta por TCP y en cuanto, si la clave esta en
+  `known_hosts`, el inicio de sesion, la shell, el motor (version, plataforma o el
+  motivo por el que no corre), la ida y vuelta que mide el latido del motor
+  (`round_trip`, la misma que se publica como `SshHostSession.latencyMs`) y el
+  reenvio del agente. **Nunca inicia sesion para averiguarlo**: lee lo que la app
+  sabe y sondea el primer salto, asi que no cuesta nada ni pide nada. Lo que solo
+  una sesion puede contestar dice *Conecta para comprobarlo* hasta que la hay.
+- **La maquina**: el inventario completo (§5.6), con la version de cada agente.
+- **Las terminales del host** (`ssh_host_sessions`): todas las que tiene el
+  motor, tambien las que ninguna pestana de esta ventana muestra —las deja una
+  ejecucion anterior de la app—, con si estan abiertas aqui. *Terminar* una
+  (`ssh_host_session_end`) va cercado a la conexion que el usuario ve y pide
+  confirmacion.
+- *Olvidar host*, y *Conectar* / *Desconectar*.
+
+**El estado del host, en un solo sitio** (`hosts.stateOf` → conectado,
+conectando, esperandote, sin conexion; `HOST_STATE_TONE` le da el color). Lo
+usan la fila de Ajustes, la pagina, la ficha del proyecto en la barra lateral
+(un punto, y la latencia en el tooltip) y la pestana de una terminal del host
+(una insignia con el nombre del host y su punto; el titulo se atenua mientras el
+host no esta). Nadie decide el estado por su cuenta.
+
+**Modo sin conexion.** Cuando un host se va, el arbol de ficheros que ya habia
+leido algo lo **conserva**, marcado sin conexion y con cuando se leyo
+(`OfflineNote`: "build-box esta sin conexion — esto se leyo hace 3 minutos"); no
+es `mutable` mientras tanto y se vuelve a leer cuando el host vuelve. Cambios e
+Historial hacen lo mismo con la misma nota. Un arbol que nunca recibio su primera
+respuesta sigue diciendo que espera. Es la regla de §6: lo que se muestra de otra
+maquina nunca se presenta como actual.
+
+**La limpieza de worktrees en un host** tiene su selector de maquina en Ajustes →
+Git → Limpieza (`MachinePicker`, el mismo que Ajustes → Hooks); escanear, medir y
+quitar van al motor de ese host (§5.10i), y quitar va cercado.
+
+**Lo que queda fuera:** el coste por comando de §5.3 no se mide —con el motor, el
+trabajo repetido ya no paga un `exec` por llamada, y en un host sin motor la
+medida costaria justo ese `exec`—; queda anotado en `FOR-DEV.md`. Agrupar los
+proyectos por host en la barra lateral queda para un posible rediseño del panel
+izquierdo, a decidir por el mantenedor.
 
 ## 6. Que funciona y que no en un contexto remoto
 

@@ -35,6 +35,8 @@ import type {
   ListeningPort,
   SshConfigAlias,
   GitReview,
+  HostDoctor,
+  HostSession,
   RepoStatus,
   SshConnectReport,
   SshHostInventory,
@@ -515,22 +517,30 @@ export function worktreeCleanupCount(): Promise<number> {
  *  blocked by uncommitted work (listed, never removable). Read-only, and it only
  *  ever looks inside the managed roots — a worktree beside its repository is
  *  never listed and never touched. */
-export function worktreeCleanupScan(): Promise<WorktreeCleanupCandidate[]> {
-  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan');
+export function worktreeCleanupScan(target?: TargetId | null): Promise<WorktreeCleanupCandidate[]> {
+  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan', { target: target ?? null });
 }
 
 /** Size on disk of each path, in bytes, in the order asked. Separate from the
  *  scan because walking a checkout's `node_modules` costs more than every git
  *  query in the scan combined — the list appears first, the sizes fill in. */
-export function worktreeCleanupSizes(paths: string[]): Promise<number[]> {
-  return invoke<number[]>('worktree_cleanup_sizes', { paths });
+export function worktreeCleanupSizes(paths: string[], target?: TargetId | null): Promise<number[]> {
+  return invoke<number[]>('worktree_cleanup_sizes', { paths, target: target ?? null });
 }
 
 /** Remove the given worktrees. Every path is re-verified against a fresh scan
  *  (inside a managed root, still disposable, still clean), so a stale list can
  *  never delete the wrong folder; refusals come back with their reason. */
-export function worktreeCleanupRemove(paths: string[]): Promise<WorktreeCleanupOutcome> {
-  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', { paths });
+export function worktreeCleanupRemove(
+  paths: string[],
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<WorktreeCleanupOutcome> {
+  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', {
+    paths,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Set (or clear, with `null`) a project's own managed-worktree root, overriding
@@ -740,6 +750,27 @@ export function sshHostDisconnect(hostId: string): Promise<boolean> {
  *  without reaching out to anything. */
 export function sshHostsResumable(): Promise<string[]> {
   return invoke<string[]>('ssh_hosts_resumable');
+}
+
+/** A host's connection, step by step — the host page's check. Never signs in
+ *  to find out; the steps that need a session wait for one. */
+export function sshHostDoctor(hostId: string): Promise<HostDoctor> {
+  return invoke<HostDoctor>('ssh_host_doctor', { hostId });
+}
+
+/** The terminals a connected host's engine holds, newest first — including ones
+ *  no tab of this window shows. */
+export function sshHostSessions(hostId: string): Promise<HostSession[]> {
+  return invoke<HostSession[]>('ssh_host_sessions', { hostId });
+}
+
+/** End one terminal a host's engine holds, and whatever runs in it. Fenced. */
+export function sshHostSessionEnd(
+  hostId: string,
+  session: number,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('ssh_host_session_end', { hostId, session, expect: expect ?? null });
 }
 
 /** The hosts with a live session, and which incarnation each one is. */

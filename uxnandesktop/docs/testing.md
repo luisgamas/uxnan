@@ -78,8 +78,8 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,065 backend tests**
-in total — 705 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,066 backend tests**
+in total — 706 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
 in `uxnan-cli`, 248 in `uxnan-workspace-engine` (its git, libgit2 fast path, worktree placement and cleanup among them), 5 in `uxnan-host-protocol`, 30 in
 `uxnan-host` (25 against the real daemon over its socket — among them a project's
 files listed, saved and searched on the host, its git read, staged and
@@ -321,7 +321,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,809 tests** across both
+ships in every build and is never shown). **1,821 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

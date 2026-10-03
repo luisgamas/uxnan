@@ -21,6 +21,7 @@
   import StatusDot from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import RemoteFolderPicker from "$lib/components/RemoteFolderPicker.svelte";
+  import HostDetailsDialog from "$lib/components/HostDetailsDialog.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { hostAgents } from "$lib/agentAvailability";
@@ -32,7 +33,7 @@
   import EditIcon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-  import { hosts } from "$lib/state/hosts.svelte";
+  import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
   import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
   import { app } from "$lib/state/app.svelte";
   import type { SshHost } from "$lib/types";
@@ -43,6 +44,9 @@
   let addOpen = $state(false);
   let importOpen = $state(false);
   let removing = $state<string | null>(null);
+  /** The host whose page is open, if any. */
+  let detailsOf = $state<SshHost | null>(null);
+  let detailsOpen = $state(false);
   /** The host whose folders are being browsed, if any. */
   let picking = $state<SshHost | null>(null);
   let pickerOpen = $state(false);
@@ -183,148 +187,169 @@
         {@const connected = hosts.isConnected(host.id)}
         {@const busy = hosts.isBusy(host.id)}
         {@const inventory = hosts.inventories[host.id]}
-        <li class="flex min-h-12 items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-          <StatusDot
-            tone={connected ? "ok" : "off"}
-            label={connected ? i18n.t("hosts.connected") : i18n.t("hosts.disconnected")}
-          />
-          <div class="min-w-0 flex-1">
-            <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
-            <p class={cn(text.meta, "truncate")}>
-              {host.user}@{host.hostname}{host.port === 22 ? "" : `:${host.port}`}
-            </p>
-            {#if inventory}
-              {@const found = hostAgents(AGENT_CATALOG, inventory)}
-              <!-- What the machine itself reported. Only shown once it has
-                   answered, so an empty line never reads as "nothing there".
-                   The agents are **logos**, not names: a row this size fits
-                   three names before truncating, and a truncated list of names
-                   is worse than no list — it looks like the host has three. The
-                   rest collapse into `+N`, and the whole strip opens a popover
-                   with every one of them, its version, and what else the machine
-                   reported. Same shape the sidebar uses for running agents. -->
-              <div class="flex min-w-0 items-center gap-2">
-                {#if found.length > 0}
-                  <Popover.Root>
-                    <Popover.Trigger
-                      class={cn(
-                        row.agentAvatarStrip,
-                        focus.ring,
-                        "flex-none gap-0.5 rounded-md px-0.5 hover:bg-foreground/[0.05]",
-                      )}
-                      aria-label={i18n.t("hosts.agentsPopoverTitle", { host: host.label })}
-                    >
-                      {#each found.slice(0, VISIBLE_AGENTS) as agent (agent.key)}
-                        <AgentLogo logo={agent.logo} class={icon.decorative} />
-                      {/each}
-                      {#if found.length > VISIBLE_AGENTS}
-                        <span class={cn(row.agentOverflow, "size-auto px-1")}>
-                          +{found.length - VISIBLE_AGENTS}
-                        </span>
-                      {/if}
-                    </Popover.Trigger>
-                    <!-- `status` width and `padding="none"`: the widest role the
-                         overlay tokens define, because the values here are a
-                         host's own version strings and some are long
-                         (`0.2.112 (9bbd559437) [stable]`). Narrower, the name
-                         truncates to make room for them — which loses the half
-                         the reader is scanning for. -->
-                    <Popover.Content width="status" padding="none" align="start">
-                      <div class="border-b border-border/60 px-3 py-2.5">
-                        <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
-                        <p class={cn(text.meta, "truncate")}>
-                          {[inventory.os, inventory.multiplexer || i18n.t("hosts.noMultiplexer")]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <!-- Versions are the reason this popover is worth opening:
-                           they were read on that machine and are shown nowhere
-                           else. `overlay.item` is the shared 36px row and
-                           `overlay.dataRow` the label/value grid that keeps a
-                           4-unit gutter between them, so a long version can never
-                           run into the name it belongs to. -->
-                      <!-- What the machine is *missing* is one line, not a list:
-                           the catalogue knows 31 agents and a host has a handful,
-                           so listing the rest would be 25 rows of noise. The one
-                           absence that changes what uxnan can do there is **git**
-                           — without it there is no branch, no review, no history
-                           and no search on that host — so that is the one this
-                           says, where the reader is already looking. -->
-                      {#if !inventory.git}
-                        <p class={cn(text.meta, "border-b border-border/60 px-3 py-2")}>
-                          {i18n.t("hosts.noGit")}
-                        </p>
-                      {/if}
-                      <ul class={cn(overlay.menuCompactViewport, "py-1")}>
-                        {#each found as agent (agent.key)}
-                          <li class={cn(overlay.item, "flex items-center gap-2.5")}>
-                            <AgentLogo logo={agent.logo} class={cn(icon.brand, "shrink-0")} />
-                            <span class={cn(overlay.dataRow, "min-w-0 flex-1")}>
-                              <span class="truncate" title={agent.name}>{agent.name}</span>
-                              {#if agent.version}
-                                <span
-                                  class={cn(text.meta, "truncate font-mono")}
-                                  title={agent.version}
-                                >{agent.version}</span>
-                              {/if}
-                            </span>
-                          </li>
+        <!-- The row wraps rather than squeezes: the name and what the machine
+             reported keep the line while it has room for a host name and its
+             address (10rem), and below that the actions drop under them,
+             right-aligned, instead of truncating the name to nothing. A
+             connected host carries six actions, so a narrow window reaches
+             this sooner than it looks. -->
+        <li class="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 py-2.5 first:pt-0 last:pb-0">
+          <div class="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
+            <StatusDot
+              tone={HOST_STATE_TONE[hosts.stateOf(host.id)]}
+              label={i18n.t(`hostPage.state.${hosts.stateOf(host.id)}`)}
+            />
+            <div class="min-w-0 flex-1">
+              <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
+              <p class={cn(text.meta, "truncate")}>
+                {host.user}@{host.hostname}{host.port === 22 ? "" : `:${host.port}`}
+              </p>
+              {#if inventory}
+                {@const found = hostAgents(AGENT_CATALOG, inventory)}
+                <!-- What the machine itself reported. Only shown once it has
+                     answered, so an empty line never reads as "nothing there".
+                     The agents are **logos**, not names: a row this size fits
+                     three names before truncating, and a truncated list of names
+                     is worse than no list — it looks like the host has three. The
+                     rest collapse into `+N`, and the whole strip opens a popover
+                     with every one of them, its version, and what else the machine
+                     reported. Same shape the sidebar uses for running agents. -->
+                <div class="flex min-w-0 items-center gap-2">
+                  {#if found.length > 0}
+                    <Popover.Root>
+                      <Popover.Trigger
+                        class={cn(
+                          row.agentAvatarStrip,
+                          focus.ring,
+                          "flex-none gap-0.5 rounded-md px-0.5 hover:bg-foreground/[0.05]",
+                        )}
+                        aria-label={i18n.t("hosts.agentsPopoverTitle", { host: host.label })}
+                      >
+                        {#each found.slice(0, VISIBLE_AGENTS) as agent (agent.key)}
+                          <AgentLogo logo={agent.logo} class={icon.decorative} />
                         {/each}
-                      </ul>
-                    </Popover.Content>
-                  </Popover.Root>
-                {/if}
-                <p class={cn(text.meta, "min-w-0 truncate")}>
-                  {[
-                    inventory.os,
-                    found.length === 0 ? i18n.t("hosts.agentsNone") : "",
-                    inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-            {/if}
+                        {#if found.length > VISIBLE_AGENTS}
+                          <span class={cn(row.agentOverflow, "size-auto px-1")}>
+                            +{found.length - VISIBLE_AGENTS}
+                          </span>
+                        {/if}
+                      </Popover.Trigger>
+                      <!-- `status` width and `padding="none"`: the widest role the
+                           overlay tokens define, because the values here are a
+                           host's own version strings and some are long
+                           (`0.2.112 (9bbd559437) [stable]`). Narrower, the name
+                           truncates to make room for them — which loses the half
+                           the reader is scanning for. -->
+                      <Popover.Content width="status" padding="none" align="start">
+                        <div class="border-b border-border/60 px-3 py-2.5">
+                          <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
+                          <p class={cn(text.meta, "truncate")}>
+                            {[inventory.os, inventory.multiplexer || i18n.t("hosts.noMultiplexer")]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <!-- Versions are the reason this popover is worth opening:
+                             they were read on that machine and are shown nowhere
+                             else. `overlay.item` is the shared 36px row and
+                             `overlay.dataRow` the label/value grid that keeps a
+                             4-unit gutter between them, so a long version can never
+                             run into the name it belongs to. -->
+                        <!-- What the machine is *missing* is one line, not a list:
+                             the catalogue knows 31 agents and a host has a handful,
+                             so listing the rest would be 25 rows of noise. The one
+                             absence that changes what uxnan can do there is **git**
+                             — without it there is no branch, no review, no history
+                             and no search on that host — so that is the one this
+                             says, where the reader is already looking. -->
+                        {#if !inventory.git}
+                          <p class={cn(text.meta, "border-b border-border/60 px-3 py-2")}>
+                            {i18n.t("hosts.noGit")}
+                          </p>
+                        {/if}
+                        <ul class={cn(overlay.menuCompactViewport, "py-1")}>
+                          {#each found as agent (agent.key)}
+                            <li class={cn(overlay.item, "flex items-center gap-2.5")}>
+                              <AgentLogo logo={agent.logo} class={cn(icon.brand, "shrink-0")} />
+                              <span class={cn(overlay.dataRow, "min-w-0 flex-1")}>
+                                <span class="truncate" title={agent.name}>{agent.name}</span>
+                                {#if agent.version}
+                                  <span
+                                    class={cn(text.meta, "truncate font-mono")}
+                                    title={agent.version}
+                                  >{agent.version}</span>
+                                {/if}
+                              </span>
+                            </li>
+                          {/each}
+                        </ul>
+                      </Popover.Content>
+                    </Popover.Root>
+                  {/if}
+                  <p class={cn(text.meta, "min-w-0 truncate")}>
+                    {[
+                      inventory.os,
+                      found.length === 0 ? i18n.t("hosts.agentsNone") : "",
+                      inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              {/if}
+            </div>
           </div>
-          {#if connected}
-            <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
-              {i18n.t("hosts.openTerminal")}
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+            {#if connected}
+              <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
+                {i18n.t("hosts.openTerminal")}
+              </Button>
+              <Button variant="ghost" size="sm" onclick={() => { picking = host; pickerOpen = true; }}>
+                {i18n.t("hosts.addProject")}
+              </Button>
+              <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
+                {i18n.t("hosts.disconnect")}
+              </Button>
+            {:else}
+              <Button variant="outline" size="sm" disabled={busy} onclick={() => hosts.connect(host.id)}>
+                {busy ? i18n.t("hosts.connecting") : i18n.t("hosts.connect")}
+              </Button>
+            {/if}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={i18n.t("hostPage.openTitle", { host: host.label })}
+              onclick={() => {
+                detailsOf = host;
+                detailsOpen = true;
+              }}
+            >
+              {i18n.t("hostPage.open")}
             </Button>
-            <Button variant="ghost" size="sm" onclick={() => { picking = host; pickerOpen = true; }}>
-              {i18n.t("hosts.addProject")}
-            </Button>
-            <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
-              {i18n.t("hosts.disconnect")}
-            </Button>
-          {:else}
-            <Button variant="outline" size="sm" disabled={busy} onclick={() => hosts.connect(host.id)}>
-              {busy ? i18n.t("hosts.connecting") : i18n.t("hosts.connect")}
-            </Button>
-          {/if}
-          <button
-            type="button"
-            class={cn(
-              "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground",
-              focus.ring,
-            )}
-            title={i18n.t("hosts.edit")}
-            aria-label={i18n.t("hosts.editTitle", { host: host.label })}
-            onclick={() => startEdit(host)}
-          >
-            <Icon icon={EditIcon} class={icon.action} />
-          </button>
-          <button
-            type="button"
-            class={cn(
-              "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-destructive",
-              focus.ring,
-            )}
-            title={i18n.t("hosts.remove")}
-            onclick={() => (removing = host.id)}
-          >
-            <Icon icon={DeleteIcon} class={icon.action} />
-          </button>
+            <button
+              type="button"
+              class={cn(
+                "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground",
+                focus.ring,
+              )}
+              title={i18n.t("hosts.edit")}
+              aria-label={i18n.t("hosts.editTitle", { host: host.label })}
+              onclick={() => startEdit(host)}
+            >
+              <Icon icon={EditIcon} class={icon.action} />
+            </button>
+            <button
+              type="button"
+              class={cn(
+                "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-destructive",
+                focus.ring,
+              )}
+              title={i18n.t("hosts.remove")}
+              onclick={() => (removing = host.id)}
+            >
+              <Icon icon={DeleteIcon} class={icon.action} />
+            </button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -671,4 +696,16 @@
       }}
     />
   {/key}
+{/if}
+
+{#if detailsOf}
+  <HostDetailsDialog
+    bind:open={detailsOpen}
+    host={detailsOf}
+    onforget={() => {
+      const forgetting = detailsOf;
+      detailsOpen = false;
+      if (forgetting) removing = forgetting.id;
+    }}
+  />
 {/if}

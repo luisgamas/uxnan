@@ -286,8 +286,11 @@ Select it in the left panel and:
 | **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
 | **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS, Windows).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a host it cannot run on), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
 
-The card carries the host's name, and its terminal count includes the terminals
-open on that machine.
+The card carries the host's name with a dot for how that host stands (connected,
+connecting, waiting for you, offline — the tooltip adds the link's round trip),
+and its terminal count includes the terminals open on that machine. A terminal
+tab on a host carries the same: a small badge with the host's name and dot, and
+a title dimmed while the host is away.
 
 ### At startup
 
@@ -328,13 +331,17 @@ working. So:
   the host. An agent's tab keeps what it showed and offers to resume the session;
   a plain shell's tab closes. A terminal that could not *start* because its host
   was away starts by itself once the host connects.
-- **The file tree empties itself** and says it is waiting, instead of leaving the
-  folders of a machine that is no longer there on screen. It fills back in when
-  the host returns.
+- **The file tree keeps what it read, and says how old it is.** A tree that was
+  already on screen stays, so you do not lose your place, under a line naming
+  the host and when it was read ("build-box is offline — this was read 3 minutes
+  ago"); nothing in it can be changed until the host is back, and it is read
+  again then. A tree that never got its first answer says it is waiting
+  instead.
 - **Changes and History do the same.** What was read stays true of the moment it
-  was read, but nothing can be sent to a machine that is gone, so every action is
-  disabled while it is away — and the commit message you were writing is left
-  alone, since the host coming back makes it usable again.
+  was read, with the same line, but nothing can be sent to a machine that is
+  gone, so every action is disabled while it is away — and the commit message
+  you were writing is left alone, since the host coming back makes it usable
+  again.
 - **Running out of channels says so, and says what is holding them.** Every
   terminal, the file panel and each running command is a channel on the one
   connection, and your host caps how many it carries at once (OpenSSH's
@@ -353,6 +360,29 @@ working. So:
   three unanswered asks — the same thing mature SSH clients do, and the reason a
   connection nobody is typing at no longer gets dropped for being quiet (it used
   to be reaped after five minutes of silence).
+
+### A host's page
+
+**Details** on a host's row in Settings → Hosts opens its page:
+
+- **Connection check** — the way to the host, one step per row: the route
+  (direct, through a bastion chain, or a `ProxyCommand`), whether its first hop
+  answers on TCP and how fast, whether its key is on file, sign-in, its shell,
+  the host engine (version and platform, or why it is not running), the round
+  trip the engine's heartbeat measures, and agent forwarding. It never signs in
+  to find out — it reads what the app knows and probes the first hop — so it
+  costs nothing and asks nothing; the steps only a session can answer say
+  *Connect to check* until there is one.
+- **Machine** — what the host reported: OS, git, the multiplexer, and every
+  agent CLI with the version it gave.
+- **Terminals on this host** — every terminal the host engine holds, including
+  ones no tab of this window shows (left by an earlier run of the app). Each
+  says whether it is open here; **End** stops one and whatever runs in it,
+  after asking.
+- **Forget host**, and **Connect** / **Disconnect**.
+
+The row itself wraps when the window is narrow: the actions drop under the
+host's name instead of squeezing it.
 
 ## Terminals that outlive the connection: the host engine
 

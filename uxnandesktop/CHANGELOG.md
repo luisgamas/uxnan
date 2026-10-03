@@ -70,8 +70,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Editing a host.** A host typed by hand can be edited in place, keeping its
   id and projects; an imported one takes a new label (the rest comes from
   `~/.ssh/config`).
+- **A page for each host.** *Details* on a host's row in Settings → Hosts opens
+  it: a connection check, one step per row (the route, whether its first hop
+  answers and how fast, its key, sign-in, its shell, the host engine, the round
+  trip, agent forwarding) that never signs in to find out; everything the
+  machine reported, with each agent's version; and every terminal its engine
+  holds — including ones an earlier run of the app left there — with *End*.
+- **Old worktrees on a host are cleaned up there.** Settings → Git → Cleanup
+  has a machine picker; on a connected host, its engine finds and removes its
+  own abandoned worktrees by the same rules as here.
+- **You can see which machine a terminal is on.** A terminal tab on a host
+  carries a small badge with the host's name and a dot for how it stands, and
+  its title dims while the host is away. A host project's card in the sidebar
+  shows the same dot, with the link's latency in its tooltip.
 
 ### Changed
+- **A host that drops leaves what you were looking at.** The file tree,
+  Changes and History keep what they had read, under a line saying the host is
+  offline and how long ago it was read, and read it again when the host is
+  back. Nothing in them can be changed meanwhile.
+- **The host row in Settings → Hosts wraps on a narrow window**: its actions
+  drop under the host's name instead of squeezing it.
 
 - **Your SSH configuration is read at every connect**, not once when the host
   was added, and a host typed by hand is resolved through it too — so `Host *`

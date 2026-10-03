@@ -101,6 +101,9 @@ class GitStore {
    *  because the alternative is a red line the user has to clear by switching
    *  projects and back. */
   awaitingHost = $state(false);
+  /** When this review was last read, so a host that drops leaves it on screen
+   *  saying how old it is (`OfflineNote`). */
+  readAt = $state<number | null>(null);
   /** The selected project is a plain folder — one the app already knows is not
    *  a repository (`RepoData.isGit`, decided when it was added). There is
    *  nothing to review, so nothing is asked: `path` stays null and the panel
@@ -250,6 +253,7 @@ class GitStore {
       this.files = [];
       this.numstat = {};
       this.numstatSeq++;
+      this.readAt = null;
     }
     // A remote worktree unwatches whatever this machine was watching: there is
     // nothing here to poll, and polling a host every three seconds would be a
@@ -277,6 +281,7 @@ class GitStore {
         return;
       }
       this.files = review.files.map(classify);
+      this.readAt = Date.now();
       const map: Record<string, { added: number; deleted: number }> = {};
       for (const n of review.numstat) map[n.path] = { added: n.added, deleted: n.deleted };
       this.numstat = map;

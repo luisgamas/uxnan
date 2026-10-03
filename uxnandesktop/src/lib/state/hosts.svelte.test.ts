@@ -103,20 +103,41 @@ describe('hosts.resume', () => {
 });
 
 describe('a host that goes away', () => {
-  it('sends its file tree back to waiting instead of leaving a memory on screen', async () => {
-    // A loaded folder is never listed again, so without this the panel kept
-    // showing the other machine's files after it was disconnected — no message,
-    // no hint, a tree that was quietly out of date.
+  it('keeps a read tree on screen marked offline, never as if it were current', async () => {
+    // A loaded folder is never listed again, so the panel once kept showing the
+    // other machine's files after it was disconnected with no hint they were
+    // out of date. Now what was read stays — the user keeps their place — and
+    // the tree says it is offline, with when it was read.
     connected = [{ hostId: 'already', generation: 9 }];
     await hosts.load();
     fileTree.setRoot('/code', 'ssh:already');
-    fileTree.childrenByDir = { '/code': [{ name: 'src', path: '/code/src', isDir: true, ignored: false }] };
+    await until(() => !fileTree.loadingDir.has('/code'), { label: 'the first listing' });
+    const listing = { '/code': [{ name: 'src', path: '/code/src', isDir: true, ignored: false }] };
+    fileTree.childrenByDir = listing;
+    fileTree.readAt = Date.now() - 60_000;
     fileTree.awaitingHost = false;
 
     await hosts.disconnect('already');
 
+    expect(fileTree.offline).toBe(true);
+    expect(fileTree.childrenByDir).toEqual(listing);
+    expect(fileTree.mutable).toBe(false);
+  });
+
+  it('sends a tree that had read nothing back to waiting', async () => {
+    connected = [{ hostId: 'already', generation: 9 }];
+    await hosts.load();
+    fileTree.setRoot(null);
+    fileTree.setRoot('/code', 'ssh:already');
+    await until(() => !fileTree.loadingDir.has('/code'), { label: 'the first listing' });
+    fileTree.childrenByDir = {};
+    fileTree.readAt = null;
+    fileTree.awaitingHost = false;
+
+    await hosts.disconnect('already');
+
+    expect(fileTree.offline).toBe(false);
     expect(fileTree.awaitingHost).toBe(true);
-    expect(fileTree.childrenByDir).toEqual({});
   });
 
   it("leaves another host's tree alone", async () => {
@@ -159,7 +180,8 @@ describe('a session that ends on its own', () => {
     await until(() => !sessions.isConnected('silent'));
 
     expect(sessions.isConnected('silent')).toBe(false);
-    expect(fileTree.awaitingHost).toBe(true);
+    // The tree had read its root, so it is kept and marked offline.
+    expect(fileTree.offline || fileTree.awaitingHost).toBe(true);
   });
 
   it('re-reads the live set rather than trusting the payload', async () => {

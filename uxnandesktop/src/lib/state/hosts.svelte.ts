@@ -87,6 +87,21 @@ function hopLabel(hostLabel: string, report: SshConnectReport): string {
   return report.hop ? i18n.t("hosts.viaHop", { hop: report.hop, host: hostLabel }) : hostLabel;
 }
 
+/** How often the connected hosts' latency is re-read (from this machine). */
+const LATENCY_REFRESH_MS = 15_000;
+
+/** Where a host stands, as every surface shows it — the sidebar chip, the host
+ *  page, a terminal tab. One answer, so they never disagree. */
+export type HostState = "connected" | "connecting" | "needsYou" | "offline";
+
+/** The dot each [`HostState`] is drawn with, wherever a host is shown. */
+export const HOST_STATE_TONE: Record<HostState, "ok" | "busy" | "warn" | "off"> = {
+  connected: "ok",
+  connecting: "busy",
+  needsYou: "warn",
+  offline: "off",
+};
+
 class HostsStore {
   hosts = $state<SshHost[]>([]);
   /** Host ids with a live session. */
@@ -127,6 +142,23 @@ class HostsStore {
     return this.connected.includes(id);
   }
 
+  /** Where `id` stands now ([`HostState`]). Something waiting on the person — a
+   *  key to confirm, a password, a second factor, a key that changed — comes
+   *  first: until they answer, nothing else will happen. */
+  stateOf(id: string): HostState {
+    if (
+      this.pendingKey?.hostId === id ||
+      this.pendingCredential?.hostId === id ||
+      this.pendingChallenge?.hostId === id ||
+      this.keyMismatch?.hostId === id
+    ) {
+      return "needsYou";
+    }
+    if (this.isConnected(id)) return "connected";
+    if (this.isBusy(id)) return "connecting";
+    return "offline";
+  }
+
   isBusy(id: string): boolean {
     return this.busy.includes(id);
   }
@@ -154,6 +186,13 @@ class HostsStore {
       await listen<SshSessionEnded>("ssh:session-ended", () => {
         void this.refreshSessions();
       });
+      // The latency the engines' heartbeats measure, kept current while a host
+      // is connected. A question to this machine's backend, never to the host.
+      if (typeof setInterval !== "undefined") {
+        setInterval(() => {
+          if (this.connected.length > 0) void this.refreshSessions();
+        }, LATENCY_REFRESH_MS);
+      }
     } catch {
       // No Tauri event bus (the plain browser preview) — on-demand only.
       this.listening = false;

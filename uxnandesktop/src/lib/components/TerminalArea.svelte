@@ -1,4 +1,7 @@
 <script lang="ts">
+  import StatusDot from "$lib/components/StatusDot.svelte";
+  import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId, type TargetId } from "$lib/target";
   import { onDestroy, onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -605,6 +608,8 @@
                       >
                           {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
+                          {@const onHost = sshHostId(t.target as TargetId | undefined)}
+                          {@const standing = onHost ? hosts.stateOf(onHost) : null}
                           {#if display}
                             <AgentStatusIndicator status={display.status} stale={display.stale} />
                           {/if}
@@ -612,12 +617,42 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class={cn(tab.terminalLabel, t.exited && "line-through")}
+                                class={cn(
+                                  tab.terminalLabel,
+                                  t.exited && "line-through",
+                                  standing && standing !== "connected" && "opacity-60",
+                                )}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
+                          {#if onHost && standing}
+                            <!-- Which machine this terminal runs on, and how that
+                                 machine stands: the tab says it without reading
+                                 the prompt. A tab whose host dropped stays, dimmed,
+                                 with what it last showed. -->
+                            <TooltipSimple
+                              title={[
+                                i18n.t("project.onHost", { host: hosts.labelOf(onHost) }),
+                                i18n.t(`hostPage.state.${standing}`),
+                              ].join(" · ")}
+                            >
+                              {#snippet children(tp)}
+                                <span
+                                  {...tp}
+                                  class={cn(
+                                    "flex max-w-24 shrink-0 items-center gap-1 rounded-[4px] bg-foreground/[0.06] px-1.5 py-px",
+                                    text.indicator,
+                                    "text-muted-foreground",
+                                  )}
+                                >
+                                  <StatusDot tone={HOST_STATE_TONE[standing]} class="size-1.5" />
+                                  <span class="truncate">{hosts.labelOf(onHost)}</span>
+                                </span>
+                              {/snippet}
+                            </TooltipSimple>
+                          {/if}
                         {:else if t.kind === "file"}
                           <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.path}>

@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,065 Rust tests (705 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
+`docs/chat.md`). 1,066 Rust tests (706 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 30 in `uxnan-host` (25 against the daemon itself) + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 38 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,809 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,821 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1301,12 +1301,14 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
       and no memory across restarts (a tunnel dies with the app, which matches
       what the connection does). Ports are only scanned on hosts; a local dev
       server needs no tunnel, so announcing it would be noise.
-- [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
-      glance rather than only by what its prompt says.
-- [ ] A doctor view per host: the inventory in full, with what is missing and the
-      per-host command cost (§5.3) — it has a fix on the user's side.
-- [ ] i18n: `en.ts` + `es.ts` in the same change. There is **no key-parity test
-      between locales today** — add one with this section.
+- [ ] **The host check does not measure the per-command cost** (`02g` §5.3).
+      `ssh/doctor.rs` → `HostDoctor` reports the first hop's TCP time and the
+      engine's round trip, not what one `exec` costs on that host (2.1 s on a
+      Windows host whose sshd loads a PowerShell profile) — the number that has
+      a fix on the user's side. Deferred because measuring it costs exactly
+      that `exec`, and with the engine running repeated work no longer pays it;
+      it matters for a host the engine cannot run on. Add it as an opt-in step
+      of the page when one is needed.
 
 ### Deferred deliberately
 - [ ] **Fencing covers `worktree_create` / `worktree_remove` only.** Those are the
@@ -1738,7 +1740,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,065 Rust + 1,809 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,066 Rust + 1,821 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

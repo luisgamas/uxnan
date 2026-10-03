@@ -67,7 +67,9 @@ managed root is the host's own `~/uxnan/worktrees`; the **global** custom root
 is a folder on this machine, so on a host only a project's own root applies;
 `sibling` puts the folder next to the repository there. Creating and removing
 are fenced to the connection you are looking at and refused while the host is
-disconnected. The cleanup sweep below still looks only at this machine.
+disconnected. The cleanup below works on a host too: with a host connected,
+Settings → Git → Cleanup offers a machine picker, and that host's engine scans
+and cleans its own managed folders by the same rules.
 
 ## Cleanup
 
