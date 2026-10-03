@@ -1154,46 +1154,19 @@ async fn connected_engine<R: tauri::Runtime>(
     engine_for(app, state, host_id, &conn, shell).await.ok()
 }
 
-/// One connected host's agents, as its engine reports them, for Settings →
-/// Agents → Hooks.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HostHooks {
-    pub host_id: String,
-    pub label: String,
-    pub agents: Vec<agent_hooks::HookAgentEntry>,
-}
-
-/// The hooks of every connected host whose engine can say — read on that host
-/// by the same installer that wires this machine's.
+/// One connected host's agents, as its engine reports them — for Settings →
+/// Agents → Hooks, asked only for the host the panel is showing, so a long list
+/// of hosts costs nothing until one is picked.
 #[tauri::command]
 pub async fn host_hooks(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Vec<HostHooks>, CommandError> {
-    let hosts: Vec<(String, String)> = state
-        .data
-        .read()
-        .await
-        .settings
-        .ssh_hosts
-        .iter()
-        .map(|h| (h.id.clone(), h.label.clone()))
-        .collect();
-    let mut out = Vec::new();
-    for (host_id, label) in hosts {
-        let Some(engine) = connected_engine(&app, &state, &host_id).await else {
-            continue;
-        };
-        if let Ok(agents) = engine.hooks_status().await {
-            out.push(HostHooks {
-                host_id,
-                label,
-                agents,
-            });
-        }
-    }
-    Ok(out)
+    host_id: String,
+) -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
+    let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    engine.hooks_status().await.map_err(CommandError::from)
 }
 
 /// Install (`on`) or remove one agent's reporter on a host, by its engine.

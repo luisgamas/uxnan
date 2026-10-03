@@ -37,6 +37,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   turn that ended while the lid was closed. Proven with Claude Code on a real Linux host.
   Follows the hooks auto-install setting. The engine can also close an agent in
   one of its terminals, with the same code this machine uses.
+- **Settings → Agents → Hooks shows a host's agents too.** With a host
+  connected, the title of the agents list is a picker: this machine by default,
+  or a connected host, whose own agents replace the list — wired, removed and
+  shown there by its engine. One machine at a time, so the pane stays the same
+  length however many hosts you keep.
 - **An agent on a host uses this app's tools.** The control surface's MCP tools
   and the integrated browser reach it through the host engine — launched with
   that host's own catalog (its engine's endpoint, a Claude config written there,

@@ -271,6 +271,21 @@ export function renderAgentHooksConfig(agent: string): Promise<string> {
   return invoke<string>('render_agent_hooks_config', { agent });
 }
 
+/** One connected host's hooks, read there by its engine. */
+export function hostHooks(hostId: string): Promise<HookAgentEntry[]> {
+  return invoke<HookAgentEntry[]>('host_hooks', { hostId });
+}
+
+/** Install (`on`) or remove one agent's reporter on a host. */
+export function setHostHook(hostId: string, agent: string, on: boolean): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>('host_hook_set', { hostId, agent, on });
+}
+
+/** Exactly what the installer writes for one agent on a host. */
+export function hostHookConfig(hostId: string, agent: string): Promise<string> {
+  return invoke<string>('host_hook_config', { hostId, agent });
+}
+
 /** (Re)install the managed hooks for every supported agent at once. */
 export function installAllHooks(): Promise<void> {
   return invoke('install_all_hooks');

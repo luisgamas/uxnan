@@ -342,8 +342,13 @@ about the reporters changes; only where they post:
   — its executable is on the login shell's `PATH`, or its config folder exists.
   A server is never given another product's config folder. Every other setting
   in those files is kept, their permissions too, and the rolling `.bak` is
-  written as here. Which agents were wired is in the diagnostics log
-  (`ssh-engine`).
+  written as here. **Settings → Agents → Hooks** shows them: with a host
+  connected, the title of the agents list becomes a picker — this machine by
+  default, or a connected host, whose own agents (only the ones it has) replace
+  the list, each with the same switch and the same rendered config, installed
+  or removed **on that host**. One machine at a time, so many saved hosts never
+  make the pane longer, and a host is asked only when it is picked. The master
+  switch applies to every connected host too.
 - **A receiver on the host's loopback.** The engine listens on
   `127.0.0.1` there with a token of its own, and starts each of its terminals
   with `UXNAN_HOOK_URL` / `UXNAN_HOOK_TOKEN` / `UXNAN_ENDPOINT_FILE` pointing at

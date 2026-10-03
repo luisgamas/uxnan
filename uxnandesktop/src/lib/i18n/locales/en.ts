@@ -1593,6 +1593,12 @@ export const en = {
     "OMP runs Pi's agent runtime under its own home, so it loads the very same status extension from `~/.omp/agent/extensions/` — reporting as OMP rather than as Pi.",
   "hooks.groupInstalled": "On this machine",
   "hooks.groupOthers": "Other agents",
+  "hooks.groupHost": "On {host}",
+  "hooks.hostDesc":
+    "Wired by that host’s engine, in that machine’s own configs, for the agents it has.",
+  "hooks.machineAria": "Whose hooks to show",
+  "hooks.hostReading": "Asking that host for its agents…",
+  "hooks.hostNone": "No agent with a hook was found on that host.",
   "hooks.notOnThisMachine":
     "These CLIs weren’t found on your machine. Installing a reporter now is harmless — it starts reporting the day you install the agent.",
   "hooks.statusInstalled": "Installed at {path}",
@@ -1604,6 +1610,7 @@ export const en = {
   "hooks.autoInstallDesc":
     "Lets agents report precise states. Installed automatically on startup; turn off to remove and keep it off.",
   "hooks.toggleAria": "Install the reporter for {agent}",
+  "hooks.toggleHostAria": "Install the reporter for {agent} on {host}",
   "hooks.installing": "Installing…",
   "hooks.uninstalling": "Uninstalling…",
   "hooks.showConfig": "Show config",

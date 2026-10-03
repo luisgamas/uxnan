@@ -35,7 +35,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 24 in `uxnan-host` (2
 integration), of which 59 are ignored probes that need something real to talk to
 (51 live SSH probes — 39 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests) + 1,757 frontend Vitest tests across two
+GitHub tests) + 1,759 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1131,10 +1131,6 @@ already written for the day phase 2 below lands — nothing to relax then.
          server and the integrated browser — reach it through the engine.) Then files, git and search
          served by the engine (removing `ssh/git.rs`, `ssh/search.rs`, the
          remote half of `fsRouter.ts` / `gitRouter.ts`).
-      4. **Settings → Agents → Hooks says nothing about hosts.** Which agents a
-         host's engine wired is only in the diagnostics log (`ssh-engine`); the
-         panel reads this machine alone (`read_all_agent_status`). UI
-         increment: the host's own rows, from a read-only engine call.
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
       1. *Builds and packages on all three platforms, with no extra toolchain for
@@ -1734,7 +1730,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,757 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,759 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

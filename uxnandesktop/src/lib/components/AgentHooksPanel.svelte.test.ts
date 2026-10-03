@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { mountWithProviders, until } from '../../test/render';
 import { app } from '$lib/state/app.svelte';
+import { hosts } from '$lib/state/hosts.svelte';
 import AgentHooksPanel from './AgentHooksPanel.svelte';
 
 function entry(id: string, present: boolean, installed: boolean) {
@@ -68,6 +69,8 @@ function baseCommands() {
 describe('AgentHooksPanel', () => {
   beforeEach(() => {
     app.settings.autoInstallHooks = true;
+    hosts.connected = [];
+    hosts.hosts = [];
     document.body.style.pointerEvents = '';
   });
 
@@ -134,5 +137,58 @@ describe('AgentHooksPanel', () => {
     await until(() => backend.called('render_agent_hooks_config'), { label: 'config' });
     expect(backend.lastCallTo('render_agent_hooks_config')?.args.agent).toBe('claude');
     await until(() => screen.queryAllByText(/"version": 1/).length > 0, { label: 'rendered' });
+  });
+
+  it('offers no machine picker when no host is connected', async () => {
+    hosts.connected = [];
+    const { screen } = mountWithProviders(AgentHooksPanel, { commands: baseCommands() });
+    await until(() => screen.queryAllByText('Claude Code').length > 0, { label: 'agent list' });
+    expect(screen.queryByLabelText('Whose hooks to show')).not.toBeInTheDocument();
+    expect(screen.getByText('On this machine')).toBeInTheDocument();
+  });
+
+  it("shows a picked host's own agents in place of this machine's, and installs there", async () => {
+    hosts.hosts = [{ id: 'h1', label: 'odoo box' } as never];
+    hosts.connected = ['h1'];
+    const commands = {
+      ...baseCommands(),
+      // Claude is there; Kimi is known but not there, so it is not offered.
+      host_hooks: () => [entry('claude', true, false), entry('kimi', false, false)],
+      host_hook_set: () => entry('claude', true, true).status,
+    };
+    const { screen, backend, user } = mountWithProviders(AgentHooksPanel, { commands });
+    await until(() => screen.queryAllByText('Cursor').length > 0, { label: 'this machine' });
+    // Nothing is asked of a host until it is picked.
+    expect(backend.called('host_hooks')).toBe(false);
+    await user.click(screen.getByLabelText('Whose hooks to show'));
+    // The list renders in a portal; the host is the entry after this machine.
+    await screen.findByText('On odoo box');
+    await user.keyboard('{ArrowDown}{Enter}');
+    // jsdom never ends the list's closing animation, which is what lifts the
+    // pointer block Bits UI puts on the page while it is open.
+    document.body.style.pointerEvents = '';
+    await until(
+      () =>
+        screen.queryAllByRole('switch', { name: 'Install the reporter for Claude Code on odoo box' })
+          .length > 0,
+      { label: 'host list' },
+    );
+    expect(backend.lastCallTo('host_hooks')?.args.hostId).toBe('h1');
+    // One machine at a time: this machine's rows and its folded group are gone.
+    expect(screen.queryByText('Cursor')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Other agents/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Install the reporter for Kimi on odoo box' }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('switch', { name: 'Install the reporter for Claude Code on odoo box' }),
+    );
+    await until(() => backend.called('host_hook_set'), { label: 'host install' });
+    expect(backend.lastCallTo('host_hook_set')?.args).toMatchObject({
+      hostId: 'h1',
+      agent: 'claude',
+      on: true,
+    });
+    expect(backend.called('uninstall_agent_hooks')).toBe(false);
   });
 });

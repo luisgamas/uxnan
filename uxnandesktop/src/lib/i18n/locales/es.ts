@@ -1598,6 +1598,12 @@ export const es: Record<MessageKey, string> = {
     "OMP ejecuta el runtime de agente de Pi bajo su propia carpeta, así que carga exactamente la misma extensión de estado desde `~/.omp/agent/extensions/` — reportando como OMP y no como Pi.",
   "hooks.groupInstalled": "En este equipo",
   "hooks.groupOthers": "Otros agentes",
+  "hooks.groupHost": "En {host}",
+  "hooks.hostDesc":
+    "Los conecta el motor de ese host, en las configuraciones de esa máquina, para los agentes que tiene.",
+  "hooks.machineAria": "De qué equipo mostrar los hooks",
+  "hooks.hostReading": "Preguntando a ese host por sus agentes…",
+  "hooks.hostNone": "No se encontró en ese host ningún agente con hooks.",
   "hooks.notOnThisMachine":
     "Estos CLI no se encontraron en tu equipo. Instalar un reporter ahora no molesta: empezará a reportar el día que instales el agente.",
   "hooks.statusInstalled": "Instalado en {path}",
@@ -1611,6 +1617,7 @@ export const es: Record<MessageKey, string> = {
   "hooks.autoInstallDesc":
     "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
   "hooks.toggleAria": "Instalar el reporter de {agent}",
+  "hooks.toggleHostAria": "Instalar el reporter de {agent} en {host}",
   "hooks.installing": "Instalando…",
   "hooks.uninstalling": "Desinstalando…",
   "hooks.showConfig": "Mostrar configuración",
