@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.39-alpha.20261003+20261006] - 20261003
 ### Added
 
 - **Finds your PC on the local network by itself.** When the PC's saved
