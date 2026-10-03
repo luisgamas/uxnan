@@ -14,7 +14,9 @@
 > goodbye when switching (it hung on a dead socket). Every phone connection
 > carries its **route** — `lan`, `tailscale` (`100.64.0.0/10`,
 > `fd7a:115c:a1e0::/48`) or `relay` — in presence and `bridge/connectedPhones`
-> (§5.8.17, §5.9.3).
+> (§5.8.17, §5.9.3). A phone on the relay that changes network tries the
+> PC's direct addresses once and moves to one that answers; with no direct
+> path and no relay it fails with `noRoute` and says why.
 
 > **Executive summary (1.6.0):** the relay is now **each user's own**: a
 > Cloudflare Worker with one SQLite-backed Durable Object per bridge, which the
@@ -3580,6 +3582,16 @@ abstract class TransportSelector {
 emparejado en la LAN es alcanzable fuera de casa sin volver a emparejar. Los
 codigos de cierre del relay llegan como `RelayException` tipada (PC apagado,
 telefono no emparejado / revocado, relay lleno) — §5.10.
+
+**Volver a la via directa.** Si el telefono esta conectado por el relay y
+cambia de red (o vuelve al primer plano), marca una sola vez las direcciones
+directas que anuncia el PC (`selectDirect`, 2 s por direccion, sin tocar el
+relay); si una responde, corre el handshake sobre ella con la sesion del relay
+aun viva y la confirma como un cambio validado — el bridge cierra entonces el
+canal del relay al registrar la conexion nueva. Si nada responde, no cambia
+nada. Cuando ninguna direccion directa responde y el PC no tiene relay (o lo
+tiene apagado), el selector falla con `TransportErrorKind.noRoute` y el
+telefono dice que el acceso remoto del PC esta apagado y como encenderlo.
 
 **Conexiones muertas y sustituidas.** El telefono envia un latido cada 25 s
 mientras esta conectado; el bridge cierra una conexion de telefono que lleva
