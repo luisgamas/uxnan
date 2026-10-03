@@ -58,11 +58,11 @@ export interface SendTurnOptions {
   /** Working directory the agent should run in for this turn. */
   cwd?: string;
   /**
-   * The thread's persisted access (approval) mode (see {@link AccessMode}).
-   * Adapters that gate tool execution map it to their per-turn permission flag
-   * — `requestApproval` keeps interactive approvals in play, `approveForMe`
-   * auto-approves, `fullAccess` bypasses gating. Absent → the adapter's
-   * configured default posture (no behaviour change).
+   * The access mode this turn runs in (see {@link AccessMode}), always one the
+   * adapter declares in `capabilities.accessModes`: the bridge resolves a
+   * stored mode the agent does not offer to its `defaultAccessMode` before the
+   * adapter sees it. The adapter maps it onto its CLI's own permission flags
+   * on every turn. Absent: the agent offers no mode, and runs as configured.
    */
   accessMode?: AccessMode;
   /**

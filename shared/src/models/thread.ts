@@ -130,14 +130,28 @@ export interface Turn {
 }
 
 /**
- * Per-thread access (approval) mode: how much the agent may do before it must
- * pause for the user. Persisted on the bridge so the phone's choice survives a
- * restart and is the source of truth across devices.
- * - `requestApproval` — ask before each risky action.
- * - `approveForMe` — auto-approve routine edits.
- * - `fullAccess` — no approval gating.
+ * Per-thread access mode: how much the agent may do before it must pause for
+ * the user. Persisted on the bridge so a choice made on any device survives a
+ * restart and is the source of truth across devices. Each mode means the same
+ * on every agent; an agent offers only the modes it can honor
+ * (`AgentCapabilities.accessModes`), and the bridge runs a stored mode the
+ * agent does not offer as that agent's `defaultAccessMode`.
+ * - `requestApproval` — every action with a side effect (writing, running a
+ *   command, the network, a path outside the project) waits for the person.
+ * - `approveForMe` — the agent works without asking inside the project; what
+ *   goes beyond it is decided by the CLI's own reviewer where it has one.
+ * - `fullAccess` — no prompts and no sandbox: the CLI's own bypass.
+ * - `plan` — the agent reads and plans; it writes and runs nothing.
  */
-export type AccessMode = 'requestApproval' | 'approveForMe' | 'fullAccess';
+export type AccessMode = 'requestApproval' | 'approveForMe' | 'fullAccess' | 'plan';
+
+/** Every {@link AccessMode}, in the order the apps list them. */
+export const ACCESS_MODES: readonly AccessMode[] = [
+  'requestApproval',
+  'approveForMe',
+  'fullAccess',
+  'plan',
+];
 
 export interface Thread {
   id: string;
