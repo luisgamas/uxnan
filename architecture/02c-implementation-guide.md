@@ -1,8 +1,14 @@
 # Uxnan — Guia de Implementacion
 
-> **Version:** 1.0.3
+> **Version:** 1.0.4
 > **Fecha:** 2026-10-02
 > **Estado:** En desarrollo
+> **Executive summary (1.0.4):** there is no official relay and no relay on a
+> VPS: §8 now describes the user's own relay, which the bridge deploys into the
+> user's Cloudflare account (`uxnan-bridge relay setup`, `02a` §5.10). The app
+> configures no relay URL (settings tree, §14), the trusted-device table keeps
+> the PC's relay endpoint (schema v12), and Appendix A shows the relay's signed
+> challenge and dial instead of `x-role` / `x-session-id` headers.
 > **Executive summary (1.0.3):** the push sequence (Appendix B) now shows the
 > only path that exists: the phone registers its token with the bridge over the
 > E2EE session and the bridge sends straight to FCM. The relay has no push and
@@ -2074,59 +2080,32 @@ preferred-supported-locales: [es, en]
 
 ## 8. Consideraciones de despliegue y auto-hosting
 
-### 8.1 Relay auto-hospedado
+### 8.1 Relay propio del usuario (desplegado por el bridge)
 
-El relay puede desplegarse en cualquier VPS con Node.js 18+. Configuracion minima recomendada:
-
-```
-VPS: 1 vCPU, 512 MB RAM, 10 GB SSD
-OS: Ubuntu 22.04 LTS
-Puerto: 8080 (o 443 con TLS termination en nginx)
-```
-
-Ejemplo de setup con nginx como reverse proxy:
-
-```nginx
-# /etc/nginx/sites-available/uxnan-relay
-server {
-    listen 443 ssl;
-    server_name relay.midominio.com;
-
-    ssl_certificate /etc/letsencrypt/live/relay.midominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/relay.midominio.com/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 86400s;   # WebSocket keepalive
-    }
-}
-```
-
-Configuracion del relay para este escenario:
+> **Cambio (2026-10):** no existe relay oficial ni relay en VPS. El relay es un
+> Cloudflare Worker + Durable Object que **el bridge despliega en la cuenta de
+> Cloudflare del propio usuario** (`02a` §5.10). La app no configura ninguna URL:
+> aprende el relay del QR (v3) y de los ajustes compartidos del bridge
+> (`BridgeSettings.relay`).
 
 ```bash
-# .env del relay
-PORT=8080
-TRUST_PROXY=true
-# ... resto de variables de APNs y FCM
+# En la PC, con el bridge corriendo:
+uxnan-bridge relay setup --account <id-de-cuenta>   # pide el token ("Edit Cloudflare Workers"), sin eco
+uxnan-bridge relay status                           # estado, endpoint, versiones, hostKey
 ```
 
-En la app, el usuario configura la URL de su relay auto-hospedado en Settings -> Conexion -> URL del relay.
+El relay queda en `wss://uxnan-relay.<subdominio>.workers.dev`, con TLS de
+`workers.dev`, sin servidor que mantener y gratis en el plan gratuito. Lo ve
+todo cliente como `relay/status`; las pantallas del relay en la app y en el
+desktop estan pendientes (hoy, el CLI). Despliegue manual para desarrolladores y
+limites del plan gratuito: `relay/docs/deploy.md`.
 
-### 8.2 Relay oficial de Uxnan
+### 8.2 Que ve el relay
 
-Uxnan provee un relay oficial en `wss://relay.uxnan.io` para los usuarios que no quieren self-host. Este relay:
-- Solo ve sessionId, tamano de envelopes cifrados y tokens push.
-- No almacena contenido de conversaciones.
-- Cumple con GDPR por no procesar datos personales del contenido.
-- Tiene SLA de 99.5% uptime.
+Solo las claves publicas del bridge y de los telefonos, cuando se conectan y el
+tamano de los frames cifrados. No ve contenido, tokens push ni textos de
+notificaciones (el push lo envia el bridge directo a FCM), y corre en la cuenta
+del usuario, no en servidores de Uxnan.
 
 ---
 
@@ -2439,7 +2418,11 @@ class TrustedDevicesTable extends Table {
   TextColumn get macDeviceId => text()();
   TextColumn get displayName => text()();
   // macIdentityPublicKey se guarda en SecureStore, no aqui
-  TextColumn get relayUrl => text()();
+  // El relay propio del PC (RelayEndpoint, esquema v12); null/false sin relay
+  TextColumn get relayUrl => text().nullable()();
+  TextColumn get relayRoutingId => text().nullable()();
+  BoolColumn get relayEnabled => boolean().withDefault(const Constant(false))();
+  TextColumn get hosts => text().nullable()();     // JSON de las direcciones directas
   TextColumn get sessionId => text()();
   IntColumn get pairedAtMs => integer()();
   IntColumn get lastSeenMs => integer().nullable()();
@@ -3218,9 +3201,8 @@ class _CommandCardWidgetState extends State<CommandCardWidget> {
 ```
 SettingsScreen
 +-- Seccion: Conexion
-|   +-- URL del relay
-|   |   +-- Valor default: wss://relay.uxnan.io
-|   |   +-- Editable para self-hosted relay
+|   +-- Relay propio del PC (sin URL editable: lo despliega y gestiona el
+|   |   bridge — relay/*, 02a §5.10; pantalla pendiente)
 |   +-- Timeout de requests (segundos)
 |   |   +-- Default: 30
 |   |   +-- Rango: 10-120
@@ -3462,15 +3444,16 @@ dart run import_sorter:main
 ```
  iPhone App              Relay Server             Bridge Daemon (PC)
      |                       |                          |
-     |-- WS connect -------->|                          |
-     |   x-role: iphone      |                          |
-     |   x-session-id: UUID  |                          |
-     |                       |<-- WS connect -----------|
-     |                       |    x-role: mac            |
-     |                       |    x-session-id: UUID     |
-     |                       |    x-mac-device-id: ...   |
-     |                       |                          |
-     | <- relay connected ---|                          |
+     |                       |<- /v1/host/<routingId> --|  (socket de control,
+     |                       |   challenge/host-auth    |   ya abierto)
+     |-- /v1/connect/<rid> ->|                          |
+     |<- challenge ----------|                          |
+     |-- phone-auth (firma,  |                          |
+     |   ticket? en pairing)>|                          |
+     |                       |-- dial {channel} ------->|
+     |                       |<- /v1/channel/<rid>/<ch> |
+     |                       |   challenge/channel-auth |
+     |<- ready --------------|                          |
      |                       |                          |
      |-- clientHello --------+------------------------->|
      |  {kind, proto, mode,  |  (relay reenvia opaco)   |
@@ -3693,11 +3676,9 @@ Antes de cada release de produccion, verificar:
 - [ ] Publicado en npm: `npm publish`
 
 **Relay:**
-- [ ] Tests del relay pasan: `npm test`
-- [ ] Variables de entorno de produccion verificadas
-- [ ] Certificados APNs vigentes (caducan anualmente)
-- [ ] Service account de FCM valida
-- [ ] Health check activo y respondiendo
+- [ ] Tests del relay pasan: `npm test -w uxnan-relay` (runtime real de Workers)
+- [ ] El bridge empaqueta el bundle nuevo (`dist/relay-worker/`) y `relay status`
+      muestra `bundledVersion` correcto
 
 ---
 

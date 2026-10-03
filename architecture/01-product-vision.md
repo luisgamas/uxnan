@@ -1,10 +1,16 @@
 # Uxnan — Visión del Producto
 
-> **Versión:** 1.1.0
-> **Fecha:** 2026-08-02
+> **Versión:** 1.2.0
+> **Fecha:** 2026-10-02
 > **Estado:** Definición inicial — borrador técnico completo  
 > **Plataformas objetivo:** Android (principal), iOS (principal)  
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Resumen ejecutivo (1.2.0):** el relay es el **propio de cada usuario**: un
+> Cloudflare Worker que el bridge despliega en la cuenta del usuario
+> (`uxnan-bridge relay setup`), no un servidor Node ni un servicio de Uxnan. El
+> QR de pairing pasa a la v3 (`relay: {url, routingId, ticket?}`) y el relay
+> autentica a cada lado antes de reenviar nada (`02a` §5.10).
 
 > Este documento forma parte de la documentación técnica de Uxnan. Ver también: [02-technical-specification.md](02-technical-specification.md) | [03-technical-reference.md](03-technical-reference.md)
 
@@ -30,7 +36,7 @@
 
 - **Multi-agent and multi-provider:** the active set is OpenAI Codex CLI, OpenCode, Claude Code, pi, Antigravity, Zero and Grok, with an extensible adapter boundary for future compatible agents.
 - **Sin lock-in de proveedor:** el modelo de abstracción del bridge normaliza las diferencias de protocolo entre agentes.
-- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y self-hosted** — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía solo el **bridge**, directo a FCM (FCM HTTP v1), sobre cualquier transporte; el relay nunca ve el token push ni el texto de una notificación.
+- **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y propio del usuario** (un Worker en su cuenta de Cloudflare, desplegado por su bridge) — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía solo el **bridge**, directo a FCM (FCM HTTP v1), sobre cualquier transporte; el relay nunca ve el token push ni el texto de una notificación.
 - **E2EE real:** ni el relay (cuando se usa) ni el bridge ven el contenido en texto claro. La clave de sesión se deriva de un handshake X25519 + HKDF firmado con Ed25519; el QR codifica la identidad del bridge y opcionalmente sus direcciones directas (`hosts: string[]`) además de una URL de relay.
 - **Multi-proyecto:** el usuario puede tener N proyectos abiertos en la PC y navegar entre ellos desde la app.
 - **Reconexión confiable:** buffer de outbound messages con replay por sequence number; la reconexión no pierde estado conversacional.
@@ -87,12 +93,12 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
                                                            │ E2EE
                                                            ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                      Relay Server (Node.js, OPCIONAL)                │
-│   (Self-hosted, solo para acceso off-LAN. La ruta primaria del        │
-│    producto es LAN-direct / Tailscale-direct — sin relay.)            │
+│          Relay propio del usuario (OPCIONAL, su cuenta Cloudflare)    │
+│   (Solo para acceso off-LAN sin VPN; lo despliega el bridge. La ruta  │
+│    primaria del producto es LAN-direct / Tailscale-direct.)           │
 │  ┌──────────┐  ┌─────────────┐  ┌──────────────────────────┐         │
-│  │ HTTP/WS  │  │ WebSocket   │  │ Session                  │         │
-│  │ Server   │  │ Relay       │  │ Management               │         │
+│  │ Worker   │  │ Durable     │  │ Auth Ed25519 + allow     │         │
+│  │ (rutas)  │  │ Object/sala │  │ list + tickets           │         │
 │  └──────────┘  └──────┬──────┘  └──────────────────────────┘         │
 │   (sin push: el relay no recibe tokens push ni textos de              │
 │    notificaciones — el push lo envía solo el bridge, directo a FCM)     │
@@ -135,15 +141,16 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 |---|---|---|
 | **App móvil Uxnan** | Flutter / Dart | Cliente móvil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Plano de control local en la PC; corre agentes y expone la API JSON-RPC al móvil |
-| **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted, sin estado) Relay de envelopes E2EE opacos como fallback off-LAN; sin push — el push lo envía solo el bridge, directo a FCM |
+| **Uxnan Relay** | Cloudflare Worker + Durable Object | (Opcional) Relay propio del usuario, desplegado por su bridge en su cuenta de Cloudflare: autentica a cada lado y retransmite frames E2EE opacos como fallback off-LAN; sin push — el push lo envía solo el bridge, directo a FCM |
 | **Agent Adapters** | Node.js | Active adapters for Codex, OpenCode, Claude Code, pi, Antigravity, Zero and Grok |
 
 ### 3.3 Topologías de conexión
 
 > **Dirección (2026-06):** el producto es **bridge-first**. Las topologías
 > primaria y recomendada son LAN-direct y Tailscale-direct (cero hosting,
-> cero credenciales). El relay es la topología de **fallback off-LAN** que
-> el usuario puede self-hostear. Ver `02a-system-architecture.md` §2 y
+> cero credenciales). El relay es la topología de **fallback off-LAN**: el
+> relay propio del usuario, que el bridge despliega en su cuenta de
+> Cloudflare. Ver `02a-system-architecture.md` §2 y
 > `02e-bridge-integration.md` para el detalle.
 
 **Topología 1 — LAN directa (PRIMARIA):**
@@ -165,15 +172,16 @@ VPN). El bridge detecta su dirección Tailscale (`100.x`) y la anuncia en
 `hosts`. Cero hosting, cero relay, E2EE intacto. Es la opción recomendada
 para acceder desde fuera de la LAN sin desplegar un relay.
 
-**Topología 3 — Relay self-hosted (FALLBACK off-LAN):**
+**Topología 3 — Relay propio del usuario (FALLBACK off-LAN):**
 ```
-[Móvil] ──WS E2EE──→ [Relay self-hosted] ──WS E2EE──→ [Bridge]
+[Móvil] ──WSS──→ [Relay del usuario (Worker en su cuenta de Cloudflare)] ←──WSS── [Bridge]
 ```
-Cuando el móvil está fuera de la LAN y no hay Tailscale. El relay
-retransmite envelopes cifrados opacos; nunca ve el contenido. El relay es
-**opcional y self-hosted**: el usuario lo despliega en un VPS o servidor
-doméstico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
-(por defecto `false`).
+Cuando el móvil está fuera de la LAN y no hay Tailscale. El relay autentica
+al bridge y al teléfono con firmas Ed25519 y después retransmite frames
+cifrados opacos; nunca ve el contenido. Es **opcional**: no existe hasta que el
+usuario corre `uxnan-bridge relay setup`, y el bridge lo anuncia en el QR solo
+mientras está configurado y habilitado. Un teléfono emparejado en la LAN lo
+aprende por los ajustes compartidos del bridge.
 
 ---
 
@@ -223,8 +231,8 @@ interface AgentCapabilities {
 [PC]  Instala uxnan-bridge: npm install -g uxnan-bridge
 [PC]  Ejecuta: uxnan-bridge start
 [PC]  Muestra QR en terminal: uxnan-bridge qr
-  QR = PairingPayload { v:2, hosts:["192.168.1.42:19850", "100.x.y.z:19850"],
-                         relay?: "wss://...", sessionId, macDeviceId,
+  QR = PairingPayload { v:3, hosts:["192.168.1.42:19850", "100.x.y.z:19850"],
+                         relay?: { url, routingId, ticket? }, sessionId, macDeviceId,
                          macIdentityPublicKey, expiresAt, displayName }
   // `relay` es opcional; `hosts` es la ruta primaria. El QR se codifica como
   // Base64(utf8(JSON)). Ver 02a-system-architecture.md §5.5.4.
@@ -234,7 +242,7 @@ interface AgentCapabilities {
 [App] Presiona "Escanear QR"
 [App] QrScannerScreen solicita permiso de cámara
 [App] Cámara detecta QR → PairingValidator.validate(payload)
-  ├── ¿v == 2? ✓
+  ├── ¿v == 3? ✓
   ├── ¿expiresAt > now? ✓
   └── ¿campos presentes? ✓
 
@@ -242,12 +250,13 @@ interface AgentCapabilities {
 [App] Crea TrustedDevice, persiste en SecureStore + DB local
 [App] SessionCoordinator.connect(mode: qrBootstrap)
 
-[App → Relay] WebSocket upgrade: GET /relay
-  Headers: x-role: iphone, x-session-id: <sessionId>
-[PC → Relay]  WebSocket ya conectado: x-role: mac, x-session-id: <sessionId>
-[Relay]       Enruta mensajes entre mac e iphone por sessionId
+[App → Bridge] WebSocket directo a cada `hosts` (LAN/Tailscale); si ninguno
+              responde y el QR trae `relay`:
+[App → Relay] /v1/connect/<routingId>: challenge → phone-auth firmado + ticket
+[Relay → PC]  dial → el bridge abre /v1/channel/<routingId>/<canal> → ready
+[Relay]       Desde aquí reenvía los frames tal cual (no los lee)
 
-[App → Bridge] clientHello { protocolVersion:1, handshakeMode:"qr_bootstrap",
+[App → Bridge] clientHello { protocolVersion:2, handshakeMode:"qr_bootstrap",
                               phoneDeviceId, phoneIdentityPublicKey,
                               phoneEphemeralPublicKey, clientNonce }
 [Bridge → App] serverHello { macIdentityPublicKey, macEphemeralPublicKey,
@@ -272,7 +281,7 @@ interface AgentCapabilities {
 [App] ConnectionPhase → reconnecting
 [App] Backoff: espera 1s, 2s, 4s...
 [App] SessionCoordinator.connect(mode: trustedReconnect)
-[App] Abre nuevo WebSocket → relay
+[App] Abre nuevo WebSocket → hosts directos, si no el relay propio (sin ticket)
 [App → Bridge] clientHello { handshakeMode:"trusted_reconnect",
                               phoneDeviceId,
                               phoneIdentityPublicKey,
@@ -454,4 +463,4 @@ El MVP debe cumplir los siguientes módulos completos:
 - Plan mode interactivo
 - Subagentes visibles en UI
 - Custom agent adapter (plugin system para el bridge)
-- Self-hosted relay setup wizard en la app *(opcional — la ruta primaria es LAN/Tailscale-direct y no necesita relay; el wizard aplica solo a quien decida self-hostear un relay off-LAN)*
+- Pantalla del relay propio en la app y en el desktop (configurar, encender/apagar, actualizar, rotar, quitar) como clientes de `relay/*` *(el bridge ya lo despliega y gestiona; hoy se usa el CLI)*

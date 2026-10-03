@@ -1,10 +1,28 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.8
+> **Version:** 1.6.0
 > **Fecha:** 2026-10-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.6.0):** the relay is now **each user's own**: a
+> Cloudflare Worker with one SQLite-backed Durable Object per bridge, which the
+> **bridge deploys into the user's own Cloudflare account** (free plan) through
+> the REST API — `uxnan-bridge relay setup` or `relay/setup` from any client.
+> Uxnan hosts no relay and there is no default URL; LAN and Tailscale stay
+> direct and are tried first (§2, §5.9.3). The relay authenticates every socket
+> with an Ed25519 challenge before it forwards anything — bridges by the keys
+> it was deployed with, phones by the bridge's allow list or a one-time pairing
+> ticket — then forwards E2EE frames blindly; a revoked phone is cut off at
+> once; an idle bridge costs nothing (hibernation) (§5.10.1). Seven new methods
+> `relay/status|setup|use|set|update|rotate|remove` and `stream/relay/updated`;
+> the endpoint is the shared setting `BridgeSettings.relay`, so a phone paired
+> at home reaches the PC from anywhere without pairing again. The pairing QR
+> moves to **v3** (`relay: {url, routingId, ticket?}`, §5.5.4), the pairing
+> window now gates the relay path too (§5.9.1), and the §5.9.1 constants are
+> corrected (`SECURE_PROTOCOL_VERSION = 2`, `PAIRING_WINDOW_MS` = 5 min). The
+> old Node relay (`x-role` / `x-session-id`) is gone.
 
 > **Executive summary (1.5.8):** background push is delivered **only by the
 > bridge, straight to FCM** (§5.10.2). The relay push fallback is gone: the
@@ -182,7 +200,7 @@
 |---|---|---|
 | **App movil Uxnan** | Flutter / Dart | Cliente movil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Agente de control local en la PC |
-| **Uxnan Relay** | Node.js HTTP/WS | Relay de transporte E2EE (opcional, sin estado, sin push) |
+| **Uxnan Relay** | Cloudflare Worker + Durable Object (SQLite) | Relay propio del usuario, desplegado por el bridge en su cuenta de Cloudflare: autentica y luego retransmite frames E2EE opacos (opcional, sin push) |
 | **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, etc.) |
 
 ---
@@ -191,9 +209,9 @@
 
 > **Dirección (2026-06-12):** el producto es **bridge-first**. Las topologías
 > primaria y recomendada son LAN-direct y Tailscale-direct (cero hosting,
-> cero credenciales). El relay sigue siendo totalmente compatible y es el
-> fallback off-LAN que el usuario puede self-hostear. Ver `bridge/FOR-DEV.md`
-> → *Direct LAN/Tailscale addressing* y `relay/FOR-DEV.md` → *Direction*.
+> cero credenciales). El relay es el fallback off-LAN: desde 2026-10 es el
+> relay **propio de cada usuario**, que el bridge despliega en su cuenta de
+> Cloudflare (§5.10). Uxnan no hospeda ningún relay.
 
 **Topologia 1 — LAN directa (PRIMARIA):**
 ```
@@ -214,24 +232,26 @@ VPN). El bridge detecta su direccion Tailscale (`100.x`) y la anuncia en
 `hosts`. Cero hosting, cero relay, E2EE intacto. Es la opción recomendada
 para acceder desde fuera de la LAN sin desplegar un relay.
 
-**Topologia 3 — Relay remoto / self-hosted (FALLBACK off-LAN):**
+**Topologia 3 — Relay propio del usuario (FALLBACK off-LAN):**
 ```
-[Movil] ──WS E2EE──→ [Relay self-hosted] ──WS E2EE──→ [Bridge]
+[Movil] ──WSS──→ [Relay del usuario: Worker + Durable Object en SU cuenta de Cloudflare] ←──WSS── [Bridge]
 ```
-Cuando el movil esta fuera de la LAN y no hay Tailscale. El relay
-retransmite envelopes cifrados opacos; nunca ve el contenido. El relay es
-**opcional y self-hosted**: el usuario lo despliega en un VPS o servidor
-domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
-(por defecto `false`).
+Cuando el movil esta fuera de la LAN y no hay Tailscale. El bridge mantiene
+abierto un socket de control hacia su sala del relay; el movil marca al relay
+y el bridge abre un canal por telefono. Tras autenticar a ambos lados con
+Ed25519, el relay retransmite frames E2EE opacos; nunca ve el contenido. Es
+**opcional**: no existe hasta que el usuario corre `uxnan-bridge relay setup`
+(o `relay/setup` desde cualquier cliente), y el bridge lo anuncia en el QR solo
+mientras esta configurado y habilitado (§5.10).
 
 **Notas:**
-- `mac` y `iphone` son **roles del protocolo**, no plataformas. `mac` corre
-  en Windows/macOS/Linux (donde corre el bridge); `iphone` corre en
-  Android/iOS (la app movil).
 - El QR codifica `PairingPayload` como **Base64 del UTF-8 del JSON**
-  (v2 del pairing), no como JSON plano. `PairingValidator` requiere al
+  (v3 del pairing), no como JSON plano. `PairingValidator` requiere al
   menos un transporte (`relay` o `hosts`); emite `missing_transport` si
   ambos faltan.
+- El relay es ademas un ajuste compartido (`BridgeSettings.relay`): un
+  telefono emparejado en la LAN lo aprende por `sync/changes` y puede salir de
+  casa sin volver a emparejar.
 
 ---
 
@@ -392,7 +412,7 @@ La app permite que cada proyecto/conexion especifique que agente usa, como local
     "apiKeyEnvVar": "ANTHROPIC_API_KEY"
   },
   "bridgeConfig": {
-    "relayUrl": "wss://relay.uxnan.io",
+    "relay": { "url": "wss://uxnan-relay.<subdominio>.workers.dev", "routingId": "<32 hex>", "enabled": true },
     "sessionId": "...",
     "macDeviceId": "..."
   }
@@ -483,7 +503,8 @@ class TrustedDevice {
   final String macDeviceId;
   final String displayName;
   final Uint8List macIdentityPublicKey;  // clave publica Ed25519 del bridge
-  final String relayUrl;
+  final RelayEndpoint? relay;            // relay propio del PC {url, routingId, enabled}; null sin relay
+  final List<String> hosts;              // direcciones directas LAN/Tailscale
   final String sessionId;
   final DateTime pairedAt;
   final DateTime? lastSeen;
@@ -492,8 +513,10 @@ class TrustedDevice {
 
 // lib/domain/entities/pairing_payload.dart
 class PairingPayload {
-  final int version;                      // PAIRING_QR_VERSION = 2
-  final String relayUrl;
+  final int version;                      // PAIRING_QR_VERSION = 3
+  final RelayEndpoint? relay;             // {url, routingId} del relay propio (opcional)
+  final String? relayTicket;              // ticket de un solo uso (solo para emparejar)
+  final List<String> hosts;
   final String sessionId;
   final String macDeviceId;
   final Uint8List macIdentityPublicKey;
@@ -1404,7 +1427,7 @@ QrScannerScreen
 ├── Abre camara con overlay de escaneo (MobileScannerWidget)
 ├── Detecta QR → extrae PairingPayload
 ├── PairingValidator.validate(payload)
-│   ├── version del QR == PAIRING_QR_VERSION (2)?
+│   ├── version del QR == PAIRING_QR_VERSION (3)?
 │   ├── expiresAt > DateTime.now()? (MAX_PAIRING_AGE = 5 min)
 │   └── campos obligatorios presentes?
 ├── Si bridge incompatible → UpdatePromptDialog
@@ -1422,8 +1445,10 @@ QrScannerScreen
 > mDNS `_uxnan._tcp.local` para descubrimiento automático en LAN (el telefono
 > puede autocompletar el host). El relay nunca implementó el endpoint fuera-de-
 > LAN `/trusted-session/resolve` que el whitepaper original proponía — la
-> variante bridge-first cubre el caso LAN; para acceso fuera-de-LAN se usa
-> Tailscale o un relay genérico de WebSocket con la sesión E2EE.
+> variante bridge-first cubre el caso LAN (y Tailscale). Fuera de la red del
+> PC, sin Tailscale, se empareja escaneando el QR: lleva el ticket de un solo
+> uso del relay propio (§5.10). Resolver un código a través del relay no existe
+> (ver `uxnanmobile/FOR-DEV.md`).
 >
 > **Seguridad (2026-07): el código va a UN solo host, el que el usuario eligió.**
 > El código de emparejamiento es un secreto compartido que se lee de la pantalla
@@ -1474,15 +1499,27 @@ próximo bridge que arranque. Ninguno de los dos casos levanta otro bridge.
 
 > **Cambio (2026-06):** `relay` ahora es **opcional**; el payload incluye
 > `hosts: string[]` con las direcciones directas del bridge (LAN + Tailscale).
-> La codificación del QR es **Base64 del UTF-8 del JSON** (v2 del pairing).
+> La codificación del QR es **Base64 del UTF-8 del JSON**.
+>
+> **Cambio (2026-10) — v3:** `relay` deja de ser una URL y pasa a ser el objeto
+> `{ url, routingId, ticket? }` del relay **propio** del usuario (§5.10). El
+> `ticket` (32 bytes aleatorios, base64url) existe mientras la ventana de
+> emparejamiento está abierta y permite emparejar por el relay a un teléfono
+> que no está en la red del PC; el relay solo conoce su SHA-256 y lo acepta una
+> vez. Un QR v2 se lee como versión no soportada. `DEFAULT_RELAY_URL` ya no
+> existe.
 
 ```typescript
-// PAIRING_QR_VERSION = 2
+// PAIRING_QR_VERSION = 3
 // Payload transportado en el QR como Base64(utf8(JSON))
 interface PairingPayload {
-  v: 2;                              // version del formato QR
+  v: 3;                              // version del formato QR
   // Al menos uno de los dos es obligatorio:
-  relay?: string;                    // URL del relay: wss://...  (opcional)
+  relay?: {                          // relay propio del usuario (solo si esta configurado y habilitado)
+    url: string;                     //   wss://uxnan-relay.<subdominio>.workers.dev (sin path)
+    routingId: string;               //   sala del bridge en ese relay: 32 hex en minusculas
+    ticket?: string;                 //   ticket de un solo uso (43 chars base64url), mientras la ventana esta abierta
+  };
   hosts?: string[];                  // Direcciones directas del bridge: ["192.168.1.42:19850", "100.x.y.z:19850"]
   sessionId: string;                 // UUID de sesion
   macDeviceId: string;               // ID del bridge en la PC
@@ -1496,7 +1533,8 @@ class TrustedDevice {
   final String macDeviceId;
   final String displayName;
   final Uint8List macIdentityPublicKey;  // Ed25519, 32 bytes
-  final String relayUrl;                  // puede ser null (solo-direct)
+  final RelayEndpoint? relay;             // {url, routingId, enabled}; null sin relay. Lo escribe
+                                          // solo BridgeReplica desde BridgeSettings.relay (el ticket nunca se guarda)
   final List<String> hosts;               // puede coexistir o reemplazar al relay
   final String sessionId;
   final Uint8List phoneIdentityPrivateKey; // Ed25519 propia del telefono, 32 bytes
@@ -1519,8 +1557,10 @@ Una vez que hay pairing establecido, las reconexiones siguientes no requieren re
 ```
 SessionCoordinator.connect()
 ├── Tiene TrustedDevice registrado? → Si
-│   ├── Abre WebSocket al relay con headers:
-│   │   └── x-role: iphone, x-session-id: <sessionId>
+│   ├── TransportSelector: prueba cada `hosts` directo (LAN/Tailscale);
+│   │   si ninguno responde y el PC tiene relay habilitado:
+│   │   └── RelayClient → /v1/connect/<routingId>: challenge → phone-auth
+│   │       firmado con la identidad del telefono → ready (§5.10)
 │   └── Inicia handshake con mode: "trusted_reconnect"
 └── No → Flujo de onboarding/QR
 ```
@@ -1874,7 +1914,7 @@ El bridge es el componente que corre en la PC del usuario y actua como el plano 
 
 1. Arrancar y mantener el runtime del agente local (Codex, OpenCode, etc.)
 2. Publicar el QR de pairing y resolver sesiones de conexion
-3. Mantener conexion con el relay via WebSocket
+3. Desplegar, mantener conectado y reportar el relay propio del usuario cuando hay uno (`relay/*`, §5.10)
 4. Registrar handlers de metodos JSON-RPC por dominio
 5. Ejecutar Git localmente mediante `child_process`
 6. Gestionar workspace, checkpoints y archivos
@@ -1910,7 +1950,7 @@ bridge/
 │   ├── index.ts                    # API publica (startBridge, tipos)
 │   ├── bridge.ts                   # entrypoint del daemon, orquestacion
 │   ├── bridge-context.ts           # contenedor de dependencias inyectadas
-│   ├── cli.ts                      # CLI (start/stop/status/qr/code/install-service)
+│   ├── cli.ts                      # CLI (start/stop/status/qr/code/install-service/config/relay)
 │   ├── daemon-state.ts             # persiste config, pairing, status
 │   ├── daemon-config.ts            # ~/.uxnan/daemon-config.json
 │   ├── handler-router.ts           # ruteo + validacion Ajv de metodos JSON-RPC
@@ -1924,7 +1964,9 @@ bridge/
 │   ├── logger.ts                   # logging a archivo + redaccion de secretos
 │   ├── service-installer.ts        # autostart por OS (sin elevacion)
 │   ├── secret-store.ts / keyring-secret-store.ts  # identidad en keychain del SO
-│   ├── transport/                  # E2EE: relay-client, lan-server, server-handshake,
+│   ├── relay/                      # §5.10: relay-service (dueño unico), relay-host (socket de
+│   │                               #   control + un canal por telefono), cloudflare (deploy REST), relay-bundle
+│   ├── transport/                  # E2EE: lan-server, server-handshake,
 │   │                               #   crypto, secure-channel, outbound-log (catch-up),
 │   │                               #   mdns-advertiser, local-hosts, trust-store, ...
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
@@ -1940,7 +1982,7 @@ bridge/
 │   ├── push/                       # push-service, push-sender (FCM directo)
 │   ├── hooks/                      # claude-approval-hook
 │   └── handlers/                   # git, workspace, thread-context, project, agent,
-│                                   #   account, notifications, bridge-control, desktop (stub)
+│                                   #   account, notifications, bridge-control, desktop (stub), relay
 └── scripts/                        # install-service-{macos,windows,linux}
 ```
 
@@ -1957,7 +1999,8 @@ El bridge mantiene estado en `~/.uxnan/`:
 
 ```
 ~/.uxnan/
-├── daemon-config.json              # configuracion general
+├── daemon-config.json              # configuracion general (incl. `relay`: {url, routingId, enabled}, ajuste compartido)
+├── relay.json                     # como se configuro el relay: provider, accountId, deployedVersion
 ├── pairing-session.json           # pairing y session payload
 ├── bridge-status.json             # heartbeat y estado
 ├── trusted-phones.json            # telefonos de confianza registrados
@@ -3027,6 +3070,13 @@ desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
 que un telefono o el desktop se conecta o se va. `Thread.origin { kind, name }`
 dice donde nacio una conversacion.
 
+**Relay compartido.** El tercer ajuste compartido es `relay`
+(`BridgeSettings.relay`: `{ url, routingId, enabled }` o `null`), de solo
+lectura para los clientes: lo escribe unicamente el servicio del relay del
+bridge (`relay/*`, §5.10), nunca `settings/set`. Viaja en `sync/changes` y
+`stream/settings/updated` como los otros, asi que un telefono emparejado en la
+LAN aprende el relay y puede salir de casa sin volver a emparejar.
+
 **Nombres compartidos.** El PC y cada telefono tienen un nombre que ven todos
 los clientes. El del PC es el ajuste `name` (`settings/set`; por defecto el
 nombre de la maquina; `uxnan-bridge config set name`): es el que viaja en el QR,
@@ -3229,21 +3279,21 @@ El transporte seguro es la capa mas critica del sistema. Garantiza que el relay 
 
 ```
 CONSTANTES:
-  SECURE_PROTOCOL_VERSION = 1
-  PAIRING_QR_VERSION = 2
+  SECURE_PROTOCOL_VERSION = 2        (sessionId/seq/direccion como AAD de GCM — ver nota abajo)
+  PAIRING_QR_VERSION = 3
   HKDF_INFO_TAG = "uxnan-e2ee-v1"
   MAX_PAIRING_AGE_MS = 300_000        (5 minutos)
   CLOCK_SKEW_TOLERANCE_MS = 60_000   (60 segundos)
   TRUSTED_RECONNECT_SKEW_MS = 90_000 (90 segundos)
   MAX_BRIDGE_OUTBOUND_MESSAGES = 500
   MAX_BRIDGE_OUTBOUND_BYTES = 10_485_760  (10 MB)
-  PAIRING_WINDOW_MS = 180_000         (3 minutos — ver nota de seguridad abajo)
+  PAIRING_WINDOW_MS = MAX_PAIRING_AGE_MS = 300_000  (5 minutos — ver nota de seguridad abajo)
 ```
 
 **Fase 1 — Bootstrap por QR (solo primera conexion):**
 
 1. El bridge genera un par Ed25519: (`macIdentityPrivateKey`, `macIdentityPublicKey`)
-2. El bridge publica QR con payload: `{ v, relay, sessionId, macDeviceId, macIdentityPublicKey, expiresAt, displayName }`
+2. El bridge publica QR con payload: `{ v, hosts?, relay?, sessionId, macDeviceId, macIdentityPublicKey, expiresAt, displayName }` (§5.5.4; `relay` = `{url, routingId, ticket?}`)
 3. El telefono escanea el QR
 4. El telefono genera su par Ed25519: (`phoneIdentityPrivateKey`, `phoneIdentityPublicKey`)
 5. El telefono persiste `PhoneIdentity` y crea `TrustedDevice`
@@ -3274,9 +3324,12 @@ CONSTANTES:
 > the code or QR had ever been shown. The window is the actual gate now; the
 > code/QR remain how the phone *learns* the connection details, not (yet) a
 > value the handshake itself verifies. `trusted_reconnect` is NOT gated by the
-> window (an already-trusted phone reconnects at any time), and the relay path
-> is NOT gated by it either (it already scopes a bootstrap to one
-> `expectedSessionId` per connection). **Deferred hardening (see
+> window (an already-trusted phone reconnects at any time). **Since 2026-10 the
+> relay path is gated by the same window**: every relay channel runs the same
+> `handleSecureConnection` as the LAN with `isPairingArmed`, and on top of it
+> the relay itself admits a phone that is not yet trusted only with the
+> one-time ticket the same arming minted (§5.10). (Before, the relay path was
+> scoped only by its `expectedSessionId`.) **Deferred hardening (see
 > `bridge/FOR-DEV.md`):** binding enrollment to a phone-computed proof that
 > it holds the pairing code — i.e. to *this* phone rather than to *some* open
 > window — needs coordinated mobile work that isn't wired yet. A hidden daemon
@@ -3292,7 +3345,7 @@ CONSTANTES:
 iPhone → Bridge: clientHello
 {
   kind: "clientHello",
-  protocolVersion: 1,
+  protocolVersion: 2,                  // SECURE_PROTOCOL_VERSION
   sessionId: "<uuid>",
   handshakeMode: "qr_bootstrap" | "trusted_reconnect",
   phoneDeviceId: "<uuid>",
@@ -3304,7 +3357,7 @@ iPhone → Bridge: clientHello
 Bridge → iPhone: serverHello
 {
   kind: "serverHello",
-  protocolVersion: 1,
+  protocolVersion: 2,                  // SECURE_PROTOCOL_VERSION
   sessionId: "<uuid>",
   handshakeMode: "...",
   macDeviceId: "<uuid>",
@@ -3482,20 +3535,27 @@ MAX_BRIDGE_OUTBOUND_BYTES = 10 MB
 
 ```dart
 // lib/infrastructure/transport/transport_selector.dart
-class TransportSelector {
-  // Orden de preferencia:
-  // 1. WebSocket directo LAN (si bridge detectable en red local)
-  // 2. WebSocket via relay (WAN)
-  // En ambos casos, la semantica E2EE es identica
-
-  Future<WebSocketTransport> select(TrustedDevice device) async {
-    // Intenta LAN primero con timeout de 2 segundos
-    final lan = await _tryLan(device);
-    if (lan != null) return lan;
-    return _createRelayTransport(device);
-  }
+abstract class TransportSelector {
+  // Orden de preferencia (DirectTransportSelector):
+  // 1. Cada `hosts` directo del TrustedDevice (LAN y Tailscale `100.x`),
+  //    cada uno con un timeout corto.
+  // 2. El relay propio del PC (TrustedDevice.relay), si existe y esta
+  //    habilitado: RelayClient abre /v1/connect/<routingId>, firma el
+  //    challenge con la identidad del telefono y entrega el socket listo.
+  // En ambos casos la semantica E2EE es identica: el handshake de §5.9.1
+  // corre igual sobre el socket directo o sobre el canal del relay.
+  Future<WebSocketTransport> select(
+    TrustedDevice device, {
+    String? relayTicket, // solo en el primer enlace de un pairing por el relay (ticket del QR)
+  });
 }
 ```
+
+`TrustedDevice.relay` lo escribe solo `BridgeReplica` a partir de
+`BridgeSettings.relay` y se relee antes de cada intento, asi que un PC
+emparejado en la LAN es alcanzable fuera de casa sin volver a emparejar. Los
+codigos de cierre del relay llegan como `RelayException` tipada (PC apagado,
+telefono no emparejado / revocado, relay lleno) — §5.10.
 
 #### 5.9.4 Correlacion de requests
 
@@ -3535,68 +3595,194 @@ class RequestCorrelator {
 
 ### 5.10 Relay y notificaciones push
 
-> **Dirección:** el relay es **opcional y self-hosted**. La ruta primaria del
-> producto es LAN-direct / Tailscale-direct (ver §2). Las notificaciones push
-> las entrega **solo el bridge, directo a FCM**, sobre cualquier transporte
-> (LAN, Tailscale, o relay). El relay **no tiene push**: el fallback
-> `/push/register` + `/push/notify` se eliminó porque le mostraba al relay el
-> token push del telefono y el titulo/cuerpo de cada notificacion en claro. Ver
-> `relay/FOR-DEV.md` y `bridge/FOR-DEV.md` → *Direct FCM push from the bridge*.
-
-El relay, cuando se despliega, es un servidor Node.js independiente del
-bridge. Su unico rol es retransmitir envelopes E2EE opacos. No tiene estado
-en disco: no escribe ningun fichero.
+> **Dirección (2026-10):** el relay es **el relay propio de cada usuario**: un
+> Cloudflare Worker con un Durable Object respaldado por SQLite que **el bridge
+> despliega en la cuenta de Cloudflare del propio usuario** (plan gratuito). Uxnan
+> no hospeda ningún relay ni tiene servidores en la ruta, y no existe URL por
+> defecto. Sigue siendo **opcional**: LAN y Tailscale son directos y el teléfono
+> los prueba primero (§2, §5.9.3). Las notificaciones push las entrega **solo el
+> bridge, directo a FCM** (§5.10.2); el relay no tiene push. Reemplaza al
+> servidor Node anterior (emparejamiento por `x-role`/`x-session-id`, sin
+> autenticación), que se eliminó.
 
 #### 5.10.1 Arquitectura del relay
 
 ```
-Relay Server (opcional / self-hosted)
-├── HTTP Server (http nativo)
-│   ├── GET  /health                        → health check
-│   └── cualquier otra peticion HTTP        → 426 Upgrade Required
-├── WebSocket Server (noServer mode)
-│   ├── Upgrade HTTP → WS con rate limiting por IP
-│   │   ├── Rate limits: HTTP 120/min, upgrade 60/min
-│   │   ├── Mapas del limiter acotados: barrido de ventanas expiradas
-│   │   │   + cap duro de 10k claves (evicción oldest-first) para que la
-│   │   │   rotación de IPs no crezca la memoria sin límite
-│   │   ├── Origin check (CSWSH defense): mismo host o allowlist
-│   │   └── Rechaza upgrades en paths no-relay
-│   └── Routing de sesiones por sessionId
-│       ├── Rol "mac" (bridge PC)
-│       │   Headers: x-role, x-session-id
-│       └── Rol "iphone" (app movil)
-│           Headers: x-role, x-session-id
-└── Sin push y sin estado en disco: ni tokens, ni secretos, ni credencial
-    Firebase. El push lo entrega el bridge (§5.10.2).
+Worker "uxnan-relay"  (wss://uxnan-relay.<subdominio>.workers.dev, en la cuenta del usuario)
+├── GET /v1/version                          → { name: "uxnan-relay", protocol: 1, version }
+├── /v1/host/<routingId>                     → socket de control del bridge
+├── /v1/connect/<routingId>                  → un telefono
+├── /v1/channel/<routingId>/<channelId>      → el lado del bridge de la tuberia de UN telefono
+├── cualquier otra ruta → 404 · ruta sin upgrade WebSocket → 426
+└── Durable Object RelayRoom — UNA sala por routingId (idFromName)
+    ├── WebSocket Hibernation API: estado por socket en el attachment
+    ├── SQLite: meta (host_key), allowed (claves de telefonos de confianza),
+    │   tickets (SHA-256 + expiracion)
+    └── alarmas para los plazos de autenticacion y de dial
 ```
 
-**Routing de sesiones y reconexion.** Cada `sessionId` empareja un socket `mac`
-(bridge) con un socket `iphone` (telefono). El bridge sirve **exactamente una
-sesion por socket `mac`** y solo re-arma su handshake cuando ese socket se cierra
-(ver el loop `connectRelay` del bridge). Por eso el relay debe garantizar que el
-socket `mac` se cierre cuando la sesion del telefono deja de ser valida:
+`routingId` y `channelId` son 32 hex en minusculas (128 bits aleatorios). El
+protocolo de control (version `RELAY_PROTOCOL_VERSION = 1`, independiente de la
+version E2EE) esta definido una sola vez en `shared/src/relay/protocol.ts`
+(`@uxnan/shared/relay`, sin dependencias para que el Worker lo empaquete); el
+telefono lo replica en Dart (`relay_protocol.dart`).
 
-- **Cierre real del socket actual** → el relay cierra el peer emparejado, para
-  que el telefono detecte un bridge muerto (y reconecte) y el bridge re-arme.
-- **Socket reemplazado (supersession)** → cuando un socket nuevo toma el rol de
-  uno previo para el mismo `sessionId` (caso tipico: el telefono reconecta tras
-  un *background* mientras su socket viejo sigue *half-open* y nunca envio FIN),
-  el relay cierra de inmediato el socket superado **y** su peer emparejado. El
-  cierre tardio del socket viejo se ignora (ya no es el socket actual del rol),
-  asi que este teardown ocurre en el momento de la supersession. Sin el, el
-  handshake del telefono que reconecta se reenvia al loop de sesion **obsoleto**
-  del bridge —que lo descarta como trafico cifrado invalido— y el telefono queda
-  atascado en "reconnecting" hasta forzar el cierre de la app.
+##### Autenticacion antes de reenviar nada
 
-**Backoff del re-armado.** El re-armado del bridge es inmediato en el caso sano,
-pero **no** es incondicional: si la sesion `mac` muere en menos de 3 s (el relay
-acepta y cierra en el acto, un rebote del relay, o la sesion ya esta tomada), el
-loop `connectRelay` aplica un backoff exponencial acotado — base 2 s, tope 30 s —
-antes de volver a marcar, y vuelve a la base en cuanto una sesion dura lo
-suficiente. Sin el, un relay que rebota empuja al bridge a un bucle de reconexion
-sin pausa. La supersession descrita arriba cierra un socket que normalmente vivio
-mucho mas de 3 s, asi que el teardown sigue re-armando de inmediato.
+1. El cliente abre una de las tres rutas.
+2. El relay envia `{ t: "challenge", v: 1, nonce }` (32 bytes hex).
+3. El cliente firma con su clave Ed25519 de identidad el string
+   `relaySigningMessage` = `uxnan-relay-v1|<ruta>|<host del relay>|<routingId>|<channelId o vacio>|<nonce>`
+   — la firma no se puede reutilizar en otra ruta, relay o canal, y el nonce la
+   hace de un solo uso — y responde el frame de su ruta:
+   - bridge, ruta host: `{ t: "host-auth", key, sig }`. `key` debe estar en el
+     binding `UXNAN_HOST_KEYS` del Worker; el primer host que reclama un
+     `routingId` queda ligado a el (`meta.host_key`). Un socket de control nuevo
+     del mismo bridge reemplaza al anterior (cierre `replaced`).
+   - telefono: `{ t: "phone-auth", key, sig, ticket? }`. `key` debe estar en la
+     lista `allowed`, o el telefono presenta un `ticket` vigente (abajo).
+   - bridge, ruta canal: `{ t: "channel-auth", sig }`, verificada con la clave
+     ligada a la sala, y solo si un telefono autenticado espera ese canal.
+4. El relay responde `{ t: "ready" }` o cierra con un codigo `RELAY_CLOSE`.
+
+Desde `ready`, en las rutas de telefono y canal **cada frame se reenvia tal
+cual** al otro extremo; el relay no parsea ninguno. Lo que viaja es el
+handshake de §5.9.1 y los sobres AES-256-GCM.
+
+##### Socket de control, dial y canales
+
+El bridge (`bridge/src/relay/relay-host.ts`) mantiene abierto un socket a
+`/v1/host/<routingId>`: tras `ready` envia `allow` con las claves de sus
+telefonos de confianza (y lo reenvia cada vez que cambia el trust store), y
+un `ping` cada 30 s que el runtime responde `pong` **sin despertar** al
+Durable Object. Si se cae, reconecta con backoff de 2 s a 60 s (al ritmo mas
+lento si el relay lo rechazo: `notAllowed`/`authFailed` no se arreglan solos).
+
+Cuando un telefono autenticado llega, la sala envia al bridge
+`{ t: "dial", channel }` y le da 10 s (`RELAY_DIAL_TIMEOUT_MS`) para abrir
+`/v1/channel/<routingId>/<channel>`. El bridge abre **un canal por
+telefono** y corre sobre el el mismo `handleSecureConnection` que en la LAN,
+incluida la ventana de emparejamiento (§5.9.1). Si un extremo se va, la sala
+cierra el otro (`peerClosed`).
+
+##### Emparejar por el relay: tickets de un solo uso
+
+Mostrar el QR o el codigo abre la ventana de emparejamiento del bridge
+(§5.9.1) y ademas genera un ticket de 32 bytes aleatorios (base64url). El bridge
+envia al relay solo `{ t: "ticket", hash: SHA-256(ticket), ttlMs }` — una edad,
+no una fecha (los relojes no coinciden), con tope `RELAY_MAX_TICKET_TTL_MS` = 15
+min; el bridge usa la duracion de su ventana — y el QR lleva el ticket en
+`relay.ticket` (§5.5.4). Un telefono que no esta en la red del PC presenta el
+ticket en `phone-auth`; el relay lo acepta **una vez** y lo borra. Despues, el
+handshake `qr_bootstrap` sigue exigiendo la ventana abierta en el bridge, y al
+completarse el telefono entra al trust store y por tanto a la lista `allow`.
+
+##### Revocacion
+
+Quitar un telefono de confianza (`bridge/removeTrustedDevice`) reenvia `allow`;
+la sala cierra en el acto el canal vivo de ese telefono con `revoked` (4010),
+no en su proxima reconexion. Un telefono que esta emparejando con ticket no se
+toca.
+
+##### Codigos de cierre (`RELAY_CLOSE`)
+
+| Codigo | Nombre | Significado |
+|---|---|---|
+| 4001 | `authFailed` | frame de auth malformado o firma invalida |
+| 4002 | `authTimeout` | sin auth en `RELAY_AUTH_TIMEOUT_MS` (10 s) |
+| 4003 | `notAllowed` | clave no admitida (host desconocido, telefono no emparejado, ticket invalido o vencido) |
+| 4004 | `bridgeOffline` | ningun bridge conectado a esta sala (PC apagado, o `routingId` rotado) |
+| 4005 | `bridgeTimeout` | el bridge no abrio el canal a tiempo |
+| 4006 | `peerClosed` | el otro extremo del canal se fue |
+| 4008 | `badFrame` | frame de control demasiado grande o JSON invalido |
+| 4009 | `replaced` | una conexion mas nueva del mismo host lo reemplazo |
+| 4010 | `revoked` | la clave del telefono salio de la lista `allow` |
+| 4011 | `full` | demasiados telefonos conectados a la vez |
+
+Ademas, la sala responde `503 Relay full` al upgrade cuando ya tiene
+`RELAY_MAX_SOCKETS` sockets o `RELAY_MAX_PHONE_CONNECTIONS` telefonos.
+
+##### Limites
+
+Frames de control ≤ 64 KiB (`RELAY_MAX_CONTROL_FRAME_BYTES`); ≤ 64 claves en
+`allow` (`RELAY_MAX_ALLOWED_PHONES`); ≤ 8 telefonos conectados o conectando a la
+vez (`RELAY_MAX_PHONE_CONNECTIONS`); ≤ 32 sockets por sala (`RELAY_MAX_SOCKETS`);
+10 s para autenticar y 10 s para el dial.
+
+##### Lo que el relay ve y guarda
+
+Ve las claves publicas del bridge y de los telefonos, cuando se conectan y el
+tamaño de los frames cifrados. **Nunca** el contenido ni claves que lo abran:
+todo despues de su paso de auth es E2EE (§5.9). Guarda solo la clave del host
+ligada a la sala, las claves de los telefonos de confianza y el SHA-256 de un
+ticket abierto — nada del trafico. No tiene push (§5.10.2). TLS lo da
+`workers.dev`.
+
+##### Despliegue por el bridge (el bridge es el dueño)
+
+El bridge es el unico dueño de la capacidad (`bridge/src/relay/relay-service.ts`);
+el telefono, el desktop y el CLI le preguntan por `relay/*` (§1 de `02b`):
+
+- `relay/setup { provider: "cloudflare", accountId, apiToken, remember? }` —
+  por la API REST de Cloudflare (`relay/cloudflare.ts`): comprueba el
+  subdominio `workers.dev` de la cuenta; lee las claves que el Worker
+  `uxnan-relay` ya sirve (otro PC de la misma cuenta); sube el bundle que el
+  bridge trae (`dist/relay-worker/`) con el binding Durable Object `RELAY` →
+  `RelayRoom` y el binding de texto `UXNAN_HOST_KEYS` (agrega su clave publica,
+  conserva las otras), con la migracion `new_sqlite_classes: ["RelayRoom"]` solo
+  en el primer despliegue; habilita `workers.dev`; espera (hasta 60 s) a que
+  `GET /v1/version` responda; guarda el endpoint y conecta.
+- `relay/use { url }` — un relay desplegado a mano (mismo Worker); comprueba
+  `/v1/version`. `ws://` solo para `localhost`/`127.0.0.1`.
+- `relay/set { enabled, ageMs? }` — encender/apagar; una decision tomada
+  offline se aplica solo si nadie decidio despues.
+- `relay/update { apiToken?, remember? }` — despliega la version que el bridge
+  trae (`RelayStatus.bundledVersion` vs `deployedVersion`).
+- `relay/rotate` — `routingId` nuevo: el viejo deja de servir; los telefonos
+  aprenden el nuevo por los ajustes compartidos.
+- `relay/remove { deleteWorker?, apiToken?, remember? }` — deja de usarlo;
+  con `deleteWorker` quita la clave de este PC del Worker y borra el Worker si
+  no queda ningun PC.
+- `relay/status` y la notificacion `stream/relay/updated` (el `RelayStatus`
+  completo: endpoint, estado `off|connecting|connected|error`, `lastError`,
+  versiones, `tokenRemembered`, `connectedPhones`, `hostKey`).
+
+Donde vive cada cosa: el endpoint publico `{ url, routingId, enabled }` es el
+ajuste compartido `BridgeSettings.relay` (clave `relay` de
+`~/.uxnan/daemon-config.json`, escrito solo por el servicio del relay, nunca por
+`settings/set`) y converge en cada cliente por `sync/changes` (§5.8.17); como
+se configuro (`provider`, `accountId`, `deployedVersion`) vive en
+`~/.uxnan/relay.json`. El token de Cloudflare se usa para la llamada y se
+descarta, salvo que `remember` lo guarde en el llavero del sistema
+(`relay.cloudflare-token`); nunca aparece en un archivo, log, respuesta,
+notificacion ni error. El CLI (`uxnan-bridge relay status | setup --account <id>
+[--remember] | use <wss-url> | enable | disable | update [--remember] | rotate |
+remove [--delete-worker]`) habla con el daemon en ejecucion y lee el token sin
+eco, nunca como argumento. Varios PCs comparten un Worker por cuenta, cada uno
+con su sala.
+
+##### Costo y rendimiento (plan gratuito, medido 2026-10-02)
+
+El plan gratuito de Cloudflare basta: 100,000 requests/dia (los mensajes
+WebSocket entrantes cuentan 20:1, los salientes son gratis) y 13,000 GB-s/dia
+de duracion de Durable Objects; superar un limite hace fallar operaciones hasta
+el dia siguiente, nunca cobra. Medido en una cuenta gratuita: despliegue REST
+~0.6 s; una ruta `workers.dev` nueva responde tras ~5–15 s; el socket de control
+inactivo hiberna (2 despertares del objeto en 3 minutos inactivos con pings de
+30 s); `ready` del relay en ~360–540 ms; handshake E2EE por el relay ~210 ms;
+RTT p50 de una peticion cifrada por el relay ~80 ms.
+
+##### Por que este diseño
+
+Un relay compartido operado por el proyecto obligaria a hospedar y pagar una
+infraestructura central por la que pasarian los metadatos de todos los usuarios;
+una VPN de malla (Tailscale) ya cubre a quien la quiera, pero pide instalar
+algo en el telefono; un servidor propio en un VPS o detras de un tunel pide
+mantener una maquina siempre encendida, TLS y actualizaciones. Un Worker en la
+cuenta del propio usuario no cuesta nada en el plan gratuito, no deja ningun
+servidor que mantener, lo despliega y actualiza el bridge con un token, y deja
+los metadatos en la cuenta del usuario. El mismo Worker puede correr fuera de
+Cloudflare sobre el runtime open-source de Workers (pendiente, `relay/FOR-DEV.md`).
 
 #### 5.10.2 Flujo de push notification (solo bridge → FCM)
 

@@ -1,6 +1,19 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.7 | **Fecha:** 2026-10-02 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.2.0 | **Fecha:** 2026-10-02 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.2.0):** the user's own relay (`02a` §5.10). Seven
+> methods — `relay/status`, `relay/setup`, `relay/use`, `relay/set`,
+> `relay/update`, `relay/rotate`, `relay/remove`, each answering `RelayStatus`
+> — and the notification `stream/relay/updated`: **101 methods, 25
+> notifications** (§1.2, §1.4). `BridgeSettings` gains `relay`
+> (`RelayEndpoint | null`, read-only for clients). The pairing QR moves to
+> **v3**: `relay` is `PairingRelay { url, routingId, ticket? }` (§1.5). The
+> relay's own control protocol — routes, signed challenge, `allow` / `ticket` /
+> `dial`, close codes 4001–4011 — is §1.6 (`@uxnan/shared/relay`). RF-CONN-02
+> tries direct addresses before the relay; the threat model gains the relay's
+> socket auth, stolen tickets, revocation, the Cloudflare token and abuse
+> limits. `DEFAULT_RELAY_URL` is gone.
 >
 > **Executive summary (1.1.7):** the relay push contracts are gone —
 > `PushNotifyRequest`, `PushRegisterRequest`, `PushRegisterResult`,
@@ -61,6 +74,7 @@
    3. [Errores JSON-RPC estandar](#13-errores-json-rpc-estandar)
    4. [Notificaciones de streaming (bridge -> phone)](#14-notificaciones-de-streaming-bridge---phone)
    5. [Shapes cross-cutting (seleccion)](#15-shapes-cross-cutting-seleccion)
+   6. [Protocolo de control del relay](#16-protocolo-de-control-del-relay)
 2. [Paquetes Flutter recomendados](#2-paquetes-flutter-recomendados)
    1. [Estado y DI](#21-estado-y-di)
    2. [Navegacion](#22-navegacion)
@@ -126,14 +140,15 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 94 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 101 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
-> (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
-> el paquete compartido directamente. Los nombres siguen la convencion
+> (`uxnanmobile/lib/domain/value_objects/...`); el bridge consume el paquete
+> compartido directamente y el relay empaqueta solo su subpath
+> `@uxnan/shared/relay` (el protocolo de control del relay, §1.6). Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 94 metodos request/response** + 24 notificaciones de streaming
+> **Total: 101 metodos request/response** + 25 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -273,7 +288,7 @@ project/rename          -> { projectId, name } (vacio restaura el nombre de la c
 **Sincronizacion, ajustes y dispositivos compartidos (5)** (`02a` §5.8.17):
 ```
 sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients, devices }. `devices`: todos los telefonos emparejados, siempre completos. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
-settings/get            -> BridgeSettings { home, name }
+settings/get            -> BridgeSettings { home, name, relay }. `relay`: `RelayEndpoint { url, routingId, enabled }` o `null` — de solo lectura aqui: cambia por `relay/*`, nunca por `settings/set` (02a §5.8.17, §5.10)
 settings/set            -> { home?, name?, ageMs? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal). `name`: como llaman todos los clientes a este PC (por defecto, el nombre de la maquina; vacio lo restaura; 80 caracteres). `ageMs`: un cambio hecho sin conexion; cada ajuste se aplica solo si nadie lo decidio despues
 device/describe         -> DeviceDescribeParams { name, nameAgeMs?, model?, platform?, osVersion?, appVersion? } -> DeviceDescription { device, nameAgeMs? }. Solo un telefono, sobre si mismo, al conectarse: su nombre por defecto (el modelo) aplica mientras nadie lo haya nombrado; uno elegido por su dueño (`nameAgeMs`) gana si es la decision mas reciente. La respuesta trae el nombre vigente y hace cuanto se decidio, para que el telefono adopte uno puesto en otro cliente
 device/rename           -> { deviceId, name, ageMs? } -> TrustedDevice. Cualquier cliente nombra un telefono; vacio vuelve al nombre del telefono. Gana la decision mas reciente
@@ -350,6 +365,25 @@ bridge/checkForUpdate            -> BridgeUpdate  el bridge consulta npm ahora m
                                     data.reason 'busy') si hay un turno en curso en cualquier cliente, y
                                     con -32000 (data.reason 'unsupported') si no corre como servicio del
                                     usuario desde una instalacion global de npm
+```
+
+**Relay propio del usuario (7)** (`02a` §5.10) — abiertos a todos los clientes
+(telefono, desktop, CLI); cada uno responde con el `RelayStatus` tras la accion.
+El token de Cloudflare viaja solo en la peticion (dentro del canal E2EE o del
+canal local) y nunca vuelve en una respuesta, notificacion ni error:
+```
+relay/status   -> RelayStatus { endpoint: RelayEndpoint | null, provider?: 'cloudflare'|'custom',
+                                state: 'off'|'connecting'|'connected'|'error', lastError?,
+                                bundledVersion, deployedVersion?, tokenRemembered,
+                                connectedPhones, hostKey }
+relay/setup    { provider: 'cloudflare', accountId, apiToken, remember? } -> RelayStatus
+               el bridge despliega el Worker en la cuenta del usuario y conecta
+relay/use      { url } -> RelayStatus   un relay desplegado a mano (mismo Worker); wss:// (ws:// solo localhost)
+relay/set      { enabled, ageMs? } -> RelayStatus   encender/apagar; gana la decision mas reciente
+relay/update   { apiToken?, remember? } -> RelayStatus   despliega la version que trae el bridge
+relay/rotate   -> RelayStatus   routingId nuevo; el viejo deja de servir
+relay/remove   { deleteWorker?, apiToken?, remember? } -> RelayStatus   deja de usarlo; deleteWorker
+               quita la clave de este PC del Worker y lo borra si no queda ninguno
 ```
 
 **Herramientas del desktop para agentes del bridge (2)** — solo por el canal de
@@ -450,7 +484,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 ### 1.4 Notificaciones de streaming (bridge -> phone)
 
 > **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
-> (`StreamNotification`, 22 entradas). Son JSON-RPC notifications (sin `id`,
+> (`StreamNotification`, 25 entradas). Son JSON-RPC notifications (sin `id`,
 > unidireccionales). El telefono las decodifica via
 > `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
 > sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
@@ -478,6 +512,7 @@ stream/presence/updated     -> PresenceUpdatedParams { clients }                
 stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
 stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 stream/bridge/updated       -> BridgeUpdatedParams  { update: BridgeUpdate }                (NUEVO 2026-09; la actualizacion del propio bridge: se publico una version, empezo o fallo — 02a §5.8.18)
+stream/relay/updated        -> RelayUpdatedNotification { status: RelayStatus }             (NUEVO 2026-10; el relay se configuro, conecto, cayo o quito — el estado completo, como lo responderia relay/status — 02a §5.10)
 stream/agent/held    -> AgentSessionHeldParams { agentId, sessionId, hold? }        (NUEVO 2026-09; una terminal tomo, actualizo o solto una sesion; `hold` ausente = libre — 02a §5.8.19)
 stream/agent/handoffRequested -> AgentSessionHandoffRequestedParams { agentId, sessionId, requestId, from } (NUEVO 2026-09; solo al desktop que retiene la sesion; responde con agent/handoffAnswer)
 ```
@@ -625,11 +660,11 @@ otro lado):
 > `../../shared/src/agents/agent-capabilities.ts`. La copia Dart vive en
 > `uxnanmobile/lib/domain/entities/...` y `value_objects/...`.
 
-**`PairingPayload` v2** (en el QR / respuesta de `GET /pair/resolve`):
+**`PairingPayload` v3** (en el QR / respuesta de `GET /pair/resolve`):
 ```typescript
 interface PairingPayload {
-  v: 2;                              // version del formato QR
-  relay?: string;                    // URL del relay: wss://...  (opcional)
+  v: 3;                              // version del formato QR (PAIRING_QR_VERSION)
+  relay?: PairingRelay;              // relay propio, solo si esta configurado y habilitado
   hosts?: string[];                  // Direcciones directas: ["192.168.1.42:19850", "100.x.y.z:19850"]
   sessionId: string;
   macDeviceId: string;
@@ -637,8 +672,15 @@ interface PairingPayload {
   expiresAt: number;                 // Unix timestamp ms, TTL 5 min
   displayName: string;
 }
+interface PairingRelay {
+  url: string;                       // wss://… sin path (^wss?://[^/\s]+$)
+  routingId: string;                 // 32 hex en minusculas: la sala del bridge
+  ticket?: string;                   // ticket de un solo uso (32 bytes, base64url, 43 chars) mientras
+                                     // la ventana de pairing esta abierta; el relay solo conoce su SHA-256
+}
 // QR encoding: Base64(utf8(JSON)).
-// Validacion: al menos uno de `relay` o `hosts` es obligatorio (error `missing_transport`).
+// Validacion: al menos uno de `relay` o `hosts` es obligatorio (error `missing_transport`);
+// `relay` como string (v2) se rechaza.
 ```
 
 **LAN discovery is intentionally outside `PairingPayload` and JSON-RPC.** The
@@ -871,6 +913,45 @@ interface ApprovalRequestBlock {
   its report; `SubagentContentBlock`)
 - `usage` (token usage)
 
+### 1.6 Protocolo de control del relay
+
+> **Fuente de verdad:** `../../shared/src/relay/protocol.ts`, exportado como
+> `@uxnan/shared/relay` (sin dependencias: el Worker lo empaqueta). El telefono
+> lo replica en `uxnanmobile/lib/infrastructure/transport/relay_protocol.dart`.
+> Diseño y comportamiento: `02a` §5.10.1. No es JSON-RPC: son frames JSON de
+> texto que el relay intercambia **antes** de convertirse en tuberia ciega.
+
+```typescript
+RELAY_PROTOCOL_VERSION = 1            // independiente de SECURE_PROTOCOL_VERSION
+// Rutas (routingId / channelId: 32 hex en minusculas)
+GET /v1/version                       -> { name: 'uxnan-relay', protocol, version }
+WS  /v1/host/<routingId>              // bridge (control)
+WS  /v1/connect/<routingId>           // telefono
+WS  /v1/channel/<routingId>/<channelId>  // bridge, tuberia de un telefono
+
+// Relay -> cliente
+{ t: 'challenge', v: 1, nonce }       // nonce: 32 bytes hex
+{ t: 'ready' }
+{ t: 'dial', channel }                // solo al host: un telefono espera ese canal
+
+// Cliente -> relay (sig: Ed25519 hex sobre relaySigningMessage)
+{ t: 'host-auth', key, sig }          // key en UXNAN_HOST_KEYS; el routingId queda ligado a el
+{ t: 'channel-auth', sig }            // verificada con la clave ligada a la sala
+{ t: 'phone-auth', key, sig, ticket? }  // key en la lista allow, o ticket vigente (una vez)
+{ t: 'allow', keys }                  // host: conjunto completo de claves de telefonos (≤ 64)
+{ t: 'ticket', hash, ttlMs }          // host: SHA-256 hex del ticket; ttlMs ≤ 15 min (una edad)
+
+relaySigningMessage = 'uxnan-relay-v1|<host|phone|channel>|<host del relay>|<routingId>|<channelId o ''>|<nonce>'
+// Keepalive: texto 'ping' -> 'pong', respondido sin despertar al Durable Object.
+// Cierres RELAY_CLOSE: 4001 authFailed · 4002 authTimeout · 4003 notAllowed · 4004 bridgeOffline ·
+//   4005 bridgeTimeout · 4006 peerClosed · 4008 badFrame · 4009 replaced · 4010 revoked · 4011 full
+// Limites: frame de control ≤ 64 KiB; ≤ 8 telefonos y ≤ 32 sockets por sala; auth y dial: 10 s.
+```
+
+Los parsers (`parseRelayClientFrame`, `parseRelayServerFrame`) rechazan
+cualquier frame que no sea exactamente uno de estos (tipo desconocido, campos
+extra, tipos erroneos).
+
 ---
 
 ## 2. Paquetes Flutter recomendados
@@ -894,7 +975,7 @@ Todos los paquetes listados son compatibles con Android e iOS. Se priorizan los 
 | Paquete | Version min. | Rol |
 |---|---|---|
 | `web_socket_channel` | ^3.0.0 | WebSocket client (Android + iOS, puro Dart) |
-| `dio` | ^5.4.0 | HTTP client para endpoints del relay (REST) |
+| `dio` | ^5.4.0 | HTTP client (p.ej. `GET /pair/resolve` del bridge, chequeo de actualizaciones) |
 | `connectivity_plus` | ^6.0.0 | Deteccion de cambios de conectividad de red |
 
 ### 2.4 Almacenamiento
@@ -1060,7 +1141,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 ### 3.7 Privacidad
 
 - Ningun dato del usuario (codigo, conversaciones, proyectos) pasa por servidores de Uxnan.
-- El relay solo ve sessionId, tamano de mensaje y timestamps; nunca ve tokens push ni el texto de una notificacion (el push lo envia el bridge directo a FCM).
+- El relay es del propio usuario (un Worker en su cuenta de Cloudflare, desplegado por su bridge). Solo ve las claves publicas del bridge y de los telefonos, cuando se conectan y el tamano de los frames cifrados; nunca el contenido, tokens push ni el texto de una notificacion (el push lo envia el bridge directo a FCM). Guarda solo la clave del host, las claves de los telefonos de confianza y el SHA-256 de un ticket abierto.
 - Declaracion de privacidad en la app explica el flujo de datos.
 - No hay analytics, telemetria ni tracking de comportamiento por defecto.
 
@@ -1073,7 +1154,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | ID | Requisito |
 |---|---|
 | RF-CONN-01 | La app debe mantener como maximo una conexion activa al mismo tiempo |
-| RF-CONN-02 | La app debe seleccionar automaticamente el canal (LAN vs relay) |
+| RF-CONN-02 | La app debe seleccionar automaticamente el canal: primero cada direccion directa (`hosts`: LAN y Tailscale), despues el relay propio del PC si esta configurado y habilitado |
 | RF-CONN-03 | La app debe ejecutar el handshake E2EE antes de enviar cualquier payload JSON-RPC |
 | RF-CONN-04 | La app debe reconectarse automaticamente con backoff exponencial al perder conexion |
 | RF-CONN-05 | La app debe recuperar mensajes perdidos durante reconexion mediante el buffer de outbound del bridge |
@@ -1162,7 +1243,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 |---|---|
 | RF-NOTIF-01 | La app recibe push notifications cuando un turno del agente se completa |
 | RF-NOTIF-02 | El push navigates directamente al thread correspondiente |
-| RF-NOTIF-03 | Las notificaciones duplicadas deben ser deduplicadas por el relay |
+| RF-NOTIF-03 | Las notificaciones duplicadas deben ser deduplicadas por el bridge (un solo push por fin de turno; el relay no tiene push) |
 | RF-NOTIF-04 | El usuario puede activar/desactivar notificaciones por thread |
 | RF-NOTIF-05 | Las notificaciones locales se muestran cuando la app esta en foreground |
 
@@ -1216,6 +1297,11 @@ cambia, por lo que interopera byte a byte con el bridge.
 | Amenaza | Mitigacion |
 |---|---|
 | Relay malicioso intercepta mensajes | Los envelopes son E2EE opacos — relay nunca ve plaintext |
+| Sockets no autenticados en el relay (cualquiera abre una ruta y se hace pasar por el bridge o por un telefono) | Cada socket responde un challenge con una firma Ed25519 ligada a ruta, host del relay, `routingId`, canal y nonce (no reutilizable). El host debe estar en `UXNAN_HOST_KEYS` y el `routingId` queda ligado al primer host; un telefono debe estar en la lista `allow` del bridge o traer un ticket. Antes (relay Node) bastaban los headers `x-role`/`x-session-id` |
+| Ticket de pairing robado (foto del QR) | De un solo uso (el relay lo borra al aceptarlo), vence con la ventana (≤ 15 min; el bridge usa 5), el relay solo guarda su SHA-256, y el `qr_bootstrap` igual exige la ventana abierta en el bridge y completa el handshake E2EE contra la identidad del bridge del QR |
+| Telefono revocado sigue conectado por el relay | `bridge/removeTrustedDevice` reenvia `allow` y el relay cierra su canal vivo en el acto (`revoked`, 4010) |
+| Token de Cloudflare filtrado | Se usa para la llamada y se descarta; solo con `remember` se guarda en el llavero del sistema. Nunca en archivos, logs (`apiToken` redactado), respuestas, notificaciones ni errores |
+| Abuso del relay (inundacion de sockets) | Limites por sala (≤ 32 sockets, ≤ 8 telefonos, frames de control ≤ 64 KiB, 10 s para autenticar); en el plan gratuito superar una cuota hace fallar operaciones, nunca cobra |
 | QR escaneado por tercero | TTL de 5 minutos; el QR solo es valido una vez (first-connect wins) |
 | MITM en handshake | Firma Ed25519 bilateral; el transcript incluye claves efimeras de ambas partes |
 | Replay de mensajes | `seq` monotonico por lado (mensajes con seq <= lastApplied son rechazados) **y** `sessionId`/`seq`/direccion ligados como AAD de AES-GCM: alterar `seq` rompe el tag en vez de pasar un chequeo no autenticado. `lastApplied` solo avanza tras un descifrado exitoso |

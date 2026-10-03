@@ -1,11 +1,16 @@
 # Uxnan Desktop (ADE) — Documentacion Tecnica
 
-> **Version:** 1.1.0
-> **Fecha:** 2026-06-17
+> **Version:** 1.1.1
+> **Fecha:** 2026-10-02
 > **Estado:** Alpha-funcional (standalone); Phase 6 parcial (cliente del bridge + pestañas de chat; bridge embebido pendiente)
 > **Plataformas objetivo:** Windows, macOS, Linux
 > **Stack:** Rust, Tauri 2, Svelte 5, shadcn-svelte, Tailwind CSS, xterm.js, CodeMirror 6
 > **Monorepo:** Este directorio (`uxnandesktop/architecture/`) contiene la documentacion tecnica del Agent Development Environment (ADE) de escritorio.
+
+> **Resumen ejecutivo (1.1.1):** el relay (`../../relay/`) ya no es un servidor
+> Node self-hosted: es el relay propio de cada usuario, un Cloudflare Worker que
+> el bridge despliega en la cuenta del usuario (`../../architecture/02a` §5.10).
+> El ADE lo mostrara como cliente de `relay/*` (planificado, `02e` §5.4).
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > esta carpeta es la **fuente de verdad** de la arquitectura del ADE.
@@ -152,7 +157,8 @@ Esto es lo que hace posible el paralelismo real. Sin worktrees, multiples agente
   - **Activar Phase 6** (bridge embebido) en el ADE — el movil se conecta al ADE directamente.
 - En ambos casos, la conexion movil ↔ bridge es E2EE (mismo protocolo) y
   funciona LAN-direct / Tailscale-direct (cero hosting). El relay
-  (`../../relay/`) es **opcional y self-hosted** (ver
+  (`../../relay/`) es **opcional y propio del usuario**: el bridge lo despliega
+  en la cuenta de Cloudflare del usuario (ver
   `../../architecture/02a-system-architecture.md` §2 y §5.10).
 
 ---
@@ -165,7 +171,7 @@ El proyecto Uxnan esta organizado como un monorepo que agrupa todos los componen
 uxnan/                           # Monorepo raiz
 ├── architecture/                # Especificacion tecnica de la app movil Flutter (fuente de verdad cross-component)
 ├── bridge/                      # Node.js daemon para PC (standalone o embebido en desktop)
-├── relay/                       # Node.js relay server (opcional, self-hosted)
+├── relay/                       # Relay propio del usuario: Cloudflare Worker que despliega el bridge (opcional)
 ├── shared/                      # Contratos compartidos (tipos, JSON-RPC schemas)
 ├── uxnandesktop/                # App de escritorio ADE
 │   └── architecture/            # <-- Este directorio. Documentacion tecnica del ADE
@@ -190,7 +196,7 @@ uxnan/                           # Monorepo raiz
 | `../../architecture/` | Contiene la especificacion tecnica completa de la app movil Flutter **y los contratos cross-component** (E2EE §5.9, bridge §5.8, relay §5.10). El ADE desktop se complementa con la app movil: el movil permite monitorear y controlar agentes remotamente desde el telefono. Consultar ese directorio para la especificacion movil y los contratos JSON-RPC. |
 | `../../shared/` | Contratos compartidos entre todos los componentes del ecosistema. Definiciones de tipos TypeScript, schemas JSON-RPC y cualquier interfaz comun que necesiten consumir multiples proyectos del monorepo. El ADE desktop y el bridge comparten estos contratos para la comunicacion entre ellos. |
 | `../../bridge/` | Daemon Node.js que actua como puente entre la app movil y los recursos de la computadora (Git, sistema de archivos, terminal). **Puede correr de dos formas**: como proceso standalone independiente, o integrado dentro de la app de escritorio ADE (Phase 6). Cuando el desktop esta corriendo, puede levantar el bridge internamente para que la app movil se conecte directamente al ADE sin necesidad de un proceso separado. |
-| `../../relay/` | Servidor relay Node.js que facilita la comunicacion entre la app movil y el bridge/desktop cuando no hay conexion directa en red local. **Opcional y self-hosted** (ver `../../architecture/02a-system-architecture.md` §2 y §5.10). El ADE puede conectarse al relay para ser accesible desde fuera de la red local, pero no es la ruta primaria. |
+| `../../relay/` | Relay propio del usuario: un Cloudflare Worker + Durable Object que el bridge despliega en la cuenta de Cloudflare del usuario, para que el movil llegue al bridge desde otra red. **Opcional** (ver `../../architecture/02a-system-architecture.md` §2 y §5.10). El ADE nunca lo usa para si (habla con el bridge local por el canal de control); lo mostrara como cliente de `relay/*` (planificado, `02e` §5.4). |
 
 ---
 
