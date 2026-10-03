@@ -14,6 +14,13 @@ import { OutboundLog } from './outbound-log.js';
 /** Encrypts a JSON-RPC message and writes it to the active connection. */
 export interface SessionSink {
   send(message: unknown): void;
+  /**
+   * Close the connection behind this sink. Called when a newer connection of
+   * the same phone replaces it: the old one can no longer carry anything, and
+   * left open it would linger as a ghost (a relay channel whose phone side
+   * died keeps its bridge side healthy).
+   */
+  close?(): void;
 }
 
 export class SessionRegistry {
@@ -34,9 +41,11 @@ export class SessionRegistry {
     return log;
   }
 
-  /** Register the active sink for a device. */
+  /** Register the active sink for a device, closing the one it replaces. */
   register(deviceId: string, sink: SessionSink): void {
+    const previous = this.#sinks.get(deviceId);
     this.#sinks.set(deviceId, sink);
+    if (previous !== undefined && previous !== sink) previous.close?.();
     // Ensure a log exists so subsequent broadcasts/notifies are retained even if
     // the handshake path didn't pre-create one.
     this.logFor(deviceId);

@@ -26,7 +26,7 @@ import { FakePhone, newPhoneIdentity, type PhoneIdentity } from '../helpers/fake
 // A real bridge, the real relay Worker on the real Workers runtime (Miniflare),
 // and a phone that speaks the relay's phone route and then the E2EE handshake.
 
-async function setup(): Promise<{
+async function setup(options: { sessionIdleTimeoutMs?: number } = {}): Promise<{
   bridge: Bridge;
   relay: LocalRelayHandle;
   cleanup(): Promise<void>;
@@ -38,6 +38,7 @@ async function setup(): Promise<{
     baseDir,
     secretStore: new InMemorySecretStore(),
     logLevel: 'error',
+    ...options,
   });
   const relay = await startLocalRelay({
     hostKeys: [bridge.context.deviceState.identity.macIdentityPublicKey],
@@ -175,6 +176,68 @@ test('the relay endpoint is a shared setting, and switching it off disconnects',
     await bridge.context.relay().rotate();
     assert.notEqual(bridge.context.settings.get().relay?.routingId, before);
     await waitFor(() => bridge.context.relay().status().state === 'connected');
+  } finally {
+    await cleanup();
+  }
+});
+
+/** Pair a fresh phone through the relay; returns its identity and the QR. */
+async function pairedPhone(bridge: Bridge): Promise<{
+  identity: PhoneIdentity;
+  relay: PairingRelay;
+  sessionId: string;
+}> {
+  const qr = bridge.generatePairingQr();
+  assert.ok(qr.relay?.ticket);
+  const identity = newPhoneIdentity();
+  const ws = await dialAsPhone(qr.relay, identity, qr.relay.ticket);
+  const phone = await FakePhone.connect(wsToMessageIO(ws), { sessionId: qr.sessionId, identity });
+  phone.close();
+  await waitFor(() => bridge.context.relay().status().connectedPhones === 0);
+  return { identity, relay: qr.relay, sessionId: qr.sessionId };
+}
+
+test('a phone that goes silent is dropped, at the bridge and at the relay', async () => {
+  const { bridge, cleanup } = await setup({ sessionIdleTimeoutMs: 300 });
+  try {
+    const { identity, relay, sessionId } = await pairedPhone(bridge);
+    const ws = await dialAsPhone(relay, identity);
+    const phone = await FakePhone.connect(wsToMessageIO(ws), {
+      sessionId,
+      identity,
+      mode: 'trusted_reconnect',
+    });
+    assert.ok('result' in (await phone.request('bridge/status')));
+    assert.equal(bridge.context.relay().status().connectedPhones, 1);
+    // The phone stops sending anything (its network vanished): no heartbeat.
+    assert.equal(await closedWith(ws), RELAY_CLOSE.peerClosed);
+    await waitFor(() => bridge.context.relay().status().connectedPhones === 0);
+    assert.equal(bridge.status().activeSessions, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a phone's newer connection closes its older one", async () => {
+  const { bridge, cleanup } = await setup();
+  try {
+    const { identity, relay, sessionId } = await pairedPhone(bridge);
+    const first = await dialAsPhone(relay, identity);
+    await FakePhone.connect(wsToMessageIO(first), {
+      sessionId,
+      identity,
+      mode: 'trusted_reconnect',
+    });
+    const second = await dialAsPhone(relay, identity);
+    const phone = await FakePhone.connect(wsToMessageIO(second), {
+      sessionId,
+      identity,
+      mode: 'trusted_reconnect',
+    });
+    // The old one is gone at the relay; only the new one is counted and works.
+    assert.equal(await closedWith(first), RELAY_CLOSE.peerClosed);
+    await waitFor(() => bridge.context.relay().status().connectedPhones === 1);
+    assert.ok('result' in (await phone.request('bridge/status')));
   } finally {
     await cleanup();
   }

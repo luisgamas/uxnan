@@ -113,6 +113,21 @@ test('a stale unregister does not drop a sink a reconnect already replaced', () 
   assert.equal(registry.isActive(deviceId), false);
 });
 
+test('registering a newer sink closes the one it replaces, and only that one', () => {
+  const registry = new SessionRegistry();
+  const closed: string[] = [];
+  const sinkA = { send: () => undefined, close: () => void closed.push('a') };
+  const sinkB = { send: () => undefined, close: () => void closed.push('b') };
+  registry.register('device-1', sinkA);
+  registry.register('device-1', sinkA); // the same sink again is not a replacement
+  assert.equal(closed.length, 0);
+  registry.register('device-1', sinkB);
+  assert.deepEqual(closed, ['a']);
+  // Another phone's sink is never touched.
+  registry.register('device-2', { send: () => undefined, close: () => void closed.push('c') });
+  assert.deepEqual(closed, ['a']);
+});
+
 test('forget drops the device log so nothing is replayed after untrust', () => {
   const registry = new SessionRegistry();
   const deviceId = 'device-1';

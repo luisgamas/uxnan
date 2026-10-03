@@ -32,7 +32,18 @@ export interface SecureConnectionOptions {
    * one-time ticket.
    */
   isPairingArmed?: () => boolean;
+  /** Close the connection after this long without an inbound frame (tests). */
+  idleTimeoutMs?: number;
 }
+
+/**
+ * A phone connection that has received nothing for this long is closed. The
+ * phone sends a heartbeat every 25 s while connected, so this is three missed
+ * beats: the connection is dead even if its socket looks open — a phone that
+ * switched networks leaves the bridge's side of a relay channel healthy, and a
+ * handshake whose phone vanished would otherwise wait forever.
+ */
+export const SESSION_IDLE_TIMEOUT_MS = 90_000;
 
 /**
  * Handle a connection end-to-end. Resolves when the connection closes. Never
@@ -42,6 +53,20 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
   const { io, ctx, router, deviceState, trustStore, displayName, transport } = options;
   const queue = queueFor(io);
   const send = (message: unknown): void => io.send(Buffer.from(JSON.stringify(message), 'utf-8'));
+  const idleMs = options.idleTimeoutMs ?? SESSION_IDLE_TIMEOUT_MS;
+  let idleTimer: NodeJS.Timeout | undefined;
+  const armIdle = (): void => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      ctx.logger.warn(
+        `phone connection silent for ${Math.round(idleMs / 1000)}s over ${transport}; closing it`,
+      );
+      io.close();
+    }, idleMs);
+    idleTimer.unref?.();
+  };
+  armIdle();
+  io.onMessage(() => armIdle());
 
   let phoneDeviceId: string | undefined;
   let sessionId: string | undefined;
@@ -96,6 +121,8 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
     sink = {
       send: (message) =>
         io.send(Buffer.from(JSON.stringify(result.channel.encrypt(toBytes(message))), 'utf-8')),
+      // A newer connection of this phone replaced this one: end it.
+      close: () => io.close(),
     };
     ctx.sessionRegistry.register(result.phoneDeviceId, sink);
     // A phone is now connected: grant a fresh window to any approval that was
@@ -178,6 +205,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       // defaulting to reject. No-op while another phone is still connected.
       ctx.agentManager.onPhoneDisconnected();
     }
+    clearTimeout(idleTimer);
     io.close();
   }
 }
