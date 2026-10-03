@@ -104,8 +104,11 @@ A project whose `target` is `ssh:<hostId>` lives on a registered host, and
 everything about it — its worktrees, its git, its terminals — goes through one
 SSH session the app holds. `host/list` and `host/show` describe those machines
 **from that session**, not from the settings: connected or not, the shell it
-starts, the channels in use against the limit the host turned out to enforce.
-`host/connect` opens a session on one that has none — the same path startup
+starts, the channels in use against the limit the host turned out to enforce,
+and — on a host running the host engine — that engine's version and platform
+and the link's round trip (`latencyMs`), read from the engine already running:
+a read never starts one. `host/show` adds `engineSessions`, every terminal that
+engine holds, `tab: null` for one no tab of the window shows. `host/connect` opens a session on one that has none — the same path startup
 takes for the hosts that need nothing.
 
 Two things it deliberately does not do:

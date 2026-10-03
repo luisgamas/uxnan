@@ -223,9 +223,37 @@ fn host_channels() -> Value {
     v
 }
 
+/// The host engine a connected host runs, as it introduced itself.
+fn host_engine() -> Value {
+    let mut v = nested(
+        "The host engine (`uxnan-host`) running there, while connected through it. Absent on a host the engine cannot run on: its terminals are plain channels that end with the connection, and it has no files, git or search.",
+        json!({
+            "version": field("string", "The engine's version."),
+            "protocol": field("integer", "The protocol version both ends agreed on."),
+            "os": field("string", "The host's OS as the engine reports it (`linux`, `macos`, `windows`)."),
+            "arch": field("string", "Its CPU architecture (`x86_64`, `aarch64`)."),
+        }),
+    );
+    v[ABSENT] = json!(true);
+    v
+}
+
+/// One terminal a host's engine holds — tab or not.
+fn engine_session() -> Value {
+    result(json!({
+        "session": field("integer", "The engine's id for it, unique on that host."),
+        "label": field("string", "What the terminal was opened as."),
+        "cwd": field("string", "The folder it was opened in, on the host."),
+        "alive": field("boolean", "Whether its program is still running."),
+        "startedAgoMs": field("integer", "How long ago it started — an age, since the two machines' clocks do not agree."),
+        "tab": nullable("string", "The terminal id of the tab in this window that shows it; null for one no tab shows (an earlier run of the app left it there)."),
+    }))
+}
+
 /// A registered remote machine and what its session is doing (`SshHost` plus
 /// live state). `full` adds what only `host/show` answers: the projects on the
-/// machine and the terminals open against its session.
+/// machine, the terminals open against its session, and every terminal its
+/// engine holds.
 ///
 /// What is *not* here is deliberate: no key paths, no credentials, no
 /// fingerprints — a caller of this surface never needs them, and the person
@@ -243,6 +271,8 @@ fn host_view(full: bool) -> Value {
         "generation": optional("integer", "The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it."),
         "shell": optional("string", "The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine."),
         "channels": host_channels(),
+        "engine": host_engine(),
+        "latencyMs": optional("integer", "The link's round trip in milliseconds, as the engine's heartbeat last measured it. Absent until it has been measured, and on a host without the engine."),
     });
     if full {
         props["projects"] = list_of(
@@ -253,6 +283,12 @@ fn host_view(full: bool) -> Value {
             terminal_view(),
             "The terminals open against its session, as `terminal/list` describes them.",
         );
+        let mut held = list_of(
+            engine_session(),
+            "Every terminal the host engine holds, newest first — including ones no tab of this window shows. Absent without a live engine.",
+        );
+        held[ABSENT] = json!(true);
+        props["engineSessions"] = held;
     }
     result(props)
 }
@@ -606,7 +642,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "host/show",
             tool: "host_show",
             group: Group::Read,
-            summary: "Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.",
+            summary: "Describe one host: the record `host/list` gives (with its engine and latency), plus the projects registered on it, the terminals open against its session, and every terminal its engine holds.",
             params: object(
                 json!({ "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." } }),
                 &["host"],

@@ -1413,12 +1413,24 @@ pub async fn ssh_host_sessions(
     let Some(engine) = connected_engine(&app, &state, &host_id).await else {
         return Err(CommandError::from(AppError::NotConnected(host_id)));
     };
-    let listed = engine.list().await.map_err(CommandError::from)?;
+    engine_sessions(&state, &host_id, &engine)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// What `engine` holds, each with the tab of this window that shows it — the
+/// one listing the host page and `host/show` both read.
+pub(crate) async fn engine_sessions(
+    state: &AppState,
+    host_id: &str,
+    engine: &ssh::engine::HostEngine,
+) -> Result<Vec<HostSession>, AppError> {
+    let listed = engine.list().await?;
     let mut sessions = Vec::with_capacity(listed.len());
     for s in listed {
         let tab = state
             .engine_terminals
-            .tab_for(&host_id, engine.epoch(), s.session)
+            .tab_for(host_id, engine.epoch(), s.session)
             .await;
         sessions.push(HostSession {
             session: s.session,

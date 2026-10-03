@@ -463,7 +463,7 @@ about is not the one you are looking at:
 
 ```
 uxnan-cli host ls                 # every host, connected or not, with its channels
-uxnan-cli host show build-box     # plus the projects and terminals on it
+uxnan-cli host show build-box     # plus its projects, tabs, and every terminal its engine holds
 uxnan-cli host connect build-box  # open a session on one that has none
 ```
 

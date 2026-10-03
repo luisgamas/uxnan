@@ -500,7 +500,11 @@ la fase 3.)
 **Desde la superficie de control** (`02d` §1.6) esta misma sesion se lee y se
 abre sin la interfaz: `host/list` y `host/show` describen cada maquina **por su
 sesion** —conectada o no, su shell, los canales en uso contra el limite que el
-host demostro (§5.10g)—, y `host/connect` abre la de un host registrado que no
+host demostro (§5.10g)— y, con el motor en marcha, su version y plataforma
+(`engine`) y la ida y vuelta del latido (`latencyMs`), leidos del motor que ya
+corre: una lectura nunca arranca uno. `host/show` añade `engineSessions`, las
+terminales que el motor tiene, tambien las que ninguna pestana muestra (§5.17).
+`host/connect` abre la de un host registrado que no
 la tiene, por el mismo camino que el arranque. La superficie **no acepta
 credencial**: `needsPassword`, `needsPassphrase` y los tres desenlaces de clave
 de host se devuelven tal cual y ahi termina, porque confiar una clave o teclear

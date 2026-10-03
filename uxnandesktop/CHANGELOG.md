@@ -79,6 +79,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Old worktrees on a host are cleaned up there.** Settings → Git → Cleanup
   has a machine picker; on a connected host, its engine finds and removes its
   own abandoned worktrees by the same rules as here.
+- **`host/list` and `host/show` describe the host engine.** The control surface
+  reports, for a host running it, the engine's version and platform and the
+  link's round trip; `host/show` also lists every terminal the engine holds,
+  including ones no tab shows. Read from the engine already running — a read
+  never starts one.
 - **You can see which machine a terminal is on.** A terminal tab on a host
   carries a small badge with the host's name and a dot for how it stands, and
   its title dims while the host is away. A host project's card in the sidebar

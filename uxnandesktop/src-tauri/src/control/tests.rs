@@ -1209,6 +1209,10 @@ async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
     assert_eq!(hosts[0]["source"], "manual");
     assert!(hosts[0].get("generation").is_none(), "{body}");
     assert!(hosts[0].get("channels").is_none(), "{body}");
+    // Nor an engine or a latency: those are read from a running engine, and a
+    // read never starts one.
+    assert!(hosts[0].get("engine").is_none(), "{body}");
+    assert!(hosts[0].get("latencyMs").is_none(), "{body}");
 
     // One host, with what is on it. The local project is not.
     let (_, body) = post(
@@ -1221,6 +1225,9 @@ async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
     assert_eq!(body["result"]["id"], "h-b", "{body}");
     assert_eq!(body["result"]["projects"], json!([]));
     assert_eq!(body["result"]["terminals"], json!([]));
+    // Without an engine there is no listing of what it holds — left out, never
+    // an empty list that would read as "it holds nothing".
+    assert!(body["result"].get("engineSessions").is_none(), "{body}");
 
     // An id nobody has.
     let (_, body) = post(
