@@ -192,7 +192,9 @@ impl Daemon {
                 let program = argv.remove(0);
                 (Some(program), argv)
             }
-            _ => (None, Vec::new()),
+            // What an SSH login here starts (`login_shell`): on a Windows host
+            // whose owner set `DefaultShell`, that shell — not `cmd`.
+            _ => (crate::login_shell(), Vec::new()),
         };
         let home = crate::paths_home();
         let cwd = cwd.filter(|c| !c.is_empty()).unwrap_or(home);

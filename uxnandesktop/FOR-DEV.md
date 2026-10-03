@@ -1138,9 +1138,11 @@ already written for the day phase 2 below lands — nothing to relax then.
          each installer of the next release.
       2. **Windows hosts beyond the one proven.** The engine runs on a Windows
          host (named pipe, out of the session's job — CI's `windows-ssh-host`
-         against an `sshd` that starts `cmd`). Not yet run: a host whose
-         `DefaultShell` is PowerShell (`run_line` / `print_line` have the
-         form, unexercised), the ARM64 build on an ARM64 machine, and a
+         against an `sshd` that starts `cmd`, and a second leg whose
+         `DefaultShell` is Windows PowerShell — which found that the engine's
+         terminals opened in `cmd` regardless; they now open in
+         `DefaultShell`, `uxnan-host` → `login_shell`). Not yet run: the
+         ARM64 build on an ARM64 machine, and a
          Win32-OpenSSH whose job refuses breakaway (the daemon then ends with
          the session; the log says so). `ssh/pty.rs` **stays**, decided
          2026-10-03: it is the terminal for a host the engine cannot run on

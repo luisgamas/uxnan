@@ -163,6 +163,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A terminal on a Windows host opens in the shell its owner chose for SSH.**
+  With OpenSSH's `DefaultShell` set to PowerShell, the host engine still
+  started `cmd` for every terminal; it now starts what an SSH login there
+  starts — `DefaultShell` when set, `cmd` otherwise, as `sshd` does.
+
 - **An encrypted key can be unlocked.** The passphrase you typed was sent as a
   password and the key was retried without it, so the app asked for it forever.
 - **`ForwardAgent` works.** It was saved and never requested, so git on the host

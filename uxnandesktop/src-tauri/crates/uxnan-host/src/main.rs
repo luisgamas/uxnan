@@ -90,6 +90,61 @@ fn run<F: std::future::Future<Output = std::io::Result<()>>>(future: F) -> i32 {
 }
 
 /// The account's home, as its terminals see it.
+/// The program a terminal here starts when the client names none: what an SSH
+/// login to this machine starts, so a host terminal is the shell its owner
+/// chose for SSH.
+///
+/// On POSIX that is the account's login shell, which the PTY layer reads from
+/// the account database itself (`None`). On Windows it is OpenSSH's
+/// `DefaultShell` (`HKLM\SOFTWARE\OpenSSH`) when the owner set one — the shell
+/// every SSH session there gets — and otherwise `None`, which starts
+/// `%COMSPEC%` (`cmd`), the same fallback `sshd` uses.
+fn login_shell() -> Option<String> {
+    #[cfg(windows)]
+    {
+        windows_default_shell()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn windows_default_shell() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+    let wide = |s: &str| {
+        s.encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>()
+    };
+    let key = wide("SOFTWARE\\OpenSSH");
+    let name = wide("DefaultShell");
+    let mut buf = vec![0u16; 2048];
+    let mut bytes = (buf.len() * 2) as u32;
+    // SAFETY: both names are NUL-terminated UTF-16, the buffer is `bytes`
+    // long, and the call writes no more than that (it fails instead).
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            name.as_ptr(),
+            // A `REG_EXPAND_SZ` value comes back expanded under this flag.
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    let len = (bytes as usize / 2).min(buf.len());
+    let value = String::from_utf16_lossy(&buf[..len]);
+    let value = value.trim_end_matches('\0').trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
 fn paths_home() -> String {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
