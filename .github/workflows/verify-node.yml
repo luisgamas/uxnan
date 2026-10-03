@@ -50,6 +50,8 @@ jobs:
       - name: Format check (prettier)
         run: npm run format:check
 
+      # The relay before the bridge: the bridge build copies the relay Worker
+      # bundle into its own package (`bridge/tools/copy-relay-worker.mjs`).
       - name: Build (shared → relay → bridge)
         run: npm run build
 

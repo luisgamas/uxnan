@@ -25,26 +25,18 @@ export function versionForFiles(id, version) {
   return `${base.major}.${base.minor}.${base.patch}`;
 }
 
-/** What each file holds today, without changing anything. */
-export function readCurrent(id, { cwd = process.cwd() } = {}) {
-  return component(id).versionFiles.map((entry) => {
+/** What each listed file holds today, without changing anything. */
+function readEntries(entries, { cwd = process.cwd() } = {}) {
+  return entries.map((entry) => {
     const text = readFileSync(join(cwd, entry.file), 'utf8');
     return { file: entry.file, version: adapterFor(entry.adapter).read(text, entry) };
   });
 }
 
-/**
- * Applies the version everywhere, then verifies. Returns what changed so the
- * caller can print it.
- *
- * @returns {{file: string, from: string|null, to: string}[]}
- */
-export function applyVersion(id, version, { cwd = process.cwd(), dryRun = false } = {}) {
-  const meta = component(id);
-  const target = versionForFiles(id, version);
+/** Writes one version into every listed file. Returns what changed. */
+function writeEntries(entries, target, { cwd = process.cwd(), dryRun = false } = {}) {
   const changes = [];
-
-  for (const entry of meta.versionFiles) {
+  for (const entry of entries) {
     const path = join(cwd, entry.file);
     const text = readFileSync(path, 'utf8');
     const adapter = adapterFor(entry.adapter);
@@ -57,7 +49,31 @@ export function applyVersion(id, version, { cwd = process.cwd(), dryRun = false 
     if (!dryRun && next !== text) writeFileSync(path, next);
     changes.push({ file: entry.file, from, to: target });
   }
+  return changes;
+}
 
+function assertEntries(label, entries, expected, { cwd = process.cwd() } = {}) {
+  const wrong = readEntries(entries, { cwd }).filter((entry) => entry.version !== expected);
+  if (wrong.length > 0) {
+    const detail = wrong.map((e) => `  ${e.file}: ${e.version ?? '(none)'}`).join('\n');
+    throw new Error(`${label}: these files do not say ${expected}:\n${detail}`);
+  }
+}
+
+/** What each file holds today, without changing anything. */
+export function readCurrent(id, { cwd = process.cwd() } = {}) {
+  return readEntries(component(id).versionFiles, { cwd });
+}
+
+/**
+ * Applies the version everywhere, then verifies. Returns what changed so the
+ * caller can print it.
+ *
+ * @returns {{file: string, from: string|null, to: string}[]}
+ */
+export function applyVersion(id, version, { cwd = process.cwd(), dryRun = false } = {}) {
+  const target = versionForFiles(id, version);
+  const changes = writeEntries(component(id).versionFiles, target, { cwd, dryRun });
   if (!dryRun) assertConsistent(id, target, { cwd });
   return changes;
 }
@@ -68,9 +84,33 @@ export function applyVersion(id, version, { cwd = process.cwd(), dryRun = false 
  * `--allow-same-version` hides at build time.
  */
 export function assertConsistent(id, expected, { cwd = process.cwd() } = {}) {
-  const wrong = readCurrent(id, { cwd }).filter((entry) => entry.version !== expected);
-  if (wrong.length > 0) {
-    const detail = wrong.map((e) => `  ${e.file}: ${e.version ?? '(none)'}`).join('\n');
-    throw new Error(`${id}: these files do not say ${expected}:\n${detail}`);
-  }
+  assertEntries(id, component(id).versionFiles, expected, { cwd });
+}
+
+/**
+ * A part the component carries (the relay Worker inside the bridge), looked up
+ * by id. Throws rather than returning undefined, like `component()`.
+ */
+export function carriedPart(id, partId) {
+  const part = (component(id).carries ?? []).find((p) => p.id === partId);
+  if (!part) throw new Error(`${id} carries no part named ${partId}`);
+  return part;
+}
+
+/** What a carried part's files hold today. */
+export function readCarried(part, { cwd = process.cwd() } = {}) {
+  return readEntries(part.versionFiles, { cwd });
+}
+
+/**
+ * Moves a carried part's own version — every one of its files, then reads them
+ * back — in the same tree the component's bump is written to. Carried parts use
+ * their version as tagged (they are npm-kind; no numeric-base rule applies).
+ *
+ * @returns {{file: string, from: string|null, to: string}[]}
+ */
+export function applyCarriedVersion(part, version, { cwd = process.cwd(), dryRun = false } = {}) {
+  const changes = writeEntries(part.versionFiles, version, { cwd, dryRun });
+  if (!dryRun) assertEntries(part.id, part.versionFiles, version, { cwd });
+  return changes;
 }

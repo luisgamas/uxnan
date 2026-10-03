@@ -56,10 +56,13 @@ export function isAncestorOfHead(ref, options) {
   }
 }
 
-/** Files changed between a ref and HEAD, restricted to one path. */
-export function changedFiles(fromRef, path, options) {
+/** A path or a list of them, as git pathspecs. */
+const pathspecs = (paths) => (Array.isArray(paths) ? paths : [paths]);
+
+/** Files changed between a ref and HEAD, restricted to one path or several. */
+export function changedFiles(fromRef, paths, options) {
   const range = fromRef ? `${fromRef}..HEAD` : 'HEAD';
-  return git(['diff', '--name-only', range, '--', path], options)
+  return git(['diff', '--name-only', range, '--', ...pathspecs(paths)], options)
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
@@ -91,9 +94,9 @@ export function isVersionOnlyDiff(fromRef, file, options) {
 }
 
 /** Commit subjects in the same range, for the summary. */
-export function commitSubjects(fromRef, path, options) {
+export function commitSubjects(fromRef, paths, options) {
   const range = fromRef ? `${fromRef}..HEAD` : 'HEAD';
-  return git(['log', '--format=%s', range, '--', path], options)
+  return git(['log', '--format=%s', range, '--', ...pathspecs(paths)], options)
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);

@@ -144,3 +144,133 @@ describe('inspect — version files', () => {
     assert.equal(report.nonShipping.length, 5);
   });
 });
+
+/**
+ * The bridge carries the relay Worker: `uxnan-relay` is private and never
+ * published, and its bundle reaches users only inside `uxnan-bridge`. So the
+ * bridge is measured over `relay/` and `shared/src/relay/` as well as its own
+ * folder, and the cut moves the Worker's own version only when it changed.
+ */
+const DATE = new Date('2026-10-03T12:00:00Z');
+
+function writeNodeVersions({ bridge, relay }) {
+  put('bridge/package.json', JSON.stringify({ name: 'uxnan-bridge', version: bridge }, null, 2));
+  put('relay/package.json', JSON.stringify({ name: 'uxnan-relay', version: relay }, null, 2));
+  put(
+    'package-lock.json',
+    JSON.stringify(
+      {
+        name: 'uxnan-monorepo',
+        packages: { bridge: { version: bridge }, relay: { version: relay } },
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
+/** A bridge release already shipped, carrying relay Worker 0.0.2. */
+function seedBridge() {
+  put('bridge/src/index.ts', 'export const bridge = 1;\n');
+  put('relay/src/worker.ts', 'export default {};\n');
+  put('relay/src/local/start-local-relay.ts', 'export const local = 1;\n');
+  put('shared/src/relay/protocol.ts', 'export const RELAY_PROTOCOL_VERSION = 1;\n');
+  put('shared/src/index.ts', 'export const shared = 1;\n');
+  writeNodeVersions({ bridge: '0.0.43-alpha.20261002', relay: '0.0.2-alpha.20260720' });
+  commit('feat: bridge and relay');
+  git('tag', 'bridge-v0.0.43-alpha.20261002');
+}
+
+describe('inspect — the bridge carries the relay Worker', () => {
+  it('needs a bridge release when only the Worker changed, and moves the Worker version', () => {
+    seedBridge();
+    put('relay/src/worker.ts', 'export default { fetch() {} };\n');
+    commit('feat(relay): answer fetch');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, true);
+    assert.deepEqual(report.substantive, ['relay/src/worker.ts']);
+    assert.deepEqual(report.carried, [
+      {
+        id: 'relay',
+        substantive: ['relay/src/worker.ts'],
+        worthy: true,
+        current: '0.0.2-alpha.20260720',
+        next: '0.0.3-alpha.20261003',
+      },
+    ]);
+  });
+
+  it('treats a protocol change in shared/src/relay as a Worker change', () => {
+    // esbuild inlines `@uxnan/shared/relay` into the bundle.
+    seedBridge();
+    put('shared/src/relay/protocol.ts', 'export const RELAY_PROTOCOL_VERSION = 2;\n');
+    commit('feat(contracts): relay protocol 2');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, true);
+    assert.equal(report.carried[0].worthy, true);
+  });
+
+  it('ignores the rest of shared — that is shared release, not a Worker change', () => {
+    seedBridge();
+    put('shared/src/index.ts', 'export const shared = 2;\n');
+    commit('feat(contracts): more shared');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, false);
+    assert.deepEqual(report.files, []);
+  });
+
+  it('does not count relay prose, tests or the Miniflare harness', () => {
+    seedBridge();
+    put('relay/FOR-DEV.md', '# FOR-DEV\n');
+    put('relay/docs/deploy.md', '# Deploy\n');
+    put('relay/test/worker.test.ts', 'test();\n');
+    put('relay/src/local/start-local-relay.ts', 'export const local = 2;\n');
+    commit('docs(relay): notes, tests and the harness');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, false);
+    assert.equal(report.carried[0].worthy, false);
+    assert.deepEqual(report.nonShipping.sort(), [
+      'relay/FOR-DEV.md',
+      'relay/docs/deploy.md',
+      'relay/src/local/start-local-relay.ts',
+      'relay/test/worker.test.ts',
+    ]);
+  });
+
+  it('leaves the Worker version alone when only the bridge changed', () => {
+    // Moving it would tell every user their deployed relay is out of date.
+    seedBridge();
+    put('bridge/src/index.ts', 'export const bridge = 2;\n');
+    commit('feat(bridge): more bridge');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, true);
+    assert.deepEqual(report.substantive, ['bridge/src/index.ts']);
+    assert.equal(report.carried[0].worthy, false);
+  });
+
+  it("counts the cut's own Worker version bump as bookkeeping", () => {
+    seedBridge();
+    writeNodeVersions({ bridge: '0.0.44-alpha.20261003', relay: '0.0.3-alpha.20261003' });
+    commit('build: prepare bridge 0.0.44-alpha.20261003');
+
+    const report = inspect('bridge', { cwd, date: DATE });
+    assert.equal(report.worthy, false);
+    assert.deepEqual(report.nonShipping.sort(), ['bridge/package.json', 'relay/package.json']);
+  });
+
+  it('never undercuts a historical relay-v tag', () => {
+    // Tags from when the relay was a published Node server stay in git and set
+    // the floor, whatever the file says.
+    seedBridge();
+    git('tag', 'relay-v0.0.7-alpha.20260801');
+    put('relay/src/worker.ts', 'export default { fetch() {} };\n');
+    commit('feat(relay): answer fetch');
+
+    assert.equal(inspect('bridge', { cwd, date: DATE }).carried[0].next, '0.0.8-alpha.20261003');
+  });
+});

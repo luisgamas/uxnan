@@ -18,7 +18,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { component } from './components.mjs';
+import { RELEASE_ORDER, component } from './components.mjs';
 import { tagsFor } from './git.mjs';
 import { baseOf } from './version.mjs';
 
@@ -60,9 +60,13 @@ export function previousTagFor(tag, allTags) {
   return best?.tag ?? null;
 }
 
-/** Which component a tag belongs to, from its prefix. */
+/**
+ * Which component a tag belongs to, from its prefix. A historical `relay-v*` tag
+ * belongs to none: the relay is no longer released on its own, so there is no
+ * release body to write for it.
+ */
 export function componentOf(tag) {
-  for (const id of ['shared', 'bridge', 'relay', 'mobile', 'desktop']) {
+  for (const id of RELEASE_ORDER) {
     if (component(id).tagPrefixes.some((prefix) => tag.startsWith(prefix))) return id;
   }
   return null;

@@ -17,7 +17,7 @@
  */
 
 import { inspect } from './changes.mjs';
-import { component, RELEASE_ORDER } from './components.mjs';
+import { component, RELEASE_ORDER, RETIRED } from './components.mjs';
 import { tagsFor } from './git.mjs';
 import { assertMovesForward } from './version.mjs';
 
@@ -41,7 +41,12 @@ export function tagPrefixFor(id, channel) {
 export function planCuts({ components, channel = 'stable', force = false, inspector = inspect }) {
   const wanted = RELEASE_ORDER.filter((id) => components.includes(id));
   const unknown = components.filter((id) => !RELEASE_ORDER.includes(id));
-  if (unknown.length > 0) throw new Error(`unknown component(s): ${unknown.join(', ')}`);
+  if (unknown.length > 0) {
+    const hints = unknown.filter((id) => RETIRED[id]).map((id) => `${id}: ${RETIRED[id]}`);
+    throw new Error(
+      `unknown component(s): ${unknown.join(', ')}${hints.length ? ` (${hints.join('; ')})` : ''}`,
+    );
+  }
 
   const cuts = [];
   const skipped = [];
@@ -64,6 +69,11 @@ export function planCuts({ components, channel = 'stable', force = false, inspec
       // Consumers that resolve this from npm must wait for it to be visible.
       waitFor: component(id).releaseBefore.length > 0 ? component(id).name : null,
       blocks: component(id).releaseBefore,
+      // Parts this cut also moves the version of (the relay Worker inside the
+      // bridge). Informational here — `prepare.mjs` does the writing.
+      carries: (report.carried ?? [])
+        .filter((part) => part.worthy)
+        .map((part) => ({ id: part.id, version: part.next })),
     });
   }
 

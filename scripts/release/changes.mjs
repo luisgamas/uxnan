@@ -6,18 +6,30 @@
  * checklist. A trigger that fires on any path under the component would have cut
  * a release of identical code, published it to npm, and put a row in the history
  * for nothing.
+ *
+ * A component is measured over every path that reaches its artifact, not just
+ * its own folder: the bridge carries the relay Worker, so a shipping change
+ * under `relay/` is a bridge change (see `carries` in `components.mjs`).
  */
 
-import { component, isNonShipping } from './components.mjs';
+import {
+  RELEASE_ORDER,
+  allVersionFiles,
+  component,
+  isNonShipping,
+  pathsOf,
+  within,
+} from './components.mjs';
 import {
   changedFiles,
   commitSubjects,
   isAncestorOfHead,
   isVersionOnlyDiff,
   latestTag,
+  tagsFor,
 } from './git.mjs';
-import { highestBase, nextVersion } from './version.mjs';
-import { tagsFor } from './git.mjs';
+import { readCarried } from './bump.mjs';
+import { highestBase, nextCarriedVersion, nextVersion } from './version.mjs';
 
 /**
  * @param {string} id component id
@@ -25,6 +37,10 @@ import { tagsFor } from './git.mjs';
  * @returns {{
  *   id: string, since: string|null, landed: boolean, files: string[],
  *   nonShipping: string[], substantive: string[], commits: number,
+ *   carried: {
+ *     id: string, substantive: string[], worthy: boolean,
+ *     current: string|null, next: string,
+ *   }[],
  *   worthy: boolean, shipped: string|null, next: string,
  * }}
  *
@@ -44,18 +60,38 @@ export function inspect(id, options = {}) {
   // came to be — an identical build to 0.0.33 with an empty release body — and
   // left alone it repeats every night.
   const landed = isAncestorOfHead(since, gitOptions);
-  const files = changedFiles(since, meta.path, gitOptions);
+  const paths = pathsOf(meta);
+  const files = changedFiles(since, paths, gitOptions);
 
   // Which is why a version file is judged by *what* changed inside it. Only its
   // version line moved → bookkeeping, whichever direction it moved in. The same
   // file having also gained a dependency is real work and still counts.
-  const versionFiles = new Set(meta.versionFiles.map((entry) => entry.file));
+  const versionFiles = new Set(allVersionFiles(meta).map((entry) => entry.file));
   const bookkeeping = (file) =>
     versionFiles.has(file) && isVersionOnlyDiff(since, file, gitOptions);
 
   const skip = (file) => isNonShipping(file, meta) || bookkeeping(file);
   const nonShipping = files.filter(skip);
   const substantive = files.filter((file) => !skip(file));
+
+  // Which carried parts changed, and so must move their own version in the cut.
+  // `current` is read from the working tree, because that is what a cut writes.
+  const carried = (meta.carries ?? []).map((part) => {
+    const own = substantive.filter((file) => part.paths.some((path) => within(file, path)));
+    const current = readCarried(part, { cwd: options.cwd })[0]?.version ?? null;
+    return {
+      id: part.id,
+      substantive: own,
+      worthy: own.length > 0,
+      current,
+      next: nextCarriedVersion({
+        kind: part.kind,
+        current,
+        tags: tagsFor(part.tagPrefixes, gitOptions),
+        date: options.date,
+      }),
+    };
+  });
 
   const tags = tagsFor(meta.tagPrefixes, gitOptions);
   const shipped = highestBase(tags);
@@ -73,7 +109,8 @@ export function inspect(id, options = {}) {
     files,
     nonShipping,
     substantive,
-    commits: commitSubjects(since, meta.path, gitOptions).length,
+    carried,
+    commits: commitSubjects(since, paths, gitOptions).length,
     worthy: substantive.length > 0,
     shipped: shipped ? `${shipped.major}.${shipped.minor}.${shipped.patch}` : null,
     next: version,
@@ -82,5 +119,5 @@ export function inspect(id, options = {}) {
 
 /** The same answer for every component, in the order releases must be cut. */
 export function inspectAll(options = {}) {
-  return ['shared', 'bridge', 'relay', 'mobile', 'desktop'].map((id) => inspect(id, options));
+  return RELEASE_ORDER.map((id) => inspect(id, options));
 }
