@@ -34,6 +34,7 @@ use uxnan_host_protocol::{
     negotiate, read_frame, write_frame, AgentStop, Call, ClientMessage, ErrorCode, Event, Frame,
     Outcome, Reply, ServerMessage, SessionInfo, Welcome, PROTOCOL,
 };
+use uxnan_workspace_engine::procscan;
 use uxnan_workspace_engine::pty::{PtyManager, PtySpec};
 use uxnan_workspace_engine::screen::Screen;
 
@@ -59,6 +60,10 @@ const SNAPSHOT_PIECE: usize = 64 * 1024;
 /// tool can take a while (waiting on a page, on an agent); past this the
 /// caller is told the app did not answer.
 const MCP_WAIT: Duration = Duration::from_secs(300);
+
+/// How often the process table is read for the agent each terminal runs —
+/// the app's own pace for its terminals here.
+const AGENT_SCAN: Duration = Duration::from_secs(2);
 
 /// Reports held for a terminal nobody is watching. The newest matter — they
 /// are the agent's state now — so the oldest go first.
@@ -87,6 +92,8 @@ struct Shared {
     viewers: HashMap<u64, Viewer>,
     /// Agent reports that arrived while nobody was watching.
     held: VecDeque<Frame>,
+    /// The agent this terminal runs, as last seen ([`Daemon::scan_agents`]).
+    agent: Option<String>,
 }
 
 struct Session {
@@ -116,6 +123,9 @@ pub struct Daemon {
     /// sent to, and where the answer goes.
     mcp_waiting: Mutex<HashMap<u64, (u64, tokio::sync::oneshot::Sender<Answer>)>>,
     next_ticket: AtomicU64,
+    /// The agent CLIs a client asked to be told about (`WatchAgents`); empty
+    /// means nobody asked, and the process table is left alone.
+    agent_commands: Mutex<Vec<String>>,
 }
 
 impl Daemon {
@@ -135,6 +145,7 @@ impl Daemon {
             hooks: OnceLock::new(),
             mcp_waiting: Mutex::new(HashMap::new()),
             next_ticket: AtomicU64::new(1),
+            agent_commands: Mutex::new(Vec::new()),
         }
     }
 
@@ -171,6 +182,7 @@ impl Daemon {
             screen: Screen::new(rows, cols),
             viewers: HashMap::new(),
             held: VecDeque::new(),
+            agent: None,
         }));
         let alive = Arc::new(AtomicBool::new(true));
         let ended_at = Arc::new(Mutex::new(None));
@@ -313,8 +325,71 @@ impl Daemon {
         for report in shared.held.drain(..) {
             viewer.send(report);
         }
+        // And which agent it is: a tab that comes back names it at once
+        // instead of on the next change.
+        if let Some(command) = shared.agent.clone() {
+            viewer.send(Frame::control(&ServerMessage::Event(Event::Agent {
+                session,
+                command: Some(command),
+            })));
+        }
         shared.viewers.insert(viewer_id, viewer.clone());
         true
+    }
+
+    /// The terminals to look at for agents, and the commands to look for —
+    /// `None` when there is nobody to tell or nothing to look for, so an idle
+    /// host's process table is never walked.
+    #[allow(clippy::type_complexity)]
+    fn agent_targets(&self) -> Option<(Vec<String>, Vec<(u32, u32, Arc<Mutex<Shared>>)>)> {
+        if self.clients.load(Ordering::SeqCst) == 0 {
+            return None;
+        }
+        let commands = self.agent_commands.lock().unwrap().clone();
+        if commands.is_empty() {
+            return None;
+        }
+        let targets: Vec<_> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, s)| s.alive.load(Ordering::SeqCst))
+            .filter_map(|(id, s)| s.pid.map(|pid| (*id, pid, Arc::clone(&s.shared))))
+            .collect();
+        (!targets.is_empty()).then_some((commands, targets))
+    }
+
+    /// One look at the process table: each terminal whose agent changed says
+    /// so to its viewers. A terminal nobody watches still keeps what it runs,
+    /// for the viewer that attaches.
+    async fn scan_agents(&self, table: &mut Option<procscan::Table>) {
+        let Some((commands, targets)) = self.agent_targets() else {
+            return;
+        };
+        let mut owned = table.take().unwrap_or_default();
+        owned = match tokio::task::spawn_blocking(move || {
+            owned.refresh();
+            owned
+        })
+        .await
+        {
+            Ok(refreshed) => refreshed,
+            Err(_) => return,
+        };
+        for (session, pid, shared) in targets {
+            let command = owned.agent_of(pid, &commands);
+            let mut shared = shared.lock().unwrap();
+            if shared.agent == command {
+                continue;
+            }
+            shared.agent = command.clone();
+            let frame = Frame::control(&ServerMessage::Event(Event::Agent { session, command }));
+            for viewer in shared.viewers.values() {
+                viewer.send(frame.clone());
+            }
+        }
+        *table = Some(owned);
     }
 
     /// Answer a request from a terminal here (`endpoint`): a report goes to
@@ -521,6 +596,10 @@ impl Daemon {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
+            Call::WatchAgents { commands } => {
+                *self.agent_commands.lock().unwrap() = commands;
+                Outcome::Ok { reply: Reply::Done }
+            }
             Call::List => {
                 let sessions = self.sessions.lock().unwrap();
                 let mut list: Vec<SessionInfo> = sessions
@@ -627,6 +706,19 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
         }
         Err(e) => log::line(&format!("agent reports unavailable: {e}")),
     }
+
+    // Which agent each terminal runs, looked at every two seconds — only while
+    // a client is connected and has said what to look for.
+    let scanner = Arc::clone(&daemon);
+    tokio::spawn(async move {
+        let mut table = None;
+        let mut every = tokio::time::interval(AGENT_SCAN);
+        every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            every.tick().await;
+            scanner.scan_agents(&mut table).await;
+        }
+    });
 
     let sweeper = Arc::clone(&daemon);
     let mut ticks = tokio::time::interval(SWEEP.min(idle.max(Duration::from_secs(1))));

@@ -22,7 +22,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sysinfo::System;
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 /// Strip a known executable/script extension from a path segment.
 fn strip_ext(s: &str) -> &str {
@@ -306,6 +306,36 @@ fn detect_in_tree(
     None
 }
 
+/// The process table, kept between scans, for asking which agent each terminal
+/// runs — on this machine by the app's 2-second watch, on a host by its engine.
+pub struct Table(System);
+
+impl Default for Table {
+    fn default() -> Self {
+        Self(System::new())
+    }
+}
+
+impl Table {
+    /// Read the table again, **with** command lines: the default refresh only
+    /// names the executable (`node`), so an agent behind a Node shim (Codex, Pi,
+    /// …) would never match without its `…/agent.js` argument. A blocking,
+    /// syscall-heavy walk — run it off the async runtime.
+    pub fn refresh(&mut self) {
+        self.0.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always),
+        );
+    }
+
+    /// The agent in the terminal whose shell is `root_pid`, as of the last
+    /// [`refresh`](Self::refresh). See [`detect_agent`].
+    pub fn agent_of(&self, root_pid: u32, commands: &[String]) -> Option<String> {
+        detect_agent(&self.0, root_pid, commands)
+    }
+}
+
 /// The agent command running as the foreground job of `root_pid`, or `None` when
 /// the shell is idle / running a non-agent command. See [`detect_in_tree`].
 pub fn detect_agent(sys: &System, root_pid: u32, commands: &[String]) -> Option<String> {
@@ -338,6 +368,29 @@ pub fn detect_agent_process(
         );
     }
     detect_in_tree(&procs, root_pid, commands)
+}
+
+#[cfg(all(test, unix))]
+mod table_tests {
+    use super::Table;
+
+    #[test]
+    fn a_table_finds_the_agent_running_under_a_root_and_forgets_it_once_gone() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let root = std::process::id();
+        let commands = vec!["sleep".to_string()];
+        let mut table = Table::default();
+        table.refresh();
+        assert_eq!(table.agent_of(root, &commands).as_deref(), Some("sleep"));
+        assert_eq!(table.agent_of(root, &["claude".to_string()]), None);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        table.refresh();
+        assert_eq!(table.agent_of(root, &commands), None);
+    }
 }
 
 #[cfg(test)]

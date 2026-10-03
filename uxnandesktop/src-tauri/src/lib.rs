@@ -473,7 +473,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(2));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                let mut sys = sysinfo::System::new();
+                let mut table = crate::procscan::Table::default();
                 let mut last: std::collections::HashMap<String, Option<String>> =
                     std::collections::HashMap::new();
                 loop {
@@ -488,27 +488,19 @@ pub fn run() {
                         continue;
                     }
                     let commands = state.agent_commands.read().await.clone();
-                    // Refresh WITH command lines — the default refresh only gives
-                    // the exe name (`node`), so node-shim agents (Codex/Pi/…)
-                    // would never match without their `…/agent.js` argument. The
-                    // scan is a blocking, syscall-heavy walk of the whole process
-                    // table, so run it on a blocking thread (moving `sys` in and
-                    // back out) instead of stalling this Tokio worker.
-                    sys = tokio::task::spawn_blocking(move || {
-                        sys.refresh_processes_specifics(
-                            sysinfo::ProcessesToUpdate::All,
-                            true,
-                            sysinfo::ProcessRefreshKind::nothing()
-                                .with_cmd(sysinfo::UpdateKind::Always),
-                        );
-                        sys
+                    // A blocking walk of the whole process table: on a blocking
+                    // thread (moving the table in and back out) rather than
+                    // stalling this Tokio worker.
+                    table = tokio::task::spawn_blocking(move || {
+                        table.refresh();
+                        table
                     })
                     .await
                     .expect("agent scan task panicked");
                     let mut live = std::collections::HashSet::new();
                     for (pty_id, pid) in pids {
                         live.insert(pty_id.clone());
-                        let command = crate::procscan::detect_agent(&sys, pid, &commands);
+                        let command = table.agent_of(pid, &commands);
                         if last.get(&pty_id) != Some(&command) {
                             last.insert(pty_id.clone(), command.clone());
                             // Keep the resource monitor's terminal link in step,

@@ -78,12 +78,13 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,066 backend tests**
-in total — 744 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 212 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 28 in
-`uxnan-host` (23 against the real daemon over its socket — among them a project's
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,069 backend tests**
+in total — 745 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 213 in `uxnan-workspace-engine` (its git, libgit2 fast path and worktree placement among them), 5 in `uxnan-host-protocol`, 29 in
+`uxnan-host` (24 against the real daemon over its socket — among them a project's
 files listed, saved and searched on the host, its git read, staged and
-committed there, and its worktrees made and removed there, an agent's
+committed there, its worktrees made and removed there, and which agent a terminal runs
+said as it changes and to a viewer that comes back, an agent's
 report sent by the real reporter script reaching only its own terminal, and the
 hooks wired into a temporary `HOME`, and a daemon run from a build folder
 removing the old builds nothing runs from, and a viewer that starts empty
@@ -92,8 +93,8 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,014 of which run everywhere; the other 52 are ignored probes that need something real to talk to
-(44 live SSH probes — 40 against a real `sshd`, one of which idles for five
+`tests/` — 1,016 of which run everywhere; the other 53 are ignored probes that need something real to talk to
+(45 live SSH probes — 41 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -113,7 +114,8 @@ list, duplicate, rename, search by name and content, delete) and its git
 git's own refusal) — and one more, armed also by `UXNAN_SSH_TEST_AGENT` (an agent
 holding a key the host authorizes for its own account), pushes from the host
 over SSH with the agent the connection forwards, before and after a reconnect,
-after a push with no agent has failed —
+after a push with no agent has failed — and one more hears the host engine say
+which agent a terminal there runs, and when it ends —
 plus **4 against a Linux host in a container**;
 see below — one pwsh preflight that runs the generated PowerShell script through
 a real `pwsh`, and the 7 supervised live GitHub tests).

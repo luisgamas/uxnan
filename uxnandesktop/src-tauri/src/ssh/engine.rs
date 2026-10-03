@@ -322,6 +322,11 @@ type OnMcp = Arc<std::sync::Mutex<Option<McpFn>>>;
 pub type UrlFn = Box<dyn Fn(u32, String) + Send + Sync>;
 type OnUrl = Arc<std::sync::Mutex<Option<UrlFn>>>;
 
+/// What hears that the agent running in one of this host's terminals changed:
+/// its session, and the agent's command (`None` when it is gone).
+pub type AgentFn = Box<dyn Fn(u32, Option<String>) + Send + Sync>;
+type OnAgent = Arc<std::sync::Mutex<Option<AgentFn>>>;
+
 /// What a launch on the host needs to reach this app's tools through its
 /// engine (`AgentTools`): the facts this app builds that host's launch
 /// catalog from, with the same code it uses for its own.
@@ -355,6 +360,7 @@ pub struct HostEngine {
     on_hook: OnHook,
     on_mcp: OnMcp,
     on_url: OnUrl,
+    on_agent: OnAgent,
     /// The host's facts for its launches, asked once per connection.
     tools: tokio::sync::OnceCell<Option<HostTools>>,
     /// Asks the reader and the writer to stop, which closes the channel. A
@@ -433,6 +439,7 @@ impl HostEngine {
         let on_hook: OnHook = Arc::default();
         let on_mcp: OnMcp = Arc::default();
         let on_url: OnUrl = Arc::default();
+        let on_agent: OnAgent = Arc::default();
 
         // Writer: one owner of the channel's write half.
         let writer_alive = Arc::clone(&alive);
@@ -465,6 +472,7 @@ impl HostEngine {
         let reader_hook = Arc::clone(&on_hook);
         let reader_mcp = Arc::clone(&on_mcp);
         let reader_url = Arc::clone(&on_url);
+        let reader_agent = Arc::clone(&on_agent);
         let pong = out.clone();
         let mut reader_shutdown = shutdown_rx.clone();
         let reader_heard = Arc::clone(&last_heard);
@@ -531,6 +539,11 @@ impl HostEngine {
                         Ok(ServerMessage::Event(Event::OpenUrl { session, url })) => {
                             if let Some(open) = reader_url.lock().unwrap().as_ref() {
                                 open(session, url);
+                            }
+                        }
+                        Ok(ServerMessage::Event(Event::Agent { session, command })) => {
+                            if let Some(heard) = reader_agent.lock().unwrap().as_ref() {
+                                heard(session, command);
                             }
                         }
                         Ok(ServerMessage::Event(Event::Exited { session, .. })) => {
@@ -608,6 +621,7 @@ impl HostEngine {
             on_hook,
             on_mcp,
             on_url,
+            on_agent,
             tools: tokio::sync::OnceCell::new(),
             shutdown,
             generation: conn.generation(),
@@ -937,6 +951,27 @@ impl HostEngine {
         *self.on_url.lock().unwrap() = Some(open);
     }
 
+    /// Where word of the agent each terminal runs goes ([`watch_agents`]).
+    ///
+    /// [`watch_agents`]: Self::watch_agents
+    pub fn set_on_agent(&self, heard: AgentFn) {
+        *self.on_agent.lock().unwrap() = Some(heard);
+    }
+
+    /// Ask the engine to say which agent each of its terminals runs — one of
+    /// `commands`, the agent CLIs this app knows — as it changes. A newer list
+    /// replaces this one. An engine too old to say is left alone: its tabs
+    /// simply are not named by what runs in them.
+    pub async fn watch_agents(&self, commands: Vec<String>) -> Result<(), AppError> {
+        if self.welcome.protocol < 11 {
+            return Ok(());
+        }
+        match self.request(Call::WatchAgents { commands }, None).await? {
+            Reply::Done => Ok(()),
+            other => Err(unexpected("watching agents", &other)),
+        }
+    }
+
     /// Answer an MCP call this engine relayed, with what this app's own MCP
     /// server answered.
     pub async fn answer_mcp(&self, ticket: u64, status: u16, body: String) {
@@ -1115,6 +1150,17 @@ impl Engines {
             .get(host_id)
             .filter(|e| e.is_alive() && e.generation() == generation)
             .cloned()
+    }
+
+    /// Every live engine, of every connected host.
+    pub async fn all(&self) -> Vec<Arc<HostEngine>> {
+        self.engines
+            .lock()
+            .await
+            .values()
+            .filter(|e| e.is_alive())
+            .cloned()
+            .collect()
     }
 
     /// Forget a host's engine and close its channel — it would otherwise keep

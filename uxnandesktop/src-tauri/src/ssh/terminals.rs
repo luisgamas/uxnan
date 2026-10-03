@@ -934,7 +934,11 @@ mod tests {
                  echo one > a.txt; git add a.txt; git commit -qm one",
                 who.trim()
             );
-            let out = run(Arc::clone(&conn), format!("sh -c \"{}\"", setup.replace('"', "\\\""))).await;
+            let out = run(
+                Arc::clone(&conn),
+                format!("sh -c \"{}\"", setup.replace('"', "\\\"")),
+            )
+            .await;
             assert_eq!(out.exit_code, Some(0), "setup: {}", out.stderr);
 
             // Without an agent there is nothing to sign with.
@@ -943,7 +947,12 @@ mod tests {
                 format!("cd {work} && env -u SSH_AUTH_SOCK git push --dry-run 2>&1"),
             )
             .await;
-            assert_ne!(bare.exit_code, Some(0), "pushed with no agent: {}", bare.stdout);
+            assert_ne!(
+                bare.exit_code,
+                Some(0),
+                "pushed with no agent: {}",
+                bare.stdout
+            );
 
             let () = first
                 .git(GitCall::Push { path: work.clone() })
@@ -952,11 +961,14 @@ mod tests {
             let count = |conn: Arc<crate::ssh::conn::Connection>| {
                 let dir = dir.clone();
                 async move {
-                    run(conn, format!("git --git-dir {dir}/bare.git rev-list --count main"))
-                        .await
-                        .stdout
-                        .trim()
-                        .to_string()
+                    run(
+                        conn,
+                        format!("git --git-dir {dir}/bare.git rev-list --count main"),
+                    )
+                    .await
+                    .stdout
+                    .trim()
+                    .to_string()
                 }
             };
             assert_eq!(count(Arc::clone(&conn)).await, "1");
@@ -982,6 +994,71 @@ mod tests {
 
             let _ = run(Arc::clone(&conn), format!("rm -rf {dir}")).await;
             println!("live: {alias} pushed twice with the forwarded agent, across a reconnect");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a POSIX host"]
+        async fn the_agent_a_host_terminal_runs_reaches_this_side() {
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let terminals = EngineTerminals::default();
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let (heard_tx, mut heard) = tokio::sync::mpsc::unbounded_channel();
+            engine.set_on_agent(Box::new(move |session, command| {
+                let _ = heard_tx.send((session, command));
+            }));
+            engine
+                .watch_agents(vec!["claude".to_string()])
+                .await
+                .expect("the engine looks for agents");
+            let (seen, output) = collector();
+            terminals
+                .create(
+                    "live",
+                    &engine,
+                    EngineTerminalSpec {
+                        id: "tab-agent".into(),
+                        sid: None,
+                        cwd: None,
+                        env: vec![],
+                        cols: 100,
+                        rows: 30,
+                    },
+                    output,
+                    || {},
+                )
+                .await
+                .unwrap();
+            answer_cursor_query(&terminals, &engine, "tab-agent", &seen).await;
+            // A stand-in named like an agent, as the terminal's foreground job.
+            terminals
+                .write(
+                    Some(&engine),
+                    "tab-agent",
+                    b"(exec -a claude sleep 20)\r".to_vec(),
+                )
+                .await
+                .unwrap();
+            let wait = std::time::Duration::from_secs(15);
+            let (session, command) = tokio::time::timeout(wait, heard.recv())
+                .await
+                .expect("the engine says what runs there")
+                .expect("the engine is still there");
+            assert_eq!(command.as_deref(), Some("claude"));
+            // Ended there: the shell is itself again, and this side hears so.
+            terminals
+                .write(Some(&engine), "tab-agent", b"\x03".to_vec())
+                .await
+                .unwrap();
+            let ended = tokio::time::timeout(wait, heard.recv())
+                .await
+                .expect("the engine says the agent ended")
+                .expect("the engine is still there");
+            assert_eq!(ended, (session, None));
+            let _ = terminals.close(Some(&engine), "tab-agent").await;
+            println!("live: {alias} said which agent its terminal ran, and when it ended");
         }
 
         #[tokio::test]

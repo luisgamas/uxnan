@@ -1577,3 +1577,72 @@ async fn a_projects_worktrees_are_listed_made_and_removed_on_the_host() {
     assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
     assert!(!std::path::Path::new(preview.as_str().unwrap()).exists());
 }
+
+/// The next word on which agent a terminal runs, skipping everything else.
+async fn next_agent(client: &mut Client) -> (u32, Option<String>) {
+    loop {
+        if let ServerMessage::Event(Event::Agent { session, command }) = client.control().await {
+            return (session, command);
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_agent_a_terminal_runs_is_said_as_it_changes_and_to_who_comes_back() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let opened = client
+        .call(Call::Open {
+            cols: 100,
+            rows: 30,
+            cwd: None,
+            command: Some(vec!["bash".into(), "--norc".into()]),
+            env: vec![],
+            label: "tab-agent".into(),
+        })
+        .await;
+    let Outcome::Ok {
+        reply: Reply::Opened { session, .. },
+    } = opened
+    else {
+        panic!("open failed: {opened:?}");
+    };
+    let commands = vec!["claude".to_string()];
+    assert_eq!(
+        client
+            .call(Call::WatchAgents {
+                commands: commands.clone()
+            })
+            .await,
+        Outcome::Ok { reply: Reply::Done }
+    );
+
+    // A stand-in agent, named like one, as the terminal's foreground job.
+    client.type_in(session, "(exec -a claude sleep 30)\n").await;
+    assert_eq!(
+        next_agent(&mut client).await,
+        (session, Some("claude".to_string()))
+    );
+
+    // A viewer that comes back is told at once, not on the next change.
+    let (mut back, _) = Client::hello(&daemon.socket()).await;
+    let attached = back
+        .call(Call::Attach {
+            session,
+            cols: 100,
+            rows: 30,
+            history: false,
+        })
+        .await;
+    assert!(matches!(attached, Outcome::Ok { .. }), "{attached:?}");
+    assert_eq!(
+        next_agent(&mut back).await,
+        (session, Some("claude".to_string()))
+    );
+
+    // And when it ends, both are told the shell is back to itself.
+    let stopped = client.call(Call::StopAgent { session, commands }).await;
+    assert!(matches!(stopped, Outcome::Ok { .. }), "{stopped:?}");
+    assert_eq!(next_agent(&mut client).await, (session, None));
+    assert_eq!(next_agent(&mut back).await, (session, None));
+}

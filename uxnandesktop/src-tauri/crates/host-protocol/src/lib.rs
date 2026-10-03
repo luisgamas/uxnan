@@ -40,7 +40,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///   its worktrees: list, branches, where a new one goes, create, remove);
 ///   `ErrorCode::Git` for what git itself refused and `ErrorCode::Io` for what
 ///   the filesystem did, so an error reads the same as on the app's machine.
-pub const PROTOCOL: u32 = 10;
+/// - 11: which agent each terminal runs — `WatchAgents`, `Event::Agent`.
+pub const PROTOCOL: u32 = 11;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -287,6 +288,12 @@ pub enum Call {
     /// it does not in a few seconds).
     StopAgent {
         session: u32,
+        commands: Vec<String>,
+    },
+    /// Say which agent each of this daemon's terminals runs, as it changes
+    /// ([`Event::Agent`]) — one of `commands`, the agent CLIs the client
+    /// knows. Replaces the list a previous call gave; an empty one stops it.
+    WatchAgents {
         commands: Vec<String>,
     },
     /// The last turn's prompt and reply from the transcript an agent's report
@@ -658,6 +665,13 @@ pub enum Event {
     /// (the `$BROWSER` shim). The URL is as it was given — a `localhost` one
     /// names this machine.
     OpenUrl { session: u32, url: String },
+    /// The agent running in a terminal changed: its command, or `None` when
+    /// the shell is back to itself. Also sent, when there is one, to a viewer
+    /// that attaches.
+    Agent {
+        session: u32,
+        command: Option<String>,
+    },
 }
 
 /// The version two windows agree on, if they overlap.

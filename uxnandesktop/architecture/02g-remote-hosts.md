@@ -1628,7 +1628,8 @@ la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
 login); 9 = los ficheros del proyecto (`Call::Fs(FsCall)` → `Reply::Value`, el
 `workspace_engine::fs` de la app corrido alli, §5.10); 10 = su git
 (`Call::Git(GitCall)`, el `workspace_engine::git` de la app, y `ErrorCode::Git`
-para lo que git rechaza, §5.10b). Imprime
+para lo que git rechaza, §5.10b); 11 = que agente corre cada terminal
+(`WatchAgents`, `Event::Agent`: capa 3 en el host, §6). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
@@ -1787,7 +1788,7 @@ ficheros, git y busqueda servidos por el motor.
 |---|---|
 | Capa 2 — titulo / OSC | **Funciona sin trabajo extra**: viaja en el stream de bytes del PTY |
 | Capa 1 — hooks HTTP | **Funciona con el motor** (Linux, macOS, Windows): los reporters, cableados alli, postean al receptor del motor y el reporte viaja por su canal (§5.16). Sin el motor: no |
-| Capa 3 — deteccion de proceso | Requiere sondeo remoto de procesos. Fase posterior |
+| Capa 3 — deteccion de proceso | **Funciona con el motor**: el motor lee la tabla de procesos del host cada 2 s —solo mientras alguien mira y la app le dijo que agentes buscar (`WatchAgents`)— con el mismo `procscan` que la app usa aqui, y avisa cuando cambia el agente de una terminal (`Event::Agent`), tambien a quien vuelve a conectarse. La pestaña lo recibe como el mismo `agent:detected` local (§5.16) |
 
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|

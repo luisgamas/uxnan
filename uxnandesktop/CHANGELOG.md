@@ -86,6 +86,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   written, a wrong one is forgotten at once, and a one-time code is never kept.
 - **Keys are offered in the order that interrupts you least**: an encrypted key
   nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A tab on a host is named by the agent running in it.** Start Claude Code,
+  Codex or any other known agent by hand in a host terminal and the tab and
+  its sidebar row follow it, as they do here: the host engine looks at that
+  machine's processes — only while you are connected — and says when the agent
+  in a terminal changes, including to a window that reconnects.
 - **Worktrees on a host.** A project that lives on a host now lists, creates
   and removes its worktrees like a local one — new or existing branch, base,
   an optional folder of your own, and the same optional branch cleanup — done

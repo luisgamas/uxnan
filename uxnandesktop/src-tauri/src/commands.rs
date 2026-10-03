@@ -1043,6 +1043,55 @@ fn host_loopback_port(url: &str) -> Option<(u16, &str)> {
     Some((port.parse().ok()?, path))
 }
 
+/// Which agent a host's terminals run, as its engine sees it (layer 3 there),
+/// told to the window exactly as this machine's own watch tells it
+/// (`agent:detected`), under the tab that shows the terminal now. The engine
+/// is asked to look for the agents this app knows, and told again whenever
+/// that list changes (`set_agent_commands`).
+fn forward_host_agents<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host_id: &str,
+    engine: &std::sync::Arc<ssh::engine::HostEngine>,
+) {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(u32, Option<String>)>();
+    engine.set_on_agent(Box::new(move |session, command| {
+        let _ = tx.send((session, command));
+    }));
+    let host = host_id.to_string();
+    let epoch = engine.epoch().to_string();
+    let emitter = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some((session, command)) = rx.recv().await {
+            let state = emitter.state::<AppState>();
+            // Sent right after the screen that reattaches a terminal — a
+            // moment before its tab is registered.
+            let mut tab = None;
+            for _ in 0..20 {
+                tab = state.engine_terminals.tab_for(&host, &epoch, session).await;
+                if tab.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            if let Some(pty_id) = tab {
+                let _ = emitter.emit("agent:detected", AgentDetectedEvent { pty_id, command });
+            }
+        }
+    });
+    let asking = std::sync::Arc::clone(engine);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let commands = app.state::<AppState>().agent_commands.read().await.clone();
+        if let Err(e) = asking.watch_agents(commands).await {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Warn,
+                "ssh-engine",
+                &format!("could not ask the host engine which agents run: {e}"),
+            );
+        }
+    });
+}
+
 /// A host's agent reports, fed — one at a time, in order — to the same reader
 /// as this machine's (`hooks::handle_report`), under the tab that shows the
 /// terminal now. That tab is found by the terminal's session, not by the id the
@@ -1235,6 +1284,7 @@ async fn engine_for<R: tauri::Runtime>(
             );
         }));
         forward_host_reports(app, host_id, &engine);
+        forward_host_agents(app, host_id, &engine);
         serve_host_tools(app, host_id, &engine);
         if state.data.read().await.settings.auto_install_hooks {
             let wiring = std::sync::Arc::clone(&engine);
@@ -4945,7 +4995,11 @@ pub async fn set_agent_commands(
     state: State<'_, AppState>,
     commands: Vec<String>,
 ) -> Result<(), CommandError> {
-    *state.agent_commands.write().await = commands;
+    *state.agent_commands.write().await = commands.clone();
+    // The host engines look for the same agents (`forward_host_agents`).
+    for engine in state.ssh_engines.all().await {
+        let _ = engine.watch_agents(commands.clone()).await;
+    }
     Ok(())
 }
 

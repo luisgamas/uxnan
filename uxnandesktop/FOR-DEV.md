@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,066 Rust tests (744 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 212
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 28 in `uxnan-host` (23 against the daemon itself) + 45
-integration), of which 52 are ignored probes that need something real to talk to
-(44 live SSH probes — 40 against a real `sshd` and 4 against a **Linux host in a
+`docs/chat.md`). 1,069 Rust tests (745 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 213
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 29 in `uxnan-host` (24 against the daemon itself) + 45
+integration), of which 53 are ignored probes that need something real to talk to
+(45 live SSH probes — 41 against a real `sshd` and 4 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,804 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -1330,12 +1330,6 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
 - [ ] **WSL is still detected by sniffing UNC paths** (`wsl.rs`, `git.rs`) instead
       of being a `wsl:<distro>` target. The id is reserved and `TargetId::parse`
       rejects it on purpose; promoting it is its own refactor.
-- [ ] **Layer 3 on a host: which agent a host terminal runs.** Layers 1 (the
-      engine's hook receiver, `02g` §5.16) and 2 (title/OSC, in the PTY
-      stream) work on a host; layer 3, the process probe, does not yet. The
-      engine already carries `procscan` (it backs `StopAgent`); what is owed is
-      a call that answers a session's foreground agent, and the desktop asking
-      it where it asks `procscan` for a local tab.
 - [ ] Remote resource snapshots (CPU/memory of a host's agents). Session
       survival across an app restart landed with the host engine (`02g` §5.16).
 
@@ -1757,7 +1751,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,066 Rust + 1,804 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,069 Rust + 1,804 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
