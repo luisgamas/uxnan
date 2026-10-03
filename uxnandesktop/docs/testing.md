@@ -78,10 +78,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,083 backend tests**
-in total — 881 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
-in `uxnan-cli`, 97 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 23 in
-`uxnan-host` (19 against the real daemon over its socket — among them an agent's
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,086 backend tests**
+in total — 883 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+in `uxnan-cli`, 97 in `uxnan-workspace-engine`, 5 in `uxnan-host-protocol`, 24 in
+`uxnan-host` (20 against the real daemon over its socket — among them an agent's
 report sent by the real reporter script reaching only its own terminal, and the
 hooks wired into a temporary `HOME`, and a daemon run from a build folder
 removing the old builds nothing runs from, and a viewer that starts empty
@@ -90,7 +90,7 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,024 of which run everywhere; the other 59 are ignored probes that need something real to talk to
+`tests/` — 1,027 of which run everywhere; the other 59 are ignored probes that need something real to talk to
 (51 live SSH probes — 39 against a real `sshd`, one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
@@ -150,6 +150,17 @@ cd uxnandesktop
 npm run test:ssh:linux      # builds + starts the container, then runs the suite
 npm run ssh:host:down       # when you are done
 ```
+
+**A Windows host, in CI.** The host engine on Windows (its named pipe, leaving
+the SSH session's job, `cmd` as the shell, the `.exe` install) is proven by
+`ci-desktop.yml` → `windows-ssh-host`: the `windows-latest` runner turns on its
+own OpenSSH Server, puts a key for itself in `administrators_authorized_keys`,
+reaches itself as `uxnan-win-self`, builds the Windows engine and runs the live
+terminal suite against it (`ssh::terminals::tests::live`, minus the tests that
+need a POSIX host or its Claude Code). The tests type each shell's own lines
+(`print_line`) and answer ConPTY's cursor-position query (`ESC[6n`) as xterm.js
+does in the app. It runs on a push or pull request that touches the SSH layer or
+the engine, and on a manual dispatch — as does the Linux job.
 
 `docker/ssh-test-host/` is the host: Debian, `sshd`, `git`, a user with a
 password, a small git repository with a dirty file, and a folder that is *not* a

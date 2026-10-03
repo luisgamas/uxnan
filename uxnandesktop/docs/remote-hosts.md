@@ -282,7 +282,7 @@ Select it in the left panel and:
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
 | **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
-| **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a Windows host), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
+| **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS, Windows).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a host it cannot run on), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
 
 The card carries the host's name, and its terminal count includes the terminals
 open on that machine.
@@ -321,8 +321,8 @@ working. So:
   Nothing is retyped into it — an agent that was working is still working. Only
   if the host's daemon itself went away in between (the machine rebooted) does
   the tab report that the terminal ended.
-- **Terminals on a plain channel** (a Windows host, or a build without the host
-  engine for that machine) end with the connection, and the program in them on
+- **Terminals on a plain channel** (a host the engine cannot run on — see
+  *Where it does not run* below) end with the connection, and the program in them on
   the host. An agent's tab keeps what it showed and offers to resume the session;
   a plain shell's tab closes. A terminal that could not *start* because its host
   was away starts by itself once the host connects.
@@ -410,9 +410,18 @@ laptop lid, a Wi-Fi handover or an app restart.
   (a build in use, or uploaded in the last 10 minutes, stays). Its log (`~/.uxnan/host/host.log`)
   records lifecycle only — never what a terminal showed or what was typed.
 
-**Where it does not run yet:** Windows hosts (their terminals stay on plain
-channels). Every installer carries the engine for Linux and macOS hosts on both
-x86-64 and ARM, whatever machine the app itself runs on — for development, see
+**Where it runs:** Linux, macOS and Windows hosts, each on x86-64 and ARM —
+every installer carries all six builds, whatever machine the app itself runs on.
+On Windows the engine listens on a named pipe only your account can open, and is
+started outside the SSH session's job, so closing the connection does not end it.
+Proven against a Windows host whose `sshd` starts `cmd` (the CI runner reaching
+its own OpenSSH Server).
+
+**Where it does not run:** a host with no build (32-bit ARM, i686, the BSDs), a
+home folder mounted `noexec`, or a server that will not run an uploaded program.
+There a terminal is a **plain channel on the session**: it works, and it ends
+with the connection — the one place the app keeps that older kind of terminal,
+because a host must always give you a shell. For development builds, see
 [Development → the host engine](./development.md#the-host-engine).
 
 ## From a shell, without the app window
@@ -450,7 +459,7 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: Windows hosts in the engine, handing a host agent's session over to
+In order: handing a host agent's session over to
 a chat (the engine running the agents' hooks there), files, git and search served
 by the engine, and worktrees on a host.
 

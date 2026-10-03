@@ -59,8 +59,8 @@ so the released installers carry the sidecar.
 
 Every installer carries the [host engine](./remote-hosts.md#terminals-that-outlive-the-connection-the-host-engine)
 for **every** platform the app can put it on — a Windows laptop drives a Linux
-server — as resources under `host-engine/<triple>/uxnan-host`. They are static
-and small (~1.5–1.9 MB each, ~7 MB the four), which is why they are bundled
+server — as resources under `host-engine/<triple>/uxnan-host` (`.exe` on
+Windows). They are small (~1.5–2 MB each, ~11 MB the six), which is why they are bundled
 rather than downloaded: nothing to fetch, nothing to verify twice, and it works
 with no Internet on either side.
 
@@ -70,22 +70,25 @@ with no Internet on either side.
 | `aarch64-unknown-linux-musl` | Linux (or a Mac) | `cargo zigbuild`, static |
 | `aarch64-apple-darwin` | macOS | `cargo build`, ad-hoc signed by the linker |
 | `x86_64-apple-darwin` | macOS | `cargo build --target`, cross-compiled |
+| `x86_64-pc-windows-msvc` | Windows | `cargo build --target`, MSVC |
+| `aarch64-pc-windows-msvc` | Windows | `cargo build --target`, cross-compiled with the MSVC ARM64 tools |
 
 `scripts/build-host-engine.mjs` does the work: with `--build` it builds the ones
-the machine can (zig and `cargo-zigbuild` for Linux, a Mac for the Apple pair)
-into `src-tauri/host-engine/` (git-ignored); with `--require` it fails unless all
-four are there. The sidecar overlay runs it with neither flag before `tauri dev`
+the machine can (zig and `cargo-zigbuild` for Linux, a Mac for the Apple pair,
+Windows for the Windows pair) — or exactly the ones `--targets` names — into
+`src-tauri/host-engine/` (git-ignored); with `--require` it fails unless all six
+are there. The sidecar overlay runs it with neither flag before `tauri dev`
 and `tauri build`, so a local build bundles whatever is present — and a host
 whose platform has none keeps its terminals on plain SSH channels.
 
-**In CI and in the release** no single runner can build all four, so one
+**In CI and in the release** no single runner can build all six, so one
 reusable workflow, `build-host-engine.yml`, builds them (Linux on Ubuntu with
-zig, the Apple pair on `macos-14`) and each installer leg downloads them and
+zig, the Apple pair on `macos-14`, the Windows pair on `windows-latest`) and each installer leg downloads them and
 runs `--require` before packaging. The release calls it with its tag, so the
 engines carry the release's version — the app accepts an engine on a host only
 when its version is the app's own. CI calls it whenever a change shapes an
 installer (the engine's crates and its build script included), and its
-installer legs then check that the four are inside the `.deb`, the `.app` and
+installer legs then check that the six are inside the `.deb`, the `.app` and
 the NSIS install — so the pipeline meets its first real run on a pull request,
 not on a tag.
 

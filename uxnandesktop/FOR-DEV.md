@@ -30,8 +30,8 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,083 Rust tests (881 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 97
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 23 in `uxnan-host` (19 against the daemon itself) + 45
+`docs/chat.md`). 1,086 Rust tests (883 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 97
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 24 in `uxnan-host` (20 against the daemon itself) + 45
 integration), of which 59 are ignored probes that need something real to talk to
 (51 live SSH probes — 39 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -1112,10 +1112,15 @@ already written for the day phase 2 below lands — nothing to relax then.
          *The host engines*); the `host-engine` job in `release-desktop.yml`
          that builds them has never run on GitHub yet. Verify the four land in
          each installer of the next release.
-      2. **Windows hosts:** the daemon has no named-pipe listener
-         (`crates/uxnan-host/src/daemon.rs` → `bind`). Until it has, their
-         terminals stay on `ssh/pty.rs` — which is deleted, with the channel
-         budget, the day this lands.
+      2. **Windows hosts beyond the one proven.** The engine runs on a Windows
+         host (named pipe, out of the session's job — CI's `windows-ssh-host`
+         against an `sshd` that starts `cmd`). Not yet run: a host whose
+         `DefaultShell` is PowerShell (`run_line` / `print_line` have the
+         form, unexercised), the ARM64 build on an ARM64 machine, and a
+         Win32-OpenSSH whose job refuses breakaway (the daemon then ends with
+         the session; the log says so). `ssh/pty.rs` **stays**, decided
+         2026-10-03: it is the terminal for a host the engine cannot run on
+         (no build, `noexec` home) — a fallback, never a parallel path.
       3. **What an agent on a host still lacks.** Its state is precise (the
          engine wires the reporters there and forwards each report — `02g`
          §5.16) and the engine can close it (`StopAgent`, the same `agentstop`
@@ -1729,7 +1734,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,083 Rust + 1,757 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,086 Rust + 1,757 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

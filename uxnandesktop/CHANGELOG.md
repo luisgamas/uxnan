@@ -7,7 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
-- **Terminals on a Linux or macOS host outlive the connection.** A small
+- **Terminals on a Linux, macOS or Windows host outlive the connection.** A small
   program of the app's own, the host engine, is uploaded over SFTP the first
   time a terminal opens on a host and owns its terminals there: a closed lid, a
   Wi-Fi handover or an app restart no longer ends them or the agent in them.
@@ -23,8 +23,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   Changes follow an agent working in it or a commit made in a terminal there,
   with nothing polled. An updated app keeps talking to the engine that holds
   the host's terminals, whichever build it is, so an update never strands them,
-  and the builds no engine runs from any more are removed from the host.
-  Windows hosts keep their channel terminals for now.
+  and the builds no engine runs from any more are removed from the host. On
+  Windows the engine listens on a pipe only your account can open and is
+  started outside the SSH session, so closing it does not end your terminals.
+  A host the engine cannot run on (no build for it, a `noexec` home) keeps
+  plain-channel terminals, which end with the connection.
 - **An agent on a host shows its state as precisely as one here.** Connecting
   to a host wires the agents it has with the same reporters this machine uses —
   only those it has, keeping everything else in their configs — and each report
@@ -41,10 +44,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   it. A `localhost` link it opens is brought here through a forward. Same
   settings as a local terminal.
 - **Every installer carries the host engine for every platform it can run
-  on** — Linux and macOS, x86-64 and ARM — whatever machine the app itself is
+  on** — Linux, macOS and Windows, x86-64 and ARM — whatever machine the app itself is
   on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is
   downloaded, on either side: a host with no Internet access works the same.
-  The four builds are about 7 MB together.
+  The six builds are about 11 MB together.
 
 - **Hosts behind a bastion connect.** `ProxyJump` — one bastion or a chain, and
   bastions with a `ProxyJump` of their own — is followed inside the app, each hop

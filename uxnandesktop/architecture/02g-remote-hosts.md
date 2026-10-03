@@ -1627,7 +1627,11 @@ Tres crates, una sola implementacion por capa:
 - `crates/uxnan-host` — el binario del host: `version`, `attach` y `serve`.
 
 **Despliegue** (`src-tauri/src/ssh/engine.rs`). `uname -sm` decide la build
-(Linux x86_64/aarch64 musl estatico, macOS arm64/x86_64); se sube por el SFTP que
+(Linux x86_64/aarch64 musl estatico, macOS arm64/x86_64) — en Windows,
+`%PROCESSOR_ARCHITECTURE%` (cmd) o `$env:PROCESSOR_ARCHITECTURE` (PowerShell)
+elige entre `x86_64`/`aarch64-pc-windows-msvc`, se instala `uxnan-host.exe` y se
+ejecuta como cada shell ejecuta un programa (`run_line`: `"ruta" arg` en cmd,
+`& "ruta" arg` en PowerShell, con `\`); se sube por el SFTP que
 el host ya tiene a `~/.uxnan/host/versions/<version>-<hash>/` (carpetas `0700`,
 nombre temporal unico y renombrado, porque un rename SFTP no reemplaza; dos
 instalaciones simultaneas de la misma build no se pisan: gana la primera y la
@@ -1676,6 +1680,22 @@ login). Imprime
 una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
 impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
 asi que dejan de contar una a una contra el `MaxSessions` del host.
+
+**Windows.** El canal del daemon es una *named pipe* por cuenta y hogar del motor,
+con la lista de acceso de un solo usuario (la misma `UserOnlyDacl` que el archivo de
+descubrimiento del desktop, en `control-protocol::private`), que rechaza clientes
+remotos y se crea con `FIRST_PIPE_INSTANCE` (un segundo daemon encuentra el nombre
+ocupado). `attach` lo arranca fuera del *job* de la sesion SSH
+(`CREATE_BREAKAWAY_FROM_JOB`, desacoplado): Win32-OpenSSH termina el job de una sesion
+al cerrarla. Si el job no permite salir, el daemon arranca igual y el log dice que
+termina con la sesion. El candado de build es `LockFileEx`; el archivo de endpoint,
+el formato de los reporters `.cmd`. Probado en CI (`windows-ssh-host`: el runner
+alcanza su propio OpenSSH Server) con la suite de terminales en vivo — `cmd` como
+shell, y ConPTY pidiendo la posicion del cursor (`ESC[6n`) antes de dibujar, que
+xterm.js responde en la app. **Donde el motor no puede correr** (sin build: ARM de
+32 bits, i686, BSD; `home` con `noexec`) la terminal es un canal sobre la sesion
+(§5.7): se conserva como respaldo explicito, nunca como camino paralelo, para que un
+host siempre de una shell.
 
 **Latido.** El desktop pregunta cada 10 s y da el enlace por perdido tras 30 s
 sin oir nada (cualquier trama cuenta como señal de vida). Entonces cierra el canal
@@ -1803,7 +1823,8 @@ de puertos. Probado en vivo: el Claude del host llamo a `uxnan_status` por el
 motor e imprimio la pestana con la que se le respondio.
 
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
-empaquete los binarios del host; hosts Windows en el daemon (hasta entonces, §5.7);
+empaquete los binarios del host; Windows con PowerShell como `DefaultShell` y ARM64
+sin probar en vivo;
 pasar la sesion de un agente del host a un chat (necesita el bridge del host,
 F8; el motor ya cierra el agente); las filas del host en Ajustes → Hooks; y
 ficheros, git y busqueda servidos por el motor.
@@ -1818,7 +1839,7 @@ ficheros, git y busqueda servidos por el motor.
 
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
-| Terminal | **Funciona**: en Linux y macOS vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en Windows, canal sobre la sesion (§5.7) |
+| Terminal | **Funciona**: en Linux, macOS y Windows vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en un host donde el motor no puede correr (sin build, `home` con `noexec`), canal sobre la sesion (§5.7) |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir, **guardar** (en el sitio, con fencing) y **previsualizar** imagenes y PDF. Sin marcado de ignorados y sin refresco automatico |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
@@ -1841,7 +1862,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan pasar su sesion a un chat (bridge del host) y Windows |
 | 3 | Archivos, git y worktrees remotos | **Hecha salvo worktrees**: un proyecto remoto expone una sola raiz, sin crear ni listar worktrees — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
-| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador; faltan Windows y los recursos remotos |
+| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador (Linux, macOS y Windows); faltan los recursos remotos |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
 
 ## 8. Fuera de alcance (con motivo)
