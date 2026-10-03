@@ -355,7 +355,7 @@ jobs:
         run: |
           dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -q 'usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml' \
             || { echo "::error::the .deb carries no AppStream metadata"; exit 1; }
-          engines=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -c 'host-engine/[^/]*/uxnan-host$' || true)
+          engines=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -cE 'host-engine/[^/]*/uxnan-host(\.exe)?$' || true)
           [ "$engines" = 6 ] || { echo "::error::the .deb carries $engines host engines, not 6"; exit 1; }
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
       - name: Keep the window it showed
@@ -381,7 +381,7 @@ jobs:
           foreach ($f in 'uxnan-desktop.exe', 'uxnan-cli.exe') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "NSIS did not install $f into $dir" }
           }
-          $engines = @(Get-ChildItem -Recurse (Join-Path $dir 'host-engine') -Filter 'uxnan-host' -ErrorAction SilentlyContinue).Count
+          $engines = @(Get-ChildItem -Recurse (Join-Path $dir 'host-engine') -Include 'uxnan-host', 'uxnan-host.exe' -ErrorAction SilentlyContinue).Count
           if ($engines -ne 6) { Get-ChildItem -Recurse $dir | Select-Object -First 60; throw "NSIS installed $engines host engines, not 6" }
           $app = Start-Process (Join-Path $dir 'uxnan-desktop.exe') -PassThru
           Start-Sleep -Seconds 20
@@ -422,8 +422,12 @@ jobs:
           app="macos/Uxnan Desktop.app"
           [ -x "$app/Contents/MacOS/uxnan-desktop" ] || { echo "::error::no app binary"; exit 1; }
           [ -x "$app/Contents/MacOS/uxnan-cli" ] || { echo "::error::no uxnan-cli sidecar in the app"; exit 1; }
-          engines=$(find "$app/Contents/Resources/host-engine" -name uxnan-host -type f -perm -u+x | wc -l | tr -d ' ')
-          [ "$engines" = 6 ] || { echo "::error::the app carries $engines runnable host engines, not 6"; exit 1; }
+          # Six engines; the Unix ones must stay runnable (the Windows `.exe`
+          # needs no mode bit).
+          engines=$(find "$app/Contents/Resources/host-engine" -type f \( -name uxnan-host -o -name uxnan-host.exe \) | wc -l | tr -d ' ')
+          [ "$engines" = 6 ] || { echo "::error::the app carries $engines host engines, not 6"; exit 1; }
+          stuck=$(find "$app/Contents/Resources/host-engine" -type f -name uxnan-host ! -perm -u+x | wc -l | tr -d ' ')
+          [ "$stuck" = 0 ] || { echo "::error::$stuck host engines in the app are not runnable"; exit 1; }
           # Ad-hoc signed (`signingIdentity: "-"`): valid, just not by a Developer ID.
           codesign --verify --deep --strict --verbose=2 "$app"
           dmg=$(find dmg -name '*.dmg' -print -quit)
