@@ -209,6 +209,8 @@ test('a phone that goes silent is dropped, at the bridge and at the relay', asyn
     });
     assert.ok('result' in (await phone.request('bridge/status')));
     assert.equal(bridge.context.relay().status().connectedPhones, 1);
+    assert.equal(bridge.context.sessions.list()[0]?.route, 'relay');
+    assert.equal(bridge.context.presence.list().find((c) => c.kind === 'phone')?.route, 'relay');
     // The phone stops sending anything (its network vanished): no heartbeat.
     assert.equal(await closedWith(ws), RELAY_CLOSE.peerClosed);
     await waitFor(() => bridge.context.relay().status().connectedPhones === 0);

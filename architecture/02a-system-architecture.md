@@ -1,10 +1,20 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.6.0
-> **Fecha:** 2026-10-02
+> **Version:** 1.6.1
+> **Fecha:** 2026-10-03
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.6.1):** found on a real phone switching from mobile
+> data to Wi-Fi. The bridge now closes a phone connection that has received
+> nothing for **90 s** (three missed 25 s heartbeats) — a relay channel whose
+> phone side died used to stay open forever — and a phone's newer connection
+> closes its older one. The phone no longer waits on its old connection's
+> goodbye when switching (it hung on a dead socket). Every phone connection
+> carries its **route** — `lan`, `tailscale` (`100.64.0.0/10`,
+> `fd7a:115c:a1e0::/48`) or `relay` — in presence and `bridge/connectedPhones`
+> (§5.8.17, §5.9.3).
 
 > **Executive summary (1.6.0):** the relay is now **each user's own**: a
 > Cloudflare Worker with one SQLite-backed Durable Object per bridge, which the
@@ -3077,8 +3087,12 @@ renombran por su cuenta.
 
 **Presencia y origen:** `bridge/status` lleva `host { launchedBy: service |
 desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
-que un telefono o el desktop se conecta o se va. `Thread.origin { kind, name }`
-dice donde nacio una conversacion.
+que un telefono o el desktop se conecta o se va. Cada telefono lleva su
+`route` (`lan` | `tailscale` | `relay`): el bridge la sabe por el camino
+(el servidor LAN clasifica la IP de origen: `100.64.0.0/10` o
+`fd7a:115c:a1e0::/48` es Tailscale; el canal del relay es `relay`) y la
+publica en la presencia y en `bridge/connectedPhones`. `Thread.origin { kind,
+name }` dice donde nacio una conversacion.
 
 **Relay compartido.** El tercer ajuste compartido es `relay`
 (`BridgeSettings.relay`: `{ url, routingId, enabled }` o `null`), de solo
@@ -3566,6 +3580,17 @@ abstract class TransportSelector {
 emparejado en la LAN es alcanzable fuera de casa sin volver a emparejar. Los
 codigos de cierre del relay llegan como `RelayException` tipada (PC apagado,
 telefono no emparejado / revocado, relay lleno) — §5.10.
+
+**Conexiones muertas y sustituidas.** El telefono envia un latido cada 25 s
+mientras esta conectado; el bridge cierra una conexion de telefono que lleva
+**90 s** sin recibir nada (`SESSION_IDLE_TIMEOUT_MS`), handshake incluido. Sin
+eso, un canal del relay cuyo lado del telefono murio (el telefono cambio de
+datos moviles a Wi-Fi) quedaba abierto para siempre, porque el tramo
+bridge↔relay sigue sano. Ademas, la conexion nueva de un telefono cierra la
+vieja (`SessionRegistry.register`). Del lado del telefono, al cambiar de
+conexion la sesion nueva se confirma sin esperar el cierre de la anterior, y
+el cierre de un transporte espera el saludo de cierre como mucho 2 s: un
+socket muerto con su red nunca lo contesta.
 
 #### 5.9.4 Correlacion de requests
 

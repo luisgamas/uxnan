@@ -6,7 +6,7 @@
  * Transport-agnostic: works over any {@link MessageIO} (relay client or LAN
  * server connection).
  */
-import { validateE2EEnvelope, type MetricsTransport, type SecureEnvelope } from '@uxnan/shared';
+import { validateE2EEnvelope, type ConnectionRoute, type SecureEnvelope } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SecureDeviceState } from '../secure-device-state.js';
@@ -22,8 +22,11 @@ export interface SecureConnectionOptions {
   deviceState: SecureDeviceState;
   trustStore: TrustStore;
   displayName: string;
-  /** Which transport this connection runs over, for the connection metrics. */
-  transport: MetricsTransport;
+  /**
+   * How the phone reaches the bridge on this connection: shown to every client
+   * (presence, connected phones) and folded into relay-vs-direct for metrics.
+   */
+  route: ConnectionRoute;
   expectedSessionId?: string;
   /**
    * Gate a `qr_bootstrap` handshake on an operator-armed pairing window (see
@@ -50,7 +53,8 @@ export const SESSION_IDLE_TIMEOUT_MS = 90_000;
  * throws — handshake/transport failures are logged and the channel is closed.
  */
 export async function handleSecureConnection(options: SecureConnectionOptions): Promise<void> {
-  const { io, ctx, router, deviceState, trustStore, displayName, transport } = options;
+  const { io, ctx, router, deviceState, trustStore, displayName, route } = options;
+  const transport = route === 'relay' ? 'relay' : 'direct';
   const queue = queueFor(io);
   const send = (message: unknown): void => io.send(Buffer.from(JSON.stringify(message), 'utf-8'));
   const idleMs = options.idleTimeoutMs ?? SESSION_IDLE_TIMEOUT_MS;
@@ -136,6 +140,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       displayName: trusted?.displayName ?? result.phoneDeviceId,
       connectedAt: ctx.now(),
       lastSeen: ctx.now(),
+      route,
     });
     ctx.logger.info(`phone session established (${result.mode}): ${result.phoneDeviceId}`);
     // Open a metric session row so the profile can report connected time, longest

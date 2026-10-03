@@ -4,6 +4,12 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Every client knows how each phone is connected.** Presence and
+  `bridge/connectedPhones` carry each phone's `route`: `lan`, `tailscale` (by
+  the address it connected from) or `relay`.
+
 ### Fixed
 
 - **A phone that vanished no longer stays "connected".** A phone connection

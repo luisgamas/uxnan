@@ -30,7 +30,7 @@ test('bridge.notify delivers a notification to a connected phone', async () => {
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
-    transport: 'direct',
+    route: 'lan',
     expectedSessionId: sessionId,
   });
   const phone = await FakePhone.connect(phoneIo, { sessionId });

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
   LOCAL_CONTROL_FILE,
+  directRoute,
   StreamNotification,
   isDesktopClientId,
   localReceiverId,
@@ -733,7 +734,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         deviceState,
         trustStore,
         displayName: settings.get().name,
-        transport: 'relay',
+        route: 'relay',
         isPairingArmed: () => pairingCodeService.isArmed(),
         ...(options.sessionIdleTimeoutMs !== undefined
           ? { idleTimeoutMs: options.sessionIdleTimeoutMs }
@@ -797,10 +798,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (lanHandle) return { port: lanHandle.port };
       lanHandle = await startLanServer({
         port: config.lanPort,
-        onConnection: (io) => {
+        onConnection: (io, remoteAddress) => {
           void handleSecureConnection({
             io,
-            transport: 'direct',
+            route: directRoute(remoteAddress),
             ctx: context,
             router,
             deviceState,
