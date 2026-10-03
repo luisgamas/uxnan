@@ -1307,6 +1307,31 @@ async fn engine_for<R: tauri::Runtime>(
                 crate::diagnostics::log(level, "ssh-engine", &message);
             });
         }
+        // The host's own bridge, if its account runs one: linked through this
+        // engine, and gone with it (`bridgeclient::hosts`).
+        {
+            let app = app.clone();
+            let bridges = std::sync::Arc::clone(&state.host_bridges);
+            let conn = std::sync::Arc::clone(conn);
+            let engine = std::sync::Arc::clone(&engine);
+            let host = host_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let home = match sftp_for(&state, &host).await {
+                    Ok(files) => files.home().await.ok(),
+                    Err(_) => None,
+                };
+                let Some(home) = home else {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Info,
+                        "bridge",
+                        &format!("{host}: its home is unknown, so its bridge is not looked for"),
+                    );
+                    return;
+                };
+                crate::bridgeclient::hosts::link(app.clone(), bridges, host, conn, engine, home);
+            });
+        }
         let terminals = std::sync::Arc::clone(&state.engine_terminals);
         let watched = std::sync::Arc::clone(&engine);
         let host = host_id.to_string();

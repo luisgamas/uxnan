@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,066 Rust tests (706 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
+`docs/chat.md`). 1,070 Rust tests (710 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 30 in `uxnan-host` (25 against the daemon itself) + 45
-integration), of which 49 are ignored probes that need something real to talk to
-(41 live SSH probes — 38 against a real `sshd` and 3 against a **Linux host in a
+integration), of which 50 are ignored probes that need something real to talk to
+(42 live SSH probes — 39 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,821 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -1153,6 +1153,28 @@ already written for the day phase 2 below lands — nothing to relax then.
          sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
          own bridge, plan phase F8. (Its tools — the control surface's MCP
          server and the integrated browser — reach it through the engine.)
+      4. **A host's own bridge (F8) — linked, not yet shown.** Done: a host
+         engine that comes up links the desktop to the bridge its account runs
+         (`bridgeclient/hosts.rs`, `ssh/bridge.rs`, `02g` §5.18): the engine
+         reads `~/.uxnan/local-control.json` there, an SSH `direct-tcpip`
+         channel carries the socket to that host's loopback, and `bridge_call`
+         takes a `target` (`bridge_hosts_status`, `bridge_host_retry`, events
+         `bridge:host-status` / `bridge:host-notification`). Proven live
+         against a scratch bridge on a real Linux host
+         (`a_hosts_own_bridge_answers_through_the_engine`). Owed, in order:
+         (a) **the chat for a host project** — `src/lib/bridge/` drives one
+         bridge; its threads, turns and project mirror must take the project's
+         target and listen to the host events (UI → the maintainer's review);
+         (b) **installing the bridge on a host** through the desktop — decide
+         with the maintainer: an npm prefix in that account (a system Node's
+         global prefix is root's), npm installed beside it so `bridge/update`
+         can update itself, and how it keeps running with no one logged in
+         (`systemd --user` needs lingering on Linux); (c) this app's tools for
+         that bridge's agents — `desktop/attach` there must name the host
+         engine's own `/mcp`, not this machine's; (d) pairing the phone with it
+         (`bridge/generatePairingQr` through the link) and reaching it — its
+         LAN listener or the user's relay; (e) headless work on the host
+         (orchestration, automations, the AI commit draft) asked of that bridge.
 
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
@@ -1740,7 +1762,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,066 Rust + 1,821 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,070 Rust + 1,821 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

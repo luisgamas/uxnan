@@ -179,6 +179,9 @@ pub struct AppState {
     /// tab drives the bridge's conversations through it. Idle — no socket, no
     /// timer — while Settings → Bridge is `off`.
     pub bridge: Arc<crate::bridgeclient::BridgeClient>,
+    /// The bridges of connected hosts (`bridgeclient::hosts`): one link per
+    /// host whose account runs one, alive as long as that host's engine.
+    pub host_bridges: Arc<crate::bridgeclient::hosts::HostBridges>,
     /// Receipts of the control surface's `create` entries, by idempotency key
     /// (`control::receipts`): a retried call gets its first answer back.
     pub control_receipts: crate::control::receipts::Receipts,
@@ -232,6 +235,9 @@ impl AppState {
             control_bridge: crate::control::bridge::Bridge::default(),
             bridge: crate::bridgeclient::BridgeClient::new(
                 bridge_mode,
+                crate::bridgeclient::client_id_for(&data_dir),
+            ),
+            host_bridges: crate::bridgeclient::hosts::HostBridges::new(
                 crate::bridgeclient::client_id_for(&data_dir),
             ),
             control_receipts: crate::control::receipts::Receipts::default(),

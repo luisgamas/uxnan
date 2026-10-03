@@ -1,5 +1,6 @@
-//! One live connection to the bridge's local control channel: a JSON-RPC client
-//! over a loopback WebSocket (architecture/02a §5.8.15).
+//! One live connection to a bridge's local control channel: a JSON-RPC client
+//! over a loopback WebSocket (architecture/02a §5.8.15) — this machine's
+//! bridge over TCP, or a host's through an SSH channel to that host's loopback.
 //!
 //! - **Requests** get monotonic numeric ids and a pending-map entry resolved by
 //!   the matching response; every call has a timeout, and a closed connection
@@ -141,6 +142,26 @@ impl Connection {
         resume: Option<&Resume>,
         events: mpsc::UnboundedSender<Event>,
     ) -> Result<Arc<Connection>, ConnectError> {
+        let socket = tokio::net::TcpStream::connect(("127.0.0.1", discovery.port))
+            .await
+            .map_err(|err| ConnectError::Refused(err.to_string()))?;
+        Self::open_over(socket, discovery, client_id, resume, events).await
+    }
+
+    /// The same, over a byte stream someone else opened to the bridge's
+    /// loopback port — a host's bridge is reached through an SSH channel to its
+    /// `127.0.0.1`, so the bridge sees the loopback peer it requires and this
+    /// machine opens no listening port of its own for it.
+    pub async fn open_over<S>(
+        stream: S,
+        discovery: &Discovery,
+        client_id: &str,
+        resume: Option<&Resume>,
+        events: mpsc::UnboundedSender<Event>,
+    ) -> Result<Arc<Connection>, ConnectError>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
         let mut url = format!(
             "ws://127.0.0.1:{}/control?client={}",
             discovery.port, client_id
@@ -162,10 +183,10 @@ impl Connection {
         let mut config = WebSocketConfig::default();
         config.max_message_size = Some(MAX_FRAME_BYTES);
         config.max_frame_size = Some(MAX_FRAME_BYTES);
-        let (socket, _) = match tokio_tungstenite::connect_async_with_config(
+        let (socket, _) = match tokio_tungstenite::client_async_with_config(
             request,
+            stream,
             Some(config),
-            false,
         )
         .await
         {

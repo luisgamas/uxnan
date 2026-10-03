@@ -26,6 +26,7 @@
 pub mod commands;
 pub mod connection;
 pub mod discovery;
+pub mod hosts;
 pub mod install;
 pub mod lock;
 pub mod service;

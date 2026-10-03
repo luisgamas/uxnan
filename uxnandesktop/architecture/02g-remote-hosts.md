@@ -1834,6 +1834,49 @@ medida costaria justo ese `exec`—; queda anotado en `FOR-DEV.md`. Agrupar los
 proyectos por host en la barra lateral queda para un posible rediseño del panel
 izquierdo, a decidir por el mantenedor.
 
+## 5.18 El bridge del host — ENLAZADO (F8, primera parte)
+
+**Un dueño por capacidad.** Las conversaciones, el trabajo headless y el
+telefono son del bridge; en un host, del **bridge del host**: el mismo
+`uxnan-bridge`, instalado en esa cuenta. El desktop le habla igual que al suyo,
+por el canal de control local (`02a` §5.8.15), y no hay un segundo runner en el
+motor.
+
+**Como se llega, sin abrir ningun puerto** (`ssh/bridge.rs`):
+
+- **El registro lo lee el motor del host**: `~/.uxnan/local-control.json` de esa
+  cuenta, con el puerto y el token. Es el unico sitio donde existe el token, y no
+  toca el disco de esta maquina: vive en memoria lo que dura el enlace.
+- **El socket es un canal SSH `direct-tcpip` al `127.0.0.1` del host.** `sshd`
+  lo abre desde el loopback de esa maquina, que es el par que el bridge exige, asi
+  que su autorizacion no cambia —loopback, sin `Origin`, el token—. El cliente
+  WebSocket es el mismo (`Connection::open_over`); el local hace lo mismo sobre
+  TCP.
+
+**Un enlace por host, que vive lo que su motor** (`bridgeclient/hosts.rs`).
+Empieza cuando arranca el motor de una conexion y termina cuando ese motor se
+pierde; una reconexion trae motor nuevo y enlace nuevo, que reanuda el registro
+del bridge donde se quedo. No hay modos: si el host tiene bridge, el desktop se
+enlaza; si no, lo dice (`notRunning`) y vuelve a mirar cada 30 s —una lectura de
+fichero por el canal del motor, que no le cuesta nada al host— o al momento con
+`bridge_host_retry`. Un enlace de un motor viejo nunca pisa el estado del nuevo
+(por generacion). `bridge_call` recibe el `target`: `ssh:<hostId>` va al bridge de
+ese host. Eventos: `bridge:host-status` y `bridge:host-notification`, con su
+`hostId`. **Nada de esto instala ni arranca un bridge.**
+
+**Probado en vivo** contra un bridge de usar y tirar en un host Linux real
+(`a_hosts_own_bridge_answers_through_the_engine`: instalado en una carpeta propia
+de la prueba, con ella como `HOME` y el LAN apagado, y borrado al final):
+`bridge/status` contesto por el canal directo y por el enlace de la app.
+
+**Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4): el
+chat de un proyecto del host en la interfaz; instalar el bridge en el host desde
+el desktop (prefijo npm en esa cuenta, npm al lado para que `bridge/update` se
+actualice solo, y como sigue corriendo sin sesion abierta); las herramientas de
+esta app para los agentes de ese bridge (`desktop/attach` con el `/mcp` del
+motor); emparejar el telefono con el y como lo alcanza; y el trabajo headless en
+el host.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

@@ -1699,5 +1699,144 @@ mod tests {
                 "closed for good: {left:?}"
             );
         }
+
+        /// A host's own bridge, reached the way the desktop will reach it: its
+        /// record read by the engine, its control channel through an SSH
+        /// channel to that host's loopback — and answering as a bridge does.
+        ///
+        /// The bridge is a scratch one: installed into a folder of this test's
+        /// own under `~/.uxnan/host/`, run with that folder as its `HOME` (so it
+        /// writes nothing of the account's), with its LAN listener off (so it
+        /// opens no port to the network), and removed afterwards with its folder.
+        /// Needs Node and npm on the host, and the registry reachable from it.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a POSIX host with Node and npm"]
+        async fn a_hosts_own_bridge_answers_through_the_engine() {
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let scratch = format!(
+                "{}/.uxnan/host/test-bridge-{}",
+                home.trim_end_matches('/'),
+                std::process::id()
+            );
+            let record = crate::ssh::bridge::discovery_path(&format!("{scratch}/home"));
+
+            // Nothing there yet: no record is "no bridge", not an error.
+            assert_eq!(
+                crate::ssh::bridge::discover(&engine, &record)
+                    .await
+                    .unwrap(),
+                None
+            );
+
+            let start = format!(
+                "set -e; S='{scratch}'; mkdir -p \"$S/home/.uxnan\" \"$S/pkg\"; \
+                 printf '%s' '{{\"lanEnabled\":false,\"mdnsEnabled\":false}}' > \"$S/home/.uxnan/daemon-config.json\"; \
+                 ( npm install --no-audit --no-fund --loglevel=error --prefix \"$S/pkg\" uxnan-bridge@latest >\"$S/npm.log\" 2>&1 && \
+                   HOME=\"$S/home\" exec node \"$S/pkg/node_modules/uxnan-bridge/dist/src/cli.js\" start >\"$S/bridge.log\" 2>&1 ) </dev/null >/dev/null 2>&1 & \
+                 echo $!"
+            );
+            let started = conn.exec(&start).await.unwrap();
+            let pid = started.stdout.trim().to_string();
+            assert!(
+                !pid.is_empty(),
+                "the bridge did not start: {}",
+                started.stderr
+            );
+            let cleanup = format!("kill {pid} 2>/dev/null; sleep 1; rm -rf '{scratch}'");
+
+            let outcome =
+                async {
+                    let mut found = None;
+                    // An npm install from the registry, then the bridge's start.
+                    for _ in 0..360 {
+                        if let Some(d) = crate::ssh::bridge::discover(&engine, &record).await? {
+                            found = Some(d);
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                    let discovery = found.ok_or_else(|| {
+                        crate::error::AppError::Invalid("the bridge never wrote its record".into())
+                    })?;
+                    let stream = crate::ssh::bridge::dial(&conn, &discovery).await?;
+                    let (events, _rx) = tokio::sync::mpsc::unbounded_channel();
+                    let link = crate::bridgeclient::connection::Connection::open_over(
+                        stream,
+                        &discovery,
+                        "desktop-0123456789ab",
+                        None,
+                        events,
+                    )
+                    .await
+                    .map_err(|e| crate::error::AppError::Invalid(e.to_string()))?;
+                    let status = link
+                        .call(
+                            "bridge/status",
+                            serde_json::json!({}),
+                            std::time::Duration::from_secs(20),
+                        )
+                        .await
+                        .map_err(|e| crate::error::AppError::Invalid(format!("{e:?}")))?;
+                    link.close();
+
+                    // And the same through the app's own link for a host, the way a
+                    // connected host's engine starts it.
+                    let app = tauri::test::mock_app();
+                    let bridges =
+                        crate::bridgeclient::hosts::HostBridges::new("desktop-0123456789ac".into());
+                    crate::bridgeclient::hosts::link(
+                        app.handle().clone(),
+                        Arc::clone(&bridges),
+                        "live".into(),
+                        Arc::clone(&conn),
+                        Arc::clone(&engine),
+                        format!("{scratch}/home"),
+                    );
+                    let mut connected = false;
+                    for _ in 0..80 {
+                        if bridges.statuses().await.iter().any(|s| {
+                            matches!(s.status, crate::bridgeclient::Status::Connected { .. })
+                        }) {
+                            connected = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    }
+                    if !connected {
+                        return Err(crate::error::AppError::Invalid(format!(
+                            "the host link never connected: {:?}",
+                            bridges.statuses().await
+                        )));
+                    }
+                    let via_link = bridges
+                        .call(
+                            "live",
+                            "bridge/status",
+                            serde_json::json!({}),
+                            std::time::Duration::from_secs(20),
+                        )
+                        .await
+                        .map_err(|e| crate::error::AppError::Invalid(e.to_string()))?;
+                    assert_eq!(via_link["version"], status["version"], "{via_link}");
+                    Ok::<_, crate::error::AppError>((link.hello().bridge_version.clone(), status))
+                }
+                .await;
+            let _ = conn.exec(&cleanup).await;
+
+            let (version, status) = outcome.unwrap();
+            assert!(!version.is_empty(), "the hello names the bridge's version");
+            assert!(status.is_object(), "bridge/status answered: {status}");
+            println!("live: {alias}'s own bridge {version} answered through the engine: {status}");
+        }
     }
 }

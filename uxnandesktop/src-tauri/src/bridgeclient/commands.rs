@@ -38,19 +38,50 @@ pub async fn bridge_call(
     state: State<'_, AppState>,
     method: String,
     params: Option<Value>,
+    target: Option<String>,
 ) -> Result<Value, CommandError> {
-    state
-        .bridge
-        .call(&method, params.unwrap_or(Value::Null), CALL_TIMEOUT)
-        .await
-        .map_err(|err| {
-            let code = match &err {
-                BridgeCallError::NotConnected => "BRIDGE_NOT_CONNECTED",
-                BridgeCallError::InvalidMethod => "INVALID_INPUT",
-                BridgeCallError::Call(_) => "BRIDGE_ERROR",
-            };
-            CommandError::new(code, err.to_string())
-        })
+    let params = params.unwrap_or(Value::Null);
+    // The bridge of the machine `target` names: this one's, or a host's own.
+    let result = match target
+        .as_deref()
+        .map(crate::target::TargetId::parse)
+        .transpose()
+        .map_err(CommandError::from)?
+    {
+        Some(crate::target::TargetId::Ssh(host)) => {
+            state
+                .host_bridges
+                .call(&host, &method, params, CALL_TIMEOUT)
+                .await
+        }
+        _ => state.bridge.call(&method, params, CALL_TIMEOUT).await,
+    };
+    result.map_err(|err| {
+        let code = match &err {
+            BridgeCallError::NotConnected => "BRIDGE_NOT_CONNECTED",
+            BridgeCallError::InvalidMethod => "INVALID_INPUT",
+            BridgeCallError::Call(_) => "BRIDGE_ERROR",
+        };
+        CommandError::new(code, err.to_string())
+    })
+}
+
+/// The bridge of every connected host that has, or had, one this run.
+#[tauri::command]
+pub async fn bridge_hosts_status(
+    state: State<'_, AppState>,
+) -> Result<Vec<super::hosts::HostBridgeStatus>, CommandError> {
+    Ok(state.host_bridges.statuses().await)
+}
+
+/// Look for a host's bridge now, instead of at its next rediscovery.
+#[tauri::command]
+pub async fn bridge_host_retry(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<(), CommandError> {
+    state.host_bridges.retry(&host_id).await;
+    Ok(())
 }
 
 /// What is installed: the bridge (and its version), npm, Node.js — plus the
