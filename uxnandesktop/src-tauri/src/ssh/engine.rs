@@ -669,6 +669,7 @@ impl HostEngine {
                 uxnan_host_protocol::ErrorCode::NotFound => AppError::NotFound(message),
                 uxnan_host_protocol::ErrorCode::Invalid => AppError::Invalid(message),
                 uxnan_host_protocol::ErrorCode::Git => AppError::Git(message),
+                uxnan_host_protocol::ErrorCode::Io => AppError::Io(std::io::Error::other(message)),
                 uxnan_host_protocol::ErrorCode::SpawnFailed => AppError::Pty(message),
             }),
             Ok(Err(_)) => Err(AppError::NotConnected("the host engine".to_string())),

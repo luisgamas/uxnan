@@ -1272,6 +1272,17 @@ async fn a_projects_files_are_listed_saved_and_searched_on_the_host() {
     )
     .await;
     let read = fs_call(&mut client, FsCall::Read { path: file.clone() }).await;
+    // A file that is not there is the filesystem's refusal, coded as one so
+    // the app reads it as it would its own.
+    let Outcome::Error { code, .. } = client
+        .call(Call::Fs(FsCall::Read {
+            path: format!("{root}/absent.txt"),
+        }))
+        .await
+    else {
+        panic!("reading a file that is not there is refused");
+    };
+    assert_eq!(code, uxnan_host_protocol::ErrorCode::Io);
     assert!(
         read["content"].as_str().unwrap().contains("needle"),
         "{read}"

@@ -16,8 +16,9 @@ pub async fn serve(call: FsCall) -> Outcome {
 }
 
 /// An engine answer as the protocol carries it: the value, or the error with
-/// the code the app maps back to its own (`NotFound`, git's own refusal, or
-/// a call that cannot be done as asked).
+/// the code the app maps back to its own — the same one it would have given
+/// for the same failure on its own machine (`NotFound`, the filesystem's or
+/// git's own refusal, or a call that cannot be done as asked).
 pub fn outcome(result: Result<serde_json::Value, Error>) -> Outcome {
     match result {
         Ok(value) => Outcome::Ok {
@@ -27,6 +28,7 @@ pub fn outcome(result: Result<serde_json::Value, Error>) -> Outcome {
             code: match e {
                 Error::NotFound(_) => ErrorCode::NotFound,
                 Error::Git(_) => ErrorCode::Git,
+                Error::Io(_) => ErrorCode::Io,
                 _ => ErrorCode::Invalid,
             },
             message: match e {

@@ -37,7 +37,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 ///   duplicate, and search by name and by content).
 /// - 10: a project's git — `Git` (the review, the row's status, diffs, the log,
 ///   staging, discarding, applying a patch, committing, fetch/push/pull);
-///   `ErrorCode::Git` for what git itself refused.
+///   `ErrorCode::Git` for what git itself refused and `ErrorCode::Io` for what
+///   the filesystem did, so an error reads the same as on the app's machine.
 pub const PROTOCOL: u32 = 10;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
@@ -485,6 +486,9 @@ pub enum ErrorCode {
     Invalid,
     /// git itself refused or failed; the message is git's own.
     Git,
+    /// The host's filesystem refused (no such file, no permission); the
+    /// message is the operating system's.
+    Io,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

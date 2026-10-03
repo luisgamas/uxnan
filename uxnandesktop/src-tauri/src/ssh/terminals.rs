@@ -702,8 +702,9 @@ mod tests {
                 })
                 .await
                 .expect_err("no such file");
+            // The filesystem's own refusal, as reading it here would give.
             assert!(
-                matches!(missing, crate::error::AppError::NotFound(_)),
+                matches!(missing, crate::error::AppError::Io(_)),
                 "{missing:?}"
             );
 

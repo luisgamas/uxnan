@@ -887,8 +887,9 @@ la papelera local) y el dialogo dice cual de las dos va a pasar.
 (en `ssh::terminals::tests::live`, que el job `windows-ssh-host` de CI ejecuta
 contra un `sshd` real): crear una carpeta y un fichero con su padre intercalado,
 guardar y releer, listar, duplicar, renombrar, buscar por nombre y por contenido,
-un patron que no compila contestado como `Invalid`, un fichero ausente como
-`NotFound`, y el borrado. Del lado del daemon,
+un patron que no compila contestado como `Invalid`, un fichero ausente como el
+error de E/S del sistema (`ErrorCode::Io` → `IO_ERROR`, el mismo codigo que daria
+aqui), y el borrado. Del lado del daemon,
 `a_projects_files_are_listed_saved_and_searched_on_the_host`
 (`crates/uxnan-host/tests/daemon.rs`) prueba el servicio en las tres
 plataformas.
