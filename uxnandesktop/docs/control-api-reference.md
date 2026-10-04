@@ -210,8 +210,10 @@ Report the running Uxnan Desktop: its version, the control protocol version, whi
   - `version` (integer) — The group's feature version.
   - `enabled` (boolean) — Whether the group is switched on.
 - `caller` (object) — Who the app takes you for, from the token you presented.
-  - `kind` (string) — `launch` (a process the app started) or `control` (the user's shell).
+  - `kind` (string) — `launch` (a process the app started), `control` (the user's shell) or `bridge` (an agent a bridge runs for one of its chats).
   - `terminalId` (string, optional) — For a launch caller: the terminal it said it is (null when it did not say).
+  - `cwd` (string, optional) — For a bridge caller: its conversation's folder, which scopes it (null when it did not say).
+  - `target` (string, optional) — For a bridge caller: the machine that folder is on — null for this computer's bridge, `ssh:<hostId>` for a host's own bridge.
 - `counts` (object) — What the app holds right now.
   - `projects` (integer) — Registered projects.
   - `terminals` (integer) — Live terminals.

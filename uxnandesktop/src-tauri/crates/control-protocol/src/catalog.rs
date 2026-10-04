@@ -586,8 +586,10 @@ pub fn catalog() -> Vec<Entry> {
                     "enabled": field("boolean", "Whether the group is switched on."),
                 })), "Every capability group, in trust order."),
                 "caller": nested("Who the app takes you for, from the token you presented.", json!({
-                    "kind": field("string", "`launch` (a process the app started) or `control` (the user's shell)."),
+                    "kind": field("string", "`launch` (a process the app started), `control` (the user's shell) or `bridge` (an agent a bridge runs for one of its chats)."),
                     "terminalId": optional("string", "For a launch caller: the terminal it said it is (null when it did not say)."),
+                    "cwd": optional("string", "For a bridge caller: its conversation's folder, which scopes it (null when it did not say)."),
+                    "target": optional("string", "For a bridge caller: the machine that folder is on — null for this computer's bridge, `ssh:<hostId>` for a host's own bridge."),
                 })),
                 "counts": nested("What the app holds right now.", json!({
                     "projects": field("integer", "Registered projects."),
