@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.76] - 20261004
 ### Added
 
 - **Terminals on a Linux, macOS or Windows host outlive the connection.** A small
