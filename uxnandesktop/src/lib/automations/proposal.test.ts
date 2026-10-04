@@ -131,3 +131,25 @@ describe("scheduleFrom", () => {
     }
   });
 });
+
+describe("a proposal on a host", () => {
+  it("keeps the machine the backend resolved, and this machine when it names none", () => {
+    expect(propose({ target: "ssh:h1" }).target).toBe("ssh:h1");
+    expect(propose().target).toBe("local");
+  });
+
+  it("checks the agents of the host and says so", () => {
+    expect(() =>
+      buildProposal(
+        {
+          name: "Nightly lint",
+          workingDir: "/srv/app",
+          target: "ssh:h1",
+          steps: [{ agent: "grok", prompt: "Lint." }],
+        },
+        ["claude"],
+        id,
+      ),
+    ).toThrow("no agent `grok` is installed on the host the folder is on; installed: claude");
+  });
+});

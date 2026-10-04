@@ -1321,6 +1321,65 @@ void main() {
     expect((await manager.activityStream.first).containsKey('other'), isFalse);
   });
 
+  test(
+      'the live set marks a thread working or waiting even when it did not '
+      'change since the cursor, and clears what is no longer live', () async {
+    await seedThread();
+    // Caught up to the cursor: no thread changed, but th1 is running and
+    // waiting on an approval right now — what a reconnect must show at once.
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-1',
+      threads: const [],
+      removedIds: const [],
+      reset: false,
+      live: const [
+        {
+          'threadId': 'th1',
+          'activeTurnId': 'tu1',
+          'awaitingInput': ['ap1'],
+        },
+      ],
+    );
+    expect((await manager.activityStream.first)['th1'], ThreadActivity.running);
+    expect((await manager.awaitingInputStream.first)['th1'], {'ap1'});
+
+    // The bridge says it is idle now (it ended while the phone was away):
+    // neither working nor waiting stays behind.
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-1',
+      threads: const [],
+      removedIds: const [],
+      reset: false,
+      live: const [],
+    );
+    expect((await manager.activityStream.first).containsKey('th1'), isFalse);
+    expect(
+      (await manager.awaitingInputStream.first).containsKey('th1'),
+      isFalse,
+    );
+  });
+
+  test("another PC's live set leaves this PC's threads alone", () async {
+    await seedThread();
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-1',
+      threads: const [],
+      removedIds: const [],
+      reset: false,
+      live: const [
+        {'threadId': 'th1', 'activeTurnId': 'tu1'},
+      ],
+    );
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-2',
+      threads: const [],
+      removedIds: const [],
+      reset: false,
+      live: const [],
+    );
+    expect((await manager.activityStream.first)['th1'], ThreadActivity.running);
+  });
+
   test('applyReplicaThreads stores the synced threads under their PC',
       () async {
     await seedThread();

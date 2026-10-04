@@ -70,8 +70,11 @@ The application is **alpha-functional as a standalone app**. The capabilities
 available today are:
 
 - **A project can live on another machine.** Register an SSH host (from your own
-  `~/.ssh/config`, or by hand), browse its folders and add one as a project. Its
-  terminals open **there**, with that machine's CLIs and credentials; its files
+  `~/.ssh/config`, or by hand — bastions, agents of your choosing, second
+  factors and encrypted keys included), browse its folders and add one as a
+  project. Its terminals open **there**, with that machine's CLIs and
+  credentials, and on a Linux or macOS host they **outlive a dropped connection
+  and an app restart** (the host engine keeps them); its files
   are listed, opened and saved over SFTP — a subsystem, so it behaves the same
   whatever shell the host runs, and the tree can be **changed** there too (new
   file, rename, duplicate, delete — deleting on a host is permanent, because SSH
@@ -394,7 +397,10 @@ uxnandesktop/
 ├── src-tauri/             # Rust backend (a Cargo workspace)
 │   ├── crates/
 │   │   ├── control-protocol/  # the control catalog, envelope, discovery, selectors (no Tauri)
-│   │   └── uxnan-cli/         # the console client, built with the app
+│   │   ├── uxnan-cli/         # the console client, built with the app
+│   │   ├── workspace-engine/  # terminals, their screen model, files, git, folder watching and the agents' hook installer — this machine's and a host's (no Tauri)
+│   │   ├── host-protocol/     # the frames and calls between the app and a host's daemon
+│   │   └── uxnan-host/        # the daemon on a remote host: owns its terminals across disconnects
 │   └── src/
 │       ├── lib.rs         # Tauri builder, state wiring, command registration
 │       ├── main.rs        # entrypoint
@@ -403,17 +409,17 @@ uxnandesktop/
 │       ├── state.rs       # AppState (RwLock<AppData> + PersistenceManager)
 │       ├── commands.rs    # Tauri commands (git, pty, worktree, browse, agent, ...)
 │       ├── pty.rs         # portable-pty manager
-│       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
-│       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
+│       ├── git.rs         # the engine's git (CLI + git2 fast path), re-exported
 │       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
-│       ├── ssh/           # remote hosts: conn, auth, hostkey, config, registry,
+│       ├── ssh/           # remote hosts: config, dial (route), conn, auth, secrets,
+│       │                  # hostkey, registry, engine + terminals (the host engine),
 │       │                  # inventory, shellkind, pty, browse, sftp, git
 │       ├── control/       # the control surface: the one local server (hook, browser,
 │       │                  # MCP, JSON-RPC routes), catalog dispatch, services, the
 │       │                  # window bridge and the discovery file
 │       ├── hooks.rs       # what a hook report means (Layer 1 agent monitoring)
-│       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
-│       ├── procscan.rs    # foreground-job agent detection (Layer 3)
+│       ├── agent_hooks.rs # the engine's hook installer, re-exported (+ profile repointing)
+│       ├── procscan.rs    # foreground-job agent detection (Layer 3), the engine's, re-exported
 │       ├── launchenv.rs   # per-terminal identity: scrubbed from this process + every child
 │       ├── power.rs       # keep-awake (Win; macOS/Linux experimental)
 │       ├── browse.rs      # in-app directory picker

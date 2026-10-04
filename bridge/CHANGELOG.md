@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A phone shows which chats are working the moment it reconnects.** Every
+  `sync/changes` answer now carries the live set (`SyncChanges.live`): each
+  thread with a turn in flight or an approval or question open. The phone keeps
+  its sync cursor across restarts, so an incremental answer used to leave out a
+  thread whose turn had started before — it read as idle until opened.
+
+### Added
+
+- **`start --secret-key-stdin`: secrets sealed in a file, for a host with no
+  lasting keychain.** Given a 32-byte key on standard input (64 hex digits),
+  the bridge keeps its identity, the metrics seal key and a remembered relay
+  token in `~/.uxnan/secrets.sealed`, sealed with AES-256-GCM, instead of the OS
+  keychain — which on a server is often only the kernel's, cleared by a reboot.
+  The first start copies what the keychain held, so the identity is kept; a file
+  the key does not open stops the start and is left as it is, never replaced by
+  a fresh identity. The bridge never stores the key: Uxnan Desktop keeps it and
+  the host engine hands it over.
+
+- **`relay/admitHost`: let one of your other machines use your relay.** The
+  bridge that deployed the relay adds another bridge's identity key to the
+  Worker — a remote host's own bridge, for example — with the token it
+  remembers, so that bridge joins with `relay/use` and nobody types the token
+  again. Accepted over the local control channel only, never from a phone.
+
+### Changed
+
+- **Turning the LAN off no longer turns off Claude Code's "request approval".**
+  With `lanEnabled: false` the bridge's HTTP endpoint still runs, on
+  `127.0.0.1` only and on a port the OS picks, for the agents' approval hook —
+  and it is published nowhere (no QR hosts, no mDNS). It is how Uxnan Desktop
+  starts a bridge it installs on a remote host, which opens no port by
+  default.
+
 ## [0.0.46-alpha.20261003] - 20261003
 ### Fixed
 

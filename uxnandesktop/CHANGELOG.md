@@ -5,6 +5,290 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Terminals on a Linux, macOS or Windows host outlive the connection.** A small
+  program of the app's own, the host engine, is uploaded over SFTP the first
+  time a terminal opens on a host and owns its terminals there: a closed lid, a
+  Wi-Fi handover or an app restart no longer ends them or the agent in them.
+  The tab says the connection was lost, and when the host is back the terminal
+  is repainted exactly and carries on — nothing is typed into it again. After an
+  app restart it also brings back what had scrolled above the screen. A
+  restarted app finds each tab's terminal by its persistent id. All of a host's
+  terminals share one SSH channel, and a link that goes silent is noticed in
+  about 30 seconds — the tabs say so and the host is reconnected — instead of
+  the two minutes the SSH keepalive takes.
+- **A project on a host refreshes by itself.** With the host engine there, the
+  project folder is watched on that machine: the file tree, the open tabs and
+  Changes follow an agent working in it or a commit made in a terminal there,
+  with nothing polled. An updated app keeps talking to the engine that holds
+  the host's terminals, whichever build it is, so an update never strands them,
+  and the builds no engine runs from any more are removed from the host. On
+  Windows the engine listens on a pipe only your account can open and is
+  started outside the SSH session, so closing it does not end your terminals;
+  Ctrl+C still interrupts what runs in them.
+  A host the engine cannot run on (no build for it, a `noexec` home) keeps
+  plain-channel terminals, which end with the connection.
+- **An agent on a host shows its state as precisely as one here.** Connecting
+  to a host wires the agents it has with the same reporters this machine uses —
+  only those it has, keeping everything else in their configs — and each report
+  travels over the engine's channel to the tab it came from: the working /
+  waiting / done cards, the checks and the notifications — with the finished
+  turn's prompt and reply, read from the transcript on the host — also for a
+  turn that ended while the lid was closed. Proven with Claude Code on a real Linux host.
+  Follows the hooks auto-install setting. The engine can also close an agent in
+  one of its terminals, with the same code this machine uses.
+- **Settings → Agents → Hooks shows a host's agents too.** With a host
+  connected, the title of the agents list is a picker: this machine by default,
+  or a connected host, whose own agents replace the list — wired, removed and
+  shown there by its engine. One machine at a time, so the pane stays the same
+  length however many hosts you keep.
+- **An agent on a host uses this app's tools.** The control surface's MCP tools
+  and the integrated browser reach it through the host engine — launched with
+  that host's own catalog (its engine's endpoint, a Claude config written there,
+  `--standalone` only for an OpenCode 2 there) and answered as the tab that shows
+  it. A `localhost` link it opens is brought here through a forward. Same
+  settings as a local terminal.
+- **Every installer carries the host engine for every platform it can run
+  on** — Linux, macOS and Windows, x86-64 and ARM — whatever machine the app itself is
+  on, so a Windows laptop sets up a Linux server like a Mac does. Nothing is
+  downloaded, on either side: a host with no Internet access works the same.
+  The six builds are about 11 MB together.
+
+- **Hosts behind a bastion connect.** `ProxyJump` — one bastion or a chain, and
+  bastions with a `ProxyJump` of their own — is followed inside the app, each hop
+  with its own key check and login, and `ProxyCommand` carries the connection
+  when the configuration says so. The jump-host field in the form used to be
+  saved and then ignored.
+- **Second factors.** A server that asks more than a password — a one-time code,
+  a key *and* a code — shows its own questions in a dialog, with the code visible
+  as you type it where the server allows it, and the connection waits for the
+  answer.
+- **Replacing a key that changed.** When a machine is reinstalled, the
+  key-changed dialog offers *The machine was reinstalled — replace the key*: the
+  old entries are backed up to `known_hosts.old` and only they are replaced.
+- **Editing a host.** A host typed by hand can be edited in place, keeping its
+  id and projects; an imported one takes a new label (the rest comes from
+  `~/.ssh/config`).
+- **A page for each host.** *Details* on a host's row in Settings → Hosts opens
+  it: a connection check, one step per row (the route, whether its first hop
+  answers and how fast, its key, sign-in, its shell, the host engine, the round
+  trip, agent forwarding) that never signs in to find out; everything the
+  machine reported, with each agent's version; and every terminal its engine
+  holds — including ones an earlier run of the app left there — with *End*.
+- **Old worktrees on a host are cleaned up there.** Settings → Git → Cleanup
+  has a machine picker; on a connected host, its engine finds and removes its
+  own abandoned worktrees by the same rules as here.
+- **`host/list` and `host/show` describe the host engine.** The control surface
+  reports, for a host running it, the engine's version and platform and the
+  link's round trip; `host/show` also lists every terminal the engine holds,
+  including ones no tab shows. Read from the engine already running — a read
+  never starts one.
+- **The desktop links to a host's own bridge.** When a connected host's account
+  runs `uxnan-bridge`, the desktop now holds a link to it — its record read by
+  the host engine, its socket carried by an SSH channel to that host's
+  loopback, so no port is opened anywhere. It follows the host's connection,
+  and looks again every 30 seconds while there is none. The window keeps a
+  separate replica of each host bridge's conversations — its own unsent
+  messages and seen marks, and chat tabs that name the machine — so nothing of
+  one machine's chats mixes into another's.
+- **The host engine installs and keeps a host's bridge.** It finds a bridge
+  the account already has — one you installed yourself is the one used — or
+  installs one into `~/.uxnan/bridge` with that machine's own npm (no
+  administrator), and keeps it running without an OS service, restarting it
+  when it ends; it updates itself there like anywhere else. A bridge it
+  installs opens no port: its LAN listener starts off, and the phone is meant
+  to reach it through your relay; opening the LAN on that host (for the same
+  network, or a tailnet) is a separate choice, and the engine restarts the
+  bridge to take it. A phone pairs with a host's bridge the way it pairs with
+  this machine's — and a QR no phone could use (no relay, no LAN) is refused
+  with the reason instead of drawn.
+- **A host's bridge on its page.** Settings → Hosts → Details shows the host's
+  own bridge — yours or Uxnan's, its version, whether it runs and who keeps it
+  running, whether this window is linked to it, and how phones reach it — with
+  Install, Start and keep running, and Stop; *Use my relay* puts it on the
+  relay this computer already has, with no token typed (this computer's bridge
+  admits its key, `relay/admitHost`), and *Set up relay* deploys one for it
+  with the same dialog as here; *Open on this host's network* is the
+  one switch that publishes a port there, off by default; and *Pair a phone*
+  opens the pairing window for that bridge.
+- **A host's bridge keeps its identity across a reboot.** Its secrets live in
+  a file there sealed with AES-256-GCM, under a key this app makes for that
+  host and keeps in your OS keychain (Keychain, Credential Manager, Secret
+  Service) — the one secret this app stores, and only where the system encrypts
+  it. The host engine is handed the key at each connect and gives it to the
+  bridge when it starts it, so a reboot no longer means pairing your phone
+  again. The bridge's current identity is kept when it moves to the file.
+- **A host bridge's agents use this app's tools.** A chat on a host's own
+  bridge gets the same tools as one here — the browser, terminals, files — through
+  that host's engine: its agents call the engine's own endpoint with a token that
+  reaches the tools and nothing else, the engine relays the call here, and it is
+  answered as a chat's agent scoped to its conversation's folder on that host.
+  Proven with a real Claude Code on a host.
+- **"Continue as chat" works for a terminal on a host.** The agent session a
+  host terminal holds is told to that host's own bridge, which asks it for the
+  session when the phone or the desktop wants to continue it; "Continue as
+  chat" opens the conversation on that bridge, and "Open in terminal" resumes
+  it with that machine's own CLI.
+- **Chats for a project on a host.** While a host's own bridge is connected,
+  its projects offer chats like local ones — from the tab strip, the row menu,
+  the launcher and the sidebar — and they run on that bridge, with that
+  machine's agents. A host chat tab whose bridge goes away says whose it is
+  and looks again on Retry.
+- **You can see which machine a terminal is on.** A terminal tab on a host
+  carries a small badge with the host's name and a dot for how it stands, and
+  its title dims while the host is away. A host project's card in the sidebar
+  shows the same dot, with the link's latency in its tooltip.
+
+- **Headless work on a host runs on that host.** An orchestration's headless
+  steps — and the tasks a coordinator agent adds with `task/create` — whose
+  worktree belongs to a host's project run there, by its engine, with the
+  host's own agent CLIs and sign-ins: the same runner, the same capture, named
+  and cancellable the same way. The host engine speaks protocol 16 for it
+  (`AgentRun`, `AgentCancel`, `Precondition`), and the runner it uses is the
+  one this app uses, now in the workspace engine.
+- **Automations on a host.** The editor has a **Machine** once you have a host:
+  pick one and the folder browser lists that host's folders, and the steps
+  offer the agents installed there. A run does everything on the host — the
+  folder check, the precondition in that machine's shell, the per-run worktree
+  under its own `~/uxnan/worktrees`, every step — and its history is kept here
+  with the host's name beside the folder. A scheduled run is handed by the
+  runner to the open app, which holds the connection; with the app closed or the
+  host not connected the run is recorded as unavailable, saying why. An agent
+  working in a host's project can propose one there (`automation/propose`;
+  `automation/list` and `automation/show` report the `target`).
+
+- **Hosts your own `ssh` reaches.** A host whose SSH configuration asks for
+  something only OpenSSH itself can do — Kerberos, a FIDO2 security key, a
+  smartcard, host-based authentication, a `ProxyUseFdpass` proxy or a
+  `KnownHostsCommand` — is connected through this machine's own `ssh`, with your
+  config, `known_hosts` and agent, and everything works over it: terminals in
+  the host engine, files, git, search, ports and the host's bridge. On macOS and
+  Linux it logs in once and every channel shares that login; Windows' OpenSSH
+  cannot share one, so there each channel signs in on its own. It never prompts:
+  a host that wants a password, or a key not in `known_hosts`, stops with
+  OpenSSH's own sentence. A host's page has **Connection → Connect with**
+  (*Automatic*, *Built-in client*, *System ssh*) and says which carries it and
+  why; `host/list` and `host/show` report `carrier` and `systemSsh`, and
+  `host/connect` can answer `systemSshFailed`.
+
+### Changed
+
+- **The AI commit draft for a host's project is written on the host**, by the
+  agent picked in Settings → AI commit as that machine has it, standing in the
+  worktree. When the host lacks that agent, it is written here from the staged
+  diff read there, as before.
+- **A conversation on a host is named by that host's agent.** The generated
+  name for a session in a host's terminal is asked of the agent there, in its
+  folder; it used to start this machine's CLI in a folder that is not here.
+- **A host that drops leaves what you were looking at.** The file tree,
+  Changes and History keep what they had read, under a line saying the host is
+  offline and how long ago it was read, and read it again when the host is
+  back. Nothing in them can be changed meanwhile.
+- **The host row in Settings → Hosts wraps on a narrow window**: its actions
+  drop under the host's name instead of squeezing it.
+
+- **Your SSH configuration is read at every connect**, not once when the host
+  was added, and a host typed by hand is resolved through it too — so `Host *`
+  defaults, an edited `HostName` or a new bastion take effect on the next
+  connect, as they would for `ssh`.
+- **`IdentityAgent`, `IdentitiesOnly`, `CertificateFile`, `HostKeyAlias`,
+  `UserKnownHostsFile`, `GlobalKnownHostsFile` and `StrictHostKeyChecking` are
+  honoured.** A password manager's agent is used, a full agent no longer burns
+  the server's attempts on unrelated keys, certificates are offered with their
+  key, and `accept-new` records a new key without asking.
+- **A password or passphrase is kept in memory until the app closes**, so a
+  dropped connection to a host that needed one comes back on its own. It is never
+  written, a wrong one is forgotten at once, and a one-time code is never kept.
+- **Keys are offered in the order that interrupts you least**: an encrypted key
+  nobody has unlocked is asked for only after the agent's keys have been tried.
+- **A host project whose folder is gone says so.** With its host connected,
+  the project is asked of the host engine, and marked missing — like a local
+  one — only when that machine's filesystem says the folder is not there. A
+  host that is offline leaves its projects as they were.
+- **The folder picker for a host is the host engine's.** Adding a project
+  that lives on a host lists its folders through the engine, with the code
+  that lists this machine's; a very large folder still says it was cut. SFTP
+  is now used only to put the engine on the host.
+- **A host's ports are read by its engine.** The ports button asks the host
+  engine, which reads that machine's own socket table — the kernel's directly
+  on Linux, so a server without `ss` answers too; `lsof` on macOS; `netstat` on
+  Windows — instead of commands sent through the host's shell.
+- **A tab on a host is named by the agent running in it.** Start Claude Code,
+  Codex or any other known agent by hand in a host terminal and the tab and
+  its sidebar row follow it, as they do here: the host engine looks at that
+  machine's processes — only while you are connected — and says when the agent
+  in a terminal changes, including to a window that reconnects.
+- **Worktrees on a host.** A project that lives on a host now lists, creates
+  and removes its worktrees like a local one — new or existing branch, base,
+  an optional folder of your own, and the same optional branch cleanup — done
+  by the host engine with the same placement rules. They land under the host's
+  own `~/uxnan/worktrees` (the global custom root is a folder on this machine,
+  so only a project's own root applies there), and creating or removing is
+  refused while the host is disconnected.
+- **A host's git is run by its engine.** Changes, History and a project's row
+  on a host now run the same git code there that they run on this machine,
+  through the host engine, instead of commands sent through the host's shell:
+  one answer per read, no per-shell quoting, and git's own words when it
+  refuses. **Push and pull use your forwarded agent**: with `ForwardAgent` on,
+  everything the engine starts — its git and its terminals — follows the agent
+  of your latest connection, so it keeps working after a reconnect.
+- **A host's files are served by its engine.** The file tree, the editor, the
+  previews and search on a project that lives on a host now run the same code
+  there that they run on this machine, through the host engine: git-ignored
+  files are dimmed, a save is atomic and keeps the file's permissions, search
+  works in a folder that is not a repository, and duplicating no longer pulls
+  the file across the connection. Every file action is one command that names
+  its machine, still fenced to the host and connection it was prepared for. A
+  host where the engine cannot run says it has no project files; its terminals
+  keep working.
+
+### Fixed
+
+- **A headless step on a host's project no longer runs in this machine's
+  folder of the same path.** Orchestration and automations took a host's path
+  as a folder here; when one existed with the same name, the step ran on the
+  wrong machine.
+- **A chat's agent is scoped to the right machine's project.** An agent of this
+  computer's bridge whose folder had the same path as a project on a host could
+  be scoped to the host's project; the scope now always reads a folder on the
+  machine it is on.
+
+- **A chat that finished or started asking while the desktop was reconnecting
+  shows it at once.** The activity tracker adopts the bridge's live set on
+  every sync (`SyncChanges.live`): working, waiting for you, or neither —
+  including a thread that did not change since the last sync.
+- **A terminal on a Windows host opens in the shell its owner chose for SSH.**
+  With OpenSSH's `DefaultShell` set to PowerShell, the host engine still
+  started `cmd` for every terminal; it now starts what an SSH login there
+  starts — `DefaultShell` when set, `cmd` otherwise, as `sshd` does.
+
+- **An encrypted key can be unlocked.** The passphrase you typed was sent as a
+  password and the key was retried without it, so the app asked for it forever.
+- **`ForwardAgent` works.** It was saved and never requested, so git on the host
+  could not use the keys held here.
+- **The handshake asks for the key types already on file first**, so a host
+  with a recorded key is always checked against it instead of passing as new by
+  presenting another key type.
+- **An agent launched on a host is no longer pointed at this machine's
+  tools.** Claude Code and Codex started on a host got the registration of this
+  app's control tools — a config file in this machine's app data, a
+  `127.0.0.1` address here — which names nothing on the host — and OpenCode got
+  `--standalone` when this machine's OpenCode is version 2, which a host's
+  OpenCode 1 rejects. A host launch is now typed as it is.
+- **Saving a file keeps its permissions.** The editor saves through a new file
+  renamed over the old one, which came out with default permissions: a script
+  saved in the editor stopped being runnable, and a private file became
+  readable by other accounts. The saved file now keeps the mode it had.
+- **Wiring an agent's hooks keeps its config file's permissions.** The file
+  was rewritten as a new one, so a private config (`0600`) came out readable by
+  the machine's other accounts, and a shared one private.
+- **The file tree's watcher reports only its own folder.** On macOS the system
+  also hands over the creation of the watched folder and of the folder above
+  it, which reached the tree as changes it does not show. The tree here and a
+  host's engine now share one watcher, which keeps every report inside the
+  folder it watches.
+
 ## [0.0.75] - 20261003
 ### Changed
 

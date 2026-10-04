@@ -15,31 +15,52 @@
 //! otherwise in the UI would be a lie. What it does guarantee is that work lands
 //! on the host the user *meant*: see [`crate::target`].
 //!
-//! Secrets: none are stored. A host record keeps alias, hostname, port, user and
+//! Secrets: none are written. A host record keeps alias, hostname, port, user and
 //! a *reference* to an identity file — never a key, never a password. The
-//! system's ssh-agent, the key file on disk and an in-memory prompt supply the
+//! agent the host's configuration names, the key file on disk and what the
+//! person types (held in memory for the app's session, [`secrets`]) supply the
 //! rest, which is also why `ForwardAgent` matters: it lets git on the remote use
 //! the keys held here without a private key ever being copied.
 
 pub mod auth;
-pub mod browse;
+pub mod bridge;
 pub mod config;
 pub mod conn;
+pub mod dial;
+pub mod doctor;
+pub mod engine;
 pub mod forward;
-pub mod git;
 pub mod hostkey;
 pub mod inventory;
-pub mod ports;
 pub mod pty;
 pub mod registry;
-pub mod search;
+pub mod secrets;
 pub mod sftp;
 pub mod shellkind;
+pub mod system;
+pub mod terminals;
 // The live suite that runs this whole stack against a Linux host in a container
 // (`docker/ssh-test-host/`). Test-only: it exists to cover the POSIX branches
 // that the machine running the tests — Windows — can never reach.
 #[cfg(test)]
 mod testhost;
+// An SSH server inside the test process (`testserver`), and the transport
+// proven against it on every run: second factors, bastions, agent forwarding,
+// key decisions.
+#[cfg(test)]
+mod testserver;
+#[cfg(test)]
+mod transport_tests;
+
+/// A host key waiting for the person: which hop of the route presented it, and
+/// whether it is new or **replaces** a key on file (which is only ever recorded
+/// through the explicit rotation flow, never through "trust").
+#[derive(Debug, Clone)]
+pub struct PendingHostKey {
+    pub hop: String,
+    pub pending: dial::PendingKey,
+    pub changed: bool,
+}
 
 /// Base64 (UTF-16LE) of a PowerShell script — the payload both wrappers below
 /// carry.

@@ -7,6 +7,7 @@ import { app } from '$lib/state/app.svelte';
 import { hosts } from '$lib/state/hosts.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
 import { fileTree } from '$lib/state/fileTree.svelte';
+import { sessions } from '$lib/state/sessions.svelte';
 import { LOCAL_TARGET } from '$lib/target';
 import type { WorktreeEntry } from '$lib/types';
 
@@ -40,7 +41,7 @@ describe('projects.createGitHubWorktree', () => {
       const backend = installFakeBackend({
         [command]: () => created,
         worktree_list: () => [MAIN, created],
-        worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+        git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
       });
 
       const path = await projects.createGitHubWorktree(REPO_ID, kind, 42, branch, null);
@@ -81,7 +82,7 @@ describe('projects.createGitHubWorktree', () => {
     installFakeBackend({
       github_pr_checkout: () => created,
       worktree_list: () => [MAIN, created],
-      worktree_status: () => {
+      git_repo_status: () => {
         statusRequested = true;
         return new Promise(() => {});
       },
@@ -120,7 +121,7 @@ describe('a plain folder that became a repository', () => {
       repos_missing: () => [],
       repo_probe_git: () => NOW_GIT,
       worktree_list: () => [{ ...PLAIN_ENTRY, branch: 'main', head: 'abc123' }],
-      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+      git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
     });
 
     await projects.refreshWorktrees(true);
@@ -140,7 +141,7 @@ describe('a plain folder that became a repository', () => {
       repos_missing: () => [],
       repo_probe_git: () => null,
       worktree_list: () => [PLAIN_ENTRY],
-      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+      git_repo_status: () => ({ branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
     });
 
     await projects.refreshWorktrees(true);
@@ -177,6 +178,38 @@ describe('a project that lives on a host', () => {
     // The store is a singleton: leaving one test's tabs behind would let the
     // next one inherit a machine from a terminal it never opened.
     terminals.root = null;
+  });
+
+  it("creates a worktree on the host, fenced to the connection the user sees", async () => {
+    sessions.replace([{ hostId: 'h1', generation: 6, label: 'gamas' }]);
+    const created: WorktreeEntry = {
+      path: 'C:/Users/gamas/uxnan/worktrees/sample/feature',
+      branch: 'feature',
+      head: 'abc',
+      isMain: false,
+    };
+    const backend = installFakeBackend({
+      worktree_create: () => created,
+      worktree_list: () => [REMOTE_MAIN, created],
+      git_repo_status: () => ({ branch: 'feature', dirty: 0, ahead: 0, behind: 0, isRepo: true }),
+    });
+
+    expect(await projects.createWorktree(REMOTE_ID, 'feature', { agentId: null })).toBe(true);
+    expect(backend.lastCallTo('worktree_create')?.args).toMatchObject({
+      repoId: REMOTE_ID,
+      branch: 'feature',
+      expect: { targetId: 'ssh:h1', generation: 6 },
+    });
+    // The new worktree is the host's, not this machine's.
+    expect(projects.targetForPath(created.path)).toBe('ssh:h1');
+
+    // With the host gone, nothing is sent: a zero would be an expectation
+    // nobody issued.
+    sessions.replace([]);
+    backend.clearCalls();
+    expect(await projects.createWorktree(REMOTE_ID, 'other', { agentId: null })).toBe(false);
+    expect(backend.lastCallTo('worktree_create')).toBeUndefined();
+    expect(projects.error).toMatch(/no live connection/);
   });
 
   it('keeps the file tree on the machine its root is on', () => {
@@ -427,12 +460,11 @@ describe('a project that lives on a host', () => {
   });
 
   it("lists a host's folder in the file tree, and does not offer a search it cannot run", async () => {
-    // Phase 3's first slice: Files works on a host because it goes over SFTP —
-    // a subsystem, so the same code path serves cmd, PowerShell, WSL and Git
-    // Bash. Search does not, and is therefore not offered rather than offered
-    // broken (it walks *this* filesystem and would answer "no matches").
+    // The tree names the host, and the backend serves it from that machine's
+    // engine. Search needs the host to be reachable, so while it is not
+    // connected it is not offered rather than offered broken.
     const backend = installFakeBackend({
-      ssh_fs_list: () => [
+      fs_list_dir: () => [
         { name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false },
         { name: 'README.md', path: `${REMOTE_PATH}/README.md`, isDir: false, ignored: false },
       ],
@@ -443,11 +475,10 @@ describe('a project that lives on a host', () => {
     fileTree.setRoot(REMOTE_PATH, projects.activeWorktreeTarget);
     await fileTree.loadDir(REMOTE_PATH);
 
-    expect(backend.lastCallTo('ssh_fs_list')?.args).toEqual({
-      hostId: 'h1',
+    expect(backend.lastCallTo('fs_list_dir')?.args).toEqual({
       path: REMOTE_PATH,
+      target: 'ssh:h1',
     });
-    expect(backend.lastCallTo('fs_list_dir')).toBeUndefined();
     expect(fileTree.searchable).toBe(false);
 
     // …and a local workspace is unchanged.
@@ -455,18 +486,19 @@ describe('a project that lives on a host', () => {
     expect(fileTree.searchable).toBe(true);
   });
 
-  it("reads a host's git on the host, and never calls this machine's", async () => {
-    // Phase 3's second slice. Git has to be *run*, so it goes through the host's
-    // shell — the one it reported, with arguments quoted for it.
+  it("reads a host's git on the host, and never this machine's", async () => {
+    // The row names the machine; the host's engine runs git there. An answer
+    // for this machine's folder at the same path would be the wrong repository.
     const backend = installFakeBackend({
-      ssh_git_status: () => ({ branch: 'main', dirty: 3, ahead: 1, behind: 0, isRepo: true }),
-      worktree_status: () => ({ dirty: 99, ahead: 99, behind: 99 }),
+      git_repo_status: (args) =>
+        args.target === 'ssh:h1'
+          ? { branch: 'main', dirty: 3, ahead: 1, behind: 0, isRepo: true }
+          : { branch: 'main', dirty: 99, ahead: 99, behind: 99, isRepo: true },
     });
 
     await projects.refreshStatuses([REMOTE_PATH]);
 
-    expect(backend.lastCallTo('ssh_git_status')?.args).toEqual({ hostId: 'h1', path: REMOTE_PATH });
-    expect(backend.lastCallTo('worktree_status')).toBeUndefined();
+    expect(backend.lastCallTo('git_repo_status')?.args).toEqual({ path: REMOTE_PATH, target: 'ssh:h1' });
     expect(projects.status(REMOTE_PATH)).toEqual({ dirty: 3, ahead: 1, behind: 0 });
   });
 
@@ -475,7 +507,7 @@ describe('a project that lives on a host', () => {
     // all arrive as isRepo:false — and none of them means "no changes". Showing
     // zeroes there would be the same lie as a made-up branch.
     installFakeBackend({
-      ssh_git_status: () => ({ branch: null, dirty: 0, ahead: 0, behind: 0, isRepo: false }),
+      git_repo_status: () => ({ branch: null, dirty: 0, ahead: 0, behind: 0, isRepo: false }),
     });
     // Start from nothing known, so this asserts "never written" rather than
     // "overwritten" — a status already read stays put on a transient failure,
@@ -493,7 +525,7 @@ describe('a project that lives on a host', () => {
     // retried, because the root never made it into the loaded set.
     let connected = false;
     installFakeBackend({
-      ssh_fs_list: () => {
+      fs_list_dir: () => {
         if (!connected) throw { code: 'NOT_CONNECTED', message: 'h1 is not connected' };
         return [{ name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false }];
       },

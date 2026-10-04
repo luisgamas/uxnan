@@ -3,7 +3,7 @@
 //! its schedule starts, tagged as a manual run.
 
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uxnan_control_protocol::rpc::{ErrorCode, RpcError};
 
 use crate::automations::commands::{automations_list, automations_run_now};
@@ -12,6 +12,8 @@ use crate::control::bridge::Bridge;
 use crate::control::receipts;
 use crate::control::resolve::{Resolver, Scope};
 use crate::control::Caller;
+use crate::state::AppState;
+use crate::target::TargetId;
 
 /// One automation as the catalog describes it. `full` is `automation/show`:
 /// each step's prompt and failure handling, and the run policy — what a caller
@@ -47,6 +49,7 @@ fn view(a: &Automation, full: bool) -> Value {
         "enabled": a.enabled,
         "tags": a.tags,
         "workingDir": a.working_dir,
+        "target": a.target.to_string(),
         "worktreePerRun": a.worktree_per_run,
         "schedule": a.schedule,
         "steps": steps,
@@ -144,11 +147,45 @@ pub async fn propose<R: tauri::Runtime>(
             "`workingDir` is required: an automation runs in a folder",
         ));
     }
-    if !std::path::Path::new(&dir).is_dir() {
-        return Err(RpcError::new(
-            ErrorCode::NotFound,
-            format!("{dir} is not a folder on this machine"),
-        ));
+    // The machine the folder is on: a launch caller's own project's (a host's,
+    // for an agent working there), else the one the control token names. The
+    // same path names a different folder on every machine.
+    let resolver = Resolver::new(app, caller);
+    let scope = resolver.scope().await;
+    let machine = match scope {
+        Scope::Project { project, .. } => TargetId::parse(&project.target).unwrap_or_default(),
+        _ => TargetId::parse(&text("target")).map_err(|e| invalid(e.to_string()))?,
+    };
+    match machine.ssh_host_id() {
+        None => {
+            if !std::path::Path::new(&dir).is_dir() {
+                return Err(RpcError::new(
+                    ErrorCode::NotFound,
+                    format!("{dir} is not a folder on this machine"),
+                ));
+            }
+        }
+        Some(host_id) => {
+            let state = app.state::<AppState>();
+            let engine = crate::commands::connected_engine(app, &state, host_id)
+                .await
+                .ok_or_else(|| {
+                    RpcError::new(
+                        ErrorCode::Unavailable,
+                        format!("the host {host_id} is not connected; connect it in Uxnan first"),
+                    )
+                })?;
+            if engine
+                .fs::<Value>(uxnan_host_protocol::FsCall::List { path: dir.clone() })
+                .await
+                .is_err()
+            {
+                return Err(RpcError::new(
+                    ErrorCode::NotFound,
+                    format!("{dir} is not a folder on the host {host_id}"),
+                ));
+            }
+        }
     }
     let steps = params
         .get("steps")
@@ -185,8 +222,6 @@ pub async fn propose<R: tauri::Runtime>(
     // anywhere on the disk. The person would see the folder in the editor, but
     // an agent should not be able to put another project's path in front of
     // them in the first place.
-    let resolver = Resolver::new(app, caller);
-    let scope = resolver.scope().await;
     if !matches!(scope, Scope::All) && !scope.admits_folder(Some(&dir)) {
         return Err(RpcError::new(
             ErrorCode::ScopeDenied,
@@ -194,6 +229,7 @@ pub async fn propose<R: tauri::Runtime>(
         ));
     }
     let mut ask = params.clone();
+    ask["target"] = json!(machine.to_string());
     // Who is proposing, so the person is told. Backend state, not a claim of
     // the request: the window turns the terminal id into the agent's name.
     if let Caller::Launch {
@@ -227,6 +263,7 @@ pub async fn run<R: tauri::Runtime>(
         ));
     }
     automations_run_now(app.clone(), id.clone())
+        .await
         .map_err(|e| RpcError::new(ErrorCode::Internal, e.message))?;
     Ok(receipts::receipt(
         receipts::key_of(params).as_deref(),
@@ -248,6 +285,7 @@ mod tests {
             enabled: true,
             tags: vec!["quality".into()],
             working_dir: "/srv/app".into(),
+            target: Default::default(),
             worktree_per_run: true,
             base_branch: Some("main".into()),
             schedule: Schedule::DailyAt { hour: 3, minute: 0 },

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installFakeBackend, type FakeBackend } from "../../test/tauri";
 import { git } from "./git.svelte";
@@ -12,19 +12,22 @@ let backend: FakeBackend;
 beforeEach(async () => {
   backend = installFakeBackend({
     git_set_watch: () => null,
-    git_status: () => [LOCAL_CHANGE],
     git_numstat: () => [],
-    worktree_status: () => ({ dirty: 1, ahead: 0, behind: 0 }),
-    ssh_git_review: () => ({
-      files: [REMOTE_CHANGE],
-      numstat: [{ path: "remote.rs", added: 2, deleted: 0 }],
-      dirty: 1,
-      ahead: 1,
-      behind: 0,
-      head: "abc1234",
-      isRepo: true,
-    }),
-    ssh_git_stage: () => null,
+    // Each machine answers about its own folder: the host's review is not
+    // this machine's, even at the same path.
+    git_review: (args) =>
+      args.target === "ssh:h1"
+        ? {
+            files: [REMOTE_CHANGE],
+            numstat: [{ path: "remote.rs", added: 2, deleted: 0 }],
+            dirty: 1,
+            ahead: 1,
+            behind: 0,
+            head: "abc1234",
+            isRepo: true,
+          }
+        : { files: [LOCAL_CHANGE], numstat: [], dirty: 1, ahead: 0, behind: 0, head: null, isRepo: true },
+    git_stage: () => null,
   });
   sessions.replace([{ hostId: "h1", generation: 3, label: "gamas" }]);
   await git.load(null);
@@ -34,11 +37,10 @@ describe("the git panel on a host", () => {
   it("reads that machine, and never asks this one about its path", async () => {
     await git.load("C:/Users/gamas/app", "ssh:h1");
 
-    expect(backend.lastCallTo("ssh_git_review")?.args).toEqual({
-      hostId: "h1",
+    expect(backend.lastCallTo("git_review")?.args).toEqual({
       path: "C:/Users/gamas/app",
+      target: "ssh:h1",
     });
-    expect(backend.lastCallTo("git_status")).toBeUndefined();
     expect(git.files.map((f) => f.path)).toEqual(["remote.rs"]);
     expect(git.numstat["remote.rs"]).toEqual({ added: 2, deleted: 0 });
     expect(git.ahead).toBe(1);
@@ -59,7 +61,9 @@ describe("the git panel on a host", () => {
     // The same absolute path exists on both machines often enough that this is
     // not hypothetical: without the target check, this machine's file list
     // would overwrite the host's review.
+    (git as unknown as { listening: boolean }).listening = false;
     await git.startListening();
+    expect(backend.listenerCount("git:status-changed")).toBe(1);
     await git.load("C:/shared/app", "ssh:h1");
     expect(git.files.map((f) => f.path)).toEqual(["remote.rs"]);
 
@@ -75,12 +79,36 @@ describe("the git panel on a host", () => {
     expect(git.ahead).toBe(1);
   });
 
+  it("refreshes once a burst of changes the host's engine reports settles", async () => {
+    // A host has no status poller: its engine says what changed — a commit in
+    // a terminal there touches only `.git` — and one review read follows.
+    // The store is a singleton: its subscription from an earlier test listens
+    // on the bus that test's backend owned.
+    (git as unknown as { listening: boolean }).listening = false;
+    await git.startListening();
+    await git.load("/srv/app", "ssh:h1");
+    backend.clearCalls();
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < 5; i++) {
+        backend.emit("fs:changed", { root: "/srv/app", paths: [], target: "ssh:h1", git: true });
+      }
+      // Another machine's event for the same path, and a local one: ignored.
+      backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app/x"], target: "ssh:h2" });
+      backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app/x"], target: "local" });
+      await vi.advanceTimersByTimeAsync(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(backend.callsTo("git_review")).toHaveLength(1);
+  });
+
   it("acts against the connection the user was looking at", async () => {
     await git.load("C:/Users/gamas/app", "ssh:h1");
     await git.stage("remote.rs");
 
-    expect(backend.lastCallTo("ssh_git_stage")?.args).toMatchObject({
-      hostId: "h1",
+    expect(backend.lastCallTo("git_stage")?.args).toMatchObject({
+      target: "ssh:h1",
       file: "remote.rs",
       expect: { targetId: "ssh:h1", generation: 3 },
     });
@@ -99,7 +127,7 @@ describe("the git panel on a host", () => {
 
     backend.clearCalls();
     await git.stage("remote.rs");
-    expect(backend.lastCallTo("ssh_git_stage")).toBeUndefined();
+    expect(backend.lastCallTo("git_stage")).toBeUndefined();
   });
 
   it("waits quietly for a host that has not connected yet", async () => {
@@ -107,7 +135,7 @@ describe("the git panel on a host", () => {
     // error line (or a toast) for something the app resolves by itself is noise
     // the user cannot act on — the file tree learned this first.
     backend.setCommands({
-      ssh_git_review: () => {
+      git_review: () => {
         throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
       },
     });
@@ -125,7 +153,7 @@ describe("the git panel on a host", () => {
     // the message is also ruled out here — a local review has no host to wait
     // for, whatever the failure claims.
     backend.setCommands({
-      git_status: () => {
+      git_review: () => {
         throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
       },
     });
@@ -144,7 +172,7 @@ describe("the git panel on a host", () => {
     const { registerExternalChangeNotifier } = await import("./externalChangeRegistry");
     const told: { root: string; target: string }[] = [];
     registerExternalChangeNotifier((root, target) => told.push({ root, target }));
-    backend.setCommands({ ssh_git_discard: () => null });
+    backend.setCommands({ git_discard: () => null });
 
     await git.load("C:/Users/gamas/app", "ssh:h1");
     await git.discard("remote.rs", false);
@@ -159,7 +187,6 @@ describe("the git panel on a host", () => {
     // And locally nothing is announced — the watcher already does it, and doing
     // both would reload every tab twice.
     told.length = 0;
-    backend.setCommands({ git_discard: () => null });
     await git.load("/home/dev/app", "local");
     await git.discard("main.rs", false);
     expect(told).toEqual([]);
@@ -167,7 +194,7 @@ describe("the git panel on a host", () => {
 
   it("says so when the host could not read the folder as a repository", async () => {
     backend.setCommands({
-      ssh_git_review: () => ({
+      git_review: () => ({
         files: [],
         numstat: [],
         dirty: 0,
@@ -189,16 +216,14 @@ describe("the git panel on a host", () => {
 describe("the git panel on a plain folder", () => {
   it("asks git nothing about a project the app knows is not a repository", async () => {
     // `RepoData.isGit` was decided when the project was added. Asking anyway
-    // gets a refusal, not "no changes" — and one refusal among the three reads
-    // awaited together used to surface as a toast the size of git's usage text.
+    // gets a refusal, not "no changes" — and a refusal used to surface as a
+    // toast the size of git's usage text.
     await git.load("/home/dev/app", "local");
     backend.clearCalls();
 
     await git.load("/home/dev/plain", "local", false);
 
-    expect(backend.lastCallTo("git_status")).toBeUndefined();
-    expect(backend.lastCallTo("git_numstat")).toBeUndefined();
-    expect(backend.lastCallTo("worktree_status")).toBeUndefined();
+    expect(backend.lastCallTo("git_review")).toBeUndefined();
     // The watcher is released too: polling a plain folder every three seconds
     // would be two failing git spawns per tick for nothing.
     expect(backend.lastCallTo("git_set_watch")?.args).toEqual({ path: null });
@@ -213,7 +238,7 @@ describe("the git panel on a plain folder", () => {
     backend.clearCalls();
     await git.refresh();
     expect(git.notRepo).toBe(true);
-    expect(backend.lastCallTo("git_status")).toBeUndefined();
+    expect(backend.lastCallTo("git_review")).toBeUndefined();
 
     await git.load("/home/dev/app", "local");
     expect(git.notRepo).toBe(false);

@@ -19,14 +19,14 @@ import { renameOn } from '$lib/fsRouter';
 import { sessions } from '$lib/state/sessions.svelte';
 import { inheritedCwd } from '$lib/terminalCwd';
 import { keyTarget, parseWorkspaceKey } from '$lib/pathid';
-import { LOCAL_TARGET, sshHostId, type TargetId } from '$lib/target';
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from '$lib/target';
 import { registerExternalChangeNotifier } from '$lib/state/externalChangeRegistry';
 import { registerFlush } from '$lib/state/flushRegistry';
 import { disposeInstance, serializeInstance, setParkedExitHandler } from '$lib/terminal/instances';
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
 import { renewPendingSession } from '$lib/agentSessionId';
 import { conversationTitles } from '$lib/state/conversationTitles.svelte';
-import { chat } from '$lib/bridge/chat.svelte';
+import { chatFor } from '$lib/bridge/chat.svelte';
 import type { ProviderSession } from '$lib/types';
 import { isImagePath } from '$lib/diff';
 import { opensInPreview } from '$lib/filePreview';
@@ -162,6 +162,9 @@ export interface ChatTab extends BaseTab {
   kind: 'chat';
   /** Working directory (the worktree) the conversation runs in. */
   cwd: string;
+  /** The machine whose bridge holds the conversation — a host's own bridge
+   *  for a project on that host (`02g` §5.18). Absent = this machine. */
+  target?: TargetId;
   /** The bridge thread shown; absent until the first message starts one. */
   threadId?: string;
   /** Agent preselected for a chat not started yet (bridge `AgentId`). */
@@ -175,6 +178,11 @@ export interface ChatTab extends BaseTab {
 
 export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
 
+/** Whether two chat targets name the same machine (absent = this one). */
+function sameMachine(a: TargetId | undefined, b: TargetId | undefined): boolean {
+  return (a ?? LOCAL_TARGET) === (b ?? LOCAL_TARGET);
+}
+
 /** The label shown on a tab (strip + drag ghost).
  *
  *  A user-set `customTitle` always wins — renaming a tab by hand is a decision,
@@ -186,7 +194,7 @@ export function tabDisplayTitle(t: GroupTab): string {
   // A chat bound to a thread is named by the bridge (a rename made here or on
   // the phone, or a generated name) — never by a tab-local title.
   if (t.kind === 'chat' && t.threadId) {
-    const title = chat.threads.get(t.threadId)?.title;
+    const title = chatFor(t.target).threads.get(t.threadId)?.title;
     if (title) return title;
   }
   if (t.customTitle) return t.customTitle;
@@ -480,6 +488,7 @@ function serializeTab(t: GroupTab): SavedTab {
       title: t.title,
       customTitle: t.customTitle,
       cwd: t.cwd,
+      ...(t.target && !isLocalTarget(t.target) ? { target: t.target } : {}),
       threadId: t.threadId,
       agentId: t.agentId,
       ...(t.draft ? { draft: t.draft } : {}),
@@ -551,6 +560,7 @@ function buildTab(t: SavedTab): GroupTab {
       title: t.title,
       customTitle: t.customTitle,
       cwd: t.cwd,
+      ...(t.target && !isLocalTarget(t.target) ? { target: t.target } : {}),
       threadId: t.threadId,
       agentId: t.agentId,
       ...(t.draft ? { draft: t.draft } : {}),
@@ -1056,16 +1066,18 @@ class TerminalStore {
     if (this.fsListening) return;
     this.fsListening = true;
     try {
-      await listen<FsChangedEvent>('fs:changed', (e) => this.applyExternalChange(e.payload.paths));
+      await listen<FsChangedEvent>('fs:changed', (e) =>
+        this.applyExternalChange(e.payload.paths, e.payload.target ?? LOCAL_TARGET),
+      );
     } catch {
       this.fsListening = false; // no Tauri event bus (web preview)
     }
   }
 
-  private applyExternalChange(paths: string[]): void {
+  private applyExternalChange(paths: string[], target: TargetId): void {
     const set = new Set(paths);
     for (const st of this.fileStates.values()) {
-      if (set.has(st.path)) st.noteExternalChange();
+      if (st.target === target && set.has(st.path)) st.noteExternalChange();
     }
     for (const st of this.diffStates.values()) {
       const root = st.worktree.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -1394,6 +1406,8 @@ class TerminalStore {
    *  preselected. Returns the tab id. */
   openChat(opts: {
     cwd: string;
+    /** The machine whose bridge holds it; absent = this one. */
+    target?: TargetId;
     threadId?: string;
     agentId?: string;
     workspace?: string;
@@ -1401,7 +1415,11 @@ class TerminalStore {
   }): string {
     if (opts.threadId) {
       for (const { tab, workspace } of this.tabsWithWorkspace()) {
-        if (tab.kind === 'chat' && tab.threadId === opts.threadId) {
+        if (
+          tab.kind === 'chat' &&
+          tab.threadId === opts.threadId &&
+          sameMachine(tab.target, opts.target)
+        ) {
           this.revealTab(workspace, tab.id);
           return tab.id;
         }
@@ -1414,6 +1432,7 @@ class TerminalStore {
       id,
       title: i18n.t('chat.newChat'),
       cwd: opts.cwd,
+      ...(opts.target && !isLocalTarget(opts.target) ? { target: opts.target } : {}),
       ...(opts.threadId ? { threadId: opts.threadId } : {}),
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
     };

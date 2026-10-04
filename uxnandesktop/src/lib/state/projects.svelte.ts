@@ -25,8 +25,6 @@ import {
   worktreeCreate,
   worktreeList,
   worktreeRemove,
-  sshGitStatus,
-  worktreeStatus,
 } from "$lib/api";
 import type {
   AgentProfile,
@@ -39,6 +37,7 @@ import type {
   WorktreeEntry,
   WorktreeStatus,
 } from "$lib/types";
+import { repoStatusOn } from "$lib/gitRouter";
 import { app } from "$lib/state/app.svelte";
 import {
   canonicalFor,
@@ -55,12 +54,14 @@ import {
   LOCAL_TARGET,
   sshHostId,
   targetOf,
+  type TargetExpectation,
   type TargetId,
 } from "$lib/target";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
-import { chat } from "$lib/bridge/chat.svelte";
+import { chatStatusesAt } from "$lib/bridge/chat.svelte";
+import { bridges } from "$lib/bridge/client.svelte";
 import {
   resolveCommandCwd,
   substituteTokens,
@@ -91,6 +92,22 @@ import { buildReviewGroups, type ReviewGroup, type ReviewPr } from "$lib/sidebar
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
+import { sessions } from "$lib/state/sessions.svelte";
+
+/** The expectation a project mutation is fenced with: this machine's, or for a
+ *  project on a host, the connection the user is looking at now. Thrown rather
+ *  than sent with a zero when that host is not connected — an expectation
+ *  nobody issued would be refused after a round trip, or satisfied by
+ *  accident. */
+function liveExpectation(target: TargetId | null | undefined): TargetExpectation {
+  const host = sshHostId(target);
+  if (!host) return expectation(target);
+  const generation = sessions.generationOf(host);
+  if (generation === undefined) {
+    throw new Error(`no live connection to ${host} to act against`);
+  }
+  return expectation(target, generation);
+}
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -489,7 +506,7 @@ class ProjectsStore {
       for (const p of paths) {
         const s = mostUrgentStatus([
           ...terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
-          ...chat.statusesAt(p).map((c) => c.status),
+          ...chatStatusesAt(repo.target, p).map((c) => c.status),
         ]);
         if (s === "waiting" || s === "blocked") n += 1;
       }
@@ -528,7 +545,7 @@ class ProjectsStore {
    *  comparators read, aggregated across the agents running in it. */
   private workspaceMeta(path: string, name: string): SortMeta {
     const tabs = terminals.agentTabs(path);
-    const chats = chat.statusesAt(path);
+    const chats = chatStatusesAt(this.targetForPath(path), path);
     const status = mostUrgentStatus([
       ...tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
       ...chats.map((c) => c.status),
@@ -880,15 +897,10 @@ class ProjectsStore {
         try {
           // Whichever machine the worktree is on. Asking this one for a host's
           // path is how a sidebar badge ends up describing the wrong folder.
-          const host = sshHostId(this.targetForPath(path));
-          if (host) {
-            const remote = await sshGitStatus(host, path);
-            // "Not a repository / no git / unnamed shell" is not "clean": leave
-            // the badges alone rather than showing zeroes that mean nothing.
-            if (!remote.isRepo) return null;
-            return [path, { dirty: remote.dirty, ahead: remote.ahead, behind: remote.behind }] as const;
-          }
-          return [path, await worktreeStatus(path)] as const;
+          // "Not a repository" is not "clean": the badges are left alone
+          // rather than showing zeroes that mean nothing.
+          const status = await repoStatusOn(this.targetForPath(path), path);
+          return status ? ([path, status] as const) : null;
         } catch {
           return null;
         }
@@ -1043,7 +1055,7 @@ class ProjectsStore {
         if (!shouldCheckIntegration(this.#completionInputs(w))) continue;
         this.#integrationInFlight.add(w.path);
         try {
-          this.#integrated[w.path] = await branchIntegrated(w.path, w.branch);
+          this.#integrated[w.path] = await branchIntegrated(w.path, w.branch, targetOf(repo.target));
         } catch {
           // A repo we can't read is not "finished" — leave it unasked so a later
           // sweep retries instead of freezing a wrong verdict into the panel.
@@ -1312,7 +1324,7 @@ class ProjectsStore {
         path: options.path,
         // Fence the write to the machine this project lives on, as it was when
         // the dialog opened: creating a worktree writes to disk.
-        expect: expectation(app.repos.find((r) => r.id === repoId)?.target),
+        expect: liveExpectation(app.repos.find((r) => r.id === repoId)?.target),
       });
       await this.adoptWorktree(repoId, created, options.agentId);
       return true;
@@ -1397,6 +1409,11 @@ class ProjectsStore {
   ): Promise<boolean> {
     this.error = null;
     try {
+      // The most destructive command in the app: fence it to the machine the
+      // user was actually looking at when they confirmed — decided before any
+      // terminal is touched, so a host that just dropped refuses with nothing
+      // closed.
+      const expect = liveExpectation(app.repos.find((r) => r.id === row.repoId)?.target);
       // Kill the worktree's terminals/agents FIRST: on Windows a process whose
       // working directory is inside the worktree holds the folder open and
       // blocks git from deleting it (which left half-removed worktrees before).
@@ -1410,9 +1427,7 @@ class ProjectsStore {
         row.branch,
         force,
         cleanup,
-        // The most destructive command in the app: fence it to the machine the
-        // user was actually looking at when they confirmed.
-        expectation(app.repos.find((r) => r.id === row.repoId)?.target),
+        expect,
       );
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.
@@ -1534,14 +1549,16 @@ class ProjectsStore {
   /** Open a chat (a conversation the Uxnan bridge drives) in `path`'s
    *  workspace, and switch to it. With `threadId` it shows that thread —
    *  including one started on the phone; without, the new-chat setup with
-   *  `agentId` preselected. Local workspaces only: the bridge runs on this
-   *  machine, so a host's folder is not one it can work in. */
+   *  `agentId` preselected. A host's folder is chatted with on **that host's
+   *  own bridge** (`02g` §5.18), so it is refused while that host has none
+   *  connected — this machine's bridge cannot work in another machine's
+   *  folder. */
   openChatAt(pathOrKey: string, opts: { threadId?: string; agentId?: string } = {}): void {
     const { path, target } = this.locate(pathOrKey);
-    if (target !== LOCAL_TARGET) return;
+    if (!bridges.offersChat(target)) return;
     this.activeWorktreePath = path;
     this.stampActive(path);
-    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), ...opts });
+    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), target, ...opts });
   }
 
   // --- Quick commands ------------------------------------------------------

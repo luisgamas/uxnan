@@ -1,8 +1,8 @@
 //! Ports a terminal announces, read from what it prints.
 //!
 //! **Why the output and not the machine.** Asking a host what it is listening on
-//! costs a shell start per question (`ssh::ports`), so it cannot be the thing
-//! that runs continuously. But a dev server tells you its address the moment it
+//! is a call to its engine (`ports::listening`), on demand, so it is not the
+//! thing that runs continuously. But a dev server tells you its address the moment it
 //! is ready — `Local: http://localhost:5173/` — and that line is already
 //! crossing the wire on its way to the terminal. Reading it costs nothing, needs
 //! nothing installed, and works the same on any host and any shell, because it

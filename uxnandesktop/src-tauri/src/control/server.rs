@@ -61,8 +61,14 @@ pub enum Caller {
     /// An agent the Uxnan bridge runs for one of its conversations, authorized
     /// by the bridge-agent token the desktop gave the bridge (`desktop/attach`).
     /// `cwd` is the conversation's folder — what scopes it — when the request
-    /// said so; it has no terminal, so `current` names nothing.
-    Bridge { cwd: Option<String> },
+    /// said so; it has no terminal, so `current` names nothing. `target` is
+    /// the machine that folder is on: `None` for this machine's bridge, a
+    /// host's `ssh:<id>` for that host's own bridge (`02g` §5.18) — a host's
+    /// folder must never be read as the same path here.
+    Bridge {
+        cwd: Option<String>,
+        target: Option<String>,
+    },
 }
 
 /// Shared context handed to the axum handlers.
@@ -105,6 +111,7 @@ impl<R: tauri::Runtime> ServerCtx<R> {
         if token_eq(&presented, &self.bridge_token) {
             return Some(Caller::Bridge {
                 cwd: header_str(headers, proto_headers::CWD).and_then(|v| percent_decode(&v)),
+                target: None,
             });
         }
         None
@@ -131,7 +138,7 @@ fn presented_token(headers: &HeaderMap) -> Option<String> {
 /// so a folder with non-ASCII characters survives as a header). `None` for a
 /// malformed escape or bytes that are not UTF-8 — a folder it cannot read
 /// scopes nothing.
-fn percent_decode(value: &str) -> Option<String> {
+pub(crate) fn percent_decode(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -314,6 +321,10 @@ pub async fn start<R: tauri::Runtime>(
             post(route_mcp::<R>).get(route_mcp_get),
         )
         .route(uxnan_control_protocol::RPC_PATH, post(route_rpc::<R>))
+        .route(
+            crate::automations::handoff::PATH,
+            post(route_automation_handoff::<R>),
+        )
         .route("/health", get(|| async { "ok" }))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(ctx);
@@ -344,7 +355,13 @@ async fn route_hook<R: tauri::Runtime>(
     if !matches!(ctx.caller(&headers).await, Some(Caller::Launch { .. })) {
         return StatusCode::UNAUTHORIZED;
     }
-    crate::hooks::handle_report(&ctx.app, headers, body).await
+    crate::hooks::handle_report(
+        &ctx.app,
+        headers,
+        body,
+        crate::hooks::ReportOrigin::ThisMachine,
+    )
+    .await
 }
 
 /// The JSON body the agent `BROWSER` shim POSTs to open a URL in-app: `{"url": …}`.
@@ -422,6 +439,31 @@ async fn route_rpc<R: tauri::Runtime>(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     };
     super::rpc::handle(&ctx.app, caller, body).await
+}
+
+/// `POST /automations/v1/handoff`: the automation runner handing over a run
+/// on a host (`automations::handoff`). Only the control token — the one in the
+/// discovery file, readable by this user alone — and never a terminal's or a
+/// bridge agent's: this starts a run the user scheduled, not anything an agent
+/// asks for.
+async fn route_automation_handoff<R: tauri::Runtime>(
+    AxumState(ctx): AxumState<ServerCtx<R>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !loopback_caller(&headers) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    if !matches!(ctx.caller(&headers).await, Some(Caller::Control)) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    let Ok(ask) = serde_json::from_slice::<crate::automations::handoff::Handoff>(&body) else {
+        return (StatusCode::BAD_REQUEST, "not a hand-off").into_response();
+    };
+    match crate::automations::handoff::start(&ctx.app, &ask.automation, ask.trigger).await {
+        Ok(()) => (StatusCode::ACCEPTED, "accepted").into_response(),
+        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
+    }
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ mod bridgeclient;
 mod browse;
 mod browser;
 pub mod budget;
-mod codex_trust;
+use uxnan_workspace_engine::codex_trust;
 mod commands;
 mod convtitle;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
@@ -34,13 +34,14 @@ mod fonts;
 mod fs;
 mod fswatch;
 mod git;
-mod gitfast;
+
 // Public for the same integration tests: they drive the *production* gh layer —
 // against a scripted fake `gh` in the mandatory suite, and against the
 // allowlisted sandbox repository in the ignored live suite.
 pub mod control;
 pub mod github;
 mod hooks;
+pub mod hostkeys;
 mod keyboard;
 pub mod launchenv;
 mod mcpinject;
@@ -69,7 +70,6 @@ mod which;
 mod winproc;
 mod worktreeclean;
 mod worktreeloc;
-mod wsl;
 mod zero;
 
 use std::sync::atomic::Ordering;
@@ -105,6 +105,11 @@ pub fn run() {
         // window config provides the first-run defaults.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // The host engines the installer carries, one per platform, for the
+            // app to put on a remote host (`ssh::engine`).
+            if let Ok(resources) = app.path().resource_dir() {
+                ssh::engine::set_bundled_dir(resources.join("host-engine"));
+            }
             // The native half of the keyboard layer (`keyboard.rs`). On macOS
             // the app builds its own menu bar — the default one binds Close
             // Window to ⌘W and quits without the app's shutdown (`menu.rs`);
@@ -342,7 +347,11 @@ pub fn run() {
                     // work out of the box. Idempotent; a failure for one agent does
                     // not abort the others. Skipped when the user opted out.
                     if auto_install_hooks {
-                        crate::agent_hooks::install_all(&install);
+                        crate::agent_hooks::install_all(
+                            &install,
+                            &crate::agentcli::command_installed,
+                            crate::agent_hooks::Reach::EveryKnownAgent,
+                        );
                     }
                     let slot = hook_install_slot;
                     tauri::async_runtime::spawn(async move {
@@ -465,7 +474,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(2));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                let mut sys = sysinfo::System::new();
+                let mut table = crate::procscan::Table::default();
                 let mut last: std::collections::HashMap<String, Option<String>> =
                     std::collections::HashMap::new();
                 loop {
@@ -480,27 +489,19 @@ pub fn run() {
                         continue;
                     }
                     let commands = state.agent_commands.read().await.clone();
-                    // Refresh WITH command lines — the default refresh only gives
-                    // the exe name (`node`), so node-shim agents (Codex/Pi/…)
-                    // would never match without their `…/agent.js` argument. The
-                    // scan is a blocking, syscall-heavy walk of the whole process
-                    // table, so run it on a blocking thread (moving `sys` in and
-                    // back out) instead of stalling this Tokio worker.
-                    sys = tokio::task::spawn_blocking(move || {
-                        sys.refresh_processes_specifics(
-                            sysinfo::ProcessesToUpdate::All,
-                            true,
-                            sysinfo::ProcessRefreshKind::nothing()
-                                .with_cmd(sysinfo::UpdateKind::Always),
-                        );
-                        sys
+                    // A blocking walk of the whole process table: on a blocking
+                    // thread (moving the table in and back out) rather than
+                    // stalling this Tokio worker.
+                    table = tokio::task::spawn_blocking(move || {
+                        table.refresh();
+                        table
                     })
                     .await
                     .expect("agent scan task panicked");
                     let mut live = std::collections::HashSet::new();
                     for (pty_id, pid) in pids {
                         live.insert(pty_id.clone());
-                        let command = crate::procscan::detect_agent(&sys, pid, &commands);
+                        let command = table.agent_of(pid, &commands);
                         if last.get(&pty_id) != Some(&command) {
                             last.insert(pty_id.clone(), command.clone());
                             // Keep the resource monitor's terminal link in step,
@@ -533,6 +534,12 @@ pub fn run() {
             bridgeclient::commands::bridge_client_status,
             bridgeclient::commands::bridge_client_retry,
             bridgeclient::commands::bridge_call,
+            bridgeclient::commands::bridge_hosts_status,
+            commands::host_bridge_status,
+            commands::host_bridge_install,
+            commands::host_bridge_supervise,
+            commands::host_bridge_set_lan,
+            bridgeclient::commands::bridge_host_retry,
             bridgeclient::commands::bridge_install_probe,
             bridgeclient::commands::bridge_install,
             bridgeclient::commands::bridge_restart,
@@ -587,52 +594,32 @@ pub fn run() {
             commands::worktree_create,
             commands::worktree_remove,
             commands::worktree_list,
-            commands::worktree_status,
             commands::branch_integrated,
             commands::ssh_config_hosts,
             commands::ssh_config_resolve,
             commands::ssh_hosts_list,
             commands::ssh_host_add,
             commands::ssh_host_remove,
-            commands::ssh_host_probe,
             commands::ssh_host_trust,
             commands::ssh_host_connect,
+            commands::ssh_host_answer,
+            commands::ssh_host_cancel,
+            commands::ssh_host_replace_key,
+            commands::ssh_host_update,
+            commands::ssh_host_set_carrier,
+            commands::ssh_host_carrier,
             commands::ssh_host_disconnect,
             commands::ssh_hosts_connected,
             commands::ssh_hosts_resumable,
             commands::ssh_host_inventory,
             commands::ssh_browse_dirs,
-            commands::ssh_git_status,
-            commands::ssh_git_review,
-            commands::ssh_git_diff,
-            commands::ssh_git_diff_head,
-            commands::ssh_git_image_diff,
-            commands::ssh_git_generate_commit_message,
-            commands::ssh_git_log,
-            commands::ssh_git_show,
-            commands::ssh_git_stage,
-            commands::ssh_git_unstage,
-            commands::ssh_git_stage_all,
-            commands::ssh_git_unstage_all,
-            commands::ssh_git_discard,
-            commands::ssh_git_apply,
-            commands::ssh_git_commit,
-            commands::ssh_git_sync,
+            commands::ssh_host_doctor,
+            commands::ssh_host_sessions,
+            commands::ssh_host_session_end,
             commands::ssh_ports_listening,
             commands::ssh_forward_open,
             commands::ssh_forward_close,
             commands::ssh_forwards,
-            commands::ssh_fs_list,
-            commands::ssh_fs_read,
-            commands::ssh_fs_read_data_url,
-            commands::ssh_fs_write,
-            commands::ssh_fs_create_file,
-            commands::ssh_fs_create_dir,
-            commands::ssh_fs_rename,
-            commands::ssh_fs_delete,
-            commands::ssh_fs_duplicate,
-            commands::ssh_fs_search_files,
-            commands::ssh_fs_search_content,
             commands::ssh_repo_add,
             commands::browse_dirs,
             commands::fs_list_dir,
@@ -679,10 +666,11 @@ pub fn run() {
             browser::approval::browser_approval_answer,
             browser::approval::browser_approvals,
             commands::git_diff_head,
+            commands::git_review,
+            commands::git_repo_status,
             commands::set_terminal_layout,
             commands::set_orchestration_runs,
             commands::agents_detect,
-            commands::git_status,
             commands::git_numstat,
             commands::git_diff,
             commands::git_image_diff,
@@ -711,6 +699,9 @@ pub fn run() {
             commands::set_prevent_sleep,
             commands::get_hook_install,
             commands::list_agent_hooks,
+            commands::host_hooks,
+            commands::host_hook_set,
+            commands::host_hook_config,
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
             commands::render_agent_hooks_config,

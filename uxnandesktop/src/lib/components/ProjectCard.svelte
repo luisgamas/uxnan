@@ -22,8 +22,10 @@
   import { control, focus, icon, row, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import { hosts } from "$lib/state/hosts.svelte";
+  import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
   import { sshHostId, targetOf } from "$lib/target";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import StatusDot from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
@@ -179,6 +181,24 @@
     if (!id) return null;
     return hosts.hosts.find((h) => h.id === id)?.label ?? id;
   });
+  /** Where that host stands, drawn as a dot in its badge and said in its
+   *  tooltip — the same answer the host page and the tabs give. */
+  const hostStanding = $derived.by(() => {
+    const id = sshHostId(repo.target);
+    if (!id) return null;
+    const standing = hosts.stateOf(id);
+    const latency = standing === "connected" ? sessions.latencyOf(id) : null;
+    return {
+      tone: HOST_STATE_TONE[standing],
+      said: [
+        i18n.t("project.onHost", { host: remoteHost ?? id }),
+        i18n.t(`hostPage.state.${standing}`),
+        latency !== null ? i18n.t("hostPage.latency", { ms: latency }) : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  });
   const draggedWorktree = $derived(
     wtDrag.draggingKey
       ? stableChildren.items.find((w) => w.path === wtDrag.draggingKey)
@@ -279,16 +299,19 @@
       <!-- Which machine this project lives on. Only for projects that are not on
            this one: a badge on every card would be noise on the 90% that are
            local, and the absence of a badge is itself the answer. -->
-      <TooltipSimple title={i18n.t("project.onHost", { host: remoteHost })}>
+      <TooltipSimple title={hostStanding?.said ?? i18n.t("project.onHost", { host: remoteHost })}>
         {#snippet children(tp3)}
           <span
             {...tp3}
             class={cn(
-              "shrink-0 truncate rounded-[4px] bg-foreground/[0.06] px-1.5 py-px",
+              "flex min-w-0 max-w-[45%] shrink-[3] items-center gap-1 rounded-[4px] bg-foreground/[0.06] px-1.5 py-px",
               text.indicator,
               "text-muted-foreground",
             )}
-          >{remoteHost}</span>
+          >
+            {#if hostStanding}<StatusDot tone={hostStanding.tone} class="size-1.5" />{/if}
+            <span class="truncate">{remoteHost}</span>
+          </span>
         {/snippet}
       </TooltipSimple>
     {/if}

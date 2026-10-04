@@ -93,6 +93,37 @@ describe("launchExecutable", () => {
   });
 });
 
+describe("withMcpLaunch on a host", () => {
+  const HOST = "ssh:box";
+  const HOST_CATALOG: McpAgentInfo[] = CATALOG.map((a) =>
+    a.id === "claude"
+      ? { ...a, args: ["--mcp-config", "/home/u/.uxnan/host/run/mcp/claude-40001.json"] }
+      : a.id === "codex"
+        ? { ...a, args: ["-c", "mcp_servers.uxnan-browser.url=http://127.0.0.1:40001/mcp"] }
+        : a,
+  );
+
+  it("uses the host's own catalog, never this machine's", () => {
+    __setMcpCatalog(WITH_OPENCODE_2);
+    __setMcpCatalog(HOST_CATALOG, HOST);
+    expect(withMcpLaunch("claude", "/bin/bash", HOST)).toBe(
+      "claude --mcp-config /home/u/.uxnan/host/run/mcp/claude-40001.json",
+    );
+    expect(withMcpLaunch("codex", "/bin/zsh", HOST)).toContain("127.0.0.1:40001");
+    // OpenCode 2 here says nothing about the host's OpenCode (1 there).
+    expect(withMcpLaunch("opencode", "/bin/zsh", HOST)).toBe("opencode");
+    // The same switches apply.
+    syncMcpLaunchSettings({ ...ON, mcpDisabledAgents: ["claude"] });
+    expect(withMcpLaunch("claude", "/bin/bash", HOST)).toBe("claude");
+  });
+
+  it("adds nothing for a host whose catalog is not known", () => {
+    __setMcpCatalog(WITH_OPENCODE_2);
+    expect(withMcpLaunch("claude", "/bin/bash", "ssh:elsewhere")).toBe("claude");
+    expect(withMcpLaunch("opencode", "/bin/zsh", "ssh:elsewhere")).toBe("opencode");
+  });
+});
+
 describe("withMcpLaunch", () => {
   it("appends Claude's config flag, quoted for the shell", () => {
     // The path has a space, so each shell needs its own quoting; the flag value

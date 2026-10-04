@@ -1,6 +1,18 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.2.2 | **Fecha:** 2026-10-03 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.2.4 | **Fecha:** 2026-10-04 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.2.4):** `SyncChanges.live` — `ThreadLiveState[]`, every
+> conversation running or waiting on the user right now (`activeTurnId?`,
+> `awaitingInput?`), whole on every answer and not revisioned, so a client that
+> reconnects with a saved cursor converges on which threads are live. No new
+> method.
+>
+> **Executive summary (1.2.3):** `relay/admitHost { hostKey, apiToken?,
+> remember? }` — let another of the user's machines (a remote host's own
+> bridge, `uxnandesktop/architecture/02g` §5.18) host on this bridge's relay:
+> the Worker is redeployed with that key added. Local control channel only.
+> **102 methods**, 25 notifications.
 >
 > **Executive summary (1.2.2):** `BridgeSettings.hosts` — the bridge's live
 > `host:port` list, read-only for clients and kept current as the PC changes
@@ -149,7 +161,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 101 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 102 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge consume el paquete
 > compartido directamente y el relay empaqueta solo su subpath
@@ -393,6 +405,8 @@ relay/update   { apiToken?, remember? } -> RelayStatus   despliega la version qu
 relay/rotate   -> RelayStatus   routingId nuevo; el viejo deja de servir
 relay/remove   { deleteWorker?, apiToken?, remember? } -> RelayStatus   deja de usarlo; deleteWorker
                quita la clave de este PC del Worker y lo borra si no queda ninguno
+relay/admitHost { hostKey, apiToken?, remember? } -> RelayStatus   solo canal local; agrega la
+               clave de otra maquina del usuario (el bridge de un host remoto) al Worker
 ```
 
 **Herramientas del desktop para agentes del bridge (2)** — solo por el canal de

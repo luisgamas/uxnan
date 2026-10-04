@@ -7,7 +7,10 @@
   import { cn } from "$lib/utils";
   import { field, icon, panel, text } from "$lib/design";
   import { automations } from "$lib/state/automations.svelte";
-  import { aiCommitAgents } from "$lib/api";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sshBrowseDirs } from "$lib/api";
+  import { agentsOn } from "$lib/automations/agents";
+  import { LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
   import type { Automation } from "$lib/automations/types";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -49,13 +52,38 @@
   let folderOpen = $state(false);
   let tagsText = $state(draft.tags.join(", "));
 
+  // The agents of the machine the folder is on: a host's run uses that
+  // host's CLIs, not this machine's.
   let installedAgents = $state<string[]>([]);
   $effect(() => {
-    if (installedAgents.length > 0) return;
-    void aiCommitAgents()
-      .then((a) => (installedAgents = a))
-      .catch(() => {});
+    const target = draft.target;
+    void agentsOn(target).then((a) => {
+      if (draft.target === target) installedAgents = a;
+    });
   });
+
+  const hostId = $derived(sshHostId(draft.target));
+  const machineGroups = $derived([
+    {
+      items: [
+        { value: LOCAL_TARGET, label: i18n.t("automations.thisMachine") },
+        ...hosts.hosts.map((h) => ({ value: `ssh:${h.id}`, label: h.label })),
+      ],
+    },
+  ]);
+  /** A host's folders, listed by that host — only while it is connected. */
+  const listHost = $derived(
+    hostId ? (target?: string) => sshBrowseDirs(hostId, target ?? "") : undefined,
+  );
+
+  /** Another machine's path means nothing here: switching machines starts the
+   *  folder over rather than carry a path that names a different folder. */
+  function setMachine(value: string) {
+    const next = value as TargetId;
+    if ((draft.target ?? LOCAL_TARGET) === next) return;
+    draft.target = next;
+    draft.workingDir = "";
+  }
 
   const overlapGroups = $derived([
     {
@@ -177,11 +205,32 @@
     description={i18n.t("automations.whereDesc")}
   >
     <div class={cn("divide-y divide-border/50", panel.settingsBody)}>
+      {#if hosts.hosts.length > 0 || hostId}
+        <SettingsRow
+          label={i18n.t("automations.machine")}
+          description={i18n.t("automations.machineDesc")}
+        >
+          {#snippet control()}
+            <Combobox
+              value={draft.target ?? LOCAL_TARGET}
+              groups={machineGroups}
+              triggerClass={field.selectStandard}
+              searchPlaceholder={i18n.t("common.search")}
+              onChange={setMachine}
+            />
+          {/snippet}
+        </SettingsRow>
+      {/if}
       <SettingsRow label={i18n.t("automations.folder")}>
         {#snippet children()}
           <div class="flex items-center gap-2">
             <Input class="min-w-0 flex-1 font-mono text-xs" bind:value={draft.workingDir} />
-            <Button variant="outline" size="sm" onclick={() => (folderOpen = true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={hostId !== null && !hosts.isConnected(hostId)}
+              onclick={() => (folderOpen = true)}
+            >
               <Icon icon={FolderIcon} class={icon.action} />
               {i18n.t("automations.browse")}
             </Button>
@@ -317,6 +366,8 @@
   title={i18n.t("automations.folderTitle")}
   description={i18n.t("automations.folderDesc")}
   onselect={(path) => (draft.workingDir = path)}
+  list={listHost}
+  watchable={!hostId}
 />
 
 <!-- Leaving a draft an agent proposed: it was never stored, so "back" would

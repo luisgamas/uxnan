@@ -44,7 +44,11 @@ import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import { isImagePath } from "$lib/diff";
 import { commitFileDiff } from "$lib/diffParse";
-import type { FileChange, GitStatusEvent } from "$lib/types";
+import type { FileChange, FsChangedEvent, GitStatusEvent } from "$lib/types";
+
+/** How long a host's changes must go quiet before its git panel refreshes:
+ *  one remote status read per burst (a build, a checkout), not per file. */
+const REMOTE_REFRESH_SETTLE_MS = 800;
 
 /** Whether a failure is "that host is not connected yet" — a state, not a
  *  fault. Matched on the backend's own code, like the file tree does, so the
@@ -97,6 +101,9 @@ class GitStore {
    *  because the alternative is a red line the user has to clear by switching
    *  projects and back. */
   awaitingHost = $state(false);
+  /** When this review was last read, so a host that drops leaves it on screen
+   *  saying how old it is (`OfflineNote`). */
+  readAt = $state<number | null>(null);
   /** The selected project is a plain folder — one the app already knows is not
    *  a repository (`RepoData.isGit`, decided when it was added). There is
    *  nothing to review, so nothing is asked: `path` stays null and the panel
@@ -125,6 +132,7 @@ class GitStore {
   /** A remote fetch (checking for new upstream commits) is in flight. */
   fetching = $state(false);
   private listening = false;
+  private remoteRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Async guards cover fast A → B → A worktree switches and overlapping manual
    *  refreshes; comparing only the path cannot reject the first A response. */
   private loadSeq = 0;
@@ -164,6 +172,18 @@ class GitStore {
     if (this.listening) return;
     this.listening = true;
     try {
+      // A host has no status poller; its engine reports what changed in the
+      // worktree there — files, and `.git` itself (a commit or a stage made in
+      // a terminal) — and the panel refreshes once the burst settles.
+      await listen<FsChangedEvent>("fs:changed", (e) => {
+        const ev = e.payload;
+        if (!this.remote || (ev.target ?? LOCAL_TARGET) !== this.target || ev.root !== this.path) return;
+        if (this.remoteRefreshTimer) clearTimeout(this.remoteRefreshTimer);
+        this.remoteRefreshTimer = setTimeout(() => {
+          this.remoteRefreshTimer = null;
+          void this.refresh();
+        }, REMOTE_REFRESH_SETTLE_MS);
+      });
       await listen<GitStatusEvent>("git:status-changed", (e) => {
         const ev = e.payload;
         // The watcher polls *this* machine. A host's worktree can carry the same
@@ -233,6 +253,7 @@ class GitStore {
       this.files = [];
       this.numstat = {};
       this.numstatSeq++;
+      this.readAt = null;
     }
     // A remote worktree unwatches whatever this machine was watching: there is
     // nothing here to poll, and polling a host every three seconds would be a
@@ -247,20 +268,20 @@ class GitStore {
     }
     this.loading = true;
     try {
-      // One call for both machines. Locally it is still the three calls it
-      // always was; on a host it is a single command, because each one there
-      // costs a shell start (`$lib/gitRouter`).
+      // One call, on whichever machine the worktree is (`$lib/gitRouter`).
       const review = await reviewOn(target, path);
       if (seq !== this.loadSeq || this.path !== path) return;
       if (!review.isRepo) {
-        // "Not a repository", "no git installed" or "the shell could not be
-        // named" — all of which must read as *not read*, never as a clean tree.
+        // A plain folder here simply has no changes. On a host, "not a
+        // repository" or "no git there" must read as *not read*, never as a
+        // clean tree.
         this.files = [];
         this.numstat = {};
-        this.error = i18n.t("git.remoteNotRead");
+        if (sshHostId(target)) this.error = i18n.t("git.remoteNotRead");
         return;
       }
       this.files = review.files.map(classify);
+      this.readAt = Date.now();
       const map: Record<string, { added: number; deleted: number }> = {};
       for (const n of review.numstat) map[n.path] = { added: n.added, deleted: n.deleted };
       this.numstat = map;

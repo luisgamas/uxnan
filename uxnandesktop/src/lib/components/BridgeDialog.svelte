@@ -20,6 +20,10 @@
   //   (`stream/presence/updated`): the dialog says so, by the phone's name —
   //   which it keeps following, since the phone describes itself a moment
   //   after pairing. "Pair another" starts over; several phones can be paired.
+  //
+  // With a host's `target` it is that host's own bridge (`02g` §5.18): the
+  // phone pairs with it as one more PC. Installing, updating and starting it
+  // are the host page's business, so none of that is offered here.
   import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -39,14 +43,29 @@
   import StatusDot from "$lib/components/StatusDot.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { toastError } from "$lib/toast";
-  import { bridge } from "$lib/bridge/client.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { bridges } from "$lib/bridge/client.svelte";
+  import { chatFor } from "$lib/bridge/chat.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId, type TargetId } from "$lib/target";
   import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
 
-  let { open = $bindable(false) }: { open?: boolean } = $props();
+  let {
+    open = $bindable(false),
+    target,
+  }: {
+    open?: boolean;
+    /** A host's own bridge; this machine's when unset. */
+    target?: TargetId;
+  } = $props();
+
+  // A dialog is for one machine for as long as it lives.
+  const machine = untrack(() => target);
+  const onHost = sshHostId(machine);
+  const bridge = bridges.for(machine);
+  const chat = chatFor(machine);
 
   let svg = $state<string | null>(null);
   /** The bridge's manual pairing code, when it has one to give. */
@@ -88,6 +107,7 @@
     try {
       const qr = await invoke<{ svg: string; expiresAt: number; code?: string | null }>(
         "bridge_pairing_qr",
+        onHost ? { target: machine } : {},
       );
       svg = qr.svg;
       expiresAt = qr.expiresAt;
@@ -146,9 +166,10 @@
   const version = $derived(
     bridge.status.state === "connected" ? bridge.status.bridgeVersion : null,
   );
-  const offer = $derived(bridgeOn ? bridgeInstall.offer : null);
-  const updating = $derived(bridgeInstall.updating || bridgeInstall.installing);
-  const failure = $derived(bridgeInstall.status?.update?.failure ?? null);
+  // This machine's bridge only: a host's is updated where it runs.
+  const offer = $derived(bridgeOn && !onHost ? bridgeInstall.offer : null);
+  const updating = $derived(!onHost && (bridgeInstall.updating || bridgeInstall.installing));
+  const failure = $derived(onHost ? null : (bridgeInstall.status?.update?.failure ?? null));
   const stateLine = $derived(
     updating
       ? i18n.t("bridge.panelUpdating")
@@ -203,7 +224,9 @@
 <Dialog.Root bind:open>
   <Dialog.Content size="medium">
     <Dialog.Header>
-      <Dialog.Title class={text.title}>{i18n.t("bridge.panelTitle")}</Dialog.Title>
+      <Dialog.Title class={text.title}>
+        {onHost ? i18n.t("bridge.panelTitleHost", { host: hosts.labelOf(onHost) }) : i18n.t("bridge.panelTitle")}
+      </Dialog.Title>
       <Dialog.Description class={cn(text.body, "flex items-center gap-2")}>
         <StatusDot tone={updating ? "busy" : bridgeOn ? "ok" : bridgeStarting ? "busy" : "off"} />
         {stateLine}
@@ -369,6 +392,10 @@
           {#if bridgeStarting}
             <Spinner aria-label={i18n.t("common.loading")} />
             <p class={cn(text.meta, "text-center")}>{i18n.t("bridge.pairStarting")}</p>
+          {:else if onHost}
+            <p class={cn(text.meta, "text-center")}>
+              {i18n.t("bridge.pairHostOff", { host: hosts.labelOf(onHost) })}
+            </p>
           {:else}
             <Button onclick={turnBridgeOn}>{i18n.t("bridge.pairTurnOn")}</Button>
             <p class={cn(text.meta, "text-center")}>{i18n.t("bridge.pairTurnOnHint")}</p>

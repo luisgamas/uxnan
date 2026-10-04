@@ -197,6 +197,25 @@ pub struct SshHost {
     /// four hosts means four prompts.
     #[serde(default)]
     pub needs_prompt: bool,
+    /// What carries the connection: chosen by the configuration (`Auto`), or
+    /// pinned by the person to the built-in client or the system `ssh`
+    /// (`ssh/system.rs`, `02g` §5.20).
+    #[serde(default)]
+    pub carrier: SshCarrier,
+}
+
+/// What carries a host's connection.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SshCarrier {
+    /// The built-in client, unless the configuration asks for something only
+    /// OpenSSH itself can do (`ssh::system::needs_system`).
+    #[default]
+    Auto,
+    /// Always the built-in client.
+    Builtin,
+    /// Always the system `ssh`.
+    System,
 }
 
 /// Where an [`SshHost`] record came from.
@@ -744,25 +763,9 @@ pub struct ControlSettings {
     pub terminal_read_disabled_projects: Vec<String>,
 }
 
-/// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives
-/// in `worktreeloc.rs`; this is only the user's choice of it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum WorktreeLocationMode {
-    /// `<root>/<repo>/<branch>` under a root the app manages — by default
-    /// `<home>/uxnan/worktrees`, beside the folder the clone flow already writes
-    /// to. Groups a repository's checkouts instead of scattering them, and is
-    /// the same layout the bridge gives the phone.
-    #[default]
-    Managed,
-    /// `<parent>/<repo>--<branch>`, the layout the app used before the managed
-    /// root existed. Kept for anyone whose tooling expects the sibling folders.
-    Sibling,
-    /// `<custom-root>/<repo>/<branch>` — the managed layout under a root the
-    /// user names (another drive, a shorter path, a folder outside a synced
-    /// home).
-    Custom,
-}
+/// Where the ADE puts a new worktree (spec `02c` §2.1) — the workspace
+/// engine's, where the layout it chooses lives (`worktreeloc`).
+pub use uxnan_workspace_engine::worktreeloc::WorktreeLocationMode;
 
 /// Worktree placement settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import OfflineNote from "$lib/components/OfflineNote.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
   // File-tree tab: the active worktree/project's working tree, lazily expanded one
   // folder at a time (state lives in the `fileTree` store so it survives tab
   // switches). Files — and the folders containing them — with a git-tracked change
@@ -88,10 +90,9 @@
   });
 
   let searching = $state(false);
-  // A host's tree cannot be searched yet (`fileTree.searchable`): the search
-  // walks this filesystem, so offering it there would answer "no matches" for
-  // every query. Closing it when the workspace changes machine keeps a stale
-  // search box from hanging over a tree it cannot search.
+  // A host's tree is searchable only while that host is connected
+  // (`fileTree.searchable`). Closing the search when that stops keeps a stale
+  // search box from hanging over a tree nothing can search.
   $effect(() => {
     if (!fileTree.searchable && searching) searching = false;
   });
@@ -811,7 +812,10 @@
   {#if !root}
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
-    {#if fileTree.awaitingHost}
+    {#if fileTree.offline && fileTree.readAt !== null}
+      <!-- Its host dropped: the tree stays as it was read, and says so. -->
+      <OfflineNote host={hosts.labelOf(sshHostId(fileTree.target) ?? "")} readAt={fileTree.readAt} />
+    {:else if fileTree.awaitingHost}
       <!-- Not an error: the app opened before the host was connected. It fills
            itself in the moment the host comes up (`retryForHost`). -->
       <p class={cn("px-3 py-1.5", text.meta)}>{i18n.t("fileTree.awaitingHost")}</p>

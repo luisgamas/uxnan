@@ -6,6 +6,8 @@
 // working folder — never bound to the selected project — and drives a graph of
 // agent steps. Spec: `architecture/02f-automations.md`.
 
+import type { TargetId } from "$lib/target";
+
 /** Unit of an `every` interval. */
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";
 
@@ -80,6 +82,9 @@ export interface Automation {
   tags: string[];
   /** Any folder, repo or not. Deliberately independent of the sidebar. */
   workingDir: string;
+  /** The machine `workingDir` is on: this one, or a host (`ssh:<id>`), whose
+   *  engine then does the work. Absent means this machine. */
+  target?: TargetId;
   worktreePerRun: boolean;
   baseBranch?: string | null;
   schedule: Schedule;
@@ -149,6 +154,8 @@ export interface AutomationRun {
   trigger: RunTrigger;
   status: RunStatus;
   workingDir: string;
+  /** The machine the run worked on; its paths are that machine's. */
+  target?: TargetId;
   worktreePath?: string | null;
   startedAt: number;
   finishedAt?: number | null;
@@ -230,3 +237,4 @@ export function newAutomation(id: string, name: string, workingDir = ""): Automa
     updatedAt: 0,
   };
 }
+

@@ -50,7 +50,7 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 | `target.rs` | Execution-target identity (`local` / `ssh:<host>`) + the fencing that refuses a mutation aimed at another machine. |
 
 Later phases add the runtime modules that are all present today — `pty.rs`,
-`git.rs` / `gitfast.rs`, `control/` (the one local server, the control catalog's
+`git.rs` (the workspace engine's git, re-exported), `control/` (the one local server, the control catalog's
 services, the window bridge), `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
 `fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs` — plus the whole
 **`ssh/`** subsystem behind remote hosts (`conn`, `auth`, `hostkey`, `config`,
@@ -63,8 +63,9 @@ in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR
 
 - `lib/types.ts` — TS mirror of the Rust model (Serde emits `camelCase`).
 - `lib/api.ts` — typed wrappers over the Tauri commands.
-- `lib/fsRouter.ts` — the one place that decides *which machine* a file read or
-  write goes to (local filesystem vs a host's SFTP session).
+- `lib/fsRouter.ts` — the one place that names *which machine* a file call is
+  for (this one, or a host whose engine serves it) and builds the fencing
+  expectation a host mutation carries.
 - `lib/state/hosts.svelte.ts` + `lib/state/sessions.svelte.ts` — the registered
   SSH hosts and which of them have a live session (with its generation, which
   every mutation carries).

@@ -27,35 +27,47 @@ import { mcpInfo } from "$lib/api";
 import { quoteArg, shellKind, type ShellKind } from "$lib/shell";
 import type { BrowserSettings, McpAgentInfo } from "$lib/types";
 
-/** Per-launch catalog from the backend (empty until `loadMcpLaunch` resolves). */
-let catalog: McpAgentInfo[] = [];
+/** The machine a catalog describes: `local`, or an `ssh:<host>` target. */
+const LOCAL = "local";
+function machine(target?: string | null): string {
+  return target && target !== LOCAL ? target : LOCAL;
+}
+
+/** Per-launch catalogs from the backend, one per machine (empty until loaded).
+ *  A host's comes from its engine: its endpoint, its files, its CLI versions —
+ *  never this machine's, which would name things the host does not have. */
+const catalogs = new Map<string, McpAgentInfo[]>();
 /** Live snapshot of the settings that gate registration. */
 let enabled = true;
 let disabled: string[] = [];
-/** The fetch in flight, so concurrent callers share one round-trip. */
-let loading: Promise<void> | null = null;
-/** Test seam: a catalog set by hand is not replaced by a fetch. */
+/** The fetches in flight, so concurrent callers share one round-trip. */
+const loading = new Map<string, Promise<void>>();
+/** Test seam: catalogs set by hand are not replaced by a fetch. */
 let pinned = false;
 
-/** Fetch the per-launch catalog. Safe to call repeatedly — concurrent callers
- *  share one round-trip, and a failure (web preview, backend not ready yet)
- *  keeps the catalog it had: empty at first, which means "launch the agent
- *  without the browser tools" rather than failing the launch. */
-export async function loadMcpLaunch(): Promise<void> {
+/** Fetch the per-launch catalog for `target` (this machine when absent). Safe
+ *  to call repeatedly — concurrent callers share one round-trip, and a failure
+ *  (web preview, backend not ready yet, a host out of reach) keeps the catalog
+ *  it had: empty at first, which means "launch the agent as it is typed"
+ *  rather than failing the launch. */
+export async function loadMcpLaunch(target?: string | null): Promise<void> {
   if (pinned) return;
-  if (loading) return loading;
-  loading = (async () => {
+  const key = machine(target);
+  const inFlight = loading.get(key);
+  if (inFlight) return inFlight;
+  const load = (async () => {
     try {
-      const info = await mcpInfo();
-      catalog = info.agents ?? [];
+      const info = await mcpInfo(key === LOCAL ? undefined : key);
+      catalogs.set(key, info.agents ?? []);
     } catch {
       // Keep what we had.
     }
   })();
+  loading.set(key, load);
   try {
-    await loading;
+    await load;
   } finally {
-    loading = null;
+    loading.delete(key);
   }
 }
 
@@ -63,10 +75,10 @@ export async function loadMcpLaunch(): Promise<void> {
  *  not once: what a launch needs can change under a running app — the hook
  *  server comes up after the first terminals, and an OpenCode upgraded from 1
  *  to 2 needs `--standalone` that 1 would reject. The backend answers from a
- *  cache keyed on the CLI's binary, so an unchanged install costs a local
- *  round-trip and a `stat`. */
-export async function ensureMcpLaunch(): Promise<void> {
-  await loadMcpLaunch();
+ *  cache keyed on the CLI's binary (on a host, the engine's answer for that
+ *  connection), so an unchanged install costs a local round-trip and a `stat`. */
+export async function ensureMcpLaunch(target?: string | null): Promise<void> {
+  await loadMcpLaunch(target);
 }
 
 /** Mirror the settings that decide whether (and for whom) the server is
@@ -79,17 +91,17 @@ export function syncMcpLaunchSettings(browser: BrowserSettings | undefined): voi
   disabled = browser?.mcpDisabledAgents ?? [];
 }
 
-/** Test seam: replace the catalog without a backend round-trip. */
-export function __setMcpCatalog(agents: McpAgentInfo[]): void {
-  catalog = agents;
+/** Test seam: replace a machine's catalog without a backend round-trip. */
+export function __setMcpCatalog(agents: McpAgentInfo[], target?: string): void {
+  catalogs.set(machine(target), agents);
   pinned = true;
 }
 
-/** Test seam: forget the catalog, so the next load asks the backend again. */
+/** Test seam: forget every catalog, so the next load asks the backend again. */
 export function __resetMcpLaunch(): void {
-  catalog = [];
+  catalogs.clear();
   pinned = false;
-  loading = null;
+  loading.clear();
 }
 
 /** The executable name a command line starts with, lowercased, without its
@@ -110,17 +122,18 @@ export function launchExecutable(commandLine: string): string {
   return base.replace(/\.(exe|cmd|bat|ps1|sh)$/i, "").toLowerCase();
 }
 
-/** The catalog entry for the agent `commandLine` launches, if it is one. */
-function agentOf(commandLine: string): McpAgentInfo | undefined {
+/** The catalog entry for the agent `commandLine` launches on `target`, if it
+ *  is one. */
+function agentOf(commandLine: string, target?: string | null): McpAgentInfo | undefined {
   const exe = launchExecutable(commandLine);
-  return exe ? catalog.find((a) => a.commands.includes(exe)) : undefined;
+  return exe ? catalogs.get(machine(target))?.find((a) => a.commands.includes(exe)) : undefined;
 }
 
 /** The launch arguments for `commandLine`, or `[]` when this command isn't an
  *  agent we register, the agent is turned off, or the server isn't up yet. */
-export function mcpLaunchArgs(commandLine: string): string[] {
+export function mcpLaunchArgs(commandLine: string, target?: string | null): string[] {
   if (!enabled) return [];
-  const agent = agentOf(commandLine);
+  const agent = agentOf(commandLine, target);
   if (!agent || disabled.includes(agent.id)) return [];
   return agent.args;
 }
@@ -129,8 +142,8 @@ export function mcpLaunchArgs(commandLine: string): string[] {
  *  reach it (OpenCode 2's `--standalone`), whatever the agent-tools switch says —
  *  or `[]` when it needs none or the line already made that choice itself (a
  *  profile launching `--standalone` or `--server <url>` on purpose). */
-export function requiredLaunchArgs(commandLine: string): string[] {
-  const agent = agentOf(commandLine);
+export function requiredLaunchArgs(commandLine: string, target?: string | null): string[] {
+  const agent = agentOf(commandLine, target);
   const required = agent?.requiredArgs ?? [];
   if (required.length === 0) return [];
   const chosenBy = new Set(agent?.requiredArgsChosenBy ?? []);
@@ -145,9 +158,22 @@ export function requiredLaunchArgs(commandLine: string): string[] {
 /** Append what this launch needs to a command line — the CLI's required
  *  arguments, then its MCP registration — quoted for `shell`. Returns the line
  *  untouched when there is nothing to add — the common case for every command
- *  that isn't one of the registered agents. */
-export function withMcpLaunch(commandLine: string, shell?: string | null): string {
-  const args = [...requiredLaunchArgs(commandLine), ...mcpLaunchArgs(commandLine)];
+ *  that isn't one of the registered agents.
+ *
+ *  `target` is the machine the terminal runs on, and the catalog used is that
+ *  machine's: a host's registration names its own engine's endpoint and its own
+ *  files, and its required arguments follow the CLI versions installed there
+ *  (`--standalone` is OpenCode 2's, and OpenCode 1 rejects it). A host whose
+ *  catalog is not loaded adds nothing — the line is typed as it is. */
+export function withMcpLaunch(
+  commandLine: string,
+  shell?: string | null,
+  target?: string | null,
+): string {
+  const args = [
+    ...requiredLaunchArgs(commandLine, target),
+    ...mcpLaunchArgs(commandLine, target),
+  ];
   if (args.length === 0) return commandLine;
   const kind: ShellKind = shellKind(shell);
   return [commandLine, ...args.map((a) => quoteArg(a, kind))].join(" ");

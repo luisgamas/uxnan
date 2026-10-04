@@ -59,6 +59,7 @@
     runCommandExecute = true,
     env,
     target,
+    sid,
     onexit,
   }: {
     id: string;
@@ -72,6 +73,8 @@
     env?: [string, string][];
     /** Machine to open the shell on (`ssh:<hostId>`); absent = this one. */
     target?: string;
+    /** The tab's persistent session id (see `TerminalSpawnSpec.sid`). */
+    sid?: string;
     onexit?: () => void;
   } = $props();
 
@@ -472,6 +475,7 @@
         // Attribution only (resource monitor): the workspace this tab lives in.
         workspace: terminals.workspaceOfTab(id),
         target,
+        sid,
       },
     }));
     if (destroyed) {

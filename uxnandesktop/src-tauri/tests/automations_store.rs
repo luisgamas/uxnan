@@ -30,6 +30,7 @@ fn automation(id: &str, name: &str) -> Automation {
         enabled: true,
         tags: vec![],
         working_dir: "C:/tmp/whatever".to_string(),
+        target: Default::default(),
         worktree_per_run: false,
         base_branch: None,
         schedule: Schedule::DailyAt {

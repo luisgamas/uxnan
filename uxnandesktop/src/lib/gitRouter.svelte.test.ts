@@ -8,6 +8,7 @@ import {
   diffOn,
   discardOn,
   logOn,
+  repoStatusOn,
   reviewOn,
   showOn,
   stageOn,
@@ -23,13 +24,12 @@ let backend: FakeBackend;
 
 beforeEach(() => {
   backend = installFakeBackend({
-    git_status: () => [CHANGE],
-    git_numstat: () => [NUMSTAT],
-    worktree_status: () => STATUS,
-    git_diff: () => 'local diff',
-    git_diff_head: () => 'local gutter',
+    git_review: () => ({ files: [CHANGE], numstat: [NUMSTAT], ...STATUS, head: 'abc', isRepo: true }),
+    git_repo_status: () => ({ branch: 'main', ...STATUS, isRepo: true }),
+    git_diff: () => 'a diff',
+    git_diff_head: () => 'a gutter',
     git_log: () => [],
-    git_show: () => 'local patch',
+    git_show: () => 'a patch',
     git_stage: () => null,
     git_unstage_all: () => null,
     git_discard: () => null,
@@ -37,73 +37,62 @@ beforeEach(() => {
     git_commit: () => null,
     git_fetch: () => STATUS,
     git_push: () => null,
-    ssh_git_review: () => ({ files: [CHANGE], numstat: [NUMSTAT], ...STATUS, head: 'abc', isRepo: true }),
-    ssh_git_diff: () => 'remote diff',
-    ssh_git_diff_head: () => 'remote gutter',
-    ssh_git_log: () => [],
-    ssh_git_show: () => 'remote patch',
-    ssh_git_stage: () => null,
-    ssh_git_unstage_all: () => null,
-    ssh_git_discard: () => null,
-    ssh_git_apply: () => null,
-    ssh_git_commit: () => null,
-    ssh_git_sync: () => STATUS,
   });
 });
 
 describe('gitRouter — reads', () => {
-  it('keeps the three calls it always made for a local worktree', async () => {
-    // Batching those into one command would be a rewrite of working code to
-    // solve a problem this machine does not have.
-    const review = await reviewOn('local', '/home/dev/app');
-    expect(backend.lastCallTo('git_status')?.args).toEqual({ path: '/home/dev/app' });
-    expect(backend.lastCallTo('git_numstat')).toBeDefined();
-    expect(backend.lastCallTo('worktree_status')).toBeDefined();
-    expect(backend.lastCallTo('ssh_git_review')).toBeUndefined();
-    expect(review.files).toEqual([CHANGE]);
-    expect(review.status).toEqual(STATUS);
-    // Local git answers no HEAD here: the watcher already tracks it, and a
-    // fabricated one would make History reload for nothing.
-    expect(review.head).toBeNull();
-  });
-
-  it('asks a host once for everything the panel draws', async () => {
-    // Each remote call is a shell start on another machine, so three would be
-    // three of them for one click.
-    const review = await reviewOn('ssh:h1', 'C:/Users/gamas/app');
-    expect(backend.lastCallTo('ssh_git_review')?.args).toEqual({
-      hostId: 'h1',
-      path: 'C:/Users/gamas/app',
+  it('asks once for everything the panel draws, naming the machine', async () => {
+    // One call on either machine: on a host each one is a round trip, so
+    // three would be three of them for one click.
+    const local = await reviewOn('local', '/home/dev/app');
+    expect(backend.lastCallTo('git_review')?.args).toEqual({
+      path: '/home/dev/app',
+      target: 'local',
     });
-    expect(backend.lastCallTo('git_status')).toBeUndefined();
-    expect(backend.lastCallTo('worktree_status')).toBeUndefined();
-    expect(review.head).toBe('abc');
-    expect(review.status).toEqual(STATUS);
+    expect(local.files).toEqual([CHANGE]);
+    const remote = await reviewOn('ssh:h1', 'C:/Users/gamas/app');
+    expect(backend.lastCallTo('git_review')?.args).toEqual({
+      path: 'C:/Users/gamas/app',
+      target: 'ssh:h1',
+    });
+    expect(remote.head).toBe('abc');
+    expect(remote.status).toEqual(STATUS);
   });
 
   it('routes every read by the machine, never by the path', async () => {
     await diffOn('ssh:h1', 'C:/app', 'main.rs', true);
-    expect(backend.lastCallTo('ssh_git_diff')?.args).toEqual({
-      hostId: 'h1',
+    expect(backend.lastCallTo('git_diff')?.args).toEqual({
       path: 'C:/app',
       file: 'main.rs',
       staged: true,
+      target: 'ssh:h1',
     });
     await diffHeadOn('ssh:h1', 'C:/app', 'main.rs');
-    expect(backend.lastCallTo('ssh_git_diff_head')).toBeDefined();
+    expect(backend.lastCallTo('git_diff_head')?.args).toMatchObject({ target: 'ssh:h1' });
     await logOn('ssh:h1', 'C:/app', 100, 0);
-    expect(backend.lastCallTo('ssh_git_log')?.args).toMatchObject({ limit: 100, skip: 0 });
+    expect(backend.lastCallTo('git_log')?.args).toMatchObject({
+      limit: 100,
+      skip: 0,
+      target: 'ssh:h1',
+    });
     await showOn('ssh:h1', 'C:/app', 'deadbeef');
-    expect(backend.lastCallTo('ssh_git_show')?.args).toMatchObject({ hash: 'deadbeef' });
-    expect(backend.lastCallTo('git_diff')).toBeUndefined();
-    expect(backend.lastCallTo('git_show')).toBeUndefined();
+    expect(backend.lastCallTo('git_show')?.args).toMatchObject({
+      hash: 'deadbeef',
+      target: 'ssh:h1',
+    });
   });
 
   it('separates the gutter from the file diff', async () => {
     // Two different questions: the gutter marks every line that differs from the
     // commit, so staging a hunk must not clear it.
-    expect(await diffOn('local', '/app', 'main.rs', false)).toBe('local diff');
-    expect(await diffHeadOn('local', '/app', 'main.rs')).toBe('local gutter');
+    expect(await diffOn('local', '/app', 'main.rs', false)).toBe('a diff');
+    expect(await diffHeadOn('local', '/app', 'main.rs')).toBe('a gutter');
+  });
+
+  it('reads a row as "not read" when the folder is not a repository', async () => {
+    expect(await repoStatusOn('ssh:h1', 'C:/app')).toEqual(STATUS);
+    backend.setCommands({ git_repo_status: () => ({ branch: null, ...STATUS, isRepo: false }) });
+    expect(await repoStatusOn('ssh:h1', 'C:/plain')).toBeNull();
   });
 });
 
@@ -113,32 +102,31 @@ describe('gitRouter — mutations', () => {
     expect(backend.lastCallTo('git_stage')?.args).toEqual({
       path: '/home/dev/app',
       file: 'src/main.rs',
+      target: 'local',
+      expect: null,
     });
   });
 
   it('fences every remote mutation with the connection it was prepared for', async () => {
-    const fence = { targetId: 'ssh:h1', generation: 4 };
+    const onHost = { target: 'ssh:h1', expect: { targetId: 'ssh:h1', generation: 4 } };
     await stageOn('ssh:h1', 'C:/app', 'src/main.rs', 4);
-    expect(backend.lastCallTo('ssh_git_stage')?.args).toMatchObject({ expect: fence });
+    expect(backend.lastCallTo('git_stage')?.args).toMatchObject(onHost);
     await unstageAllOn('ssh:h1', 'C:/app', 4);
-    expect(backend.lastCallTo('ssh_git_unstage_all')?.args).toMatchObject({ expect: fence });
+    expect(backend.lastCallTo('git_unstage_all')?.args).toMatchObject(onHost);
     await discardOn('ssh:h1', 'C:/app', 'src/main.rs', true, 4);
-    expect(backend.lastCallTo('ssh_git_discard')?.args).toMatchObject({
-      untracked: true,
-      expect: fence,
-    });
+    expect(backend.lastCallTo('git_discard')?.args).toMatchObject({ untracked: true, ...onHost });
     await applyOn('ssh:h1', 'C:/app', '@@ patch', true, false, 4);
-    expect(backend.lastCallTo('ssh_git_apply')?.args).toMatchObject({
+    expect(backend.lastCallTo('git_apply')?.args).toMatchObject({
       patch: '@@ patch',
       cached: true,
       reverse: false,
-      expect: fence,
+      ...onHost,
     });
     await commitOn('ssh:h1', 'C:/app', 'a message', false, true, 4);
-    expect(backend.lastCallTo('ssh_git_commit')?.args).toMatchObject({
+    expect(backend.lastCallTo('git_commit')?.args).toMatchObject({
       message: 'a message',
       signOff: true,
-      expect: fence,
+      ...onHost,
     });
   });
 
@@ -148,30 +136,26 @@ describe('gitRouter — mutations', () => {
     await expect(discardOn('ssh:h1', 'C:/app', 'src/main.rs', false)).rejects.toThrow(
       /no live connection/,
     );
-    expect(backend.lastCallTo('ssh_git_discard')).toBeUndefined();
     await expect(commitOn('ssh:h1', 'C:/app', 'msg', false, false)).rejects.toThrow(
       /no live connection/,
     );
-    expect(backend.lastCallTo('ssh_git_commit')).toBeUndefined();
+    expect(backend.lastCallTo('git_discard')).toBeUndefined();
+    expect(backend.lastCallTo('git_commit')).toBeUndefined();
   });
 
-  it('syncs on the machine the worktree is on', async () => {
+  it('syncs on the machine the worktree is on, and reads the distance back', async () => {
     // On a host it runs there, with that machine's own credentials: the project
     // lives on it, so its remote is reachable from it.
     expect(await syncOn('ssh:h1', 'C:/app', 'push', 2)).toEqual(STATUS);
-    expect(backend.lastCallTo('ssh_git_sync')?.args).toMatchObject({
-      action: 'push',
+    expect(backend.lastCallTo('git_push')?.args).toMatchObject({
+      target: 'ssh:h1',
       expect: { targetId: 'ssh:h1', generation: 2 },
     });
-    expect(backend.lastCallTo('git_push')).toBeUndefined();
-
-    // Locally, push answers nothing, so the distance is read back afterwards.
-    expect(await syncOn('local', '/app', 'push')).toEqual(STATUS);
-    expect(backend.lastCallTo('git_push')).toBeDefined();
-    expect(backend.lastCallTo('worktree_status')).toBeDefined();
+    // Push answers nothing, so the distance is read back afterwards.
+    expect(backend.lastCallTo('git_repo_status')?.args).toMatchObject({ target: 'ssh:h1' });
 
     // Fetch is the one that already answers the distance itself.
     expect(await syncOn('local', '/app', 'fetch')).toEqual(STATUS);
-    expect(backend.lastCallTo('git_fetch')).toBeDefined();
+    expect(backend.lastCallTo('git_fetch')?.args).toMatchObject({ target: 'local', expect: null });
   });
 });

@@ -3,7 +3,8 @@
   // `onselect`. Reuses the shared in-app DirectoryBrowser (path bar + refresh +
   // live watch + keyboard nav), so it feels identical to the "Add project" picker
   // but selects a location instead of registering a project. Used to pick the
-  // parent directory for a custom worktree location.
+  // parent directory for a custom worktree location, and an automation's
+  // folder — on a host too, given that host's lister.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
@@ -19,6 +20,8 @@
     description = i18n.t("folderSelect.desc"),
     confirmLabel = i18n.t("folderSelect.select"),
     onselect,
+    list,
+    watchable = true,
   }: {
     open?: boolean;
     title?: string;
@@ -26,6 +29,11 @@
     confirmLabel?: string;
     /** Called with the chosen directory path; the dialog then closes. */
     onselect: (path: string) => void;
+    /** Another machine's lister (a host's), passed to the browser; this
+     *  machine's when omitted. */
+    list?: (target?: string) => Promise<DirListing>;
+    /** Whether that source can be watched — only this machine's can. */
+    watchable?: boolean;
   } = $props();
 
   let listing = $state<DirListing | null>(null);
@@ -46,7 +54,15 @@
       <Dialog.Description class={text.meta}>{description}</Dialog.Description>
     </div>
 
-    <DirectoryBrowser active={open} bind:listing bind:path bind:keydownHandler={browserKey} onPrimary={choose} />
+    <DirectoryBrowser
+      active={open}
+      bind:listing
+      bind:path
+      bind:keydownHandler={browserKey}
+      {list}
+      {watchable}
+      onPrimary={choose}
+    />
 
     <div
       class="flex min-w-0 items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-4 py-2.5"

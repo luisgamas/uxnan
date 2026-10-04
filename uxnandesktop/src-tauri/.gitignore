@@ -8,3 +8,5 @@
 
 # The uxnan-cli sidecar `scripts/build-cli.mjs` places for `bundle.externalBin`
 /binaries/
+# The host engine builds bundled as resources (`scripts/build-host-engine.mjs`).
+/host-engine/

@@ -223,9 +223,37 @@ fn host_channels() -> Value {
     v
 }
 
+/// The host engine a connected host runs, as it introduced itself.
+fn host_engine() -> Value {
+    let mut v = nested(
+        "The host engine (`uxnan-host`) running there, while connected through it. Absent on a host the engine cannot run on: its terminals are plain channels that end with the connection, and it has no files, git or search.",
+        json!({
+            "version": field("string", "The engine's version."),
+            "protocol": field("integer", "The protocol version both ends agreed on."),
+            "os": field("string", "The host's OS as the engine reports it (`linux`, `macos`, `windows`)."),
+            "arch": field("string", "Its CPU architecture (`x86_64`, `aarch64`)."),
+        }),
+    );
+    v[ABSENT] = json!(true);
+    v
+}
+
+/// One terminal a host's engine holds — tab or not.
+fn engine_session() -> Value {
+    result(json!({
+        "session": field("integer", "The engine's id for it, unique on that host."),
+        "label": field("string", "What the terminal was opened as."),
+        "cwd": field("string", "The folder it was opened in, on the host."),
+        "alive": field("boolean", "Whether its program is still running."),
+        "startedAgoMs": field("integer", "How long ago it started — an age, since the two machines' clocks do not agree."),
+        "tab": nullable("string", "The terminal id of the tab in this window that shows it; null for one no tab shows (an earlier run of the app left it there)."),
+    }))
+}
+
 /// A registered remote machine and what its session is doing (`SshHost` plus
 /// live state). `full` adds what only `host/show` answers: the projects on the
-/// machine and the terminals open against its session.
+/// machine, the terminals open against its session, and every terminal its
+/// engine holds.
 ///
 /// What is *not* here is deliberate: no key paths, no credentials, no
 /// fingerprints — a caller of this surface never needs them, and the person
@@ -238,11 +266,15 @@ fn host_view(full: bool) -> Value {
         "port": field("integer", "Its SSH port."),
         "user": field("string", "The user Uxnan logs in as."),
         "source": field("string", "Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`)."),
-        "needsPrompt": field("boolean", "Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it."),
+        "needsPrompt": field("boolean", "Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it."),
         "connected": field("boolean", "Whether a live session is open on it right now — the session itself, not what the settings remember."),
+        "carrier": field("string", "What carries its connection, as the person set it: `auto` (the built-in client, unless its SSH configuration asks for something only OpenSSH itself can do), `builtin` or `system` (the machine's own `ssh`)."),
+        "systemSsh": optional("string", "While connected through the system `ssh`: why — `kerberos`, `smartcard`, `securityKeyProvider`, `securityKey`, `hostbased`, `fdpass`, `knownHostsCommand`, or `chosen` (the person picked it). Absent on the built-in client. Through it the host works the same, but a password or passphrase cannot be typed in Uxnan: OpenSSH runs without a prompt."),
         "generation": optional("integer", "The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it."),
         "shell": optional("string", "The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine."),
         "channels": host_channels(),
+        "engine": host_engine(),
+        "latencyMs": optional("integer", "The link's round trip in milliseconds, as the engine's heartbeat last measured it. Absent until it has been measured, and on a host without the engine."),
     });
     if full {
         props["projects"] = list_of(
@@ -253,6 +285,12 @@ fn host_view(full: bool) -> Value {
             terminal_view(),
             "The terminals open against its session, as `terminal/list` describes them.",
         );
+        let mut held = list_of(
+            engine_session(),
+            "Every terminal the host engine holds, newest first — including ones no tab of this window shows. Absent without a live engine.",
+        );
+        held[ABSENT] = json!(true);
+        props["engineSessions"] = held;
     }
     result(props)
 }
@@ -291,6 +329,7 @@ fn automation_view(full: bool) -> Value {
         "enabled": field("boolean", "Whether its schedule is active. A disabled automation can still be run by hand."),
         "tags": list_of(field("string", "A label."), "Free-form labels the list groups by."),
         "workingDir": field("string", "The folder a run executes in."),
+        "target": field("string", "The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it."),
         "worktreePerRun": field("boolean", "Whether every run gets its own worktree, so unattended work never touches the tree the person is using."),
         "schedule": field("object", "Its schedule: `{ kind: \"every\", n, unit, startsAt }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`."),
         "steps": list_of(result(step), "Its steps, in order."),
@@ -550,8 +589,10 @@ pub fn catalog() -> Vec<Entry> {
                     "enabled": field("boolean", "Whether the group is switched on."),
                 })), "Every capability group, in trust order."),
                 "caller": nested("Who the app takes you for, from the token you presented.", json!({
-                    "kind": field("string", "`launch` (a process the app started) or `control` (the user's shell)."),
+                    "kind": field("string", "`launch` (a process the app started), `control` (the user's shell) or `bridge` (an agent a bridge runs for one of its chats)."),
                     "terminalId": optional("string", "For a launch caller: the terminal it said it is (null when it did not say)."),
+                    "cwd": optional("string", "For a bridge caller: its conversation's folder, which scopes it (null when it did not say)."),
+                    "target": optional("string", "For a bridge caller: the machine that folder is on — null for this computer's bridge, `ssh:<hostId>` for a host's own bridge."),
                 })),
                 "counts": nested("What the app holds right now.", json!({
                     "projects": field("integer", "Registered projects."),
@@ -606,7 +647,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "host/show",
             tool: "host_show",
             group: Group::Read,
-            summary: "Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.",
+            summary: "Describe one host: the record `host/list` gives (with its engine and latency), plus the projects registered on it, the terminals open against its session, and every terminal its engine holds.",
             params: object(
                 json!({ "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." } }),
                 &["host"],
@@ -928,11 +969,12 @@ pub fn catalog() -> Vec<Entry> {
             method: "automation/propose",
             tool: "automation_propose",
             group: Group::Ui,
-            summary: "Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.",
+            summary: "Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach — on a host, when your project is there, and the run then happens on that host while Uxnan is connected to it; each step names an agent installed on the machine the folder is on (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.",
             params: object(
                 json!({
                     "name": { "type": "string", "description": "What to call it. At most 200 characters." },
                     "workingDir": { "type": "string", "description": "Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project." },
+                    "target": { "type": "string", "description": "The machine `workingDir` is on: `local` or a host's `ssh:<id>` (`host/list`). Only the control token names one; a launch token's is its own project's machine. Default `local`." },
                     "steps": {
                         "type": "array",
                         "description": "The steps, in order. At most 20.",
@@ -940,7 +982,7 @@ pub fn catalog() -> Vec<Entry> {
                             json!({
                                 "id": { "type": "string", "description": "Optional short id (`s1`, `s2`, …) — what `dependsOn` and `{{steps.<id>.output}}` name. Defaults to its position." },
                                 "title": { "type": "string", "description": "A short title for the step." },
-                                "agent": { "type": "string", "description": "The agent CLI to run it (`claude`, `codex`, …). It must be installed here." },
+                                "agent": { "type": "string", "description": "The agent CLI to run it (`claude`, `codex`, …). It must be installed on the machine the folder is on." },
                                 "model": { "type": "string", "description": "A model to pin; omit for the CLI's default." },
                                 "prompt": { "type": "string", "description": "What the step asks the agent to do. At most 64 KiB." },
                                 "dependsOn": { "type": "array", "items": { "type": "string" }, "description": "Step ids that must finish first; omit for a step that starts with the run." },
@@ -1115,7 +1157,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "host/connect",
             tool: "host_connect",
             group: Group::Create,
-            summary: "Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.",
+            summary: "Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase the person has not given in this session of the app, a second factor, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.",
             params: object(
                 json!({
                     "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." },
@@ -1128,11 +1170,11 @@ pub fn catalog() -> Vec<Entry> {
                 "host": nested("What the attempt came to.", json!({
                     "id": field("string", "The host id."),
                     "connected": field("boolean", "Whether there is a live session now. True also when one was already open."),
-                    "status": field("string", "`connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`."),
+                    "status": field("string", "`connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `systemSshFailed` (the host is reached through the machine's own `ssh`, which stopped — `detail` is what it said, e.g. a host key it does not know or a login it refused), `failed` or `noUsableMethod`."),
                     "generation": optional("integer", "The connection incarnation, when connected."),
                     "shell": optional("string", "The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected."),
                     "reason": optional("string", "For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not."),
-                    "detail": optional("string", "A sentence naming the host and what happened, for `unreachable`."),
+                    "detail": optional("string", "A sentence naming the host and what happened, for `unreachable`, `proxyFailed` and `systemSshFailed`."),
                 })),
             })),
             example: json!({ "host": "h-42" }),
@@ -1254,7 +1296,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "automation/run",
             tool: "automation_run",
             group: Group::Create,
-            summary: "Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run.",
+            summary: "Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run. One that works on a host (`target`) runs there, through that host's engine, and needs the host connected — otherwise the run is recorded as unavailable, saying why.",
             params: object(
                 json!({
                     "automation": { "type": "string", "description": "The automation id from `automation/list`." },
@@ -1493,7 +1535,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "task/create",
             tool: "task_create",
             group: Group::Orchestrate,
-            summary: "Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.",
+            summary: "Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output — on the machine its worktree is on, so a host project's task runs on that host with that host's agent. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.",
             params: object(
                 json!({
                     "run": { "type": "string", "description": "The run id." },

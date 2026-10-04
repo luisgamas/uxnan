@@ -188,6 +188,14 @@ workspace**; a request without it opens in the workspace on screen.
 > in the browser"* — if it runs `$BROWSER <url>` or the `curl` above, the preview
 > shows up next to your terminal.
 
+**An agent on an SSH host** gets the same, under the same two settings: its
+terminal's `UXNAN_BROWSER_URL` names the host engine's own endpoint on the host's
+loopback, its `$BROWSER` the shim on that machine (`~/.uxnan/hooks/`), and the URL
+reaches this app over the engine's channel. A `localhost` URL there names the
+host's own dev server, so it is brought here first — the same forward the ports
+indicator's **Open** makes — and opens as `127.0.0.1:<port>`. A URL asked for
+while no window is watching that terminal is not opened later.
+
 ## Agent browser MCP (discoverable tools)
 
 The `$BROWSER`/curl path above only works if the agent *knows* the convention. The
@@ -229,6 +237,18 @@ report tools — and the same catalog is what `uxnan-cli` speaks from a shell. S
 The ADE runs a tiny MCP server at **`/mcp`** on the app's one local server — the
 one the agent monitor's hooks and the control RPC also use (`127.0.0.1`, ephemeral
 port, `Authorization: Bearer <token>`; `src-tauri/src/control/server.rs`).
+
+**From an SSH host** (where the host engine runs) an agent reaches the same server
+through that engine: its terminal is given the engine's own endpoint on the host's
+loopback (`UXNAN_MCP_URL`, `UXNAN_MCP_TOKEN` — a token of the engine's), Claude
+Code is launched with a config file the engine wrote **on the host**
+(`~/.uxnan/host/run/mcp/claude-<port>.json`), and OpenCode's `--standalone`
+follows the OpenCode installed there. Each call travels over the engine's channel
+and is answered by this app's server as the tab that shows the terminal — the
+tools, the scope and the `current` terminal are exactly a local terminal's. The
+catalog for a host launch is built by the same code from the engine's facts
+(`mcp_info` with the host's target); nothing of this machine's catalog is used
+there.
 
 The server is registered **per launch**: uxnan points the agent at it *in the process
 it spawns*, and **writes nothing** to `~/.claude.json`, `~/.codex/config.toml`,

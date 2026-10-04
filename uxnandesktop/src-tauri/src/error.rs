@@ -47,6 +47,23 @@ pub enum AppError {
     Github(String),
 }
 
+/// The workspace engine's errors keep their meaning across the crate boundary:
+/// a terminal that is gone is still `NotFound`, a refused PTY still `Pty`.
+impl From<uxnan_workspace_engine::Error> for AppError {
+    fn from(e: uxnan_workspace_engine::Error) -> Self {
+        match e {
+            uxnan_workspace_engine::Error::Pty(m) => AppError::Pty(m),
+            uxnan_workspace_engine::Error::NotFound(m) => AppError::NotFound(m),
+            uxnan_workspace_engine::Error::Io(e) => AppError::Io(e),
+            uxnan_workspace_engine::Error::Invalid(m) => AppError::Invalid(m),
+            uxnan_workspace_engine::Error::Json(e) => AppError::Serde(e),
+            uxnan_workspace_engine::Error::Git(m) => AppError::Git(m),
+            uxnan_workspace_engine::Error::Agent(m) => AppError::Agent(m),
+            uxnan_workspace_engine::Error::Cancelled => AppError::Cancelled,
+        }
+    }
+}
+
 /// Serializable error returned to the frontend. `code` is a stable,
 /// machine-readable identifier; `message` is human-readable detail.
 #[derive(Debug, Serialize)]
@@ -62,6 +79,12 @@ impl CommandError {
             message: message.into(),
             code: code.into(),
         }
+    }
+}
+
+impl From<uxnan_workspace_engine::Error> for CommandError {
+    fn from(e: uxnan_workspace_engine::Error) -> Self {
+        CommandError::from(AppError::from(e))
     }
 }
 

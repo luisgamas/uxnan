@@ -29,6 +29,7 @@ import {
   type RelayStatus,
 } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
+import { parseSecretKey, SealedSecretsError } from './sealed-file-secret-store.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
 import { ensureUpdateStatus, updateNoticeMessage } from './update-check.js';
@@ -163,6 +164,33 @@ async function cmdStatus(): Promise<void> {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
+/** The first line of standard input, within [timeoutMs]. */
+function readStdinLine(timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buffered = '';
+    const done = (fn: () => void): void => {
+      clearTimeout(timer);
+      process.stdin.removeListener('data', onData);
+      process.stdin.removeListener('end', onEnd);
+      process.stdin.pause();
+      fn();
+    };
+    const onData = (chunk: Buffer | string): void => {
+      buffered += chunk.toString();
+      const newline = buffered.indexOf('\n');
+      if (newline !== -1) done(() => resolve(buffered.slice(0, newline)));
+    };
+    const onEnd = (): void => done(() => resolve(buffered));
+    const timer = setTimeout(
+      () => done(() => reject(new Error('nothing arrived on standard input'))),
+      timeoutMs,
+    );
+    process.stdin.on('data', onData);
+    process.stdin.once('end', onEnd);
+    process.stdin.resume();
+  });
+}
+
 async function cmdStart(): Promise<void> {
   const state = new DaemonState();
   await state.ensureDir();
@@ -184,19 +212,49 @@ async function cmdStart(): Promise<void> {
   // A service or a GUI launch gets a minimal PATH: take the user's own first,
   // so installed agents (and `node` for their launchers) are found.
   await enrichProcessPath().catch(() => undefined);
-  const bridge = await startBridge({
-    useKeychain: true,
-    manageGlobalEntries: true,
-    recordChildProcesses: true,
-  });
-
-  if (bridge.context.config.lanEnabled) {
+  // On a remote host the engine that runs the bridge hands it the key its
+  // secrets are sealed with (Uxnan Desktop keeps it), on standard input.
+  let secretKey: Buffer | undefined;
+  if (process.argv.includes('--secret-key-stdin')) {
     try {
-      const { port } = await bridge.startLan();
-      process.stdout.write(`LAN server listening on port ${port}.\n`);
+      secretKey = parseSecretKey(await readStdinLine(10_000));
     } catch (err) {
-      process.stderr.write(`Failed to start LAN server: ${errText(err)}\n`);
+      process.stderr.write(`No usable secret key on standard input: ${errText(err)}\n`);
+      await lock.release();
+      process.exitCode = 1;
+      return;
     }
+  }
+  let bridge: Awaited<ReturnType<typeof startBridge>>;
+  try {
+    bridge = await startBridge({
+      useKeychain: true,
+      ...(secretKey ? { secretKey } : {}),
+      manageGlobalEntries: true,
+      recordChildProcesses: true,
+    });
+  } catch (err) {
+    if (err instanceof SealedSecretsError) {
+      // Never a fresh identity in its place: that would unpair every phone.
+      process.stderr.write(`The bridge's secrets did not open: ${err.message}\n`);
+      await lock.release();
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
+
+  // Always: with the LAN off it listens on 127.0.0.1 only, for the agents'
+  // approval hook, and is published nowhere.
+  try {
+    const { port } = await bridge.startLan();
+    process.stdout.write(
+      bridge.context.config.lanEnabled
+        ? `LAN server listening on port ${port}.\n`
+        : `Local endpoint on 127.0.0.1:${port} (the LAN is off).\n`,
+    );
+  } catch (err) {
+    process.stderr.write(`Failed to start the bridge's HTTP endpoint: ${errText(err)}\n`);
   }
 
   if (bridge.context.config.localControlEnabled) {

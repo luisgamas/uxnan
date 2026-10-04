@@ -50,7 +50,7 @@ beforeEach(() => {
       connected = connected.filter((s) => s.hostId !== args.hostId);
       return true;
     },
-    ssh_fs_list: () => [],
+    fs_list_dir: () => [],
   });
   hosts.hosts = [];
   hosts.connected = [];
@@ -103,20 +103,41 @@ describe('hosts.resume', () => {
 });
 
 describe('a host that goes away', () => {
-  it('sends its file tree back to waiting instead of leaving a memory on screen', async () => {
-    // A loaded folder is never listed again, so without this the panel kept
-    // showing the other machine's files after it was disconnected — no message,
-    // no hint, a tree that was quietly out of date.
+  it('keeps a read tree on screen marked offline, never as if it were current', async () => {
+    // A loaded folder is never listed again, so the panel once kept showing the
+    // other machine's files after it was disconnected with no hint they were
+    // out of date. Now what was read stays — the user keeps their place — and
+    // the tree says it is offline, with when it was read.
     connected = [{ hostId: 'already', generation: 9 }];
     await hosts.load();
     fileTree.setRoot('/code', 'ssh:already');
-    fileTree.childrenByDir = { '/code': [{ name: 'src', path: '/code/src', isDir: true, ignored: false }] };
+    await until(() => !fileTree.loadingDir.has('/code'), { label: 'the first listing' });
+    const listing = { '/code': [{ name: 'src', path: '/code/src', isDir: true, ignored: false }] };
+    fileTree.childrenByDir = listing;
+    fileTree.readAt = Date.now() - 60_000;
     fileTree.awaitingHost = false;
 
     await hosts.disconnect('already');
 
+    expect(fileTree.offline).toBe(true);
+    expect(fileTree.childrenByDir).toEqual(listing);
+    expect(fileTree.mutable).toBe(false);
+  });
+
+  it('sends a tree that had read nothing back to waiting', async () => {
+    connected = [{ hostId: 'already', generation: 9 }];
+    await hosts.load();
+    fileTree.setRoot(null);
+    fileTree.setRoot('/code', 'ssh:already');
+    await until(() => !fileTree.loadingDir.has('/code'), { label: 'the first listing' });
+    fileTree.childrenByDir = {};
+    fileTree.readAt = null;
+    fileTree.awaitingHost = false;
+
+    await hosts.disconnect('already');
+
+    expect(fileTree.offline).toBe(false);
     expect(fileTree.awaitingHost).toBe(true);
-    expect(fileTree.childrenByDir).toEqual({});
   });
 
   it("leaves another host's tree alone", async () => {
@@ -159,7 +180,8 @@ describe('a session that ends on its own', () => {
     await until(() => !sessions.isConnected('silent'));
 
     expect(sessions.isConnected('silent')).toBe(false);
-    expect(fileTree.awaitingHost).toBe(true);
+    // The tree had read its root, so it is kept and marked offline.
+    expect(fileTree.offline || fileTree.awaitingHost).toBe(true);
   });
 
   it('re-reads the live set rather than trusting the payload', async () => {
@@ -195,5 +217,173 @@ describe('a host that could not be reached', () => {
     await hosts.connect('silent');
 
     expect(hosts.error).toMatch(/did not answer within 15s/);
+  });
+
+  it('shows what the system ssh said when it would not connect', async () => {
+    // OpenSSH checked the key and signed in by itself; its sentence is the
+    // whole story, so it is shown rather than a guess at what went wrong.
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'systemSshFailed',
+        detail: 'Host key verification failed.',
+        attempted: [],
+      }),
+    });
+    await hosts.load();
+    await hosts.connect('silent');
+
+    expect(hosts.error).toMatch(/the system ssh could not connect — Host key verification failed\./);
+  });
+});
+
+describe('hosts.connect — what a host (or its bastion) asks for', () => {
+  beforeEach(async () => {
+    hosts.pendingCredential = null;
+    hosts.pendingChallenge = null;
+    hosts.pendingKey = null;
+    hosts.keyMismatch = null;
+    hosts.error = null;
+    await hosts.load();
+  });
+
+  it('asks for a bastion password naming the bastion, and sends it back for that hop', async () => {
+    backend.setCommands({
+      ssh_host_connect: (args) =>
+        args.secret
+          ? { status: 'connected', generation: 5, attempted: [] }
+          : {
+              status: 'needsPassword',
+              hop: 'edge',
+              hopKey: 'ops@edge:22',
+              attempted: [],
+              strict: false,
+              wrong: false,
+              learnedKeys: [],
+            },
+    });
+    await hosts.connect('silent');
+    expect(hosts.pendingCredential?.label).toContain('edge');
+    expect(hosts.pendingCredential?.label).toContain('silent');
+
+    await hosts.submitPendingCredential('gate');
+    expect(backend.lastCallTo('ssh_host_connect')?.args.secret).toEqual({
+      kind: 'password',
+      hopKey: 'ops@edge:22',
+      path: null,
+      value: 'gate',
+    });
+    expect(hosts.pendingCredential).toBeNull();
+  });
+
+  it('says a passphrase was wrong, and sends the next one for that key file', async () => {
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'needsPassphrase',
+        hopKey: 'dev@silent.example:22',
+        path: '~/.ssh/id_locked',
+        wrong: true,
+        attempted: [],
+        strict: false,
+        learnedKeys: [],
+      }),
+    });
+    await hosts.connect('silent');
+    expect(hosts.pendingCredential?.kind).toBe('passphrase');
+    expect(hosts.pendingCredential?.wrong).toBe(true);
+    await hosts.submitPendingCredential('open sesame');
+    expect(backend.lastCallTo('ssh_host_connect')?.args.secret).toMatchObject({
+      kind: 'passphrase',
+      path: '~/.ssh/id_locked',
+    });
+  });
+
+  it('holds a second factor for the person and answers on the waiting connection', async () => {
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'needsAnswers',
+        hopKey: 'dev@silent.example:22',
+        challenge: { name: '', instructions: '', prompts: [{ text: 'Verification code: ', echo: true }] },
+        attempted: [],
+        strict: false,
+        wrong: false,
+        learnedKeys: [],
+      }),
+      ssh_host_answer: () => {
+        connected = [{ hostId: 'silent', generation: 6 }];
+        return { status: 'connected', generation: 6, attempted: [], strict: false, wrong: false, learnedKeys: [] };
+      },
+      ssh_host_cancel: () => true,
+    });
+    await hosts.connect('silent');
+    expect(hosts.pendingChallenge?.challenge.prompts[0].text).toBe('Verification code: ');
+
+    await hosts.answerPendingChallenge(['424242']);
+    expect(backend.lastCallTo('ssh_host_answer')?.args).toEqual({ hostId: 'silent', answers: ['424242'] });
+    expect(hosts.pendingChallenge).toBeNull();
+    expect(hosts.isConnected('silent')).toBe(true);
+  });
+
+  it('drops the waiting connection when the person closes the second factor', async () => {
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'needsAnswers',
+        challenge: { name: '', instructions: '', prompts: [{ text: 'Code: ', echo: true }] },
+        attempted: [],
+        strict: false,
+        wrong: false,
+        learnedKeys: [],
+      }),
+      ssh_host_cancel: () => true,
+    });
+    await hosts.connect('silent');
+    await hosts.cancelPendingChallenge();
+    expect(backend.callsTo('ssh_host_cancel').map((c) => c.args.hostId)).toEqual(['silent']);
+    expect(hosts.pendingChallenge).toBeNull();
+  });
+
+  it('replaces a changed key only on the explicit request, then connects', async () => {
+    let replaced = false;
+    backend.setCommands({
+      ssh_host_connect: () =>
+        replaced
+          ? { status: 'connected', generation: 7, attempted: [] }
+          : {
+              status: 'hostChanged',
+              fingerprint: 'SHA256:new',
+              storedFingerprint: 'SHA256:old',
+              attempted: [],
+              strict: false,
+              wrong: false,
+              learnedKeys: [],
+            },
+      ssh_host_replace_key: () => {
+        replaced = true;
+        return true;
+      },
+    });
+    await hosts.connect('silent');
+    expect(hosts.keyMismatch).toMatchObject({ presented: 'SHA256:new', stored: 'SHA256:old' });
+    expect(backend.callsTo('ssh_host_replace_key')).toHaveLength(0);
+
+    await hosts.replaceChangedKey();
+    expect(backend.callsTo('ssh_host_replace_key')).toHaveLength(1);
+    expect(hosts.keyMismatch).toBeNull();
+    expect(backend.callsTo('ssh_host_connect')).toHaveLength(2);
+  });
+
+  it('shows an unknown key under StrictHostKeyChecking yes without offering to trust it', async () => {
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'hostUnknown',
+        fingerprint: 'SHA256:abc',
+        strict: true,
+        attempted: [],
+        wrong: false,
+        learnedKeys: [],
+      }),
+    });
+    await hosts.connect('silent');
+    expect(hosts.pendingKey).toBeNull();
+    expect(hosts.error).toContain('SHA256:abc');
   });
 });

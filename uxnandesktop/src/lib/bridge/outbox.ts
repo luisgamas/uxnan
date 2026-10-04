@@ -12,6 +12,7 @@
 
 import type { AgentCommandInvocation } from '$shared/agents/agent-capabilities';
 import type { TurnAttachment } from '$shared/models/workspace';
+import { isLocalTarget, type TargetId } from '$lib/target';
 
 const KEY = 'uxnan.chat.outbox';
 
@@ -77,6 +78,13 @@ function isEntry(value: unknown): value is OutboxEntry {
     !!e.request &&
     typeof e.request === 'object'
   );
+}
+
+/** Where a thread's messages wait: under its id for this machine's bridge,
+ *  under `ssh:<host>/<id>` for a host's own — one machine's outbox is never
+ *  replayed into another's bridge, even should two threads share an id. */
+export function outboxKey(target: TargetId, threadId: string): string {
+  return isLocalTarget(target) ? threadId : `${target}/${threadId}`;
 }
 
 /** The messages of `threadId` that the bridge has not confirmed. A message the

@@ -19,7 +19,8 @@ import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { automations } from "$lib/state/automations.svelte";
 import { buildProposal, type ProposedAutomation } from "$lib/automations/proposal";
-import { aiCommitAgents } from "$lib/api";
+import { agentsOn } from "$lib/automations/agents";
+import { parseTargetId } from "$lib/target";
 import { app } from "$lib/state/app.svelte";
 import { browser } from "$lib/state/browser.svelte";
 import { readInstanceText } from "$lib/terminal/instances";
@@ -172,7 +173,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
   // created. The window is where this belongs — it owns the screen, and the
   // one thing the backend cannot check is which agents are installed here.
   "automation/propose": async (p) => {
-    const installed = await aiCommitAgents().catch(() => [] as string[]);
+    const installed = await agentsOn(parseTargetId(String(p.target ?? "")));
     let draft;
     try {
       draft = buildProposal(p as ProposedAutomation, installed, () => crypto.randomUUID());
@@ -377,6 +378,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       kind: p.kind === "headless" ? "headless" : "interactive",
       agent: typeof p.agent === "string" ? agentFor(p.agent)?.id : undefined,
       worktree: typeof p.worktree === "string" ? p.worktree : undefined,
+      machine: typeof p.machine === "string" ? p.machine : undefined,
       retry: p.retry === true,
     });
     if (!step) return { error: `no running driven run matches \`${String(p.run ?? "")}\`` };

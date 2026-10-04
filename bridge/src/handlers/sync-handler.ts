@@ -50,6 +50,7 @@ export async function syncChanges(
     threads: threads.map((thread) => withLiveState(thread, ctx)),
     removedThreadIds: from === undefined ? [] : ledger.deletedSince('thread', from),
     clients: ctx.presence.list(),
+    live: ctx.agentManager.liveStates(),
     devices: await ctx.trustStore.list(),
   };
 }

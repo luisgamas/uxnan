@@ -287,7 +287,7 @@ real output and fix both apps in the same change set.
 
 **Claude Code cannot** enumerate its models, so the ADE ships a
 hand-kept table — `CLAUDE_MODELS` in
-[`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fills the model
+[`src-tauri/crates/workspace-engine/src/agentcli.rs`](../src-tauri/crates/workspace-engine/src/agentcli.rs) — that fills the model
 pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
 
 **That table has a twin in the bridge, and both are maintained by hand.** When
@@ -296,7 +296,7 @@ updating one leaves the other surface a version behind:
 
 | Model list | Where | Feeds |
 |---|---|---|
-| Desktop Claude | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
+| Desktop Claude | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
 | Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
 
 Keep the **same ids, labels and order** across a pair, newest/most capable first.

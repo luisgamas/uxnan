@@ -53,7 +53,7 @@ the module this catches; the app crate's own Windows paths — `control::cli`'s
 registry edit — need the full Windows toolchain and stay with CI.)
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
-`git.rs`, `gitfast.rs`, `pty.rs`, `control/` (the catalog dispatch, the two
+`pty.rs`, `control/` (the catalog dispatch, the two
 gates and end-to-end RPC/MCP over a real socket), `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
 `launchenv.rs`, `updater.rs`, `which.rs`, `pets.rs`, `datadir.rs`);
 **integration** tests go in
@@ -78,27 +78,82 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **809 backend tests**
-in total, 759 of which run everywhere; the other 50 are ignored probes that need
-something real to talk to (41 live SSH probes — 29 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **12 against a Linux
-host in a container**; see below — one pwsh preflight that runs the generated
-PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
-the real-scheduler probe). The remaining 37 are the integration tests in
-`tests/`.
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,102 backend tests**
+in total — 687 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
+in `uxnan-control-client`, 10 in `uxnan-cli`, 294 in `uxnan-workspace-engine` (its git, libgit2 fast path, worktree placement and cleanup, and the headless runner and an automation's gate among them), 5 in `uxnan-host-protocol`, 39 in
+`uxnan-host` (29 against the real daemon over its socket — a headless agent run answering from its folder and cancelled by name, and an automation's gate run in its folder, among them — among them the bridge it keeps running and its agents reaching the app's tools but never a hook, started again when it dies and let go when asked, a project's
+files listed, saved and searched on the host, its git read, staged and
+committed there, its worktrees made and removed there, and which agent a terminal runs
+said as it changes and to a viewer that comes back, its old worktrees found and
+removed but never one a terminal stands in, an agent's
+report sent by the real reporter script reaching only its own terminal, and the
+hooks wired into a temporary `HOME`, and a daemon run from a build folder
+removing the old builds nothing runs from, and a viewer that starts empty
+getting the history above the screen while one that kept its own does not,
+an agent closed in a terminal whose shell stays, and a transcript read on the
+host only when it is an agent's own, an MCP call from a terminal answered by the
+app watching it (and failed, not left hanging, when that app goes), a URL a
+terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
+`tests/` — 1,047 of which run everywhere; the other 55 are ignored probes that need something real to talk to
+(48 live SSH probes — 45 against a real `sshd` (one of them runs an agent installed on the host, headless, and an automation's gate there: `a_headless_run_and_a_gate_happen_on_the_host`, armed by `UXNAN_SSH_TEST_HEADLESS=<agent>`; two reach it through the system `ssh` instead, sharing one login and not — `the_system_ssh_carries_every_channel_the_app_uses` and `…_without_sharing_a_login`), one of which idles for five
+minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
+by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
+describe, including that host as its own bastion — and two more (in
+`ssh::terminals`) install the host engine there, lose the connection, and find
+the terminal again: in place when the host returns, and from a fresh session —
+one sees a change made on the host arrive by itself, and two more prove the
+heartbeat both ways: an engine left idle for 45 s stays
+up, and one whose daemon is frozen (`SIGSTOP`, that process only) is given up on,
+and two more carry agent reports: one typed into a host terminal reaches the
+tab that shows it after an app restart, and one — armed also by
+`UXNAN_SSH_TEST_WIRE=1`, because it wires that host's real agents — runs the
+host's own Claude Code once and hears its hooks — and one more has that Claude
+call this app's `uxnan_status` tool through the engine and print the tab the
+call was answered as, and two more have the engine serve a project there — its files (create, save,
+list, duplicate, rename, search by name and content, delete) and its git
+(review, stage, commit, log, the row's branch, a worktree made and removed,
+git's own refusal) — and one more, armed also by `UXNAN_SSH_TEST_AGENT` (an agent
+holding a key the host authorizes for its own account), pushes from the host
+over SSH with the agent the connection forwards, before and after a reconnect,
+after a push with no agent has failed — and one more hears the host engine say
+which agent a terminal there runs, and when it ends — and one more has the
+engine list what that host listens on, its own `sshd` among it, and list its
+folders for the picker with their repository badges, and clean up a leftover
+worktree folder under its own `~/uxnan/worktrees` —
+plus **3 against a Linux host in a container**;
+see below — one pwsh preflight that runs the generated PowerShell script through
+a real `pwsh`, and the 7 supervised live GitHub tests).
+
+### An SSH server inside the test process
+
+`src-tauri/src/ssh/testserver.rs` is an SSH server built from the same
+library's server half, started on a loopback port per test; the transport is
+proven against it on **every** `cargo test`, with no Docker and no system `sshd`
+(`ssh/transport_tests.rs`). Each test configures the server like a real one: a
+password then a one-time code in two keyboard-interactive rounds, a key that is
+only *partial success* until a code follows, a bastion that opens `direct-tcpip`
+tunnels (`ProxyJump`), a host that opens an agent channel back to us
+(`ForwardAgent`), a key on file that is not the one presented (rotation), and
+`StrictHostKeyChecking` in its three readings. Host and client keys come from
+fixed seeds, so nothing needs randomness; the encrypted-key test uses
+`ssh-keygen`, and the agent tests start a private `ssh-agent` on a socket of
+their own (killed when the test ends, even on panic) so the developer's agent
+never decides a result — each skips with a reason where the tool is missing.
 
 ### A Linux host, in a container
 
-Three of those `sshd` probes belong to the ports work: one carries a real
+Two of those `sshd` probes belong to the ports work: one carries a real
 connection through a forward (and twelve at once, over a host whose `MaxSessions`
 is the default ten — the measurement the design rests on, since `direct-tcpip`
 channels are not sessions), then closes it and proves the socket is really gone;
 the second aims a forward at a port with **nothing behind it** and requires the app
 to say so — the case that proved a channel opening is not the same as a port
-answering; the third asks this machine what it is listening on and finds a port
-the test itself is holding. The parser for `ss` / Windows `netstat` / BSD `netstat` is
-unit-tested on captured output, which proves the parsing and nothing about the
-command — the live pair is what covers the half that has bitten this layer twice.
+answering. What a host listens on is the engine's (`ports::listening`): its parser
+for `ss` / Windows `netstat` / BSD `netstat` / `lsof` is unit-tested on captured
+output and on a captured kernel table, and one test that runs everywhere binds a
+port and requires this machine's own listing to find it — through `/proc` on
+Linux, `lsof` on macOS, `netstat` on Windows. That test is what found that
+macOS hands a process other than the person's shell an empty `netstat` table.
 
 Every other live SSH test talks to the `sshd` of the machine running it — which
 on this project has always been Windows, with `cmd`. So the POSIX half of the
@@ -112,42 +167,39 @@ npm run test:ssh:linux      # builds + starts the container, then runs the suite
 npm run ssh:host:down       # when you are done
 ```
 
+**A Windows host, in CI.** The host engine on Windows (its named pipe, leaving
+the SSH session's job, `cmd` as the shell, the `.exe` install) is proven by
+`ci-desktop.yml` → `windows-ssh-host`: the `windows-latest` runner turns on its
+own OpenSSH Server, puts a key for itself in `administrators_authorized_keys`,
+reaches itself as `uxnan-win-self`, builds the Windows engine and runs the live
+terminal suite against it (`ssh::terminals::tests::live`, minus the tests that
+need a POSIX host or its Claude Code). The tests type each shell's own lines
+(`print_line`) and answer ConPTY's cursor-position query (`ESC[6n`) as xterm.js
+does in the app. It runs on a push or pull request that touches the SSH layer or
+the engine, and on a manual dispatch — as does the Linux job.
+
 `docker/ssh-test-host/` is the host: Debian, `sshd`, `git`, a user with a
 password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The twelve tests walk the whole stack on that machine: password authentication,
-the shell classification, the inventory probe, SFTP (list, read, save, and
-shortening a file), the folder picker with its repository badge, remote
-`git status` including the no-upstream case, the whole **review** (HEAD,
-ahead/behind, the changed files and their line counts in one command) with its
-diffs and log, a full **mutation** cycle over the tree — create (bare and intercalated), the
-server's own "must not exist" refusal, a name that tries to escape its folder,
-rename including the case-only one, duplicate, a recursive delete and the refusal
-to aim one at a filesystem root — **searching** it (by name and by content, with the `.gitignore` rules, the
-hidden-folder rule, case sensitivity, whole word, an empty result and a folder
-that is not a repository), **what the host does when it runs out of channels** (held open until it refuses,
-then the message has to name the number *it* enforced — this is what caught the
-off-by-one and the asynchronous release), **an image diff** (bytes that are not
-valid UTF-8, compared byte for byte — the text path would have replaced every one
-of them), **previewing an image the host holds** (the same non-UTF-8 bytes, back
-as a `data:` URL, with a text file refused as not previewable), and a full git
-**mutation** cycle:
-stage,
-unstage, stage all, commit
-a message containing a newline, quotes and `$VAR` and read it back verbatim,
-discard tracked and untracked files, apply a patch and reverse it, and require a
-patch that does not apply to fail. The mutating tests build their own repository
-on the host so the image's fixture is left as the image made it.
+The three tests walk what still runs through the host's own shell:
+password authentication, the shell classification, the inventory probe, and
+**what the host does when it runs out of channels** (held open until it refuses, then the message has to name the
+number *it* enforced — this is what caught the off-by-one and the asynchronous
+release). A project's files, git and folders are the host engine's now, so they are
+proven where the engine is: against the real daemon over its socket on every CI
+platform (`crates/uxnan-host/tests/daemon.rs`), and over SSH by the engine's live
+probes (`ssh::terminals::tests::live`, which the Windows CI lane runs and any
+`UXNAN_SSH_TEST_ALIAS` host can).
 
-That last group is why this lane exists: it is what caught the one real bug in
-the remote review — git reports an unstaged change with a **leading space**
-(` M README.md`), and trimming the section as whitespace ate it, so every path
-arrived a character short and the panel listed `EADME.md`. The unit tests were
-happy, because none of them had run a shell. They are `#[ignore]` like every
-other live probe, and they **skip with a message** when the environment is not
-set, so a developer without Docker sees a reason rather than a failure.
+This lane earned its place before the engine existed: it caught the one real bug
+in the shell-driven remote review — git reports an unstaged change with a
+**leading space** (` M README.md`), and trimming the section as whitespace ate
+it, so every path arrived a character short. The unit tests were happy, because
+none of them had run a shell. They are `#[ignore]` like every other live probe,
+and they **skip with a message** when the environment is not set, so a developer
+without Docker sees a reason rather than a failure.
 
 CI runs them on `ubuntu-latest`, but only when the change touches the SSH layer
 or the fixture — a container build on every unrelated UI change is how a lane
@@ -161,9 +213,9 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 882 passing unit tests of the app crate (924 with the ignored probes) — plus 18 in
-`uxnan-control-protocol` and 14 in `uxnan-cli`, the two workspace crates behind the
-control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
+The 639 passing unit tests of the app crate (687 with the ignored probes) — plus 18 in
+`uxnan-control-protocol`, 4 in `uxnan-control-client` and 10 in `uxnan-cli`, the
+three workspace crates behind the control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -269,7 +321,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,785 tests** across both
+ships in every build and is never shown). **1,853 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

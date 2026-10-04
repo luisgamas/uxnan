@@ -239,7 +239,7 @@
           "sha": "5d05643b",
           "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
           "tester": "maintainer",
-          "evidence": "E2E worktree journey — a real repository recognised, listed and read (tests/e2e/specs/worktree.e2e.mjs, 2026-07-30); git/worktree/staging suites against throwaway repos (src-tauri/src/git.rs, src-tauri/src/gitfast.rs); watcher + sweep cost on a large dirty checkout measured and approved (scripts/resources/baselines/windows/R06.json, 54d935e8)."
+          "evidence": "E2E worktree journey — a real repository recognised, listed and read (tests/e2e/specs/worktree.e2e.mjs, 2026-07-30); git/worktree/staging suites against throwaway repos (src-tauri/crates/workspace-engine/src/git.rs, src-tauri/crates/workspace-engine/src/gitfast.rs); watcher + sweep cost on a large dirty checkout measured and approved (scripts/resources/baselines/windows/R06.json, 54d935e8)."
         },
         "macos-aarch64": {
           "level": "builds",
@@ -625,7 +625,7 @@
           "sha": "5d05643b",
           "hardware": "Windows 11 Pro 10.0.26200 x64 (local + windows-latest runner)",
           "tester": "ci",
-          "evidence": "wsl.exe path routing is unit-tested (src-tauri/src/wsl.rs); no recorded walkthrough opens a \\\\wsl.localhost repository, creates a worktree in it and runs an agent (docs/testing.md, L5 row 9; tests/quality-matrix.json, project-worktree row)."
+          "evidence": "wsl.exe path routing is unit-tested (src-tauri/crates/workspace-engine/src/wsl.rs); no recorded walkthrough opens a \\\\wsl.localhost repository, creates a worktree in it and runs an agent (docs/testing.md, L5 row 9; tests/quality-matrix.json, project-worktree row)."
         }
       }
     }

@@ -9,11 +9,13 @@ The tree state lives in `src/lib/state/fileTree.svelte.ts`, so it survives
 switching tabs; the filesystem watcher (`fswatch.rs` → the `fs:changed` event)
 reloads whichever loaded folders actually changed.
 
-**On a project that lives on an SSH host**, the same tree reads and saves over
-SFTP (`$lib/fsRouter`), and three of the things above do not apply: rows are not
-colored and nothing is dimmed (both come from git *here*), there is no watcher —
-the refresh button is the reload — and search is hidden rather than offered
-broken, because it walks this filesystem. If the host disconnects the tree
+**On a project that lives on an SSH host**, the same tree is served by that
+host's engine (`$lib/fsRouter` names the machine; the engine runs the same file
+code there): git-ignored entries are dimmed as here, and searching walks the
+project there. Rows are not colored by git status yet. The folder is watched
+**there** by the host engine — the same watcher, which then sends the same
+`fs:changed` — so the tree follows the host by itself. A host where the engine
+cannot run has no project files, and the panel says so. If the host disconnects the tree
 empties itself and says it is waiting, instead of leaving another machine's
 folders on screen. See [`remote-hosts.md`](remote-hosts.md).
 

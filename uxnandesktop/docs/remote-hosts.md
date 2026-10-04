@@ -39,15 +39,25 @@ refuses it — before anything runs — if that no longer matches.
 
 ## Secrets
 
-**None are stored.** A host record holds an alias, hostname, port, user and a
+**None are written.** A host record holds an alias, hostname, port, user and a
 *reference* to an identity file. Never a key, never a password. Those come from
-your system's ssh-agent, from the key file on disk, or from a prompt that lives
-in memory for that session only.
+the agent your SSH configuration names, from the key file on disk, or from what
+you type when the app asks.
+
+What you type — a password, a key passphrase — is kept **in memory until you
+close the app**, so a dropped connection (a laptop lid, a Wi-Fi handover) can
+come back on its own instead of asking again. It is never written anywhere, never
+logged, and wiped from memory when replaced. A wrong one is forgotten at once, so
+the next attempt asks rather than replaying it. Answers to a second factor (a
+one-time code) are never kept at all: they cannot be reused.
 
 For git operations on the remote host, use **`ForwardAgent`**: it lets git over
 there use the keys held by the agent over here, without a private key ever
-leaving this machine. The app reads the setting from your SSH config and honors
-it per host.
+leaving this machine. Set it in your SSH config or in the host's form; the app
+asks the host to forward the agent on every terminal and command it opens there,
+and accepts the host's agent requests only on a connection that asked for them.
+Anyone with root on that host can use the forwarded agent while you are
+connected — enable it for machines you trust.
 
 ## Your SSH configuration — works today
 
@@ -59,17 +69,49 @@ than retyping what you already wrote:
   survives an include cycle. Wildcard patterns like `Host *` are skipped — those
   configure defaults, they are not hosts you connect to. If you have no config
   file, the list is simply empty.
-- **Resolving one alias** shells out to **`ssh -G <alias>`** rather than
-  interpreting the file ourselves. OpenSSH's own precedence rules (`Match`
-  blocks, pattern order, canonicalization) are subtle enough that a hand-written
-  parser eventually connects somewhere your own `ssh` would not. `ssh -G` ships
-  with Windows, macOS and Linux, and prints exactly what OpenSSH would use.
+- **Resolving a host** shells out to **`ssh -G`** rather than interpreting the
+  file ourselves. OpenSSH's own precedence rules (`Match` blocks, pattern order,
+  canonicalization) are subtle enough that a hand-written parser eventually
+  connects somewhere your own `ssh` would not. `ssh -G` ships with Windows, macOS
+  and Linux, and prints exactly what OpenSSH would use.
 
-What is read from the resolved output: hostname, port, user, identity files,
-`IdentityAgent`, `IdentitiesOnly`, `ForwardAgent`, `ProxyCommand` and
-`ProxyJump`. OpenSSH prints the literal `none` for the last three when they are
-unset, and the app treats that as "not configured" — otherwise it would try to
-run a proxy command called `none`.
+**It is resolved at every connect**, not once when the host is added: edit your
+config and the next connection uses the change, as it would for `ssh`. A host you
+typed by hand is resolved the way the matching command line would be
+(`ssh -p 2222 -l dev -J bastion box`), so it still picks up your `Host *`
+defaults — the agent socket, the known-hosts files, `IdentitiesOnly`. An
+imported host shows a snapshot of what it resolved to; only its label is edited
+in the app, because the rest comes from the file.
+
+What the app acts on:
+
+| Setting | What it does here |
+|---|---|
+| `HostName`, `Port`, `User` | where and as whom |
+| `IdentityFile`, `CertificateFile` | keys to offer, with their certificate (also `<key>-cert.pub`) |
+| `IdentityAgent` | which agent to ask — a socket path, `SSH_AUTH_SOCK`, or `none` for no agent |
+| `IdentitiesOnly` | offer only the configured keys, even when the agent holds others |
+| `ForwardAgent` | forward the agent to the host (above) |
+| `ProxyJump` | reach the host through one or more bastions — see below |
+| `ProxyCommand` | let a command carry the connection (`%h %p %r %n %%` expanded) |
+| `HostKeyAlias` | the name the host key is filed under |
+| `UserKnownHostsFile`, `GlobalKnownHostsFile` | where host keys are read (and the first user file, where they are written) |
+| `StrictHostKeyChecking` | what happens with a key that is not on file — see *Host keys* |
+
+OpenSSH prints the literal `none` for `ProxyCommand`, `ProxyJump` and
+`HostKeyAlias` when they are unset, and the app treats that as "not configured".
+`IdentityAgent none` is kept: there it means *use no agent*.
+
+### Bastions (`ProxyJump`)
+
+A host behind a jump host is reached the way `ssh -J` reaches it, inside the
+app: the bastion is an SSH connection of its own — its own key check, its own
+login — and the host is a full SSH session carried in a tunnel the bastion opens
+to it. That is why a name only the bastion can resolve works. Chains
+(`ProxyJump a,b`) and bastions with a `ProxyJump` of their own are followed, with
+a loop check. When a bastion asks for something — a password, a code, a key to
+trust — the dialog names it: *"edge (on the way to build-box)"*. A bastion's
+password is offered to that bastion only.
 
 ## How you authenticate
 
@@ -84,40 +126,88 @@ the truth is "this machine wants a password and nobody asked you for one". If a
 key of yours is refused on a host that also takes passwords, you get told both
 things: which key was refused, and that you can try a password.
 
-When you do have keys, the app tries your **ssh-agent first**, then the identity
-files your SSH config points at for that host. The agent goes first on purpose: it holds keys you have
-already unlocked, so connecting to five hosts does not mean five passphrase
-prompts. On Windows that is OpenSSH's agent service; elsewhere it is whatever
-`SSH_AUTH_SOCK` points at.
+Keys are offered in the order that interrupts you least:
 
-If a key file is encrypted and the app has no passphrase for it, it **asks you
-for that key** rather than reporting a failure — "wrong key" and "I could not
-open your key" are different problems, and telling you the first when it is the
-second sends you off to debug the wrong thing. Key paths in your config that do
-not exist on disk are skipped rather than attempted, because OpenSSH lists its
-defaults whether or not you have them.
+1. keys your config names **that the agent already holds** — unlocked once,
+   usable everywhere;
+2. keys your config names that open without asking (not encrypted, or unlocked
+   earlier in this session);
+3. every other key the agent holds — unless `IdentitiesOnly yes`;
+4. only then an encrypted key nobody has unlocked: the app **asks for its
+   passphrase**, and says so if the one you typed did not open it.
 
-Nothing you type is stored: a passphrase lives in memory for one attempt. The
-app records the *path* to a key, never the key.
+Asking last means a working agent never causes a passphrase prompt. Key paths in
+your config that do not exist on disk are skipped rather than attempted, because
+OpenSSH lists its defaults whether or not you have them. On Windows the agent is
+OpenSSH's agent service; elsewhere it is whatever `SSH_AUTH_SOCK` — or your
+`IdentityAgent` — points at.
+
+**Second factors work.** A server that asks more than a password over
+keyboard-interactive — a one-time code, a hardware-token prompt — gets its
+questions shown to you exactly as it sent them, with typing visible where the
+server allows it (a code) and hidden where it does not. The connection waits
+while you answer, and a server that needs a key **and** a code (`partial
+success`) is carried through both steps instead of reporting the key as refused.
+A single hidden "Password:" prompt is answered with the password you already
+gave.
+
+## When your own `ssh` connects instead
+
+Some configurations only OpenSSH itself can follow: **Kerberos**
+(`GSSAPIAuthentication yes`), a **FIDO2 security key** (an `sk-` key, or a
+`SecurityKeyProvider`), a **smartcard** (`PKCS11Provider`), host-based
+authentication, a `ProxyUseFdpass` proxy, host keys from a `KnownHostsCommand`.
+For a host whose configuration asks for one of those, the app has **your
+machine's own `ssh`** do the connecting — exactly as `ssh <host>` would in a
+terminal, with your config, your `known_hosts` and your agent — and carries
+everything over it: terminals (in the host engine), files, git, search, ports,
+the host's bridge. Nothing is lost; even the engine is uploaded the same way, over
+`ssh`'s own SFTP.
+
+- **One login.** On macOS and Linux it logs in once and every channel shares that
+  login (OpenSSH connection sharing), so a security key is touched once per
+  connection. **Windows'** OpenSSH cannot share a login, so there every terminal,
+  file session and command signs in on its own — about a second each — and the
+  host's page says so.
+- **It never asks.** It runs without prompts, so a host that wants a password or a
+  passphrase, or a host key that is not in your `known_hosts` yet, stops with
+  OpenSSH's own sentence instead of a prompt nobody sees. Connect once with `ssh`
+  in a terminal to settle the key, or use the built-in client for a host that
+  needs a password. A host that needs a touch of a security key is not
+  reconnected at startup on its own: it waits for you to press Connect.
+- **You can choose.** A host's page (Settings → Hosts → *Details*) has
+  **Connection → Connect with**: *Automatic* (the built-in client, unless the
+  configuration needs your `ssh`), *Built-in client* or *System ssh*. It says
+  which one carries the host now, and why. A change takes effect at the next
+  connect.
 
 ## Host keys — the rules the app connects under
 
 The confirmation is in the app (Settings → Hosts asks you before trusting a key
 it has never seen), and the decision behind it is verified against a real SSH
-server. The rules:
+server on every test run. The rules:
 
 - **A key already in `known_hosts`** → connects.
 - **A host you have never seen** → the app asks you, showing the `SHA256:…`
-  fingerprint to compare, and **writes nothing** until you confirm.
-- **A host whose key changed** → refused, showing both fingerprints. This is a
-  separate outcome from "never seen", deliberately: collapsing the two is how a
-  man-in-the-middle gets waved through.
+  fingerprint to compare, and **writes nothing** until you confirm. Under
+  `StrictHostKeyChecking yes` it shows the fingerprint and offers nothing: your
+  configuration says such keys are added by hand. Under `accept-new` (or `no`)
+  a new key is recorded without asking, and the log says so.
+- **A host whose key changed** → refused, showing both fingerprints, and no
+  credential is sent. If you know the machine was reinstalled, the dialog offers
+  **"The machine was reinstalled — replace the key"**: the old entries for that
+  name, port and key type are taken out of your own `known_hosts` (backed up first
+  to `known_hosts.old`, as `ssh-keygen -R` does) and the presented key is
+  recorded. A stale entry in a system-wide file cannot be replaced from here.
+  No setting lets a changed key through on its own.
 - **`@revoked`** → refused, and never offered for trust.
 
 An unverified host is **never connected to, not even to ask you**: the handshake
 is refused, and only after you confirm does the app connect again with the key
 recorded. Asking after connecting would mean an impostor had already been talked
-to.
+to. The handshake also asks the server for the key **types already on file**
+first, so an impostor cannot dodge the check by presenting a type that has no
+entry and passing as a new host.
 
 The fingerprint the app shows is the same string OpenSSH shows, so you can
 compare it against `ssh-keygen -lf` or what the host's administrator gave you —
@@ -154,10 +244,11 @@ change to this layer (`docs/testing.md`). Windows is what this is developed
 against day to day. macOS should work — it takes the same POSIX path Linux does —
 but nobody has run it, and this page will say so until someone has.
 
-Most of what the app does on a host needs no shell at all — files, the folder picker and the tree go over **SFTP**, a
-subsystem, so they behave identically everywhere. What genuinely needs a shell
-(git, and asking what is installed) is sent in the dialect **the host itself
-reported** when it connected, never in one guessed from what it claims to be:
+A project's files, git and the folder picker are served by the **host engine**
+(below); installing the engine itself goes over **SFTP**, a subsystem, so it
+behaves identically everywhere. What still needs a shell
+(asking what is installed, and which ports it listens on) is sent in the dialect
+**the host itself reported** when it connected, never in one guessed from what it claims to be:
 
 | Host | How it is driven |
 |---|---|
@@ -194,16 +285,16 @@ asks for `pwsh` first and falls back to Windows PowerShell. To read one back whi
 Settings → **Hosts** → the host → **Add a project**. The picker is the one you
 already use for local projects — address bar, ↑/↓ navigation, repository badges,
 a per-row **Add**, `Ctrl`/`⌘`+`Enter` to add the folder you are in — pointed at
-the other machine. Two differences, both real rather than cosmetic:
+the other machine. What is particular to a host:
 
-- **Navigation is as quick as the file tree**, because it goes the same way: over
-  SFTP, not by asking the host's shell to list a folder. There is still no
-  filesystem watch — the refresh button is the reload.
+- **Navigation is as quick as the file tree**, because it goes the same way:
+  the host engine lists the folder there, with the code that lists this
+  machine's. The picker does not watch the folder it shows — the refresh button
+  is the reload.
 - **A very large folder comes back cut**, and the picker says so rather than
   quietly showing the first few hundred entries.
-- **A host with the `sftp` subsystem disabled cannot be browsed.** The file tree
-  already required it, so such a host was of little use anyway; it is said here
-  rather than discovered.
+- **A host where the engine cannot run cannot be browsed**, as it has no
+  project files either; its terminals still work.
 
 The project is registered against the host it lives on, so the same absolute path
 on two machines is two different projects, and mutations verify they are acting on
@@ -215,27 +306,39 @@ Select it in the left panel and:
 
 | | |
 |---|---|
-| **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
-| **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. **Creating, renaming, duplicating and deleting work too**, on that machine and fenced like every other mutation — but **deleting there is permanent**: SSH has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching works too** — by file name and by content — by asking git on that machine (`git ls-files` and `git grep`) instead of dragging the project across the link: matching lines come back, files never do. It follows the same `.gitignore` rules the local search does, so both machines answer about the same project, and a folder that is not a repository there says so rather than answering nothing. **Images and PDFs preview from the host as well** — they are read over the same SFTP session, capped at 25 MiB, and the size is asked before the file crosses the link. Gaps that remain: no git-ignored dimming, and no automatic refresh — the refresh button is the reload. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. The Changes view is offered on a host like anywhere else. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
-| **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
-| **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run git *on the host*, through the shell that machine reported, with every argument quoted for it. Everything the panel draws arrives in **one** command, because each remote command costs a shell start there. Your commit message and any patch travel over SFTP rather than through that shell, so a message with quotes or several lines arrives exactly as you typed it. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** reads the diff on the host and runs your agent here, where its CLI and sign-in are. |
+| **Terminals** | Open on the host, in the project's folder, in your **login** shell there (so the `PATH` a version manager writes into your profile is there too). Splits and further terminals stay there too. On a Linux, macOS or Windows host they live in the **host engine** (below) and outlive a dropped connection and an app restart; elsewhere they are a channel on the connection and end with it. |
+| **Files** | **Works — including saving and searching**, on a host where the **host engine** runs (below). The engine serves the project's files with the same code the app runs on its own disk, so the tree lists them (git-ignored files dimmed, as here), opens and previews them (images and PDFs up to 25 MiB), saves them (atomically, keeping the file's permissions), and **creates, renames, duplicates and deletes** them — on that machine, and fenced like every other change: refused outright if the host or its connection has moved on, since the same absolute path usually exists on both machines. **Deleting there is permanent**: a host has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching** by file name and by content walks the project *there*, following the same `.gitignore` rules as here, whether or not it is a repository — the results come back, the files never do. A host where the engine cannot run has no project files, and the panel says so; its terminals still work. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up. |
+| **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by the host engine running git *there*. If the host cannot answer (no engine, no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
+| **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run by the host engine with git *on the host*, the same git code the app runs here. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. **Push and pull use your forwarded agent**: with `ForwardAgent` on, the engine follows the agent of your latest connection, so a push over SSH signs with the keys you hold here. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** is written **on the host**, by the agent you picked in Settings → AI commit as that machine has it installed, standing in the worktree; when the host lacks that agent, it is written here from the staged diff read there. |
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
+| **Worktrees** | **Works.** A project on a host lists its worktrees, creates new ones (a new or existing branch, a base, an optional folder of your own) and removes them with the same optional branch cleanup — all done by the host engine with the same placement rules as here. They land under the host's own `~/uxnan/worktrees`; the global custom root in Settings is a folder on *this* machine, so on a host only a project's own root applies. Creating and removing are refused while the host is disconnected. |
+| **Chat** | **Works when the host runs its own bridge.** If the account on the host runs `uxnan-bridge`, the desktop links to it through the host engine — no port is opened on either machine — and the project offers chats like a local one: they run **on that bridge**, with the host's agents and sign-ins, keep going there when this window closes, and are listed apart from this machine's. A host without one is not offered a chat; its page installs it (see *A host's bridge* below). "Continue as chat" on a host terminal continues its agent's session on that bridge too. |
+| **Headless work** | **Runs on the host**, by its engine, with the same code that runs it here and the host's own agent CLIs and sign-ins: an orchestration's **headless steps** (and the tasks a coordinator agent adds), a conversation's **generated name**, and **automations** — see *Automations on a host* below. Nothing headless about a host's project ever runs on this machine's folder of the same path. |
 | **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
-| **Automatic refresh** | **Only for what uxnan itself does.** Discarding a change, discarding a hunk or pulling updates the tabs you have open, because the app made the change and knows which files it touched. For anything else that happens on that machine — an agent working in the folder, a `git` command in a terminal there — no. The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button, whose tooltip says as much. Said out loud rather than faked: a commit made in a terminal on the host shows up in Changes when you ask it, not by itself. |
+| **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS, Windows).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a host it cannot run on), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
 
-The card carries the host's name, and its terminal count includes the terminals
-open on that machine.
+The card carries the host's name with a dot for how that host stands (connected,
+connecting, waiting for you, offline — the tooltip adds the link's round trip),
+and its terminal count includes the terminals open on that machine. A terminal
+tab on a host carries the same: a small badge with the host's name and dot, and
+a title dimmed while the host is away.
 
 ### At startup
 
 Hosts that let uxnan in **without asking for anything** are reconnected on their
 own when the app starts, so a project on one of them has its files, its branch
 and its terminal without you opening Settings first. A host that asked for a
-password or a key passphrase last time is *not* reconnected automatically — a
-stack of credential prompts at launch is not a greeting; connect it when you want
-it. Nothing is stored either way: the prompt lives in memory for that attempt
-only.
+password, a key passphrase or a code last time is *not* reconnected
+automatically — a stack of credential prompts at launch is not a greeting;
+connect it when you want it. Nor is one with a key not yet on file, on itself or
+on any bastion of its route: that can only end in the trust dialog.
+
+Once you have connected one, though, a dropped connection **does** come back on
+its own within the session — the reconnect steps (2, 5, 15, 30, 60 s) reuse the
+password or passphrase you typed, which the app holds in memory until it closes.
+A host that needed a one-time code is the exception: a code cannot be replayed,
+so it waits for you.
 
 ### When something on the host goes away
 
@@ -249,15 +352,28 @@ working. So:
   as disconnected and **Connect** genuinely reconnects it. (Before, the app kept
   saying "connected" and Connect did nothing, because a session was already on
   file.)
-- **Terminals** whose channel ended say so in the tab; they restart when their
-  host connects again.
-- **The file tree empties itself** and says it is waiting, instead of leaving the
-  folders of a machine that is no longer there on screen. It fills back in when
-  the host returns.
+- **Terminals in the host engine keep running.** The tab says, in one dim line,
+  that the connection was lost and the terminal keeps running there; when the
+  host is back the terminal is repainted with what it shows now and carries on.
+  Nothing is retyped into it — an agent that was working is still working. Only
+  if the host's daemon itself went away in between (the machine rebooted) does
+  the tab report that the terminal ended.
+- **Terminals on a plain channel** (a host the engine cannot run on — see
+  *Where it does not run* below) end with the connection, and the program in them on
+  the host. An agent's tab keeps what it showed and offers to resume the session;
+  a plain shell's tab closes. A terminal that could not *start* because its host
+  was away starts by itself once the host connects.
+- **The file tree keeps what it read, and says how old it is.** A tree that was
+  already on screen stays, so you do not lose your place, under a line naming
+  the host and when it was read ("build-box is offline — this was read 3 minutes
+  ago"); nothing in it can be changed until the host is back, and it is read
+  again then. A tree that never got its first answer says it is waiting
+  instead.
 - **Changes and History do the same.** What was read stays true of the moment it
-  was read, but nothing can be sent to a machine that is gone, so every action is
-  disabled while it is away — and the commit message you were writing is left
-  alone, since the host coming back makes it usable again.
+  was read, with the same line, but nothing can be sent to a machine that is
+  gone, so every action is disabled while it is away — and the commit message
+  you were writing is left alone, since the host coming back makes it usable
+  again.
 - **Running out of channels says so, and says what is holding them.** Every
   terminal, the file panel and each running command is a channel on the one
   connection, and your host caps how many it carries at once (OpenSSH's
@@ -277,6 +393,134 @@ working. So:
   connection nobody is typing at no longer gets dropped for being quiet (it used
   to be reaped after five minutes of silence).
 
+### A host's page
+
+**Details** on a host's row in Settings → Hosts opens its page:
+
+- **Connection check** — the way to the host, one step per row: the route
+  (direct, through a bastion chain, or a `ProxyCommand`), whether its first hop
+  answers on TCP and how fast, whether its key is on file, sign-in, its shell,
+  the host engine (version and platform, or why it is not running), the round
+  trip the engine's heartbeat measures, and agent forwarding. It never signs in
+  to find out — it reads what the app knows and probes the first hop — so it
+  costs nothing and asks nothing; the steps only a session can answer say
+  *Connect to check* until there is one.
+- **Machine** — what the host reported: OS, git, the multiplexer, and every
+  agent CLI with the version it gave.
+- **Terminals on this host** — every terminal the host engine holds, including
+  ones no tab of this window shows (left by an earlier run of the app). Each
+  says whether it is open here; **End** stops one and whatever runs in it,
+  after asking.
+- **Forget host**, and **Connect** / **Disconnect**.
+
+The row itself wraps when the window is narrow: the actions drop under the
+host's name instead of squeezing it.
+
+### A host's bridge
+
+The same page has a **Bridge on this host** section — the host's own
+`uxnan-bridge`, which runs its chats and serves its phone:
+
+- **Which bridge.** One you installed yourself (on your login `PATH`, or running
+  as your own service) is the one used. Otherwise **Install bridge** puts one
+  into the account's `~/.uxnan/bridge` with that machine's own npm — no
+  administrator, nothing outside the account — and it updates itself there
+  afterwards like anywhere else. It needs Node.js 18 or newer on the host.
+- **Its identity survives a reboot.** A server's only keyring is often the
+  kernel's, which a reboot clears — and a new identity would unpair your phone.
+  So the bridge there keeps its secrets in a file sealed with AES-256-GCM, under
+  a key this app makes for that host and keeps in your computer's keychain; the
+  host engine hands it over each time it starts the bridge, which never stores
+  it. Another computer with its own key cannot open them.
+- **Kept running by the host engine**, not by an OS service: the engine already
+  outlives your SSH session, so it starts the bridge and starts it again if it
+  ends — no lingering, no administrator, the same on Linux, macOS and Windows.
+  **Stop** lets it go; it stays installed.
+- **How phones reach it.** By default **through your relay** — the bridge
+  connects out to it, so nothing listens on the host. **Use my relay** puts it on
+  the relay this computer already has, with no token typed: this computer's
+  bridge, which deployed it and remembers the token, adds the host's key, and the
+  host's bridge connects to it. Without a remembered token (or with a bridge here
+  too old to do it), **Set up relay** deploys your relay for that bridge instead
+  (the same dialog as Settings → Bridge & mobile; one relay serves all your
+  machines). **Open on this host's network** turns on its
+  LAN listener (port 19850) for phones on the same network or your tailnet — the
+  one switch that publishes a port there, off by default. **Pair a phone** shows
+  its pairing QR; a host with neither the relay nor the LAN has no way for a
+  phone to reach it, and says so.
+
+## Terminals that outlive the connection: the host engine
+
+On a Linux, macOS or Windows host, the app runs a small program of its own
+there — the **host engine**, `uxnan-host` — that owns the terminals instead of
+the SSH session, and serves the project's files. That is what lets a terminal, and the agent in it, survive a closed
+laptop lid, a Wi-Fi handover or an app restart.
+
+- **Nothing to install by hand.** The first terminal on a host uploads the
+  engine over the SFTP session the host already has, into
+  `~/.uxnan/host/versions/` (a folder only your account can read),
+  and asks it to prove it runs there. It is one static binary — no Node, no
+  compiler, nothing downloaded on the host itself — so a server without Internet
+  access works too. Each build gets its own folder
+  (`~/.uxnan/host/versions/<version>-<hash>/`), so an update never replaces the
+  program a running engine was started from.
+- **One channel for all of them.** Every terminal on the host travels over one
+  SSH channel, so they no longer count one by one against the host's
+  `MaxSessions`.
+- **The project folder is watched there.** The tree, the open tabs and Changes
+  refresh by themselves when anything changes in the folder on the host (see
+  *Automatic refresh* above).
+- **Agents there report their state.** With auto-install on, connecting wires
+  the agents the host has (the same reporters as here, registered in their
+  configs there) and their terminals report to the engine, which hands each
+  report to the tab it came from — the same cards, checks and notifications as
+  a local agent, also after the lid was closed. See
+  [agent hooks → Agents on an SSH host](./agent-hooks.md#agents-on-an-ssh-host).
+- **Agents there use this app's tools.** The control surface's MCP tools and
+  the integrated browser reach a host's agents through the engine, as the tab
+  that shows them — a `localhost` link there opens here through a forward. See
+  [browser](./browser.md).
+- **A silent link is noticed in seconds.** The app checks on the engine every
+  10 seconds; if nothing has come back for 30, the link is treated as gone — the
+  tabs say so and the host is reconnected — instead of waiting the two minutes
+  the SSH keepalive takes to reach the same verdict on a Wi-Fi that dropped
+  without a word.
+- **The screen comes back, not the bytes.** The engine keeps what each terminal
+  shows; a returning tab is repainted from that — a full-screen agent included —
+  and live output resumes after it. After an app restart the tab also gets what
+  had scrolled above the screen (up to 2,000 lines, with their colours) in its
+  own scrollback; after a dropped connection it keeps the history it had, so
+  nothing is printed twice.
+- **A restart finds its terminals.** A tab is matched to its terminal by its
+  persistent session id, so reopening the app reattaches to the terminal it had
+  instead of opening a second one — and does not launch the agent again.
+- **Closing a tab ends its terminal there** — immediately, or as soon as the host
+  is reachable again if it was not.
+- **An app update does not strand terminals.** The app and the engine meet in a
+  protocol window rather than on an exact version: an updated app talks to the
+  engine that holds the host's terminals, whichever build it is, and a newer
+  engine takes over only once the older one has nothing left to do. A feature
+  the older engine lacks (watching, for one) simply waits for it.
+- **It does not linger.** With no terminal running and nobody attached, the
+  engine exits on its own after 30 minutes. Nor do old builds: an engine that
+  starts removes the builds of earlier versions that nothing runs from any more
+  (a build in use, or uploaded in the last 10 minutes, stays). Its log (`~/.uxnan/host/host.log`)
+  records lifecycle only — never what a terminal showed or what was typed.
+
+**Where it runs:** Linux, macOS and Windows hosts, each on x86-64 and ARM —
+every installer carries all six builds, whatever machine the app itself runs on.
+On Windows the engine listens on a named pipe only your account can open, and is
+started outside the SSH session's job, so closing the connection does not end it.
+Proven against a Windows host whose `sshd` starts `cmd` (the CI runner reaching
+its own OpenSSH Server).
+
+**Where it does not run:** a host with no build (32-bit ARM, i686, the BSDs), a
+home folder mounted `noexec`, or a server that will not run an uploaded program.
+There a terminal is a **plain channel on the session**: it works, and it ends
+with the connection — the one place the app keeps that older kind of terminal,
+because a host must always give you a shell. For development builds, see
+[Development → the host engine](./development.md#the-host-engine).
+
 ## From a shell, without the app window
 
 `uxnan-cli` reaches the same sessions, which is handy when the machine you care
@@ -284,18 +528,40 @@ about is not the one you are looking at:
 
 ```
 uxnan-cli host ls                 # every host, connected or not, with its channels
-uxnan-cli host show build-box     # plus the projects and terminals on it
+uxnan-cli host show build-box     # plus its projects, tabs, and every terminal its engine holds
 uxnan-cli host connect build-box  # open a session on one that has none
 ```
 
 `connect` never asks for anything secret. A host that wants a password or a key
-passphrase answers `needsPassword` / `needsPassphrase` and stops; one whose key
-is unknown or has changed answers that and stops too, having trusted nothing.
+passphrase you have not given in this session of the app answers
+`needsPassword` / `needsPassphrase` and stops; one that wants a second factor
+answers `needsAnswers`; one whose key is unknown or has changed answers that and
+stops too, having trusted nothing. Any of them can be about a bastion on the
+way, and a `ProxyCommand` that cannot run answers `proxyFailed`.
 Those are yours to finish in Settings → Hosts — and adding, editing or removing
 a host has no command at all, for the same reason. The agents uxnan launches do
 **not** see this: their token is scoped to one project, so hosts are the
 person's shell's to ask about (see
 [the control surface](./control-api.md) → *Hosts*).
+
+### Automations on a host
+
+An automation can work in a folder on a host: pick the **Machine** in its editor
+(shown once you have a host), then the folder — the browse button lists that
+host's folders while it is connected. An agent working in a host's project can
+also propose one there (`automation/propose`). A run on a host does everything
+there, through its engine: the folder check, the **precondition** (in that
+machine's shell), the **per-run worktree** (under the host's own
+`~/uxnan/worktrees`) and every **step**, with the agents installed there — the
+editor offers those, not this machine's. Its history is kept here, with the
+host's name next to the folder.
+
+**Uxnan has to be open and connected to the host when it runs.** The schedule
+still lives in this computer's OS scheduler, and the run it starts has no SSH
+connection of its own, so it hands the run to the open app, which holds the
+connection. With the app closed, or the host not connected, the run is recorded
+as unavailable, with the reason. "Run now" runs it straight away through the
+same connection.
 
 ## Not planned
 
@@ -309,16 +575,10 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: precise agent status on a host (it needs a reverse tunnel and reporters
-installed there) and session continuity — knowing what is still running on the
-far side after a terminal closes. Everything else this list used to name —
-searching a host's tree, creating, renaming and deleting from it, image diffs,
-the AI commit draft, and forwarded ports with preview — works today.
+Nothing else is planned for how a host is reached: the built-in client and your
+own `ssh` (above) cover what OpenSSH configurations ask for.
 
-Two things deliberately *not* coming: a helper program installed on your machines
-— every piece that moved off the shell removed its reason to exist, and it would
-add a class of failure ("could not install the server on your host") that this
-does not have today — and any mode that skips host-key verification.
+Deliberately *not* coming: any mode that skips host-key verification.
 
 Architecture: [`architecture/02g-remote-hosts.md`](../architecture/02g-remote-hosts.md).
 Execution-target identity and mutation fencing:

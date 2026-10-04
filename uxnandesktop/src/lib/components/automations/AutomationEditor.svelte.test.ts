@@ -16,6 +16,7 @@ import { tick } from "svelte";
 import { mountWithProviders } from "../../../test/render";
 import { buildProposal } from "$lib/automations/proposal";
 import { newAutomation } from "$lib/automations/types";
+import { hosts } from "$lib/state/hosts.svelte";
 import AutomationEditor from "./AutomationEditor.svelte";
 
 const commands = { ai_commit_agents: () => ["claude", "codex"] };
@@ -119,4 +120,35 @@ describe("AutomationEditor", () => {
     expect(onback).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("offers the machine only when there are hosts, and names the host a draft is on", async () => {
+    const { screen } = mountWithProviders(AutomationEditor, {
+      props: { automation: newAutomation("a-1", "Mine", "/code/app"), onback: () => {} },
+      commands,
+    });
+    expect(screen.queryByText("Machine")).toBeNull();
+
+    hosts.hosts = [
+      {
+        id: "h1",
+        label: "build-box",
+        hostname: "build.example",
+        port: 22,
+        user: "dev",
+      } as (typeof hosts.hosts)[number],
+    ];
+    try {
+      const onHost = { ...newAutomation("a-2", "There", "/srv/app"), target: "ssh:h1" as const };
+      const second = mountWithProviders(AutomationEditor, {
+        props: { automation: onHost, onback: () => {} },
+        commands,
+      });
+      await tick();
+      expect(second.screen.getAllByText("Machine").length).toBeGreaterThan(0);
+      expect(second.screen.getAllByText("build-box").length).toBeGreaterThan(0);
+    } finally {
+      hosts.hosts = [];
+    }
+  });
 });
+

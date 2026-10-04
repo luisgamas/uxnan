@@ -88,7 +88,7 @@ una **ubicación opcional**:
   (`git worktree add <ruta> <rama>`); una **remota-solo** (`origin/<rama>` sin
   contraparte local) obtiene una rama local con tracking
   (`git worktree add --track -b <rama> <ruta> origin/<rama>`).
-- **Ubicación**: la decide el backend (`worktreeloc.rs`) a partir de los ajustes,
+- **Ubicación**: la decide el motor de trabajo (`crates/workspace-engine/src/worktreeloc.rs`, el mismo en un host) a partir de los ajustes,
   y el formulario solo la **previsualiza** pidiéndosela (`worktree_preview_path`).
   El usuario puede además **editar la ruta** o **explorar** hasta una carpeta
   padre (con el explorador in-app compartido) para esa creación concreta; una
@@ -586,7 +586,7 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   **no técnica**: el usuario elige un **agente** (solo se pueden seleccionar los
   instalados de la lista curada `AI_COMMIT_AGENTS` — un **subconjunto** del conjunto headless, porque un agente ademas tiene que responder una lista de modelos) y un **modelo**;
   no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
-  que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
+  que el bridge (`src-tauri/crates/workspace-engine/src/agentcli.rs`: `node <entry.js>` para instalaciones
   npm, binario nativo si existe — así el lanzamiento no interactivo funciona en
   Windows sin shell) y lo ejecuta de forma **no interactiva** a través de
   `agentrun::run_headless` — el mismo runner de una sola pasada que usan el motor
@@ -603,7 +603,9 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   siempre con una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
   **buscable, con scroll y agrupado por proveedor** (`ModelPicker.svelte`, el
   unico selector de modelos de la app, el mismo del chat) porque algunos agentes
-  listan cientos de modelos.
+  listan cientos de modelos. En un proyecto de un **host** el borrador lo escribe
+  el agente de ese host, en el worktree, por su motor (`02g` §5.10h, §5.19); si
+  el host no tiene el agente elegido, se escribe aqui sobre el diff leido alli.
   Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
   (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
   (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo
@@ -724,8 +726,9 @@ cambia `HEAD`.
   estado git del panel de cambios; las **carpetas padre** que contienen cambios
   también se colorean (ámbar) para poder rastrear visualmente dónde hay cambios.
 - **Auto-refresco (watcher de filesystem)**: el backend vigila la raíz del
-  worktree activo (`src-tauri/src/fswatch.rs`, `notify` + debounce, `.git`
-  filtrado) y emite el evento `fs:changed`; el árbol recarga **solo** los
+  worktree activo (`src-tauri/src/fswatch.rs` sobre el vigilante del motor,
+  `crates/workspace-engine/src/watch.rs`: `notify` + debounce, `.git` filtrado y
+  nada fuera de la raiz; el mismo que vigila un proyecto en un host) y emite el evento `fs:changed`; el árbol recarga **solo** los
   directorios afectados conservando la expansión, de modo que archivos
   creados/eliminados en disco (p. ej. por un agente) aparecen sin recargar a
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
@@ -978,5 +981,6 @@ worktree activo. Características:
 | `git_show(path, hash)` | Diff unificado que introdujo un commit (vs su primer padre). `git2` con fallback `git show`; `hash` validado como hexadecimal. |
 | `git_commit(path, message, amend, signOff)` | Commit de lo staged; `amend` reescribe `HEAD`, `signOff` añade `Signed-off-by:` (`-s`). |
 
-Implementación: `src-tauri/src/git.rs` + `gitfast.rs` (`CommitInfo`, `log`,
-`show`, `commit`).
+Implementación: `crates/workspace-engine/src/git.rs` + `gitfast.rs` (`CommitInfo`,
+`log`, `show`, `commit`) — el motor de trabajo, que la app enlaza en proceso y el
+motor de un host ejecuta alli.

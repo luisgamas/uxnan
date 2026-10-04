@@ -37,7 +37,7 @@ use serde::Serialize;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Notify};
 
-use super::conn::Connection;
+use super::conn::{Connection, TcpChannel, TcpRefusal, TcpRefusalKind};
 use crate::error::AppError;
 
 /// One live forward, as the UI knows it.
@@ -69,7 +69,7 @@ pub struct ForwardInfo {
     pub refusal: Option<Refusal>,
     /// Where on the host the tunnel actually knocks. `127.0.0.1` for the normal
     /// case; another address when the service is pinned to one interface there
-    /// and the host's own loopback answers nothing (`ssh::ports`).
+    /// and the host's own loopback answers nothing (the engine's `ports`).
     pub address: String,
 }
 
@@ -107,19 +107,17 @@ pub enum RefusalKind {
 }
 
 impl Refusal {
-    /// Read a channel-open failure for what it means.
-    fn from_error(error: &russh::Error) -> Self {
-        let detail = error.to_string();
-        let kind = match error {
-            russh::Error::ChannelOpenFailure(
-                russh::ChannelOpenFailure::AdministrativelyProhibited,
-            ) => RefusalKind::ForwardingDisabled,
-            russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::ConnectFailed) => {
-                RefusalKind::NothingListening
-            }
-            _ => RefusalKind::Other,
+    /// Read a refused stream for what it means.
+    fn from_tcp(refusal: TcpRefusal) -> Self {
+        let kind = match refusal.kind {
+            TcpRefusalKind::Prohibited => RefusalKind::ForwardingDisabled,
+            TcpRefusalKind::ConnectFailed => RefusalKind::NothingListening,
+            TcpRefusalKind::Other => RefusalKind::Other,
         };
-        Self { kind, detail }
+        Self {
+            kind,
+            detail: refusal.detail,
+        }
     }
 }
 
@@ -470,16 +468,10 @@ async fn open_to_host(
     conn: &Connection,
     destination: &Destination,
     local_port: u16,
-) -> Result<russh::Channel<russh::client::Msg>, Refusal> {
-    conn.handle()
-        .channel_open_direct_tcpip(
-            destination.address.clone(),
-            destination.port as u32,
-            "127.0.0.1",
-            local_port as u32,
-        )
+) -> Result<TcpChannel, Refusal> {
+    conn.tcp(&destination.address, destination.port, local_port)
         .await
-        .map_err(|e| Refusal::from_error(&e))
+        .map_err(Refusal::from_tcp)
 }
 
 /// The host's own loopback: where a forward knocks unless the port is known to
@@ -494,7 +486,7 @@ const HOST_LOOPBACK: &str = "127.0.0.1";
 /// specific address of that machine — a VPN interface, a LAN address — answers
 /// nothing on `127.0.0.1` there, so a tunnel aimed at it reaches nothing and the
 /// user is told their dev server is broken. The scan already knows that address
-/// (`ssh::ports::ListeningPort::address`), so it is tried rather than guessed at.
+/// (the engine's `ports::ListeningPort::address`), so it is tried rather than guessed at.
 ///
 /// Returns the address that answered, or the last one tried with the refusal it
 /// gave — a tunnel is opened either way, since the service may start later.
@@ -559,17 +551,18 @@ async fn probe(conn: &Connection, destination: &Destination) -> Option<Refusal> 
         Err(refusal) => return Some(refusal),
     };
 
-    let died = matches!(
-        tokio::time::timeout(PROBE_GRACE, channel.wait()).await,
-        Ok(Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close) | None)
-    );
-    let _ = channel.eof().await;
-    died.then(|| Refusal {
-        kind: RefusalKind::NothingListening,
-        detail: format!(
-            "the host opened the tunnel and closed it at once — nothing answered on {}:{} there",
-            destination.address, destination.port
-        ),
+    let refused = channel.closed_within(PROBE_GRACE).await?;
+    Some(match refused.kind {
+        // The system `ssh` names the refusal; one that forbids forwarding is
+        // said as such.
+        TcpRefusalKind::Prohibited => Refusal::from_tcp(refused),
+        _ => Refusal {
+            kind: RefusalKind::NothingListening,
+            detail: format!(
+                "the host opened the tunnel and closed it at once — nothing answered on {}:{} there",
+                destination.address, destination.port
+            ),
+        },
     })
 }
 
@@ -674,7 +667,7 @@ mod tests {
 
         let manager = ForwardManager::default();
         let info = manager
-            .open("live", &Arc::new(conn), served_port, &[])
+            .open("live", &Arc::new(*conn), served_port, &[])
             .await
             .expect("a forward");
         // The preferred number is held by the server itself here, so this also
@@ -769,7 +762,7 @@ mod tests {
 
         let manager = ForwardManager::default();
         let info = manager
-            .open("live", &Arc::new(conn), empty, &[])
+            .open("live", &Arc::new(*conn), empty, &[])
             .await
             .expect("the tunnel still opens — the port here is ours to bind");
         println!(

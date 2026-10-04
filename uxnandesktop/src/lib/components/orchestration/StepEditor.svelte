@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isLocalTarget } from "$lib/target";
   // Inline editor for one run step (add or edit). A step is one of:
   //  · Headless — runs an installed CLI in print-mode in a chosen worktree; the ADE
   //    owns the process, so output is the full stdout and completion is verified by
@@ -193,7 +194,14 @@
       const agent = liveAgents.find((a) => a.tabId === tabId);
       target = { tabId, agentType: agent?.type, workspace: agent?.workspace };
     } else if (kind === "headless") {
-      target = { agent: hAgent, model: hModel, workspace: hWorkspace };
+      // The machine the folder is on, so the step runs there (`02g` §5.18).
+      const machine = projects.targetForPath(hWorkspace);
+      target = {
+        agent: hAgent,
+        model: hModel,
+        workspace: hWorkspace,
+        ...(isLocalTarget(machine) ? {} : { machine }),
+      };
     }
     const refs = referencedStepIds(prompt);
     const deps = [...new Set([...dependsOn, ...refs])].filter((d) => d !== step?.id);

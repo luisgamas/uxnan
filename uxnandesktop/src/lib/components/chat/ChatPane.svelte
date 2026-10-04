@@ -3,15 +3,22 @@
   // to the terminals (architecture/02a §5.8.16). Three states — no bridge to
   // talk to, a new chat choosing its agent, and a running conversation.
   import { untrack } from "svelte";
-  import { bridge } from "$lib/bridge/client.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatFor, provideChat } from "$lib/bridge/chat.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
   import ChatBridgeGate from "./ChatBridgeGate.svelte";
+  import ChatHostGate from "./ChatHostGate.svelte";
+  import { sshHostId } from "$lib/target";
   import ChatStart from "./ChatStart.svelte";
   import ChatConversation from "./ChatConversation.svelte";
   import { pane } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
+
+  // The replica of the machine this tab's thread lives on — this one's, or a
+  // host's own bridge (`02g` §5.18) — for everything rendered below. A tab
+  // never moves machines, so it is read once.
+  const chat = provideChat(chatFor(untrack(() => tab.target)));
+  const bridge = chat.client;
 
   // The first chat opened loads every agent's models in the background, so
   // the model menu opens on a full list (the agents load with the bridge).
@@ -21,7 +28,9 @@
 </script>
 
 <div class={pane.root}>
-  {#if !bridge.connected}
+  {#if !bridge.connected && sshHostId(bridge.target)}
+    <ChatHostGate {bridge} />
+  {:else if !bridge.connected}
     <ChatBridgeGate />
   {:else if !tab.threadId}
     <ChatStart {tab} {active} />

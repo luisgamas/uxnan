@@ -13,14 +13,17 @@ import {
   sshConfigHosts,
   sshConfigResolve,
   sshHostAdd,
+  sshHostAnswer,
+  sshHostCancel,
   sshHostConnect,
   sshHostDisconnect,
   sshHostsConnected,
   sshBrowseDirs,
   sshRepoAdd,
-  sshHostProbe,
   sshHostRemove,
+  sshHostReplaceKey,
   sshHostTrust,
+  sshHostUpdate,
   sshHostsList,
 } from "$lib/api";
 import type { SshHost, SshHostDraft, SshResolvedHost } from "$lib/types";
@@ -97,12 +100,9 @@ describe("ssh host registry API", () => {
       ssh_hosts_list: () => [HOST],
       ssh_host_add: () => ({ host: HOST, recovered: false, updatedExisting: false }),
       ssh_host_remove: () => true,
-      ssh_host_probe: () => ({
-        status: "unknown",
-        fingerprint: "SHA256:abc",
-        algorithm: "ssh-ed25519",
-      }),
       ssh_host_trust: () => true,
+      ssh_host_replace_key: () => true,
+      ssh_host_update: () => HOST,
     });
   });
 
@@ -134,19 +134,19 @@ describe("ssh host registry API", () => {
     expect(result.recovered).toBe(true);
   });
 
-  it("passes the host id for remove, probe and trust", async () => {
+  it("passes the host id for remove, trust and key replacement", async () => {
     await sshHostRemove("h1");
-    await sshHostProbe("h1");
     await sshHostTrust("h1");
-    for (const command of ["ssh_host_remove", "ssh_host_probe", "ssh_host_trust"]) {
+    await sshHostReplaceKey("h1");
+    for (const command of ["ssh_host_remove", "ssh_host_trust", "ssh_host_replace_key"]) {
       expect(backend.lastCallTo(command)?.args).toEqual({ hostId: "h1" });
     }
   });
 
-  it("surfaces an unknown host key with its fingerprint, not as an error", async () => {
-    const probe = await sshHostProbe("h1");
-    expect(probe.status).toBe("unknown");
-    expect(probe.fingerprint).toBe("SHA256:abc");
+  it("edits a host by id with the draft, under the keys the Rust command expects", async () => {
+    const draft: SshHostDraft = { label: "box", hostname: "10.0.0.6", port: 2222, user: "dev" };
+    await sshHostUpdate("h1", draft);
+    expect(backend.lastCallTo("ssh_host_update")?.args).toEqual({ hostId: "h1", draft });
   });
 
   it("propagates a refused trust instead of pretending it worked", async () => {
@@ -175,22 +175,35 @@ describe("ssh session API", () => {
     });
   });
 
-  it("connects without sending a password when there is none", async () => {
+  it("connects without sending a secret when there is none", async () => {
     const report = await sshHostConnect("h1");
     expect(report.status).toBe("connected");
     expect(report.generation).toBe(3);
     expect(backend.lastCallTo("ssh_host_connect")?.args).toEqual({
       hostId: "h1",
-      password: null,
+      secret: null,
     });
   });
 
-  it("sends a password only when one was supplied", async () => {
-    await sshHostConnect("h1", "s3cret");
-    expect(backend.lastCallTo("ssh_host_connect")?.args).toEqual({
-      hostId: "h1",
-      password: "s3cret",
+  it("sends a secret with the hop it is for, only when one was supplied", async () => {
+    const secret = { kind: "password" as const, hopKey: "ops@edge:22", value: "s3cret" };
+    await sshHostConnect("h1", secret);
+    expect(backend.lastCallTo("ssh_host_connect")?.args).toEqual({ hostId: "h1", secret });
+  });
+
+  it("answers a second factor and can give it up, by host id", async () => {
+    backend.setCommands({
+      ssh_host_answer: () => ({ status: "connected", generation: 4, attempted: [] }),
+      ssh_host_cancel: () => true,
     });
+    const report = await sshHostAnswer("h1", ["424242"]);
+    expect(report.status).toBe("connected");
+    expect(backend.lastCallTo("ssh_host_answer")?.args).toEqual({
+      hostId: "h1",
+      answers: ["424242"],
+    });
+    await sshHostCancel("h1");
+    expect(backend.lastCallTo("ssh_host_cancel")?.args).toEqual({ hostId: "h1" });
   });
 
   it("reports an unknown host key as an outcome to act on, not an error", async () => {

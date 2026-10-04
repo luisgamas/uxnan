@@ -36,16 +36,8 @@
 
 /// Per-launch, per-terminal identity the ADE injects into the shells it spawns.
 /// Inheriting any of these makes a process impersonate a terminal it is not.
-pub const PER_TERMINAL_KEYS: &[&str] = &[
-    "UXNAN_AGENT_ID",
-    "UXNAN_HOOK_URL",
-    "UXNAN_HOOK_TOKEN",
-    "UXNAN_ENDPOINT_FILE",
-    "UXNAN_BROWSER_URL",
-    "UXNAN_BROWSER_TOKEN",
-    "UXNAN_MCP_URL",
-    "UXNAN_MCP_TOKEN",
-];
+/// Owned by the workspace engine, because a host's daemon scrubs the same keys.
+pub use uxnan_workspace_engine::pty::PER_TERMINAL_KEYS;
 
 /// Drop the inherited terminal identity from **this** process. Call it first
 /// thing in `main`, before any thread exists: the app builds its own hook server
@@ -57,11 +49,10 @@ pub fn scrub_process() {
     }
 }
 
-/// Drop the same keys from a child's environment.
+/// Drop the same keys from a child's environment — the engine's own scrub, the
+/// one every child it spawns goes through (`winproc::command`).
 pub fn scrub_command(cmd: &mut tokio::process::Command) {
-    for key in PER_TERMINAL_KEYS {
-        cmd.env_remove(key);
-    }
+    crate::winproc::scrub(cmd);
 }
 
 #[cfg(test)]

@@ -144,6 +144,7 @@ class ZeroSessionStore {
           agentId: 'zero',
           transcript,
           cwd,
+          target: tab.target,
         });
       }
     }

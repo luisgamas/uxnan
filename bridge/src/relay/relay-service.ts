@@ -204,6 +204,29 @@ export class RelayService {
     });
   }
 
+  /**
+   * Let another of the user's machines host on this relay: add its identity
+   * key to the Worker this bridge deployed (keeping every other one), with
+   * the remembered token unless one is given. The relay is then reachable for
+   * it with `relay/use` and this relay's URL.
+   */
+  admitHost(params: RelayCredentialParams & { hostKey: string }): Promise<RelayStatus> {
+    return this.#serial(async () => {
+      this.#requireEndpoint();
+      if (!/^[0-9a-f]{64}$/.test(params.hostKey)) {
+        throw RpcError.invalidParams('hostKey must be a bridge identity key (64 hex digits).');
+      }
+      const target = await this.#cloudflareTarget(params);
+      const bundle = await this.#o.bundle.read();
+      await this.#cloudflare(() => deployRelay(target, bundle, params.hostKey));
+      await this.#rememberToken(target.apiToken, params.remember ?? this.#tokenRemembered);
+      // The same bundle went up with it: the Worker is now this bridge's version.
+      await this.#saveRecord({ ...this.#record!, deployedVersion: this.#o.bundle.version });
+      this.#emit();
+      return this.status();
+    });
+  }
+
   /** A new routing id: the old one stops working; phones learn the new one by sync. */
   rotate(): Promise<RelayStatus> {
     return this.#serial(async () => {

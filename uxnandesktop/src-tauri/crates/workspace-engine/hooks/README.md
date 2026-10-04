@@ -31,5 +31,5 @@ spawns (inherited by any agent run inside it):
 | `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd`, a file the ADE rewrites every launch with the live url + token. Reporters prefer it so a terminal that outlived an app restart still reaches the live server. |
 
 These are the source of truth — the Rust backend embeds the same contents
-(`src-tauri/src/agent_hooks.rs`) and writes them to disk on startup, so an
+(`src-tauri/crates/workspace-engine/src/agent_hooks.rs`, the same installer a host's engine runs there) and writes them to disk on startup, so an
 installed app does not need to serve `static/` at runtime.

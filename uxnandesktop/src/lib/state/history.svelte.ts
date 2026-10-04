@@ -54,6 +54,12 @@ class HistoryStore {
    *  The log fills in when the host comes up, because the panel's effect reads
    *  the session registry and re-runs. */
   awaitingHost = $state(false);
+  /** When the log on screen was read, so a host that drops can leave it there
+   *  saying how old it is (`OfflineNote`). */
+  readAt = $state<number | null>(null);
+  /** The log is of a host that dropped: kept as it was read — a commit already
+   *  made stays true — and read again when the host is back. */
+  offline = $state(false);
   /** No more commits to page in (the last page was short). */
   reachedEnd = $state(false);
   /** Client-side filter over subject / short hash / author. */
@@ -133,6 +139,8 @@ class HistoryStore {
     this.loadedPath = path;
     this.error = null;
     this.awaitingHost = false;
+    this.offline = false;
+    this.readAt = null;
     this.commits = [];
     this.reachedEnd = false;
     this.loadingMore = false;
@@ -149,6 +157,7 @@ class HistoryStore {
       if (seq !== this.loadSeq || this.path !== path) return;
       this.commits = page;
       this.reachedEnd = page.length < PAGE;
+      this.readAt = Date.now();
     } catch (e) {
       if (seq !== this.loadSeq || this.path !== path) return;
       // Same rule as the other two panels: a local worktree never waits for a
@@ -163,7 +172,7 @@ class HistoryStore {
   /** Append the next page of older commits (no-op at the end / while loading). */
   async loadMore(): Promise<void> {
     const path = this.path;
-    if (!path || this.loadingMore || this.loading || this.reachedEnd) return;
+    if (!path || this.offline || this.loadingMore || this.loading || this.reachedEnd) return;
     const seq = this.loadSeq;
     this.loadingMore = true;
     try {
@@ -176,6 +185,17 @@ class HistoryStore {
     } finally {
       if (seq === this.loadSeq) this.loadingMore = false;
     }
+  }
+
+  /** The host of the log on screen dropped. A log that was read stays, marked
+   *  offline — answering `true` so the caller does not reload it into an
+   *  empty "waiting" panel; one that was not answers `false`, and a reload
+   *  then says it is waiting. */
+  keepWhileAway(path: string | null, target: TargetId): boolean {
+    if (path === null || path !== this.loadedPath || target !== this.target) return false;
+    if (this.readAt === null || this.commits.length === 0) return false;
+    this.offline = true;
+    return true;
   }
 
   /** Force a fresh reload of the current worktree's log. */

@@ -14,7 +14,12 @@
   // rail of its own: the rail nested a second navigation surface inside a pane
   // that already has one, and hid the one thing the panel exists to answer —
   // which of your agents are wired, at a glance. Agents on this machine are
-  // listed first; the rest sit in a collapsed group. Per-agent installs are gated
+  // listed first; the rest sit in a collapsed group. With hosts connected, the
+  // group's title becomes a machine picker — this one by default, or a host,
+  // whose own agents (wired there by its engine with the same installer, only
+  // the ones that host has) replace the list. One machine at a time, so thirty
+  // saved hosts never make the pane thirty lists long, and a host is asked only
+  // when it is picked. Per-agent installs are gated
   // by the master switch (install only when the feature is on, uninstall always,
   // so you can always clean up). The list comes from the backend registry —
   // wiring a new agent never edits this file.
@@ -26,9 +31,13 @@
   import { Spinner } from "$lib/components/ui/spinner";
   import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
   import {
     getHookInstall,
     getHookScripts,
+    hostHookConfig,
+    hostHooks,
+    setHostHook,
     installAgentHooks,
     installAllHooks,
     listAgentHooks,
@@ -44,6 +53,7 @@
   import { focus, icon, panel, text } from "$lib/design";
   import AgentSettingsRow from "./AgentSettingsRow.svelte";
   import SettingsRow from "./SettingsRow.svelte";
+  import MachinePicker, { LOCAL_MACHINE } from "./MachinePicker.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
@@ -67,8 +77,50 @@
   let install = $state<HookInstall | null>(null);
   let scripts = $state<HookScripts | null>(null);
   let agents = $state<HookAgentEntry[]>([]);
+  /** Whose hooks the list shows: this machine, or a connected host's id. */
+  const LOCAL = LOCAL_MACHINE;
+  let machine = $state<string>(LOCAL);
+  /** The picked host's agents, as its engine reports them. */
+  let hostAgents = $state<HookAgentEntry[]>([]);
+  let hostLoading = $state(false);
+  let hostError = $state<string | null>(null);
   let busy = $state<string | null>(null);
   let busyOperation = $state<"install" | "uninstall" | null>(null);
+  /** A row's key: the agent on this machine, or `<host>:<agent>` on a host. */
+  function keyOf(id: string, host?: string): string {
+    return host ? `${host}:${id}` : id;
+  }
+
+  /** The agents a host has, or whose reporter it already carries — a host is
+   *  never offered another product's config folder. */
+  function onHost(entries: HookAgentEntry[]): HookAgentEntry[] {
+    return entries.filter((a) => a.present || a.status.installed);
+  }
+
+  const onThisMachine = $derived(machine === LOCAL);
+  /** Whether there is a host to pick (the picker replaces the plain title). */
+  const anyHost = $derived(hosts.connected.length > 0);
+
+  async function loadHost(id: string) {
+    hostLoading = true;
+    hostError = null;
+    hostAgents = [];
+    try {
+      const entries = await hostHooks(id);
+      // A quicker pick of another machine wins.
+      if (machine === id) hostAgents = entries;
+    } catch (err) {
+      if (machine === id) hostError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (machine === id) hostLoading = false;
+    }
+  }
+
+  function pick(id: string) {
+    machine = id;
+    if (id !== LOCAL) void loadHost(id);
+  }
+
   /** Rendered config per agent, filled when its row is opened — the rows keep
    *  their own disclosure state, so this is keyed rather than a single slot. */
   let configTexts = $state<Record<string, string>>({});
@@ -104,35 +156,48 @@
     } catch {
       agents = [];
     }
+    if (machine !== LOCAL) await loadHost(machine);
   }
 
   /** Load the exact config the ADE writes for one agent, on demand — rendering
    *  every agent's up front would be one round-trip each for a disclosure most
    *  users never open. Re-read on every open, so a row reopened after an install
    *  or uninstall shows what is on disk now. */
-  async function loadConfig(id: string, open: boolean) {
+  async function loadConfig(id: string, open: boolean, host?: string) {
     if (!open) return;
-    configTexts = { ...configTexts, [id]: "" };
+    const key = keyOf(id, host);
+    configTexts = { ...configTexts, [key]: "" };
     try {
-      const text = await renderAgentHooksConfig(id);
-      configTexts = { ...configTexts, [id]: text };
+      const text = host ? await hostHookConfig(host, id) : await renderAgentHooksConfig(id);
+      configTexts = { ...configTexts, [key]: text };
     } catch (err) {
-      configTexts = { ...configTexts, [id]: err instanceof Error ? err.message : String(err) };
+      configTexts = { ...configTexts, [key]: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  async function act(id: string, operation: "install" | "uninstall") {
-    busy = id;
+  /** Put a status on the row it belongs to — this machine's, or a host's. */
+  function setStatus(id: string, host: string | undefined, update: (e: HookAgentEntry) => HookAgentEntry) {
+    if (!host) {
+      agents = agents.map((a) => (a.id === id ? update(a) : a));
+      return;
+    }
+    if (host === machine) hostAgents = hostAgents.map((a) => (a.id === id ? update(a) : a));
+  }
+
+  async function act(id: string, operation: "install" | "uninstall", host?: string) {
+    busy = keyOf(id, host);
     busyOperation = operation;
     try {
-      const status =
-        operation === "install" ? await installAgentHooks(id) : await uninstallAgentHooks(id);
-      agents = agents.map((a) => (a.id === id ? { ...a, status } : a));
+      const on = operation === "install";
+      const status = host
+        ? await setHostHook(host, id, on)
+        : on
+          ? await installAgentHooks(id)
+          : await uninstallAgentHooks(id);
+      setStatus(id, host, (a) => ({ ...a, status }));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      agents = agents.map((a) =>
-        a.id === id ? { ...a, status: { ...a.status, unavailable: true, detail } } : a,
-      );
+      setStatus(id, host, (a) => ({ ...a, status: { ...a.status, unavailable: true, detail } }));
     } finally {
       busy = null;
       busyOperation = null;
@@ -153,6 +218,15 @@
       } else {
         for (const a of agents) {
           if (a.status.installed) await uninstallAgentHooks(a.id).catch(() => undefined);
+        }
+      }
+      // The same switch for every connected host: its own agents, there.
+      for (const host of hosts.connected) {
+        const entries = await hostHooks(host).catch(() => [] as HookAgentEntry[]);
+        for (const a of onHost(entries)) {
+          if (a.status.installed !== on) {
+            await setHostHook(host, a.id, on).catch(() => undefined);
+          }
         }
       }
     } finally {
@@ -202,9 +276,10 @@
 
 <!-- One agent: name + what its reporter reports, installed by the switch on the
      right, with its config file and rendered config behind the disclosure. -->
-{#snippet agentRow(entry: HookAgentEntry)}
+{#snippet agentRow(entry: HookAgentEntry, host?: string)}
   {@const stuck = blocked(entry)}
   {@const name = backendAgentName(entry.id)}
+  {@const key = keyOf(entry.id, host)}
   <AgentSettingsRow
     logo={backendAgentLogo(entry.id)}
     {name}
@@ -217,21 +292,23 @@
         : undefined}
     noteTone={stuck ? "warning" : "muted"}
     detailsLabel={i18n.t("hooks.showConfig")}
-    onDetailsOpen={(open) => loadConfig(entry.id, open)}
+    onDetailsOpen={(open) => loadConfig(entry.id, open, host)}
   >
     {#snippet control()}
-      {#if busy === entry.id}
+      {#if busy === key}
         <Spinner aria-label={i18n.t("common.loading")} />
       {/if}
       <Switch
         checked={entry.status.installed}
         disabled={busy !== null || degraded || stuck || (!entry.status.installed && !featureOn)}
-        aria-label={i18n.t("hooks.toggleAria", { agent: name })}
-        onCheckedChange={(c) => act(entry.id, c ? "install" : "uninstall")}
+        aria-label={host
+          ? i18n.t("hooks.toggleHostAria", { agent: name, host: hosts.labelOf(host) })
+          : i18n.t("hooks.toggleAria", { agent: name })}
+        onCheckedChange={(c) => act(entry.id, c ? "install" : "uninstall", host)}
       />
     {/snippet}
     {#snippet details()}
-      <CodeBlock value={configTexts[entry.id] ?? ""} copyLabel={i18n.t("hooks.copy")} />
+      <CodeBlock value={configTexts[key] ?? ""} copyLabel={i18n.t("hooks.copy")} />
     {/snippet}
   </AgentSettingsRow>
 {/snippet}
@@ -272,22 +349,49 @@
     <p class={cn("-mt-3 px-1", text.meta)}>{i18n.t("hooks.enableToManage")}</p>
   {/if}
 
-  <!-- The agents you actually have, open. -->
-  {#if mine.length > 0}
-    <div class="space-y-2">
-      {@render groupHeader(i18n.t("hooks.groupInstalled"))}
+  <!-- The agents of the machine picked — this one by default. -->
+  <div class="space-y-2">
+    {#if anyHost}
+      <div class="px-1">
+        <MachinePicker value={machine} ariaLabel={i18n.t("hooks.machineAria")} onpick={pick} />
+        {#if !onThisMachine}<p class={cn("mt-1", text.meta)}>{i18n.t("hooks.hostDesc")}</p>{/if}
+      </div>
+    {:else if mine.length > 0}
+      {@render groupHeader(i18n.t("machine.here"))}
+    {/if}
+
+    {#if onThisMachine}
+      {#if mine.length > 0}
+        <div class={panel.settingsBody}>
+          <div class="divide-y divide-border/60">
+            {#each mine as entry (entry.id)}
+              {@render agentRow(entry)}
+            {/each}
+          </div>
+        </div>
+      {/if}
+    {:else if hostLoading}
+      <div class={cn("flex items-center gap-2 px-1", text.meta)}>
+        <Spinner aria-label={i18n.t("common.loading")} />
+        {i18n.t("hooks.hostReading")}
+      </div>
+    {:else if hostError}
+      <p class={cn("px-1", text.meta)}>{hostError}</p>
+    {:else if onHost(hostAgents).length === 0}
+      <p class={cn("px-1", text.meta)}>{i18n.t("hooks.hostNone")}</p>
+    {:else}
       <div class={panel.settingsBody}>
         <div class="divide-y divide-border/60">
-          {#each mine as entry (entry.id)}
-            {@render agentRow(entry)}
+          {#each onHost(hostAgents) as entry (entry.id)}
+            {@render agentRow(entry, machine)}
           {/each}
         </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   <!-- Everything else, folded: a reporter can be installed before its CLI is. -->
-  {#if others.length > 0}
+  {#if onThisMachine && others.length > 0}
     <Collapsible.Root bind:open={othersOpen} class="space-y-2">
       <Collapsible.Trigger
         class={cn(
@@ -321,30 +425,33 @@
     </Collapsible.Root>
   {/if}
 
-  <!-- Generic wrapper: bash / PowerShell / cmd / fish, one per platform. -->
-  <div class="space-y-2">
-    {@render groupHeader(i18n.t("hooks.wrapperTitle"), i18n.t("hooks.wrapperDesc"))}
-    <div class={panel.settingsBody}>
-      <div class="flex flex-col gap-2">
-        {#if install}
-          <p class={cn("truncate font-mono", text.meta)}>
-            {i18n.t("hooks.installedAt", { path: install.dir })}
-          </p>
-        {/if}
-        <div class="flex flex-wrap items-center gap-1">
-          {#each PLATFORMS as p (p.id)}
-            <Button
-              variant={platform === p.id ? "secondary" : "outline"}
-              size="sm"
-              onclick={() => (platform = p.id)}
-            >
-              {p.label}
-            </Button>
-          {/each}
+  <!-- Generic wrapper: bash / PowerShell / cmd / fish, one per platform. Its
+       paths are this machine's, so it is shown with this machine's agents. -->
+  {#if onThisMachine}
+    <div class="space-y-2">
+      {@render groupHeader(i18n.t("hooks.wrapperTitle"), i18n.t("hooks.wrapperDesc"))}
+      <div class={panel.settingsBody}>
+        <div class="flex flex-col gap-2">
+          {#if install}
+            <p class={cn("truncate font-mono", text.meta)}>
+              {i18n.t("hooks.installedAt", { path: install.dir })}
+            </p>
+          {/if}
+          <div class="flex flex-wrap items-center gap-1">
+            {#each PLATFORMS as p (p.id)}
+              <Button
+                variant={platform === p.id ? "secondary" : "outline"}
+                size="sm"
+                onclick={() => (platform = p.id)}
+              >
+                {p.label}
+              </Button>
+            {/each}
+          </div>
+          <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
+          <CodeBlock value={wrapperScript} copyLabel={i18n.t("hooks.copy")} />
         </div>
-        <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
-        <CodeBlock value={wrapperScript} copyLabel={i18n.t("hooks.copy")} />
       </div>
     </div>
-  </div>
+  {/if}
 </div>

@@ -177,7 +177,13 @@ class AgentStatusStore {
     const transcript = readInstanceText(p.agentId);
     if (!transcript || transcript.trim().length < MIN_TRANSCRIPT_CHARS) return;
 
-    void conversationTitles.ensure({ tabId: p.agentId, agentId, transcript, cwd });
+    void conversationTitles.ensure({
+      tabId: p.agentId,
+      agentId,
+      transcript,
+      cwd,
+      target: tab.target,
+    });
   }
 
   private notifyChange(p: AgentStatusEvent, prevState?: LiveAgentState): void {

@@ -20,9 +20,7 @@ let backend: FakeBackend;
 beforeEach(() => {
   backend = installFakeBackend({
     fs_read_file: () => ({ content: 'fn main() {}', binary: false, tooLarge: false }),
-    ssh_fs_read: () => ({ content: 'fn main() {}', binary: false, tooLarge: false }),
     fs_write_file: () => null,
-    ssh_fs_write: () => null,
     git_diff_head: () => '',
   });
   sessions.replace([]);
@@ -35,14 +33,14 @@ describe('FileEditorState — saving on a host', () => {
 
     await state.save('edited');
 
-    expect(backend.lastCallTo('ssh_fs_write')?.args).toEqual({
-      hostId: 'h1',
+    // Named for the host: a save that lost its target would look like success
+    // while writing here instead.
+    expect(backend.lastCallTo('fs_write_file')?.args).toEqual({
       path: REMOTE,
       content: 'edited',
+      target: 'ssh:h1',
       expect: { targetId: 'ssh:h1', generation: 4 },
     });
-    // The one that would look like success while writing here instead.
-    expect(backend.lastCallTo('fs_write_file')).toBeUndefined();
     expect(state.error).toBeNull();
   });
 
@@ -51,7 +49,7 @@ describe('FileEditorState — saving on a host', () => {
 
     await state.save('edited');
 
-    expect(backend.lastCallTo('ssh_fs_write')).toBeUndefined();
+    expect(backend.lastCallTo('fs_write_file')).toBeUndefined();
     expect(state.error).toMatch(/not connected/i);
     // An editor that silently does not save is worse than one that will not, so
     // the document stays dirty rather than being marked as stored.
@@ -66,6 +64,8 @@ describe('FileEditorState — saving on a host', () => {
     expect(backend.lastCallTo('fs_write_file')?.args).toEqual({
       path: '/home/dev/app/main.rs',
       content: 'edited',
+      target: 'local',
+      expect: null,
     });
     expect(state.readOnly).toBe(false);
   });

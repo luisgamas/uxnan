@@ -20,40 +20,33 @@ use crate::worktreeloc;
 /// The worktree list of one project, wherever it lives. This is the one
 /// implementation: the sidebar's `worktree_list` command delegates here.
 ///
-/// A project on a host is asked over its SSH session (its shell was identified
-/// when it connected, so the arguments are quoted for the shell that receives
-/// them); a host that could not be named, has no git, or holds a plain folder
-/// answers "not a repository" and the row says the branch was not read — never
-/// a branch this machine made up. A local plain folder lists its own folder with
-/// no branch. A local repository asks git.
+/// A project on a host is asked of that host's engine, which lists its
+/// worktrees with the same git there. A host that is not connected (or where
+/// the engine cannot run) answers its own folder with **no branch** — the row
+/// says the branch was not read, never a branch this machine made up. A local
+/// plain folder lists its own folder with no branch. A local repository asks
+/// git.
 pub async fn list_of<R: tauri::Runtime>(
     app: &AppHandle<R>,
     repo: &RepoData,
 ) -> Result<Vec<WorktreeEntry>, RpcError> {
     let state = app.state::<AppState>();
     if let Some(host_id) = repo.target.ssh_host_id() {
-        let shell = state
-            .ssh_shells
-            .read()
-            .await
-            .get(host_id)
-            .copied()
-            .unwrap_or_default();
-        let conn = state.ssh_sessions.read().await.get(host_id).cloned();
-        let branch = match conn {
-            Some(conn) => {
-                crate::ssh::git::status(&conn, shell, &repo.path)
+        if repo.is_git {
+            if let Some(engine) = crate::commands::connected_engine(app, &state, host_id).await {
+                if let Ok(list) = engine
+                    .git::<Vec<WorktreeEntry>>(uxnan_host_protocol::GitCall::Worktrees {
+                        path: repo.path.clone(),
+                    })
                     .await
-                    .branch
+                {
+                    if !list.is_empty() {
+                        return Ok(list);
+                    }
+                }
             }
-            None => None,
-        };
-        return Ok(vec![WorktreeEntry {
-            path: repo.path.clone(),
-            branch,
-            head: None,
-            is_main: true,
-        }]);
+        }
+        return Ok(worktrees_without_git(&repo.target, &repo.path).unwrap_or_default());
     }
     if let Some(entries) = worktrees_without_git(&repo.target, &repo.path) {
         return Ok(entries);
@@ -66,14 +59,14 @@ pub async fn list_of<R: tauri::Runtime>(
     })
 }
 
-/// The worktree list for a project this machine's git cannot answer for: one
-/// entry, the project's own folder, and **no branch**. `None` means "local — go
-/// ask git".
+/// The worktree list for a host project its engine could not answer for (not
+/// connected, no engine there): one entry, the project's own folder, and **no
+/// branch**. `None` means "local — go ask git".
 ///
 /// Split out so the decision is testable on its own, because the invariant is
-/// easy to break and expensive when broken: a project on a host must never
-/// report a branch, or the sidebar would put this machine's answer on another
-/// machine's repository.
+/// easy to break and expensive when broken: this machine's git must never
+/// answer for a project on a host, or the sidebar would put this machine's
+/// branch on another machine's repository.
 pub fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<WorktreeEntry>> {
     if target.is_local() {
         return None;
@@ -86,11 +79,27 @@ pub fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<W
     }])
 }
 
-/// The badge summary of a local worktree (changed entries, ahead/behind). A
-/// folder that is not a repository, or a worktree on a host, has none.
-pub async fn status_of(repo: &RepoData, path: &str) -> Option<WorktreeStatus> {
-    if !repo.target.is_local() || !repo.is_git {
+/// The badge summary of a worktree (changed entries, ahead/behind), read on
+/// the machine it is on. A folder that is not a repository, or a host that
+/// cannot be asked right now, has none.
+pub async fn status_of<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    repo: &RepoData,
+    path: &str,
+) -> Option<WorktreeStatus> {
+    if !repo.is_git {
         return None;
+    }
+    if let Some(host_id) = repo.target.ssh_host_id() {
+        let state = app.state::<AppState>();
+        let engine = crate::commands::connected_engine(app, &state, host_id).await?;
+        let status: git::RepoStatus = engine
+            .git(uxnan_host_protocol::GitCall::Status {
+                path: path.to_string(),
+            })
+            .await
+            .ok()?;
+        return status.is_repo.then_some(status.status);
     }
     git::worktree_status(path).await.ok()
 }
@@ -118,7 +127,7 @@ impl WorktreeView {
     ) -> Self {
         let repo = project.repo();
         let status = if with_status {
-            status_of(&repo, &entry.path).await
+            status_of(app, &repo, &entry.path).await
         } else {
             None
         };
@@ -135,37 +144,20 @@ impl WorktreeView {
     }
 }
 
-/// What a new worktree is made of.
-#[derive(Debug, Clone, Default)]
-pub struct CreateSpec {
-    /// The branch to create (or, with `from_existing`, to check out).
-    pub branch: String,
-    /// The ref to branch from; the project's default base when `None`.
-    pub base: Option<String>,
-    /// Check out an existing branch instead of creating one.
-    pub from_existing: bool,
-    /// A custom absolute folder; the location policy decides when `None`.
-    pub path: Option<String>,
-}
+/// What a new worktree is made of — the engine's, shared with a host's.
+pub use crate::worktreeloc::CreateSpec;
 
-/// Create a worktree of a local repository. This is the one implementation:
-/// the window's `worktree_create` command and the `worktree/create` entry both
-/// end here. The folder comes from the worktree-location policy
-/// (`worktreeloc`, spec `02c` §2.1) unless the caller names one, which must
-/// then be absolute and not exist yet. Git's own listing names the result.
+/// Create a worktree of a project, on the machine it is on. The window's
+/// `worktree_create` command and the `worktree/create` entry both end here, and
+/// both machines run the same `worktreeloc::create`: in process for a project
+/// here, by its engine for one on a host.
 pub async fn create<R: tauri::Runtime>(
     app: &AppHandle<R>,
     repo: &RepoData,
     spec: CreateSpec,
 ) -> Result<WorktreeEntry, AppError> {
-    let branch = spec.branch.trim().to_string();
-    if branch.is_empty() {
+    if spec.branch.trim().is_empty() {
         return Err(AppError::Invalid("branch name is required".to_string()));
-    }
-    if !repo.target.is_local() {
-        return Err(AppError::Invalid(
-            "a worktree can only be created for a project on this machine".to_string(),
-        ));
     }
     if !repo.is_git {
         return Err(AppError::Invalid(format!(
@@ -173,83 +165,54 @@ pub async fn create<R: tauri::Runtime>(
             repo.path
         )));
     }
-    let repo_path = repo.path.clone();
-    let worktree_path = match spec
-        .path
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-    {
-        Some(custom) => {
-            let normalized = custom.replace('\\', "/");
-            let normalized = normalized.trim_end_matches('/').to_string();
-            if !std::path::Path::new(&normalized).is_absolute() {
-                return Err(AppError::Invalid(
-                    "custom worktree path must be absolute".to_string(),
-                ));
-            }
-            if std::path::Path::new(&normalized).exists() {
-                return Err(AppError::Invalid(
-                    "a folder already exists at that path".to_string(),
-                ));
-            }
-            normalized
-        }
-        None => {
-            let state = app.state::<AppState>();
-            let resolved = resolve_location(&state, repo, &branch).await?;
-            worktreeloc::prepare(&resolved).await;
-            resolved.path
-        }
-    };
-
-    if spec.from_existing {
-        git::add_worktree_from_existing(&repo_path, &branch, &worktree_path).await?;
-    } else {
-        let base = match spec
-            .base
-            .map(|b| b.trim().to_string())
-            .filter(|b| !b.is_empty())
-        {
-            Some(base) => base,
-            None => git::default_base(&repo_path).await,
-        };
-        git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base)).await?;
+    let state = app.state::<AppState>();
+    let (mode, root) = location_policy(&state, repo).await;
+    if let Some(host_id) = repo.target.ssh_host_id() {
+        let engine = crate::commands::connected_engine(app, &state, host_id)
+            .await
+            .ok_or_else(|| AppError::NotConnected(host_id.to_string()))?;
+        return engine
+            .git(uxnan_host_protocol::GitCall::AddWorktree {
+                path: repo.path.clone(),
+                spec: serde_json::to_value(spec)?,
+                mode: serde_json::to_value(mode)?,
+                root,
+            })
+            .await;
     }
-
-    // Prefer git's own listing of the new worktree (canonical path/branch/head);
-    // fall back to a hand-built entry if the re-list misses it for any reason.
-    Ok(git::find_worktree_entry(&repo_path, &worktree_path)
-        .await
-        .unwrap_or(WorktreeEntry {
-            path: worktree_path,
-            branch: Some(branch),
-            head: None,
-            is_main: false,
-        }))
+    Ok(worktreeloc::create(&repo.path, spec, mode, root.as_deref()).await?)
 }
 
-/// Where the policy puts a new worktree of `repo` for `branch`: the project's
-/// own root when it has one, else the global custom root, else the managed
-/// layout (`worktreeloc`). Shared with the commands that preview a location or
-/// create a worktree for a GitHub pull request or issue.
+/// The layout a new worktree of `repo` uses, and the root it goes under: the
+/// project's own root when it has one, else the global custom root. On a host
+/// the global root is a folder on **this** machine, so only the project's own
+/// (a path on that host) applies there; the managed root is then that host's.
+pub(crate) async fn location_policy(
+    state: &AppState,
+    repo: &RepoData,
+) -> (WorktreeLocationMode, Option<String>) {
+    let data = state.data.read().await;
+    let settings = data.settings.worktrees.clone();
+    let global_root = match settings.location {
+        WorktreeLocationMode::Custom if repo.target.is_local() => settings.root.clone(),
+        _ => None,
+    };
+    (
+        settings.location,
+        repo.worktree_root.clone().or(global_root),
+    )
+}
+
+/// Where the policy puts a new worktree of a **local** `repo` for `branch`
+/// (`worktreeloc`). Shared with the commands that create a worktree for a
+/// GitHub pull request or issue, which only exist for projects here.
 pub async fn resolve_location(
     state: &AppState,
     repo: &RepoData,
     branch: &str,
 ) -> Result<worktreeloc::Resolved, AppError> {
-    let (mode, root) = {
-        let data = state.data.read().await;
-        let settings = data.settings.worktrees.clone();
-        let global_root = match settings.location {
-            WorktreeLocationMode::Custom => settings.root.clone(),
-            _ => None,
-        };
-        (
-            settings.location,
-            repo.worktree_root.clone().or(global_root),
-        )
-    };
-    worktreeloc::resolve(&repo.path, branch, mode, root.as_deref()).await
+    let (mode, root) = location_policy(state, repo).await;
+    Ok(worktreeloc::resolve(&repo.path, branch, mode, root.as_deref()).await?)
 }
 
 /// `worktree/create`: create on disk, then hand the worktree to the window so

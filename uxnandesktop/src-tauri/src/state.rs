@@ -52,6 +52,16 @@ pub struct AppState {
     /// means one thing app-wide, and the command layer asks who owns it rather
     /// than making the frontend remember.
     pub ssh_pty: crate::ssh::pty::RemotePtyManager,
+    /// Each connected host's daemon (`uxnan-host`), started on the first
+    /// terminal there (`ssh::engine`).
+    pub ssh_engines: Arc<crate::ssh::engine::Engines>,
+    /// Terminals that live in a host's daemon: they survive a dropped
+    /// connection and an app restart (`ssh::terminals`).
+    pub engine_terminals: Arc<crate::ssh::terminals::EngineTerminals>,
+    /// The folder the file tree follows when it lives on a host, as
+    /// `(host id, root)`: watched by that host's engine, and watched again
+    /// when the host comes back.
+    pub remote_watch: Arc<RwLock<Option<(String, String)>>>,
     /// Ports on a host that are reachable from this machine right now
     /// (`ssh/forward.rs`). Held here, not per connection, because a forward
     /// outlives no connection but the user asks about *all* of them at once —
@@ -78,7 +88,7 @@ pub struct AppState {
     /// on the connection that host already has, so keeping it costs nothing while
     /// re-opening one per listing would cost a round trip each time. Dropped with
     /// the session — and replaced, without being asked, whenever the host ends
-    /// the channel under it (`commands::with_sftp`).
+    /// the channel under it (`commands::sftp_for`).
     pub ssh_sftp: Arc<
         tokio::sync::Mutex<
             std::collections::HashMap<String, std::sync::Arc<crate::ssh::sftp::RemoteFiles>>,
@@ -92,14 +102,32 @@ pub struct AppState {
     /// session, because a reconnect may find a different configuration.
     pub ssh_shells:
         Arc<RwLock<std::collections::HashMap<String, crate::ssh::shellkind::ShellKind>>>,
-    /// Host keys seen during a probe, kept between "we asked" and "the user
-    /// said yes", keyed by host id.
+    /// Host keys waiting for the person's decision, kept between "the host
+    /// presented this" and "the user said yes", keyed by host id — whichever hop
+    /// of its route presented them.
     ///
     /// The key never travels to the frontend and back. The UI is shown a
     /// fingerprint and returns a decision, not a blob it could have altered —
     /// what gets written to `known_hosts` is exactly what the server presented.
     pub ssh_pending_keys:
-        Arc<RwLock<std::collections::HashMap<String, crate::ssh::hostkey::PresentedKey>>>,
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::PendingHostKey>>>,
+    /// What the person typed to reach a host — passwords and passphrases — for
+    /// this session of the app only (`ssh::secrets`). Never written anywhere.
+    pub ssh_secrets: Arc<RwLock<crate::ssh::secrets::SecretStore>>,
+    /// Connections paused mid-authentication on a second factor, waiting for
+    /// the person's answers, keyed by host id. Each one holds a live connection
+    /// (the server's question is asked *on* it), so it is dropped after a few
+    /// minutes rather than kept open for someone who walked away.
+    pub ssh_dials: Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, (crate::ssh::dial::Dial, std::time::Instant)>,
+        >,
+    >,
+    /// Hosts that needed a password or a passphrase, which this session still
+    /// holds — so a dropped connection to one of them can come back on its own.
+    /// A host that needed a second-factor code is never here: a code cannot be
+    /// replayed.
+    pub ssh_unlocked: Arc<RwLock<std::collections::HashSet<String>>>,
     /// Worktree path the right panel is reviewing, polled for status while set
     /// (the background git watcher reads this). `None` = nothing to watch.
     pub git_watch: Arc<RwLock<Option<String>>>,
@@ -151,6 +179,15 @@ pub struct AppState {
     /// tab drives the bridge's conversations through it. Idle — no socket, no
     /// timer — while Settings → Bridge is `off`.
     pub bridge: Arc<crate::bridgeclient::BridgeClient>,
+    /// The bridges of connected hosts (`bridgeclient::hosts`): one link per
+    /// host whose account runs one, alive as long as that host's engine.
+    pub host_bridges: Arc<crate::bridgeclient::hosts::HostBridges>,
+    /// Where the keys of host bridges' sealed secrets are kept (`hostkeys`):
+    /// the OS keychain — memory in tests, which never touch the real one.
+    pub host_keys: Arc<dyn crate::hostkeys::KeyStore>,
+    /// Headless runs in flight on a host, by the caller's name for them: the
+    /// host a cancel must reach.
+    pub host_jobs: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// Receipts of the control surface's `create` entries, by idempotency key
     /// (`control::receipts`): a retried call gets its first answer back.
     pub control_receipts: crate::control::receipts::Receipts,
@@ -179,11 +216,17 @@ impl AppState {
             persistence,
             pty: PtyManager::default(),
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
+            ssh_engines: Arc::new(crate::ssh::engine::Engines::default()),
+            engine_terminals: Arc::new(crate::ssh::terminals::EngineTerminals::default()),
+            remote_watch: Arc::new(RwLock::new(None)),
             ssh_forwards: crate::ssh::forward::ForwardManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_sftp: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_secrets: Arc::new(RwLock::new(crate::ssh::secrets::SecretStore::default())),
+            ssh_dials: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            ssh_unlocked: Arc::new(RwLock::new(std::collections::HashSet::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),
             browse_watcher: BrowseWatcher::default(),
@@ -200,6 +243,15 @@ impl AppState {
                 bridge_mode,
                 crate::bridgeclient::client_id_for(&data_dir),
             ),
+            host_bridges: crate::bridgeclient::hosts::HostBridges::new(
+                crate::bridgeclient::client_id_for(&data_dir),
+            ),
+            host_jobs: Arc::default(),
+            host_keys: if cfg!(test) {
+                Arc::new(crate::hostkeys::MemoryKeys::default())
+            } else {
+                Arc::new(crate::hostkeys::OsKeychain::new())
+            },
             control_receipts: crate::control::receipts::Receipts::default(),
             agent_changes: Arc::new(tokio::sync::Notify::new()),
             control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),

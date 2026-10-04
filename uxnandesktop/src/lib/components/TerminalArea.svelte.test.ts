@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { mountWithProviders, until } from '../../test/render';
 import { app } from '$lib/state/app.svelte';
+import { hosts } from '$lib/state/hosts.svelte';
 import { projects } from '$lib/state/projects.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
+import { LOCAL_TARGET } from '$lib/target';
 import type { RepoData } from '$lib/types';
 import TerminalArea from './TerminalArea.svelte';
 
@@ -53,5 +55,41 @@ describe('TerminalArea — two terminals on a host', () => {
     expect(terminals.findTab(second)).toBeDefined();
     expect(screen.queryByText('shell')).toBeNull();
     expect(screen.getByText('claude')).toBeInTheDocument();
+  });
+});
+
+describe('TerminalArea — which machine a tab is on', () => {
+  it('badges a host terminal with its host, and leaves a local one plain', async () => {
+    hosts.hosts = [
+      {
+        id: 'h1',
+        label: 'build-box',
+        hostname: '10.0.0.5',
+        port: 22,
+        user: 'dev',
+        identityFiles: [],
+        identitiesOnly: false,
+        forwardAgent: false,
+        needsPrompt: false,
+      },
+    ];
+    hosts.connected = [];
+    projects.setActiveWorktree(REMOTE.path);
+    const remote = terminals.create({ title: 'remote-shell', target: 'ssh:h1' });
+    const local = terminals.create({ title: 'local-shell', target: LOCAL_TARGET });
+
+    const { screen } = mountWithProviders(TerminalArea, {
+      commands: { pty_create: () => true, pty_close: () => undefined },
+    });
+
+    expect(await screen.findByText('local-shell')).toBeInTheDocument();
+    const chip = (id: string) =>
+      screen.container.querySelector(`[data-tab-id="${id}"]`) as HTMLElement;
+    // The badge is on the host's tab only, and its host being away dims the
+    // title rather than hiding the tab.
+    expect(chip(remote)).toHaveTextContent('build-box');
+    expect(chip(local)).not.toHaveTextContent('build-box');
+    expect(screen.getByText('remote-shell')).toHaveClass('opacity-60');
+    expect(screen.getByText('local-shell')).not.toHaveClass('opacity-60');
   });
 });

@@ -6,7 +6,9 @@
 > carpeta — **con la app cerrada**, y que ejecuta un **grafo multi-agente**:
 > varios proveedores trabajando en paralelo y otro agente consumiendo sus
 > salidas. El programador del sistema operativo dispara un **runner headless**
-> del mismo binario; el motor vive en Rust.
+> del mismo binario; el motor vive en Rust. Su carpeta puede estar en un **host**
+> (`target`): la corrida hace todo alli por el motor del host, mientras la app
+> esta abierta y conectada a el (§3.8).
 >
 > **Estado: IMPLEMENTADO** (modelo, almacenamiento, plantillas, ejecutor del
 > grafo, precondicion, worktree por corrida, runner `--automation-run`, registro
@@ -55,6 +57,7 @@ Automation {
   id, name, description, icon, enabled,
   tags: Vec<String>,          // "tipo de tarea": agrupa y filtra la lista
   working_dir: String,        // carpeta libre — repo o no; NO el proyecto activo
+  target: TargetId,           // la maquina de working_dir: local o ssh:<id> (§3.8)
   worktree_per_run: bool,     // aislamiento opcional cuando working_dir es un repo
   base_branch: Option<String>,
   schedule: Schedule,
@@ -273,6 +276,37 @@ la consola interactiva de `02d` §3.
   `--skip-git-repo-check` porque la carpeta de una automatizacion legitimamente
   puede no ser un repo.
 
+### 3.8 En un host
+
+`Automation.target` nombra la maquina de `working_dir`; una ruta sola nombra una
+carpeta distinta en cada maquina, y nada de un host se lee jamas como carpeta de
+esta. La corrida es **la misma secuencia** (`runner::run`: validar, solape,
+carpeta, precondicion, worktree, grafo, historial) con el trabajo en un
+`Place` (`automations/place.rs`):
+
+- `Place::Here` — el runner lanza los procesos, como siempre.
+- `Place::Host` — el motor del host (`02g` §5.19): la carpeta se comprueba con
+  su `Fs`, la precondicion corre en su shell (`Precondition`), el worktree por
+  corrida va bajo su raiz gestionada (`AddWorktree`, `~/uxnan/worktrees`), y
+  cada paso es un `AgentRun` con sus CLIs. Sus pasos cuentan en un libro de
+  plazas **de ese host** y solo por concurrencia: la memoria libre de esta
+  maquina no dice nada de la de otra. La confianza de Codex no se siembra alli:
+  `codex exec --skip-git-repo-check` no la necesita para arrancar.
+
+El runner no tiene conexion SSH, y levantar una seria una segunda sesion junto a
+la de la ventana, con preguntas que nadie contesta a las 3 AM. Asi que **entrega
+la corrida a la app abierta** (`automations/handoff.rs`): la encuentra por el
+mismo fichero de descubrimiento que `uxnan-cli` (`uxnan-control-client`) y llama
+a una ruta propia del servidor local, `/automations/v1/handoff`, solo con el
+token de control y **fuera del catalogo publicado** — arranca una corrida que la
+persona ya programo, nada mas. La app la ejecuta en su proceso, y "Ejecutar
+ahora" va directo alli. Con la app cerrada o el host desconectado, la corrida se
+registra `SkippedUnavailable` con el motivo. Cada corrida guarda su `target`.
+
+**Limite:** una automatizacion de un host necesita la app abierta y conectada.
+Correrla con esta maquina apagada pide algo en el host que lleve la hora — una
+decision abierta (`FOR-DEV.md` → *Remote hosts*, el motor, punto 3).
+
 ---
 
 ## 4. Persistencia — un unico escritor por archivo
@@ -284,11 +318,12 @@ archivo tiene exactamente un escritor**:
 ```
 <app-data>/automations/
   automations.json                  ← definiciones. Escribe SOLO la app
-  runs/<automationId>/<runId>.json  ← una corrida = un archivo. Escribe SOLO su runner
+  runs/<automationId>/<runId>.json  ← una corrida = un archivo. Escribe SOLO quien la corre
   logs/<runId>.log
 ```
 
-Nunca hay lectura-modificacion-escritura entre procesos, asi que no hacen falta
+Quien la corre es el runner, o la app para una corrida en un host (§3.8): en
+ambos casos un solo proceso por corrida. Nunca hay lectura-modificacion-escritura entre procesos, asi que no hacen falta
 locks ni hay actualizaciones perdidas. Como el runner reescribe **su propio**
 archivo conforme avanzan los pasos, la app muestra **progreso en vivo** solo con
 vigilar el directorio. Los datos derivados (ultima corrida, ultimas salidas) se
@@ -476,8 +511,10 @@ inicial del registro.
 | `automations/schedule.rs` | Frecuencias (sin aritmetica de calendario) |
 | `automations/store.rs` | Layout en disco, escritura atomica, retencion, solape |
 | `automations/template.rs` | Resolucion de `{{…}}` (escaner propio, sin regex) |
-| `automations/graph.rs` | Ejecutor del DAG (logica pura + pegamento async) + precondicion |
-| `automations/runner.rs` | Modo `--automation-run`, ciclo de vida de la corrida |
+| `automations/graph.rs` | Ejecutor del DAG (logica pura + pegamento async); la precondicion es la del motor (`uxnan_workspace_engine::precondition`) |
+| `automations/runner.rs` | Modo `--automation-run`, ciclo de vida de la corrida (`run`, la misma secuencia para ambas maquinas) |
+| `automations/place.rs` | Donde ocurre el trabajo: esta maquina o el motor de un host (carpeta, precondicion, worktree, pasos, libro de plazas) |
+| `automations/handoff.rs` | Entrega de la corrida de un host del runner a la app que tiene la conexion |
 | `automations/oscheduler/` | Registro en el programador del SO: `mod.rs` (API + estado) · `windows.rs` (XML de Task Scheduler) · `macos.rs` (LaunchAgent) · `linux.rs` (unidades systemd) |
 | `automations/commands.rs` | Comandos Tauri; mantiene definicion y tarea del SO sincronizadas |
 | `src/lib/automations/` | Frontend puro: `types.ts` (contratos), `schedule.ts` (calendario + vista previa), `display.ts` (agrupado, etiquetas, tonos) |

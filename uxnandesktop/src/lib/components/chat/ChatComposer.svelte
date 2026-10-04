@@ -64,7 +64,7 @@
     type ComposerFile,
     type ReadFile,
   } from "$lib/bridge/fileAttachment";
-  import { bridge } from "$lib/bridge/client.svelte";
+  import { useChat } from "$lib/bridge/chat.svelte";
   import { errorMessage, toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
@@ -124,6 +124,8 @@
      */
     atNextPause?: boolean;
   } = $props();
+  // The bridge of the machine this chat is on — mentions are its files.
+  const bridge = useChat().client;
 
   let ref = $state<HTMLTextAreaElement | null>(null);
   let images = $state<ComposerImage[]>([]);

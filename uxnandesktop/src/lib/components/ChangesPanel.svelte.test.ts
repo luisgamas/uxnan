@@ -24,8 +24,8 @@ const REMOTE_REVIEW = {
 
 const COMMANDS = {
   git_set_watch: () => null,
-  ssh_git_review: () => REMOTE_REVIEW,
-  ssh_git_stage: () => null,
+  git_review: () => REMOTE_REVIEW,
+  git_stage: () => null,
 };
 
 beforeEach(async () => {
@@ -52,7 +52,7 @@ describe("Changes on a host", () => {
     // this machine's git. The diff now comes from the machine the project is on;
     // the agent stays here, where its CLI and sign-in are.
     const { screen } = mountWithProviders(ChangesPanel, {
-      commands: { ...COMMANDS, ssh_git_generate_commit_message: () => "a message" },
+      commands: { ...COMMANDS, git_generate_commit_message: () => "a message" },
     });
     app.settings.aiCommit = {
       enabled: true,

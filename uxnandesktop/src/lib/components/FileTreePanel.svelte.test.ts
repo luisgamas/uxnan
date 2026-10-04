@@ -262,7 +262,7 @@ describe("FileTreePanel — a tree that could not be read", () => {
       { id: "remote-1", name: "repo", path: ROOT, target: "ssh:h1", worktrees: [], isGit: true },
     ];
     const { screen } = mountPanel({
-      ssh_fs_list: () => {
+      fs_list_dir: () => {
         throw { code: "NOT_CONNECTED", message: "host-1 is not connected" };
       },
     });

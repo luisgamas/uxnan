@@ -3072,6 +3072,14 @@ trae un `rev` que no es el siguiente al ultimo aplicado. El almacen de hilos y
 el registro de proyectos son la **unica** fuente de esas notificaciones
 (`onChange`), de modo que ningun handler puede cambiar algo y olvidar avisar.
 
+**El estado vivo viaja entero:** cada respuesta de `sync/changes` lleva `live`
+(`ThreadLiveState[]`, sin revision, como `clients`): cada hilo con un turno en
+marcha (`activeTurnId`) o con aprobaciones o preguntas abiertas
+(`awaitingInput`). El telefono guarda su cursor entre reinicios, asi que una
+respuesta incremental dejaria fuera un hilo cuyo turno empezo antes y se veria
+inactivo hasta abrirlo; con `live` el telefono y el desktop saben al reconectar
+que esta trabajando, que espera al usuario y que ya no, sin pedir nada por hilo.
+
 **Orden canonico:** `Turn.seq` (1..n por hilo, asignado al guardar el turno y
 nunca reutilizado; los turnos anteriores se numeran en su orden guardado). Un
 turno importado de la historia nativa toma la siguiente posicion. Los clientes
@@ -3824,6 +3832,11 @@ el telefono, el desktop y el CLI le preguntan por `relay/*` (§1 de `02b`):
 - `relay/remove { deleteWorker?, apiToken?, remember? }` — deja de usarlo;
   con `deleteWorker` quita la clave de este PC del Worker y borra el Worker si
   no queda ningun PC.
+- `relay/admitHost { hostKey, apiToken?, remember? }` — solo por el canal
+  local: agrega al Worker la clave de otra maquina del usuario (el bridge propio
+  de un host remoto, `uxnandesktop/architecture/02g` §5.18), conservando las
+  demas, con el token recordado salvo que se pase uno. Ese bridge usa despues
+  el relay con `relay/use` y esta URL; nadie vuelve a teclear el token.
 - `relay/status` y la notificacion `stream/relay/updated` (el `RelayStatus`
   completo: endpoint, estado `off|connecting|connected|error`, `lastError`,
   versiones, `tokenRemembered`, `connectedPhones`, `hostKey`).

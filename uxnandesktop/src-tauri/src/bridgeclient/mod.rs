@@ -26,6 +26,7 @@
 pub mod commands;
 pub mod connection;
 pub mod discovery;
+pub mod hosts;
 pub mod install;
 pub mod lock;
 pub mod service;
@@ -222,6 +223,12 @@ impl BridgeClient {
     pub async fn set_desktop_tools(&self, tools: DesktopTools) {
         *self.desktop_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(tools);
         self.sync_desktop_tools().await;
+    }
+
+    /// Whether agents get Uxnan's tools (Settings → Browser), which a host's
+    /// own bridge follows too.
+    pub fn tools_enabled(&self) -> bool {
+        self.tools_enabled.load(Ordering::SeqCst)
     }
 
     /// Settings changed whether agents get Uxnan's tools. No-op when unchanged.

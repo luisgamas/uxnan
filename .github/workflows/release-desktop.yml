@@ -61,8 +61,19 @@ jobs:
       - name: Announced platform states must not exceed the evidence
         run: node uxnandesktop/scripts/platform-support.mjs gate
 
+  # The host engine (`uxnan-host`) for every platform the app can put it on.
+  # Every installer carries all of them — a Windows laptop drives a Linux
+  # server — and no single runner can build them all (the Apple builds need
+  # macOS), so they are built here once and handed to each installer leg
+  # (`uxnandesktop/scripts/build-host-engine.mjs`, `docs/build.md`).
+  host-engine:
+    needs: [verify]
+    uses: ./.github/workflows/build-host-engine.yml
+    with:
+      release-tag: ${{ github.ref_name }}
+
   build:
-    needs: [verify, platform-gate]
+    needs: [verify, platform-gate, host-engine]
     strategy:
       fail-fast: false # a failing mac leg must not drop the win/linux artifacts
       matrix:
@@ -175,6 +186,22 @@ jobs:
       - name: Prepare the AppImage tooling
         if: runner.os == 'Linux'
         run: bash uxnandesktop/scripts/linux-appimage.sh prepare
+
+      # Every installer carries every platform's host engine; refuse to build
+      # one that would ship without any of them.
+      - name: Collect the host engines
+        uses: actions/download-artifact@v4
+        with:
+          pattern: host-engine-*
+          path: uxnandesktop/src-tauri/host-engine
+          merge-multiple: true
+
+      - name: Every host engine is there
+        working-directory: uxnandesktop
+        shell: bash
+        run: |
+          chmod +x src-tauri/host-engine/*/uxnan-host
+          node scripts/build-host-engine.mjs --require
 
       - name: Build installers + draft release
         uses: tauri-apps/tauri-action@v0

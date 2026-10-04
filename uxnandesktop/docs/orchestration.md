@@ -102,6 +102,13 @@ the run's shared "blackboard", and detects completion — then opens the next st
 > to headless. The step editor states this inline, and the context picker marks an
 > interactive step's `output` as "may be empty — use headless for the full text".
 
+> **A headless step on a host.** When the step's worktree belongs to a project on a
+> host, the step runs **there**, by that host's engine, with the host's own CLI and
+> sign-in — the same runner code (`agentrun`), named and cancellable the same way.
+> The machine is taken from the project the worktree belongs to (a coordinator's
+> `task/create` carries it too), so a host's path is never run as a folder of this
+> machine.
+
 ## Passing context between steps (A → B → C)
 
 Every completed step stores its `output` (and a short `summary`) on the run. A later
@@ -252,7 +259,7 @@ scenarios below map to Stages E1–E3 of the plan.
 - **Frontend:** `npm test` — the pure engine logic (`src/lib/orchestration/run.ts`) is
   unit-tested in `run.test.ts` (DAG readiness, template substitution, cycle detection,
   validation, status derivation), and the example-run builder in `examples.test.ts`.
-- **Backend:** the headless runner (`src-tauri/src/agentrun.rs`), the persistence
+- **Backend:** the headless runner (`src-tauri/crates/workspace-engine/src/agentrun.rs`), the persistence
   field, and the paste/submit payload (`commands.rs`) are unit-tested; run `cargo test`
   in `src-tauri/`.
 - **Types/lint:** `npm run check` (svelte-check) and `cargo clippy` / `cargo fmt`.

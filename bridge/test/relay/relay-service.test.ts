@@ -19,13 +19,14 @@ const ACCOUNT = '0123456789abcdef0123456789abcdef';
 const TOKEN = 'cf-token-that-must-never-leak-0123456789';
 
 /** The Cloudflare API plus the deployed relay's `/v1/version`, in their real shapes. */
-function fakeCloud(): { fetch: FetchLike; methods: string[] } {
+function fakeCloud(): { fetch: FetchLike; methods: string[]; hostKeys: () => string[] } {
   const methods: string[] = [];
   let deployed: string | undefined;
   const json = (status: number, body: unknown): Response =>
     new Response(JSON.stringify(body), { status });
   return {
     methods,
+    hostKeys: () => (deployed ? deployed.split(',') : []),
     fetch: async (url, init = {}) => {
       const { hostname, pathname } = new URL(url);
       const method = init.method ?? 'GET';
@@ -47,7 +48,14 @@ function fakeCloud(): { fetch: FetchLike; methods: string[] } {
             });
       }
       if (pathname.endsWith('/uxnan-relay') && method === 'PUT') {
-        deployed = 'k'.repeat(64);
+        // The hosts the upload names, as the Worker's binding will hold them.
+        const metadata = (init.body as FormData).get('metadata') as Blob;
+        const bindings = (
+          JSON.parse(await metadata.text()) as {
+            bindings: { name: string; text?: string }[];
+          }
+        ).bindings;
+        deployed = bindings.find((b) => b.name === 'UXNAN_HOST_KEYS')?.text ?? '';
         return json(200, { success: true, result: {} });
       }
       if (pathname.endsWith('/uxnan-relay') && method === 'DELETE') {
@@ -62,7 +70,12 @@ function fakeCloud(): { fetch: FetchLike; methods: string[] } {
 async function withBridge(
   run: (
     bridge: Bridge,
-    ctx: { baseDir: string; secrets: InMemorySecretStore; methods: string[] },
+    ctx: {
+      baseDir: string;
+      secrets: InMemorySecretStore;
+      methods: string[];
+      hostKeys: () => string[];
+    },
   ) => Promise<void>,
 ): Promise<void> {
   const baseDir = join(tmpdir(), `uxnan-relay-svc-${randomUUID()}`);
@@ -80,7 +93,7 @@ async function withBridge(
   });
   await bridge.startRelay();
   try {
-    await run(bridge, { baseDir, secrets, methods: cloud.methods });
+    await run(bridge, { baseDir, secrets, methods: cloud.methods, hostKeys: cloud.hostKeys });
   } finally {
     await bridge.stop();
     await rmrf(baseDir);
@@ -123,6 +136,37 @@ test('setup with remember keeps the token in the secret store, and update uses i
     await relay.update({});
     assert.ok(methods.includes('PUT /workers/scripts/uxnan-relay'));
     assert.equal(relay.status().endpoint?.routingId, routingId, 'an update keeps the address');
+  });
+});
+
+test('admitHost lets another of the user’s machines host, keeping this one', async () => {
+  await withBridge(async (bridge, { hostKeys }) => {
+    const relay = bridge.context.relay();
+    await relay.setup({
+      provider: 'cloudflare',
+      accountId: ACCOUNT,
+      apiToken: TOKEN,
+      remember: true,
+    });
+    const mine = relay.status().hostKey;
+    assert.deepEqual(hostKeys(), [mine]);
+
+    const other = 'ab'.repeat(32);
+    await relay.admitHost({ hostKey: other });
+    assert.deepEqual(hostKeys().sort(), [mine, other].sort(), 'both PCs host now');
+    // Admitting it again changes nothing.
+    await relay.admitHost({ hostKey: other });
+    assert.equal(hostKeys().length, 2);
+
+    await assert.rejects(relay.admitHost({ hostKey: 'not-a-key' }), /64 hex digits/);
+  });
+});
+
+test('admitHost without a remembered token asks for one', async () => {
+  await withBridge(async (bridge) => {
+    const relay = bridge.context.relay();
+    await relay.setup({ provider: 'cloudflare', accountId: ACCOUNT, apiToken: TOKEN });
+    await assert.rejects(relay.admitHost({ hostKey: 'cd'.repeat(32) }), /token is needed/);
   });
 });
 

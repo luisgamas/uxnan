@@ -20,7 +20,7 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::error::AppError;
+use crate::Error;
 
 /// Codex's default hook timeout (seconds) when the `hooks.json` entry omits one.
 /// We deliberately omit `timeout` from the entry and fold this default into the
@@ -225,7 +225,7 @@ pub fn ensure_trust(
     config_path: &Path,
     hooks_json: &Path,
     hooks: &[ManagedHook<'_>],
-) -> Result<(), AppError> {
+) -> Result<(), Error> {
     use toml_edit::{value, DocumentMut, Item, Table};
 
     let entries = trust_entries(hooks_json, hooks);
@@ -295,7 +295,7 @@ pub fn ensure_trust(
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(config_path, serialized).map_err(AppError::Io)?;
+    std::fs::write(config_path, serialized).map_err(Error::Io)?;
     Ok(())
 }
 
@@ -307,7 +307,7 @@ pub fn remove_trust(
     config_path: &Path,
     hooks_json: &Path,
     hooks: &[ManagedHook<'_>],
-) -> Result<(), AppError> {
+) -> Result<(), Error> {
     use toml_edit::DocumentMut;
 
     let text = match std::fs::read_to_string(config_path) {
@@ -344,7 +344,7 @@ pub fn remove_trust(
     for key in to_remove {
         state.remove(&key);
     }
-    std::fs::write(config_path, doc.to_string()).map_err(AppError::Io)?;
+    std::fs::write(config_path, doc.to_string()).map_err(Error::Io)?;
     Ok(())
 }
 
@@ -383,7 +383,7 @@ fn project_trust_keys(project_dir: &Path) -> Vec<String> {
 ///
 /// Still best-effort: if Codex's key ever diverges from every variant we emit, the
 /// seed is a silent no-op (Codex just shows its normal prompt) — never an error.
-pub fn ensure_project_trust(config_path: &Path, project_dir: &Path) -> Result<(), AppError> {
+pub fn ensure_project_trust(config_path: &Path, project_dir: &Path) -> Result<(), Error> {
     use toml_edit::{value, DocumentMut, Item, Table};
 
     let keys = project_trust_keys(project_dir);
@@ -423,7 +423,7 @@ pub fn ensure_project_trust(config_path: &Path, project_dir: &Path) -> Result<()
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(config_path, doc.to_string()).map_err(AppError::Io)?;
+    std::fs::write(config_path, doc.to_string()).map_err(Error::Io)?;
     Ok(())
 }
 

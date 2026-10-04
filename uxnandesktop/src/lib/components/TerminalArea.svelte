@@ -1,4 +1,7 @@
 <script lang="ts">
+  import StatusDot from "$lib/components/StatusDot.svelte";
+  import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId, type TargetId } from "$lib/target";
   import { onDestroy, onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -18,7 +21,7 @@
   import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
-  import { terminalSessions } from "$lib/state/terminalSessions.svelte";
+  import { terminalSessionsFor } from "$lib/state/terminalSessions.svelte";
   import { toastError } from "$lib/toast";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import { divider, focus, icon, iconButton, overlay, shell, tab, text } from "$lib/design";
@@ -40,7 +43,7 @@
   import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
   import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
   import ChatPane from "$lib/components/chat/ChatPane.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatStatusOf } from "$lib/bridge/chat.svelte";
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
@@ -239,12 +242,15 @@
   // conversation the bridge drives — here and on the phone. Offered while the
   // agent's session is known here; waits for an agent that is working.
   function continueAsChatItems(tab: GroupTab): MenuItem[] {
-    const state = terminalSessions.continueAsChatState(tab);
+    if (tab.kind !== "terminal") return [];
+    // The terminals of the machine it runs on, whose bridge holds its session.
+    const sessions = terminalSessionsFor(tab.target);
+    const state = sessions.continueAsChatState(tab);
     if (state === "unavailable") return [];
     return [
       {
         label: state === "busy" ? i18n.t("sessions.continueAsChatWait") : i18n.t("sessions.continueAsChat"),
-        action: () => void terminalSessions.continueAsChat(tab.id).catch(toastError),
+        action: () => void sessions.continueAsChat(tab.id).catch(toastError),
         disabled: state === "busy",
       },
       { separator: true },
@@ -605,6 +611,8 @@
                       >
                           {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
+                          {@const onHost = sshHostId(t.target as TargetId | undefined)}
+                          {@const standing = onHost ? hosts.stateOf(onHost) : null}
                           {#if display}
                             <AgentStatusIndicator status={display.status} stale={display.stale} />
                           {/if}
@@ -612,12 +620,42 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class={cn(tab.terminalLabel, t.exited && "line-through")}
+                                class={cn(
+                                  tab.terminalLabel,
+                                  t.exited && "line-through",
+                                  standing && standing !== "connected" && "opacity-60",
+                                )}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
                             {/snippet}
                           </TooltipSimple>
+                          {#if onHost && standing}
+                            <!-- Which machine this terminal runs on, and how that
+                                 machine stands: the tab says it without reading
+                                 the prompt. A tab whose host dropped stays, dimmed,
+                                 with what it last showed. -->
+                            <TooltipSimple
+                              title={[
+                                i18n.t("project.onHost", { host: hosts.labelOf(onHost) }),
+                                i18n.t(`hostPage.state.${standing}`),
+                              ].join(" · ")}
+                            >
+                              {#snippet children(tp)}
+                                <span
+                                  {...tp}
+                                  class={cn(
+                                    "flex max-w-24 shrink-0 items-center gap-1 rounded-[4px] bg-foreground/[0.06] px-1.5 py-px",
+                                    text.indicator,
+                                    "text-muted-foreground",
+                                  )}
+                                >
+                                  <StatusDot tone={HOST_STATE_TONE[standing]} class="size-1.5" />
+                                  <span class="truncate">{hosts.labelOf(onHost)}</span>
+                                </span>
+                              {/snippet}
+                            </TooltipSimple>
+                          {/if}
                         {:else if t.kind === "file"}
                           <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.path}>
@@ -644,7 +682,7 @@
                           <!-- Same state glyph as a terminal agent's tab while the
                                chat's agent works or waits on you; the chat mark
                                otherwise. -->
-                          {@const chatStatus = chat.activity.of(t.threadId)}
+                          {@const chatStatus = chatStatusOf(t.target, t.threadId)}
                           {#if chatStatus !== "idle"}
                             <AgentStatusIndicator status={chatStatus} />
                           {:else}
@@ -805,12 +843,12 @@
                                   <Icon icon={RotateCcwIcon} class="size-3" />
                                   {i18n.t("terminal.restart")}
                                 </Button>
-                                {#if terminalSessions.continueAsChatState(t) === "ready"}
+                                {#if terminalSessionsFor(t.target).continueAsChatState(t) === "ready"}
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     class="shrink-0 px-2"
-                                    onclick={() => void terminalSessions.continueAsChat(t.id).catch(toastError)}
+                                    onclick={() => void terminalSessionsFor(t.target).continueAsChat(t.id).catch(toastError)}
                                   >
                                     {i18n.t("sessions.continueAsChat")}
                                   </Button>
@@ -834,6 +872,7 @@
                               runCommandExecute={t.runCommandExecute}
                               env={t.env}
                               target={t.target}
+                              sid={t.sid}
                               focused={activeRegion && paneActive}
                               onexit={() => terminals.handleShellExit(t.id)}
                             />

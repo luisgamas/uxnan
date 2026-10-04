@@ -40,16 +40,39 @@ capacidades acotadas) y fingirlo en la interfaz seria mentir.
 Lo que si se garantiza es que el trabajo aterriza en la maquina que el usuario
 quiso: el fencing de mutaciones de `02a` §2.9.
 
-## 3. Secretos: ninguno se guarda
+## 3. Secretos: ninguno se escribe en claro
 
 El registro de un host guarda alias, hostname, puerto, usuario y una
 **referencia** a un fichero de identidad. Nunca una llave, nunca una contrasena.
-Los aportan el agente SSH del sistema, el fichero de llave en disco y, si hace
-falta, un prompt que vive solo en memoria durante la sesion.
+Los aportan el agente que nombra la configuracion del host, el fichero de llave
+en disco y lo que la persona escribe cuando se le pide.
+
+Lo que la persona escribe —contrasena, passphrase— se guarda **en memoria hasta
+que se cierra la app** (`ssh/secrets.rs`, borrado de memoria al reemplazarse o
+soltarse), para que una conexion caida vuelva sola en vez de volver a preguntar.
+Nunca se escribe en disco ni en un log ni viaja a la interfaz; uno rechazado se
+olvida al instante. Las respuestas a un segundo factor **no se guardan nunca**:
+un codigo de un solo uso no se puede repetir.
 
 `ForwardAgent` es la pieza que evita copiar nada: permite que git **en el host**
 use las llaves que sostiene el agente **aqui**, sin que una llave privada salga
-de esta maquina.
+de esta maquina. Cada canal de sesion pide el reenvio, y un canal de agente que
+el host abre hacia nosotros solo se acepta en una conexion que lo pidio.
+
+**La unica excepcion, decidida por el maintainer (2026-10-04):** la llave con la
+que el bridge propio de un host sella sus secretos (§5.18). Un host suele no
+tener mas llavero que el del kernel, que un reinicio borra —y con el la
+identidad del bridge, que desempareja cada telefono—; un fichero en claro romperia
+"nunca en texto plano". Asi que el bridge del host guarda sus secretos en
+`~/.uxnan/secrets.sealed`, sellado con AES-256-GCM, y la llave **se genera aqui,
+una por maquina y cuenta (`usuario@host:puerto`) y perfil de la app, y se guarda
+en el llavero del sistema de esta maquina** (`hostkeys.rs`: Keychain, Credential
+Manager, Secret Service por zbus; nunca el llavero del kernel). Es el unico
+secreto que esta app persiste, y solo donde la plataforma lo cifra. Se entrega al
+motor del host en cada conexion (`BridgeCall::Unlock`), que la tiene solo en
+memoria y se la da al bridge por la entrada estandar al arrancarlo; el bridge
+nunca la guarda. Funciona porque el bridge del host solo arranca con esta app
+conectada: el motor mismo lo arranca una conexion.
 
 ## 4. Configuracion SSH del usuario — IMPLEMENTADO
 
@@ -72,8 +95,44 @@ Del `ssh -G` se levantan solo los campos sobre los que el ADE actua; el literal
 se trata como "sin valor" (ejecutar un comando llamado `none` seria un fallo
 desconcertante en el momento de conectar).
 
+**Se resuelve en cada conexion**, no una vez al añadir el host: un cambio en
+`~/.ssh/config` entra en la siguiente conexion, como en `ssh`. Un host escrito a
+mano se resuelve como lo haria su linea de comandos (`ssh -p … -l … -J … host`),
+asi que hereda los `Host *` del usuario; lo escrito gana, porque las opciones de
+linea de comandos siempre ganan. De un host importado se guarda una **copia**
+para la interfaz, que se refresca al conectar; solo su etiqueta se edita en la
+app (`ssh_host_update`), porque el resto viene del fichero.
+
+Campos sobre los que se actua: `HostName`, `Port`, `User`, `IdentityFile`,
+`CertificateFile`, `IdentityAgent` (`none` se conserva: significa *ningun
+agente*), `IdentitiesOnly`, `ForwardAgent`, `ProxyJump`, `ProxyCommand`,
+`HostKeyAlias`, `UserKnownHostsFile`, `GlobalKnownHostsFile` y
+`StrictHostKeyChecking` (que `ssh -G` imprime como `true`/`false`, no `yes`/`no`).
+Si `ssh` no puede ejecutarse en esta maquina, el registro es todo lo que hay y se
+usa tal cual, sin ruta por bastiones.
+
 Comandos: `ssh_config_hosts` y `ssh_config_resolve`. Ambos de solo lectura y sin
 conexion alguna.
+
+### 4.1 La ruta: bastiones y `ProxyCommand` — IMPLEMENTADO
+
+`src-tauri/src/ssh/dial.rs`. La ruta a un host es una lista de saltos, bastiones
+primero y el host al final. `ProxyJump` (uno, una cadena `a,b`, y bastiones con
+su propio `ProxyJump`, con control de ciclos y tope de 8 saltos) se recorre
+**dentro del proceso**: cada bastion es una conexion SSH propia —su propia
+verificacion de clave, su propio login— y el siguiente salto es un canal
+`direct-tcpip` abierto **por el bastion**, que lleva una sesion SSH completa.
+Por eso un nombre que solo el bastion resuelve funciona, y funciona en Windows
+sin un proceso por salto. `ProxyCommand` lleva la conexion por las tuberias de un
+proceso hijo, por la shell como `ssh` lo ejecuta, con `%h %p %r %n %%`
+expandidos; su stderr va al log.
+
+Cada salto puede detenerse por la persona y el resultado dice **cual**: "edge (de
+camino a build-box) pide una contrasena". Los secretos se guardan por identidad
+de salto (`usuario@host:puerto`), asi que un bastion compartido por dos hosts se
+pregunta una vez y su contrasena no se ofrece a nadie mas. Un segundo factor
+**pausa** el intento con la conexion abierta (`ssh_host_answer`, `ssh_host_cancel`,
+caduca a los 3 minutos) y continua sobre esa misma conexion.
 
 ## 5. Transporte — IMPLEMENTADO
 
@@ -81,37 +140,42 @@ conexion alguna.
   Windows no implementa `ControlMaster`, asi que lanzar `ssh.exe` por operacion
   significaria un handshake completo por comando. Prohibido. Medido: ocho
   canales concurrentes cuestan 1.5 veces lo que uno (§5.3).
-- **`ssh` del sistema como plan B declarado por host** — para los casos que un
-  cliente en proceso no cubre (GSSAPI, ciertos `ProxyCommand`), anunciando que
-  capacidades se pierden en ese modo. **Pendiente**: hoy solo existe el cliente
-  en proceso; el plan B esta decidido y no implementado.
+- **`ssh` del sistema como segundo portador, por host** — para lo que el
+  cliente en proceso no reproduce (Kerberos, llaves FIDO2, tarjetas, …): una
+  conexion compartida de OpenSSH lleva los mismos canales. **IMPLEMENTADO**,
+  §5.20.
 - **Verificacion de host obligatoria**, sin modo para saltarla (§5.1).
 
 ### Sub-secciones
 
 | | Que cubre | Estado |
 |---|---|---|
+| §4.1 | la ruta: bastiones (`ProxyJump`) y `ProxyCommand` | implementado |
 | §5.0 | handshake, veredicto de clave, generacion de conexion | implementado |
 | §5.1 | la decision sobre `known_hosts` | implementado |
-| §5.2 | autenticacion (agente, llave, contrasena) | implementado |
+| §5.2 | autenticacion (agente, llaves, certificados, contrasena, segundo factor) | implementado |
 | §5.3 | comandos como canales, su coste medido, el candado y que shell se usa | implementado |
 | §5.4 | registro de hosts y lapidas | implementado |
 | §5.5 | sesiones vivas y su superficie de comandos | implementado |
 | §5.6 | inventario del host | implementado |
+| §5.20 | el `ssh` del sistema como portador | implementado |
 | §5.7 | terminal remota, keepalive y caidas | implementado |
-| §5.8 | explorar carpetas, por SFTP | implementado |
+| §5.8 | explorar carpetas, por el motor | `browse` en el motor |
 | §5.9 | un proyecto que vive en el host | implementado |
-| §5.10 | ficheros del host: listar, abrir y guardar | implementado |
-| §5.10b | rama y estado de git en el host | implementado |
-| §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
-| §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
-| §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
+| §5.10 | ficheros del host, servidos por su motor | `commands::machine_for`, `uxnan-host/src/files.rs`, `fsRouter.ts` |
+| §5.10b | git del host, servido por su motor | `uxnan-host/src/repo.rs`, `agent_socket.rs` |
+| §5.10c | Cambios e Historial del host | el motor, `gitRouter.ts` |
+| §5.10d | Crear/renombrar/duplicar/borrar en el host | el motor, `fsRouter.ts` |
+| §5.10e | Buscar en el proyecto del host | el motor, `fsRouter.ts` |
+| §5.10i | Worktrees del host | `worktreeloc` en el motor, `services::worktree` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.10g | Presupuesto de canales | `ssh/conn.rs` |
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
 | §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
 | §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
-| §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ssh/ports.rs`, `portscan.rs` |
+| §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ports` en el motor, `portscan.rs` |
+| §5.16 | El motor del host: terminales que sobreviven a la conexion | `crates/uxnan-host`, `ssh/engine.rs`, `ssh/terminals.rs` |
+| §5.15 | Como se prueba contra un host de verdad (y contra un servidor en proceso, §5.1–§5.2) | `ssh/testhost.rs`, `ssh/testserver.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -176,71 +240,93 @@ silencio. La huella `SHA256:…` se contrasta en tests contra la que calcula la
 propia libreria, porque si divergiera, la que se ensena al usuario para comparar
 no valdria nada.
 
+**Que ficheros y bajo que nombre.** Se leen todos los `UserKnownHostsFile` y
+`GlobalKnownHostsFile` que da `ssh -G`, y la clave se busca bajo `HostKeyAlias`
+cuando lo hay; una clave confirmada se escribe en el **primer** fichero de
+usuario, nunca en uno global. `StrictHostKeyChecking`: `ask` pregunta; `yes`
+muestra la huella y no ofrece confiar; `accept-new` (y `no`, leido igual) registra
+una clave nueva sin preguntar y lo deja en el log. Ningun valor deja pasar una
+clave **cambiada**.
+
+**Anti-downgrade.** El handshake pide primero los tipos de clave que ya estan
+registrados para ese host (`hostkey::recorded_algorithms`). Sin eso, un impostor
+que solo tenga, por ejemplo, una clave RSA haria que un host con su ed25519
+registrada presentara un tipo sin entrada — que parece un host nuevo y gana un
+dialogo amable en vez de la alarma que merece.
+
+**Rotacion guiada.** Ante `Changed` no se envia ninguna credencial. Si la persona
+confirma que la maquina se reinstalo, `ssh_host_replace_key` saca **solo** las
+entradas de ese nombre, puerto y tipo de los ficheros de usuario (con copia previa
+en `known_hosts.old`, como `ssh-keygen -R`) y registra la clave presentada, la
+que vio este proceso y nunca una que viajo por la interfaz. Una entrada vieja en
+un fichero global no se toca desde aqui.
+
 Cableado: el callback del cliente la consulta en cada handshake, y la confirmacion
-TOFU vive en Ajustes -> Hosts.
+TOFU vive en Ajustes -> Hosts. Probado en cada `cargo test` contra un servidor
+SSH dentro del proceso de pruebas (`ssh/testserver.rs`).
 
 ## 5.2 Autenticacion — IMPLEMENTADA
 
-`src-tauri/src/ssh/auth.rs`. Orden: **agente del sistema primero**, luego los
-ficheros de identidad que la configuracion resuelta del host señala. El orden no
-es cosmetico: el agente sostiene llaves que el usuario ya desbloqueo, asi que
-probarlo primero es lo que evita que conectar a varios hosts se convierta en
-varios prompts de passphrase.
+`src-tauri/src/ssh/auth.rs` (`Authenticator`). El orden decide cuantas veces se
+interrumpe a la persona:
 
-**Ningun secreto se guarda.** Una credencial es una *referencia* —"el agente" o
-"la llave en esta ruta"—; la passphrase vive en memoria durante un intento y no
-se escribe en ningun sitio. La etiqueta de una credencial (la que va a logs y
-UI) nunca incluye la passphrase, y hay un test que lo exige.
+1. llaves que la configuracion nombra **y que el agente ya sostiene**;
+2. llaves que la configuracion nombra y que abren sin preguntar (sin cifrar, o
+   desbloqueadas antes en esta sesion);
+3. el resto de llaves del agente, salvo `IdentitiesOnly yes` — sin ese limite,
+   un agente lleno gasta los `MaxAuthTries` del servidor en llaves ajenas;
+4. solo entonces una llave cifrada que nadie desbloqueo: es lo unico que obliga
+   a parar y pedir su passphrase (`NeedsPassphrase { path, wrong }`).
 
-**El intercambio abre con un intento `none`.** No es un atajo esperando un
-servidor abierto: es como SSH pregunta *"¿que aceptas?"*. Esa respuesta es lo que
-evita ofrecer llaves a un host que solo toma contraseña y, sobre todo, lo que
-evita decir "fallo la autenticacion" cuando la respuesta real es "esta maquina
-quiere una contraseña y a nadie se le ha pedido una".
+OpenSSH pide esa passphrase en cuanto encuentra la llave, aunque una del agente
+mas abajo hubiera servido; pedirla al final hace que un agente que funciona
+nunca cause un prompt. El agente es el que nombra `IdentityAgent` (un socket,
+`SSH_AUTH_SOCK`, o `none`); en Windows, el named pipe de OpenSSH. Los
+certificados (`CertificateFile`, `<llave>-cert.pub`, y los que sostiene el
+agente) se ofrecen con su llave.
+
+**El intercambio abre con un intento `none`.** Es como SSH pregunta *"¿que
+aceptas?"*: evita ofrecer llaves a un host que solo toma contrasena y, sobre
+todo, decir "fallo la autenticacion" cuando la respuesta real es "esta maquina
+quiere una contrasena y a nadie se le ha pedido una".
+
+**Segundo factor y exito parcial.** keyboard-interactive puede preguntar
+cualquier cosa; sus preguntas llegan a la persona tal como el servidor las
+mando, con eco donde el servidor lo permite (un codigo) y oculto donde no
+(`NeedsAnswers(Challenge)`), y la conversacion espera en la misma conexion. Solo
+un unico prompt oculto que se lee como contrasena se responde por la persona,
+con la que ya dio, y una sola vez: repetirla en el siguiente seria quemar un
+intento de OTP. Un servidor configurado para pedir llave **y** codigo
+(`AuthenticationMethods publickey,keyboard-interactive`) acepta la llave con
+"falta algo" y el intercambio sigue con lo que aun pide, en vez de reportar la
+llave como rechazada. Tope de 8 rondas.
 
 Resultados tipados, no un booleano:
 
 | Resultado | Significa | Que hace la UI |
 |---|---|---|
 | `Success { method }` | autenticado, y **con que** credencial | puede decir por donde entro |
-| `NeedsPassphrase { path }` | la llave esta cifrada y no habia passphrase (o era incorrecta) | la pide y reintenta **esa** credencial |
-| `NeedsPassword { attempted }` | el host acepta contraseña y no teniamos ninguna; `attempted` lleva lo ya rechazado | pide contraseña, diciendo tambien que llave fue rechazada |
-| `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto, no "fallo la autenticacion" |
+| `NeedsPassphrase { path, wrong }` | una llave configurada esta cifrada y nada mas sirvio; `wrong` = la dada no la abrio | la pide, diciendo si la anterior fallo |
+| `NeedsPassword { attempted }` | el host acepta contrasena y no teniamos ninguna | pide contrasena, diciendo tambien que se rechazo |
+| `NeedsAnswers(challenge)` | el servidor pregunto algo que solo la persona sabe | muestra sus preguntas; la conexion espera |
+| `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto; la contrasena dada se olvida |
 | `NoUsableMethod` | el host no acepta nada que podamos ofrecer | lo dice tal cual, no como rechazo |
 
-**La contraseña es el camino que hace posible una primera conexion sin preparar
+**La contrasena es el camino que hace posible una primera conexion sin preparar
 nada en la maquina remota** — sin generar llave, sin tocar `authorized_keys` —, y
 para la mayoria de la gente esa es la diferencia entre "conecte" y "lo deje".
-`NeedsPassword` lleva lo ya intentado para poder decir las dos cosas a la vez:
-que llave se rechazo y que se puede probar contraseña.
 
-Se prueban `password` y `keyboard-interactive`, porque los servidores discrepan
-sobre a cual pertenece una contraseña simple (con PAM de por medio suele ser solo
-la segunda). El lado interactivo responde **solo a peticiones de un unico
-prompt**: un servidor que pregunta dos cosas esta pidiendo un segundo factor, y
-repetir ahi la contraseña seria erroneo ademas de quemar un intento de OTP; eso
-necesita una UI prompt-a-prompt y queda diferido en vez de fingido.
+Las rutas de identidad que **no existen se descartan**, no se intentan: `ssh -G`
+lista los defaults de OpenSSH existan o no.
 
-Dos decisiones que evitan diagnosticos equivocados:
-
-- Una llave cifrada **detiene** la cadena. Seguir probando reportaria "fallo la
-  autenticacion" para una llave que quiza es la correcta, y mandaria al usuario
-  a depurar el problema equivocado.
-- Las rutas de identidad que **no existen se descartan**, no se intentan:
-  `ssh -G` lista los defaults de OpenSSH existan o no, y probar cada ausente
-  convertiria un "no tienes credenciales" en una lista de fallos sin sentido.
-
-Un certificado OpenSSH presente en el agente se **salta**: es otro metodo de
-autenticacion, con sus principales y su validez, y ofrecerlo como si fuera una
-llave suelta fallaria de una forma que parece una llave rechazada.
-
-Windows habla con el agente por named pipe de OpenSSH; el resto por
-`SSH_AUTH_SOCK`. **Validado de punta a punta** contra un `sshd` real: se habla
-con el named pipe, se ofrece una identidad que el agente sostiene, el servidor la
-acepta y despues un comando corre en esa sesion autenticada. Tambien validado el
-lado negativo: una llave no autorizada vuelve como rechazo limpio nombrando lo
-que se ofrecio, y una contrasena incorrecta como rechazo, no como error de
-transporte.
+**Validado en cada `cargo test`** contra un servidor SSH dentro del proceso
+(`ssh/testserver.rs`, `ssh/transport_tests.rs`): contrasena y codigo en dos
+rondas, llave con exito parcial y codigo, bastion con su propia contrasena, llave
+cifrada con passphrase correcta e incorrecta, `IdentityAgent` y `IdentitiesOnly`
+con un `ssh-agent` real, `ForwardAgent` de punta a punta (el host cuenta las
+identidades del agente reenviado). Y en vivo contra un `sshd` real (tests
+`--ignored`): named pipe de Windows, llave no autorizada rechazada nombrando lo
+ofrecido, contrasena incorrecta como rechazo y no como error de transporte.
 
 ## 5.3 Comandos como canales — IMPLEMENTADO, con una medicion que condiciona el diseño
 
@@ -345,9 +431,11 @@ que la exige.
 
 Corolarios:
 
-- El **doctor** mide este coste por host y lo dice, porque explica por que ese
-  host se siente lento y tiene arreglo del lado del usuario (poner `cmd` como
-  `DefaultShell` del `sshd`, o meter una guarda rapida en su perfil).
+- El **doctor** deberia medir este coste por host y decirlo, porque explica por
+  que ese host se siente lento y tiene arreglo del lado del usuario (poner `cmd`
+  como `DefaultShell` del `sshd`, o meter una guarda rapida en su perfil). El
+  doctor de hoy (§5.17) mide el primer salto y la ida y vuelta del motor, no este
+  coste: sigue pendiente en `FOR-DEV.md`.
 - Para trabajo repetido (por ejemplo sondear `git status`), un `exec` por vuelta
   es el patron equivocado en estos hosts. La alternativa —mantener un canal de
   shell abierto y escribirle los comandos— queda anotada como opcion para
@@ -428,7 +516,11 @@ la fase 3.)
 **Desde la superficie de control** (`02d` §1.6) esta misma sesion se lee y se
 abre sin la interfaz: `host/list` y `host/show` describen cada maquina **por su
 sesion** —conectada o no, su shell, los canales en uso contra el limite que el
-host demostro (§5.10g)—, y `host/connect` abre la de un host registrado que no
+host demostro (§5.10g)— y, con el motor en marcha, su version y plataforma
+(`engine`) y la ida y vuelta del latido (`latencyMs`), leidos del motor que ya
+corre: una lectura nunca arranca uno. `host/show` añade `engineSessions`, las
+terminales que el motor tiene, tambien las que ninguna pestana muestra (§5.17).
+`host/connect` abre la de un host registrado que no
 la tiene, por el mismo camino que el arranque. La superficie **no acepta
 credencial**: `needsPassword`, `needsPassphrase` y los tres desenlaces de clave
 de host se devuelven tal cual y ahi termina, porque confiar una clave o teclear
@@ -489,6 +581,10 @@ viaje extra.
 
 ## 5.7 Terminal remota — IMPLEMENTADO
 
+Dos formas, una por plataforma del host: en Linux y macOS la terminal vive en el
+**motor del host** (§5.16) y sobrevive a la conexion; en un host Windows —y en un
+build sin el motor para esa plataforma— es lo que describe esta seccion:
+
 `src-tauri/src/ssh/pty.rs`. Una terminal remota es **un canal** sobre la conexion
 que ese host ya tiene, con PTY y shell. Ni segundo handshake ni segundo login.
 
@@ -541,8 +637,11 @@ Lo comprueba un test en vivo que **se queda quieto mas de esos 5 minutos** y
 despues usa la conexion; sin el keepalive falla. Esta `--ignored` por lo que
 cuesta, y hay que correrlo cuando se toque cualquiera de los dos timers.
 
-Queda un hueco, anotado en `FOR-DEV.md` en vez de disimulado: cuando la conexion
-se cae, el frontend no recibe **evento**; se entera al preguntar.
+Cuando la conexion se cae, el frontend lo sabe sin preguntar: un vigilante por
+sesion emite `ssh:session-ended` (§5.10f) y la escalera de §5.12 intenta
+volver. Lo que **no** sobrevive a la caida es la terminal misma: vive en un canal
+de la sesion, asi que el programa que corria en ella termina en el host (§7,
+fase 5).
 
 Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
 redimensionar y cerrar; crear dos veces el mismo id no abre dos terminales; y
@@ -550,37 +649,17 @@ desconectar el host hace que la terminal reporte salida.
 
 ## 5.8 Explorar carpetas del host — IMPLEMENTADO
 
-`src-tauri/src/ssh/browse.rs`. **Por SFTP, igual que el arbol de ficheros — no
-preguntandole a un shell.** Antes se mandaba un script y se parseaba la
-respuesta: POSIX primero y PowerShell de reserva, o sea que un host con
-PowerShell pagaba **dos** comandos remotos por cada clic, y cada uno arranca una
-shell con su perfil en la otra maquina.
+**Lo lista el motor del host** (`Call::Browse`, protocolo 13) con el mismo
+`browse::browse_dirs` que lista las carpetas de esta maquina, y devuelve las rutas
+en la forma con barras normales en que la app guarda las de un host (`C:/Users/…`
+en un Windows). La insignia de repositorio es el mismo `.git` existe que aqui, y
+el listado avisa cuando se corta (`truncated`, 500 carpetas).
 
-Medido, que es lo que decidio el cambio:
-
-| | |
-|---|---|
-| Listar una carpeta **por shell** | 336 ms (contra el `sshd` de esta maquina, con `cmd`) |
-| La misma carpeta **por SFTP** | **6,6 ms** |
-| Un `exec` en el host real del usuario (§5.3) | **2.109 ms** — y eran dos por clic |
-| Insignia de repo: 63 carpetas, una a una | 44 ms |
-| Las mismas 63 **a la vez** | **3,3 ms** |
-
-Esa ultima fila es la que hace viable la insignia: las peticiones SFTP
-**se encauzan en el unico canal**, asi que el listado cuesta un viaje de ida y
-vuelta, no uno por carpeta. Y no consume canales extra (§5.3, `MaxSessions`),
-porque van todas por la sesion que ya esta abierta.
-
-**Detalle que solo aparecio corriendolo:** un host Windows contesta
-`realpath(".")` con `/C:/Users/gamas`. Correcto dentro del protocolo —ahi todo
-cuelga de `/`— e inutilizable fuera: esa cadena se guarda como ruta del proyecto,
-se teclea en una terminal de esa maquina y se le pasa a su git, y ninguno la
-acepta. Se le quita la barra (`strip_sftp_drive_root`), con sus tests.
-
-**Lo que se pierde:** un host con el subsistema `sftp` deshabilitado ya no se
-puede explorar. Es una configuracion rara y el arbol de ficheros ya dependia de
-SFTP, asi que ese host tampoco servia para gran cosa; se dice claro en vez de
-mantener dos implementaciones del mismo listado.
+Antes iba por SFTP (`ssh/browse.rs`, borrado), que ya habia sustituido a un
+script por la shell del host: 336 ms por listado por shell frente a 6,6 ms por
+SFTP en loopback, y ~2,1 s por `exec` en un host real. El motor lo resuelve en una
+llamada sobre su canal, sin un segundo listado que mantener. Un host donde el motor
+no corre no tiene selector, igual que no tiene ficheros de proyecto (§5.10).
 
 **Solo directorios.** Un proyecto es una carpeta; mandar miles de ficheros que
 nadie va a elegir es gastar bytes y segundos en ruido. Un listado que hubo que
@@ -650,12 +729,11 @@ en que maquina vive el proyecto y que si funciona hoy. El modo de fallo que
 sustituye es peor que un panel vacio — una carpeta del mismo nombre **aqui**
 contesta a todas esas preguntas, con aplomo y sobre otro repositorio.
 
-Ficheros y rama **ya no estan en esa lista**: van por SFTP (§5.10) y por git en el
-host (§5.10b). `worktree_list` sigue devolviendo **un** espacio para un proyecto
-remoto —no hay worktrees remotos todavia— pero su rama ahora se lee alli, y
-cuando el host no puede contestar la fila dice "rama sin leer" en vez de
-`(detached)`: eso ultimo seria afirmar algo sobre un repositorio que nadie
-abrio.
+Ficheros, rama y worktrees **ya no estan en esa lista**: los sirve el motor del
+host (§5.10, §5.10b, §5.10i). Cuando el host no puede contestar, `worktree_list`
+devuelve **un** espacio —la carpeta del proyecto— y la fila dice "rama sin leer"
+en vez de `(detached)`: eso ultimo seria afirmar algo sobre un repositorio que
+nadie abrio.
 
 **El contador de terminales y los agentes de la tarjeta comparan claves**, no
 rutas. Comparando rutas, un proyecto del host contaba cero.
@@ -767,26 +845,60 @@ y la interfaz escribe su lado de la misma bifurcacion. Una pestaña que desapare
 tiene tres causas indistinguibles una vez cerrada; solo el registro las separa.
 Solo ids, nunca rutas ni salida.
 
-## 5.10 Ficheros del host — IMPLEMENTADO (fase 3, primera parte)
+## 5.10 Ficheros del host — IMPLEMENTADO, servidos por el motor del host
 
-`src-tauri/src/ssh/sftp.rs`. **Los ficheros van por SFTP, no por comandos.** Es la
-consecuencia directa de la leccion de §5.7: cualquier cosa con forma de comando
-depende de la shell que ese `sshd` arranque, y su dueño la cambia cuando quiere.
-SFTP es un **subsistema** —un programa que el servidor ejecuta, con protocolo
-binario— asi que listar un directorio o leer un fichero se comporta igual con
-cmd, PowerShell, WSL o Git Bash, y **no hace falta instalar nada en el host**.
-Nada que entrecomillar, nada que parsear, ninguna shell a la que culpar.
+**Los ficheros de un proyecto del host los sirve su motor** (§5.16,
+`crate::commands::machine_for` + `crates/uxnan-host/src/files.rs`). Hay **un solo
+juego** de comandos `fs_*`, y cada uno lleva el `target` de la maquina: este
+equipo, o un host, cuyo motor ejecuta alli **el mismo codigo** que la app ejecuta
+en su disco (`uxnan_workspace_engine::fs`, protocolo 9, `Call::Fs`). Listar, leer,
+previsualizar, guardar, crear, renombrar, duplicar, borrar y buscar se comportan
+igual en las dos maquinas porque son la misma funcion, no dos implementaciones
+que se parecen.
 
-**Misma forma que en local.** Devuelve los tipos del layer local (`FsEntry`,
-`FileContent`), de modo que el arbol de ficheros y el editor dibujan los ficheros
-de un host con los componentes que ya existen — el mismo criterio que el selector
-de carpetas. Una sesion SFTP por host, abierta al primer uso: es un canal sobre la
-conexion que ya esta autenticada (§5.3), asi que mantenerla no cuesta nada y
-reabrirla por listado costaria un viaje por carpeta.
+Asi fue hasta la fase 3: los ficheros iban por SFTP y la busqueda por `git` en la
+shell del host (§5.10d, §5.10e en su version anterior). Funcionaba, pero eran
+**dos capas** por funcion —la local y la remota— que discrepaban en los bordes:
+el modo de un fichero al guardar, que cuenta como ignorado, que se puede buscar en
+una carpeta que no es repositorio. Con el motor en el host eso desaparece, y la
+capa remota se borro entera (`ssh_fs_*`, `ssh/search.rs` y las operaciones de
+proyecto de `ssh/sftp.rs`).
 
-**Un solo sitio decide a que maquina se lee** (`src/lib/fsRouter.ts`): ruta +
-maquina, y el enrutado sale de ahi. La alternativa —que cada punto de uso
-pregunte "¿esto es remoto?"— es exactamente la forma que ya nos costo un fallo.
+**Un host sin motor no tiene ficheros de proyecto**, y se dice: los comandos
+contestan que los ficheros de ese host los sirve su motor y que alli no corre. Un
+host asi conserva sus terminales por un canal simple (§5.16, *Hosts donde el
+motor no corre*). SFTP sigue existiendo solo para lo que tiene que llegar
+**antes** que el motor: instalarlo.
+
+**El fencing sigue en el backend** (`02a` §2.9). Toda mutacion sobre un host
+—guardar, crear, renombrar, duplicar, borrar— lleva la expectativa (maquina +
+generacion de conexion) y `machine_for` la comprueba **antes** de mandar nada al
+motor: la misma ruta absoluta suele existir en las dos maquinas, y un borrado mal
+encaminado no se puede deshacer. La expectativa la construye un solo sitio,
+`src/lib/fsRouter.ts`, que ya no tiene ramas: llama a los mismos comandos con el
+`target` y el backend decide la maquina.
+
+**Borrar en un host es permanente.** En local va a la papelera del sistema; un
+host no tiene papelera que la app pueda usar, asi que alli el motor desenlaza
+(`fs::delete_permanently`, con la misma guarda contra la raiz del filesystem que
+la papelera local) y el dialogo dice cual de las dos va a pasar.
+
+**Una carpeta de proyecto que ya no esta.** `repos_missing` pregunta al motor del
+host —si ya corre; no se arranca solo para esto— por la carpeta de cada proyecto
+de ese host, y lo marca como falta, igual que uno local, solo cuando el sistema de
+ficheros de esa maquina dice que no existe. Un host sin conexion, o un motor que no
+contesta a tiempo, no es un veredicto: sus proyectos se quedan como estaban.
+
+**Lo que se probo en vivo.** `a_projects_files_are_served_by_the_hosts_engine`
+(en `ssh::terminals::tests::live`, que el job `windows-ssh-host` de CI ejecuta
+contra un `sshd` real): crear una carpeta y un fichero con su padre intercalado,
+guardar y releer, listar, duplicar, renombrar, buscar por nombre y por contenido,
+un patron que no compila contestado como `Invalid`, un fichero ausente como el
+error de E/S del sistema (`ErrorCode::Io` → `IO_ERROR`, el mismo codigo que daria
+aqui), y el borrado. Del lado del daemon,
+`a_projects_files_are_listed_saved_and_searched_on_the_host`
+(`crates/uxnan-host/tests/daemon.rs`) prueba el servicio en las tres
+plataformas.
 
 ### Una sesion de ficheros no dura mas que su canal
 
@@ -825,7 +937,7 @@ Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero
 
 ### Ver una imagen: por el mismo camino que leerla
 
-`RemoteFiles::read_data_url` + `ssh_fs_read_data_url`. Reportado desde la app:
+`fs_read_data_url` con el `target` del host. Reportado desde la app:
 abrir una imagen de un proyecto del host pintaba `[object Object]` en medio del
 visor. Dos fallos encadenados, y el primero es el que importa:
 
@@ -843,101 +955,78 @@ un `data:` URL. Ahora `readDataUrlOn` la enruta como a todas.
 que fallo. Vale la pena anotarlo: el sintoma que se ve no siempre pertenece al
 fallo que hay que arreglar, y aqui habia uno de cada.
 
-Del lado del host se hace lo minimo y por SFTP, sin instalar nada: se **pregunta
-el tamaño antes de leer** —el tope de 25 MiB existe para no meter un blob enorme
-en el webview, y aqui ademas evita arrastrarlo por el enlace—, se leen los bytes
-tal cual (la misma exigencia que el diff de imagenes, §5.10h) y el tipo se decide
-con el mismo olfateador que en local, de modo que un fichero se previsualiza —o
-se rechaza— igual en las dos maquinas. Verificado en vivo contra un `sshd` real:
-el PNG vuelve byte a byte identico al del disco y un `Cargo.toml` se rechaza
-diciendo que no es imagen ni PDF.
+Del lado del host lo hace hoy el motor con el lector local
+(`fs::read_data_url`): el tope de 25 MiB se comprueba **antes** de leer, los
+bytes viajan tal cual (la misma exigencia que el diff de imagenes, §5.10h) y el
+tipo se decide con el mismo olfateador, de modo que un fichero se previsualiza
+—o se rechaza— igual en las dos maquinas porque es la misma funcion.
 
-### Guardar: en el sitio, porque el reemplazo atomico no existe aqui
+### Guardar: atomico y conservando el modo, en cualquier maquina
 
-`RemoteFiles::write_file`. En local se escribe a un temporal y se renombra
-encima — atomico. **Sobre SFTP eso no se puede**, y no es opinion: medido contra
-un `sshd` real, en este orden.
+El motor guarda con el escritor local (`fs::write_file`): temporal en la misma
+carpeta y renombrado encima, **conservando el modo** del fichero que reemplaza
+(un script ejecutable sigue siendolo despues de editarlo). Esto cierra el motivo
+por el que el guardado remoto escribia **en el sitio**: sobre SFTP v3 el rename
+que sobrescribe no existe (`posix-rename@openssh.com` es una extension que la
+libreria cliente no implementa), asi que "temporal y renombra" habria fallado en
+todos los guardados salvo el primero. En el host el rename es el del sistema de
+ficheros, y vale lo mismo que aqui.
 
-| Medicion | Resultado |
-|---|---|
-| `SSH_FXP_RENAME` sobre una ruta **que ya existe** | **Falla** (`Status: Failure`) |
-| `write()` de la libreria (abre solo con `WRITE`) | Escribir `SHORT` sobre un fichero mas largo dejo `SHORTCONTENT-0123456789` |
-| `WRITE \| CREATE \| TRUNCATE` | Correcto, incluido acortar y vaciar |
-| `fsync@openssh.com` | Soportado por este servidor |
-
-El rename que **sobrescribe** es la extension `posix-rename@openssh.com`, que la
-libreria cliente no implementa (y que en OpenSSH para Windows fue durante años
-un `unlink`+`rename`, o sea tampoco atomico). Asi que "temporal y renombra"
-fallaria en **todos** los guardados salvo el primero.
-
-Y el plan B —borrar el destino y luego renombrar— cambia un fichero truncado por
-uno **inexistente**, que es el fallo peor: tras una escritura mala el editor
-sigue teniendo el texto, tras un borrado malo no lo tiene nadie. Un temporal
-ademas **pierde permisos y dueño** del destino, porque lo que sobrevive es el
-temporal.
-
-Por eso se escribe **en el sitio**: `WRITE | CREATE | TRUNCATE`, escribir, pedir
-`fsync` (best effort: un host sin la extension no es motivo para fallar un
-guardado que ya acepto), cerrar, y **preguntar el tamaño al host**. Ese ultimo
-paso es el unico que detecta un guardado que almaceno menos bytes de los que se
-enviaron — el editor no puede notarlo solo, y seguiria mostrando texto que el
-host no tiene. Conserva el fichero tal cual: modo, dueño, enlaces duros y a
-donde apunta un symlink.
-
-**Fenced** (`02a` §2.9): `ssh_fs_write` verifica maquina y generacion **antes**
-de abrir, porque abrir ya trunca. La generacion viaja al frontend en
+**Fenced** (`02a` §2.9): `fs_write_file` con un `target` de host verifica maquina
+y generacion **antes** de mandar nada. La generacion viaja al frontend en
 `ssh_hosts_connected` —no solo en el informe de conexion— porque la ventana se
 recarga mucho mas a menudo de lo que se conecta un host, y sin eso cada guardado
 posterior a una recarga llevaria una expectativa que no emitio nadie.
 
-**Lo que no hace, y se dice:**
-
 | | Estado |
 |---|---|
-| Listar y abrir ficheros | **Funciona** |
-| Previsualizar una imagen o un PDF | **Funciona** (arriba): se lee por SFTP de la maquina del fichero, con el mismo tope y el mismo criterio de tipo que en local |
-| Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
-| Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
-| Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
-| Guardar un fichero | **Funciona** — en el sitio y con fencing (arriba) |
-| Renombrar / borrar / crear desde el arbol | **Pendiente**: el menu contextual sigue siendo local |
+| Listar, abrir y previsualizar | **Funciona**, por el motor |
+| Marcar ignorados por git (`ignored`) | **Funciona**: el motor lo pregunta a git alli (`git::ignored_flags`), igual que aqui |
+| Buscar en el arbol | **Funciona** (§5.10e) |
+| Refresco automatico | **Funciona**: el vigilante del motor (§5.16) |
+| Guardar, crear, renombrar, duplicar, borrar | **Funciona**, con fencing |
+| Un host donde el motor no corre | Sin ficheros de proyecto, y se dice; sus terminales siguen |
 
-Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
-rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
-leidos de un `Cargo.toml` que es el fichero de verdad. Y la recuperacion, tambien
-en vivo: una sesion muerta en la cache se sustituye y el listado sale igual, una
-que muere sin que nadie lo note se reintenta, y un "no existe" se reporta a la
-primera sin tocar la sesion que iba bien.
+## 5.10b Git del host — IMPLEMENTADO, servido por el motor del host
 
-## 5.10b Git del host — IMPLEMENTADO (fase 3, segunda parte)
+**El git de un proyecto del host lo ejecuta su motor** (§5.16, protocolo 10,
+`Call::Git(GitCall)` → `crates/uxnan-host/src/repo.rs`), con el mismo
+`uxnan_workspace_engine::git` que la app ejecuta en su disco: el CLI de git para
+lo que libgit2 hace a medias y la via rapida de libgit2 (`gitfast`) para estado,
+diffs, numstat y log. **Un solo juego** de comandos `git_*` lleva el `target` de
+la maquina y `machine_for` decide (§5.10); las mutaciones van cercadas igual que
+las de ficheros.
 
-`src-tauri/src/ssh/git.rs`. A diferencia de los ficheros, git hay que
-**ejecutarlo**, asi que pasa por `exec` y por tanto por la shell de esa maquina —
-el unico punto de la fase 3 donde la shell interviene. La diferencia con los
-intentos anteriores es que no se supone: §5.7 la pregunto, y **cada argumento se
-entrecomilla para esa respuesta** (`quote_arg`). Una shell que no se pudo nombrar
-no recibe nada: la fila dice que la rama no se leyo, que es verdad.
+Hasta aqui git se ejecutaba como **comandos por la shell del host**
+(`ssh/git.rs`, borrado): cada argumento entrecomillado para la shell que el host
+declaro, la salida entre marcadores, y el parche y el mensaje de commit subidos
+por SFTP porque `exec` no tiene stdin. Funcionaba, y lo que se aprendio sigue en
+el codigo del motor —`&&` se comia el marcador de fin con una rama sin upstream;
+el espacio inicial de ` M README.md` no se recorta—, pero era **una segunda
+implementacion de git** al lado de la local, con sus propios parsers y su propio
+coste por llamada (~2 s de arranque de shell, §5.3). Con el motor: sin
+entrecomillado por dialecto, sin ficheros temporales, sin marcadores, y la misma
+respuesta en las dos maquinas porque es la misma funcion.
 
-**Un comando, salida entre marcadores** (§5.3): rama, distancia con el upstream y
-recuento de cambios se piden juntos. `git -C <ruta>` en vez de un `cd`, porque no
-necesita sintaxis de shell mas alla del entrecomillado.
+**Lo que lee una fila** es `git_repo_status` (`git::RepoStatus`): rama, cambios y
+distancia con el upstream. **`isRepo: false` es el cajon honesto** —no es
+repositorio, o no hay git alli—, y la UI **no** lo pinta como "sin cambios": deja
+los badges como estaban, porque cero cambios y "no se pudo leer" no son lo mismo.
+Lo que dice git cuando se niega viaja como `ErrorCode::Git` y se enseña con sus
+palabras, como un error de git local.
 
-**Dos cosas que el test en vivo enseño y los unitarios no podian:**
-
-1. **Encadenar con `&&` era un error.** Una rama sin upstream hace fallar
-   `rev-list`, y con `&&` eso se comia todo lo que venia detras —el marcador de
-   fin incluido—, asi que un checkout real volvia como "no es un repositorio". Se
-   secuencia sin condicion: `&` en cmd, `;` en POSIX y PowerShell.
-2. **La linea de distancia puede no existir.** Solo un par "<n> <n>" limpio se
-   toma como distancia; cualquier otra cosa sigue siendo un cambio.
-
-**`isRepo: false` es el cajon honesto**: no es repositorio, no hay git instalado,
-o la shell no se pudo nombrar. La UI **no** lo pinta como "sin cambios" — deja los
-badges como estaban, porque cero cambios y "no se pudo leer" no son lo mismo.
-
-Validado en vivo contra un `sshd` real sobre un checkout de verdad: rama
-`feat/desktop-remote-ssh-hosts`, 9 ficheros sucios, y una carpeta que no es
-repositorio contestando `isRepo: false`.
+**`push`, `pull` y `fetch` usan el agente que reenvia la conexion.** Un canal con
+`ForwardAgent` da a lo que arranca un `SSH_AUTH_SOCK` que vive lo que esa
+conexion; el motor sobrevive a las conexiones, asi que el suyo caducaria en la
+primera reconexion. Cada `attach` apunta una ruta estable del directorio `run`
+(`agent.sock`) al socket de **su** conexion, y el motor da esa ruta a todo lo que
+arranca —su git y sus terminales—: lo que corre alli usa el agente de la ultima
+conexion, como lo haria una terminal abierta por ella (`uxnan-host/src/agent_socket.rs`).
+Solo Unix; en Windows el agente reenviado no tiene esa indireccion. **Probado en
+vivo** contra un servidor Linux real: un push por SSH desde el host firmado con el
+agente reenviado, dos veces —antes y despues de cortar y volver a conectar—, tras
+comprobar que sin agente el mismo push falla
+(`a_push_from_the_host_uses_the_agent_the_latest_connection_forwards`).
 
 **Un fichero remoto se guarda en su maquina, o no se guarda.** Guardar pasaba por
 el filesystem local: con la ruta de un host eso falla — o, peor, escribe un
@@ -961,7 +1050,7 @@ usuario.
 
 Ese hueco existia desde antes y **no se veia**: al arrancar nadie conectaba el
 host, asi que el primer listado fallaba y el mensaje de "esperando" tapaba la
-falta. Al reconectar los hosts solos al arrancar (§5.4b) el mensaje dejo de
+falta. Al reconectar los hosts solos al arrancar (§5.5, `ssh_hosts_resumable`) el mensaje dejo de
 aparecer y el hueco quedo a la vista. Leccion anotada: **cuando un cambio quita
 un estado de la interfaz, hay que buscar que otra cosa dependia de que ese estado
 ocurriera.**
@@ -973,67 +1062,38 @@ Ahora el backend lo distingue (`AppError::NotConnected`, codigo `NOT_CONNECTED`)
 el panel dice que espera, y al conectar el host el arbol se rellena solo
 (`fileTree.retryForHost`).
 
-## 5.10c Cambios e Historial del host — IMPLEMENTADO (fase 3, tercera parte)
+## 5.10c Cambios e Historial del host — IMPLEMENTADO, por el motor
 
-`src-tauri/src/ssh/git.rs` (lectura y mutaciones), `src/lib/gitRouter.ts` (a que
-maquina va cada operacion) y los dos stores del panel derecho. Con esto las
-pestañas *Cambios* e *Historial* describen la maquina en la que el proyecto vive
-de verdad, en lugar del aviso que las sustituia. GitHub conserva el aviso, porque
-si lee el repositorio de **esta** maquina y su sesion de `gh`.
+Las pestañas *Cambios* e *Historial* describen la maquina en la que el proyecto
+vive de verdad. GitHub conserva su aviso, porque lee el repositorio de **esta**
+maquina y su sesion de `gh`.
 
-**Una peticion, no cuatro.** El layer local pide estado, distancia y numstat por
-separado porque cada llamada cuesta microsegundos. En un host cada una es un
-arranque de shell (~2 s, §5.3) y el panel las quiere todas a la vez, asi que
-`review()` manda **un** comando con cuatro secciones separadas por marcadores
-(`rev-parse HEAD`, `rev-list --left-right --count`, `status --porcelain=v1 -z` y
-`diff --numstat HEAD`) y lo parsean **los parsers locales** — `parse_status_files`
-y `parse_numstat`. Dos parsers para un mismo formato serian dos oportunidades de
-discrepar sobre un mensaje de commit con un salto de linea dentro.
+**Una peticion por lectura, en las dos maquinas.** `git_review` (`git::Review`)
+devuelve de una vez los ficheros cambiados, sus lineas, la distancia y `HEAD`:
+en un host cada llamada es un viaje, y el panel lo quiere todo a la vez. Aqui
+cuesta lo mismo que las tres lecturas de antes, asi que no hay dos caminos.
 
-Las secciones van marcadas y no contadas: dos pueden venir vacias y una
-(`--porcelain -z`) no contiene saltos de linea, asi que partir por lineas las
-fundiria — y un repositorio limpio volveria como uno que no se pudo leer.
+**Toda mutacion va cercada.** Preparar, descartar, aplicar un hunk, commitear y
+sincronizar llevan la `TargetExpectation` (§2.9 de `02a`) y el backend la
+comprueba **antes** de enviar nada — un descarte no se puede deshacer una vez que
+el host lo ha ejecutado, y la misma ruta absoluta suele existir en las dos
+maquinas. El frontend se niega antes incluso de llamar cuando no puede nombrar
+una conexion: mandar un cero seria una expectativa que nadie emitio.
 
-**El unico bug real de esta parte lo encontro el host Linux** (§5.12), no los
-unitarios: el estado de un cambio sin preparar es un **espacio** a la izquierda
-(` M README.md`), y recortar la seccion como espacio en blanco se lo comia, con
-lo que cada ruta llegaba un caracter mas corta y el panel listaba `EADME.md`
-—preparar ese fichero habria fallado sobre algo que no existe—. Ahora se recortan
-solo saltos de linea, con un test unitario que ya no necesita Docker.
+**`fetch`, `push` y `pull` corren alli**, con las credenciales de esa maquina y
+el agente que reenvia la conexion (§5.10b) —el proyecto vive en ella, luego su
+remoto es alcanzable desde ella y no necesariamente desde aqui—. Un remoto que
+pida contraseña falla en vez de esperar a que alguien la escriba: no hay terminal
+detras.
 
-**Lo que cambia el host va por SFTP, no por su shell.** `git apply` y
-`git commit` leen su entrada de **stdin**, y `Connection::exec` no tiene stdin.
-El parche y el mensaje se escriben con la sesion SFTP que ya esta abierta y se
-apunta git al fichero (`-F`, `apply <fichero>`): un mensaje multilinea con
-comillas y `$VAR` llega exactamente como se escribio, sin pasar por las reglas de
-entrecomillado de tres dialectos. El temporal vive junto al `.git` del propio
-repositorio —el unico directorio en el que el usuario seguro puede escribir en esa
-maquina, y en el mismo sistema de ficheros— y **se borra pase lo que pase**: un
-commit fallido dejaria si no un mensaje que el siguiente leeria como suyo.
+**El borrador de commit con IA y el diff de imagenes** funcionan igual: el diff
+preparado y los blobs se leen alli, y el agente corre **aqui**, donde estan su CLI
+y su sesion.
 
-**Toda mutacion va cercada.** Preparar, descartar, aplicar un hunk o commitear
-llevan la `TargetExpectation` (§2.9 de `02a`) y el backend la comprueba **antes**
-de enviar nada — un descarte no se puede deshacer una vez que el host lo ha
-ejecutado, y la misma ruta absoluta suele existir en las dos maquinas, asi que
-una mutacion mal encaminada es justo la que se parece a un exito. El frontend se
-niega antes incluso de llamar cuando no puede nombrar una conexion: mandar un cero
-seria una expectativa que nadie emitio.
-
-**`fetch`, `push` y `pull` corren alli**, con las credenciales de esa maquina —el
-proyecto vive en ella, luego su remoto es alcanzable desde ella y no
-necesariamente desde aqui—. Un canal `exec` no tiene terminal, asi que un remoto
-que pida contraseña falla en vez de esperar a que alguien la escriba: la salida
-honesta, que ademas indica donde hay que configurar las credenciales.
-
-**Enrutado en un solo sitio.** `gitRouter.ts` es el hermano de `fsRouter.ts` y
-existe por lo mismo: la alternativa es que cada punto de llamada pregunte "¿esto
-es remoto?", que es la forma que ya nos costo un error. El store del panel guarda
-la maquina **al lado** de la ruta, porque ninguna de las dos significa nada sola.
-
-**Dos cosas siguen siendo de esta maquina**, y ahora estan ausentes en vez de
-rotas: el **borrador de commit con IA** (lee el diff preparado con el git local) y
-el **diff de imagenes** (lee los blobs igual). Ambas necesitan traer el contenido
-aqui primero; quedan anotadas en `FOR-DEV.md`.
+**Enrutado en un solo sitio.** `gitRouter.ts` es el hermano de `fsRouter.ts` y,
+como el, ya no tiene ramas: nombra la maquina y construye la expectativa. El
+store del panel guarda la maquina **al lado** de la ruta, porque ninguna de las
+dos significa nada sola.
 
 **El par (ruta, maquina) sale de un solo sitio.** Los paneles leian la **ruta**
 del proyecto seleccionado y la **maquina** del workspace de terminal enfocado —
@@ -1056,13 +1116,12 @@ raiz y en cuanto un listado funciona: un arbol que acaba de listar no espera a
 nadie. Leccion, la misma de siempre en esta funcionalidad: **cuando un estado se
 pone, hay que decir tambien cuando se quita.**
 
-**Sin watcher, y dicho.** El sondeo de 3 s es el git de esta maquina; hacerlo
-contra un host seria un arranque de shell cada tres segundos en el ordenador de
-otro, por worktree. En remoto el boton de refrescar **es** la actualizacion y su
-tooltip lo dice — no un cartel explicando el funcionamiento de la app. Ademas el
-evento del watcher local se ignora cuando el panel mira a un host: la misma ruta
-absoluta existe en las dos maquinas, y sin esa comprobacion la lista de ficheros
-de aqui pisaria la revision de alli.
+**El refresco lo da el vigilante del motor.** El sondeo de 3 s es el git de esta
+maquina; en un host el motor vigila la carpeta —tambien `.git`— y empuja el
+cambio (§5.16), y el panel relee una vez cuando la rafaga se calma. El evento del
+sondeo local se ignora cuando el panel mira a un host: la misma ruta absoluta
+existe en las dos maquinas, y sin esa comprobacion la lista de ficheros de aqui
+pisaria la revision de alli.
 
 **Al conectar y al desconectar, los paneles reaccionan solos.** No empujando
 desde el store de hosts —eso importaria `git`, que importa `app`, que importa
@@ -1074,102 +1133,85 @@ app resuelve sola, es ruido sobre el que el usuario no puede actuar. Y cuando el
 host se va, la lista se vacia y las acciones se deshabilitan, pero el mensaje de
 commit a medio escribir se respeta.
 
-## 5.10d Operaciones de fichero en el host — IMPLEMENTADO (fase 3, cuarta parte)
+## 5.10d Operaciones de fichero en el host — IMPLEMENTADO, por el motor
 
-`src-tauri/src/ssh/sftp.rs` + `src/lib/fsRouter.ts`. Crear, renombrar, duplicar y
-borrar, en la maquina de la que es el arbol. Todo por SFTP: no hay ni una linea
-de shell aqui, asi que se comporta igual en cualquier host y no exige instalar
-nada.
+Crear, renombrar, duplicar y borrar, en la maquina de la que es el arbol: los
+mismos `fs_*` con el `target` del host, servidos por su motor (§5.10). Los
+nombres los valida **el mismo validador** en las dos maquinas
+(`fs::split_new_entry_path`, `validate_bare_name`), porque es el mismo codigo:
+que una ruta no pueda escapar de su carpeta importa exactamente igual en la
+maquina de otro.
 
-**Esto tapa un agujero, no solo añade una funcion.** Esos elementos del menu
-nunca estuvieron condicionados, asi que sobre un arbol remoto llamaban al
-filesystem **local** con la ruta de la otra maquina. Casi siempre fallaba — pero
-la ruta de un host Windows (`C:/Users/…`) puede existir tambien aqui, y entonces
-un renombrado o un borrado caian sobre el fichero equivocado en el ordenador
-equivocado. Misma clase que el guardado mal encaminado que ya cercamos (§5.10).
+**Esto tapo un agujero, no solo añadio una funcion.** Antes de condicionarlos,
+esos elementos del menu llamaban al filesystem **local** con la ruta de la otra
+maquina. Casi siempre fallaba — pero la ruta de un host Windows (`C:/Users/…`)
+puede existir tambien aqui, y entonces un renombrado o un borrado caian sobre el
+fichero equivocado en el ordenador equivocado. Por eso toda mutacion lleva
+fencing (§5.10).
 
-**Los nombres los valida el validador local**, no un segundo escrito aqui
-(`crate::fs::split_new_entry_path`, `validate_bare_name`): que una ruta no pueda
-escapar de su carpeta importa exactamente igual en la maquina de otro, y dos
-validadores son dos oportunidades de discrepar sobre `..`.
+**Borrar es permanente en un host, y la interfaz lo dice** (§5.10). Duplicar
+copia bytes en el host, sin cruzar el enlace — ya no hace falta el tope que
+tenia cuando el fichero entero pasaba dos veces por SFTP.
 
-**"No debe existir" lo decide el servidor.** `OpenFlags::EXCLUDE` es el
-`SSH_FXF_EXCL` del protocolo: la comprobacion es atomica y del host. Mirar
-primero y crear despues seria una carrera que perderiamos contra el agente que
-esta trabajando en esa carpeta — que es justo la razon por la que alguien tiene
-ese arbol abierto.
+**Lo que solo puede hacer esta maquina no se ofrece** para una entrada remota:
+revelar en el explorador, abrir con un editor local y registrar como proyecto
+local. Y con el host desconectado, lo que cambia la maquina se deshabilita: se
+puede leer lo que ya se leyo, pero no mandarle nada.
 
-**Renombrar no puede pisar** (SFTP v3; la misma limitacion que hizo que guardar
-escriba en el sitio, §5.10), lo cual coincide con lo que el layer local quiere.
-El unico caso que cuesta es cambiar solo mayusculas/minusculas en un host cuyo
-filesystem las ignora, donde origen y destino **son el mismo fichero**: eso se
-hace en dos pasos, por un nombre que nada usa, y solo despues de que el intento
-directo haya fallado.
+## 5.10e Buscar en el proyecto del host — IMPLEMENTADO, por el motor
 
-**Borrar es permanente, y la interfaz lo dice.** El arbol local manda a la
-papelera del sistema (recuperable); SSH no ofrece nada asi, e inventar una
-papelera oculta en la maquina de otro seria una carpeta que creamos, nunca
-vaciamos y nunca mencionamos. Asi que se desenlaza — y el dialogo promete lo que
-va a pasar en vez de ofrecer "mover a la papelera". Una carpeta se recorre en
-anchura y se borra en orden inverso (el `rmdir` de SFTP solo quita carpetas
-vacias); un enlace simbolico se quita **como enlace**, nunca se entra en el, o se
-estaria borrando lo que apunta en otro sitio. La raiz del filesystem se rechaza
-antes de mandar nada.
+Por nombre de fichero y por contenido, con `fs_search_files` /
+`fs_search_content` y el `target` del host: el motor recorre el proyecto **alli**
+con el mismo recorrido que aqui (el crate `ignore`, que lee `.gitignore`), y solo
+vuelven los resultados. Mismo resaltado, mismos modos (mayusculas, palabra
+completa, regex), mismos filtros, mismo tope; un patron que no compila vuelve
+como `SEARCH_INVALID` para que el panel lo enseñe bajo el campo.
 
-**Duplicar mueve bytes, no texto** — un duplicado que convirtiera un PNG en
-caracteres de reemplazo seria peor que no tener duplicado — y va **con tope**:
-SFTP v3 no tiene copia en el servidor, asi que el fichero entero cruza el enlace
-dos veces, y un elemento de menu no tiene por que arrastrar un gigabyte por la
-conexion de nadie.
+La version anterior le preguntaba a **git** en la shell del host (`git ls-files`,
+`git grep`), porque SFTP no sabe buscar y el ayudante en el host estaba
+descartado. Tenia dos limites que el motor quita: una carpeta que no era
+repositorio no se podia buscar, y los offsets del resaltado se recalculaban aqui
+porque `git grep` informa de lineas y no de columnas. Ahora la respuesta es la
+misma funcion en las dos maquinas.
 
-**Lo que solo puede hacer esta maquina ya no se ofrece** para una entrada remota:
-revelar en el explorador, abrir con un editor local, buscar (recorre este
-filesystem) y registrar como proyecto local. Y con el host desconectado, lo que
-cambia la maquina se deshabilita: se puede leer lo que ya se leyo, pero no
-mandarle nada.
+## 5.10i Worktrees del host — IMPLEMENTADO, por el motor
 
-## 5.10e Buscar en el proyecto del host — IMPLEMENTADO (fase 3, quinta parte)
+Un proyecto del host tiene sus worktrees como uno de aqui: la barra lateral los
+lista, el dialogo crea uno nuevo (rama nueva o existente, base, carpeta propia
+opcional) y se quitan con la misma limpieza opcional de ramas. Todo lo ejecuta el
+motor alli (`GitCall::{Worktrees, Branches, WorktreeLocation, AddWorktree,
+RemoveWorktree, BranchIntegrated}`) con **la misma funcion** que la app usa aqui:
+la politica de ubicacion (`worktreeloc`, con su raiz gestionada, la marca de grupo
+y el sufijo libre) y la creacion (`worktreeloc::create`) se movieron al motor de
+trabajo, asi que `services::worktree::create` es una sola implementacion para las
+dos maquinas.
 
-`src-tauri/src/ssh/search.rs` + `src/lib/fsRouter.ts`. Por nombre de fichero y
-por contenido.
+**Donde cae.** La raiz gestionada es la del host (`<home del host>/uxnan/worktrees`).
+La raiz personalizada **global** de Ajustes es una carpeta de **esta** maquina, asi
+que en un host no se aplica; la raiz propia de un proyecto (una ruta de ese host)
+si. El modo `sibling` coloca la carpeta junto al repositorio, alli.
 
-**Por que git y no SFTP.** Todo lo demas de ficheros va por SFTP porque es un
-subsistema y no exige instalar nada. Buscar es justo lo que SFTP **no** sabe
-hacer: no tiene "find", asi que buscar sobre el es listar cada carpeta y leer
-cada fichero, una peticion cada vez, a traves de la red. Un repositorio de
-cualquier tamaño son miles de idas y vueltas por pulsacion.
+**Cercado.** Crear y quitar son mutaciones: llevan la expectativa con la
+generacion de la conexion que el usuario mira (`projects.liveExpectation`), y el
+backend la comprueba en `machine_for` antes de mandar nada. Con el host caido no
+se envia nada: el dialogo dice que no hay conexion. Quitar decide el cercado
+**antes** de cerrar las terminales del worktree, para que un host que se fue no
+deje nada cerrado a medias.
 
-Los clientes remotos maduros lo resuelven instalando en el host un servidor que
-lleva `ripgrep`. El ayudante en el host esta descartado (§5.11), y exigir `rg`
-pondria la funcion detras de algo que la mayoria de las maquinas no tiene. Asi
-que se le pregunta a **git**, que ya esta en todo host con el que esta app puede
-hacer algo util — la rama, la revision y el historial se ejecutan alli
-(§5.10b, §5.10c). Dos ordenes, un viaje cada una:
+**Probado.** `a_projects_worktrees_are_listed_made_and_removed_on_the_host` contra
+el daemon real; el sondeo en vivo del motor crea y quita uno en el host del job
+`windows-ssh-host`.
 
-- `git ls-files -co --exclude-standard -z`: cada fichero seguido y sin seguir que
-  no este ignorado. Es **exactamente** lo que recorre la busqueda local (el crate
-  `ignore` lee las mismas reglas de `.gitignore`), asi que las dos maquinas
-  contestan sobre el mismo proyecto y no sobre dos ideas distintas de "el
-  proyecto".
-- `git grep -n -I --no-color -z`: las lineas que casan. **Los ficheros no cruzan
-  el enlace**, solo las lineas.
-
-**Los offsets del resaltado se calculan aqui**, no alli: `git grep` informa de
-lineas, no de columnas, y el resaltado tiene que coincidir con lo que habria
-producido la busqueda local. Cada linea devuelta se vuelve a casar con **el
-mismo regex que construye la busqueda local** (`crate::fs::build_content_regex`),
-asi que "que cuenta como coincidencia" tiene una sola definicion en la app. Si el
-dialecto de git caso algo que el nuestro no (un regex exotico), la linea se
-descarta en vez de enseñar un acierto que nada puede resaltar.
-
-**El formato se midio contra el host, no se supuso**: `-z` deja `ruta NUL linea NUL texto`, terminado en salto de linea, y se lee campo a campo — partir primero por saltos de linea tiraria
-justo la garantia que `-z` da (una ruta puede contener un salto de linea). Un
-host con CRLF manda ademas el retorno de carro, que no es parte de la linea.
-
-**Alcance honesto:** una carpeta del host que no es repositorio no se puede
-buscar, y se dice — una lista vacia seria indistinguible de "no hay
-coincidencias". "Buscar en la carpeta" acota con `-C`, y git contesta rutas
-relativas a esa carpeta (medido tambien).
+**La limpieza de worktrees viejos tambien es del host** (`Call::Cleanup`,
+protocolo 14). El motor corre alli el mismo `worktreeclean` que la app corre aqui
+—movido al motor de trabajo—, sobre las raices de esa cuenta: su
+`~/uxnan/worktrees`, su `~/uxnan/repos` y las raices propias de los proyectos de
+ese host, que la app le pasa junto con sus rutas. Las mismas pruebas de que algo es
+desechable, la misma re-verificacion al quitar, el mismo paso por la papelera de la
+raiz; y nunca toca una carpeta en la que esta una terminal suya. Al arrancar, el
+daemon termina de borrar lo que una ejecucion anterior dejo a medias, como hace la
+app. Quitar va cercado. Probado contra el daemon real y en vivo contra un host
+Linux (`a_hosts_old_worktrees_are_cleaned_up_by_its_engine`).
 
 ## 5.10f Avisar de una sesion caida — IMPLEMENTADO (fase 3, sexta parte)
 
@@ -1240,15 +1282,15 @@ de `git show` con sus bytes intactos; el del working tree, por SFTP. Verificado
 contra el contenedor con bytes que **no** son UTF-8 validos, comparando byte a
 byte.
 
-**Borrador de commit con IA.** El diff se lee **alli** y el agente corre
-**aqui**: el CLI y su sesion son de esta maquina, y exigir un agente instalado en
-cada host pondria la funcion detras de una instalacion que nadie pidio.
-`aicommit::from_diff` separa "de donde sale el diff" de "quien lo resume". El
-agente arranca en el home del usuario, porque el proyecto no existe en esta
-maquina y el diff entero va en el prompt — el directorio es solo donde el proceso
-se planta. Un CLI que exija confiar en una carpeta antes de hacer nada fallara
-ahi en vez de colgarse (la ejecucion esta acotada por `GENERATE_TIMEOUT`) y el
-boton lo dice.
+**Borrador de commit con IA.** El diff se lee **alli** y el borrador lo escribe
+**el agente del host**, de pie en el worktree (`HostEngine::agent_run`, §5.19):
+el agente elegido en Ajustes → AI commit tal como esa maquina lo tiene, con su
+sesion, igual que corre aqui en un proyecto local. Si el host no tiene ese
+agente —el motor lo dice con las palabras de `agentrun::is_not_installed`— el
+borrador se escribe **aqui** sobre el diff leido alli, de pie en el home del
+usuario (el diff entero va en el prompt), para que la funcion nunca espere una
+instalacion en cada host. `aicommit::for_host` separa "quien lo escribe" del
+resto; la ejecucion esta acotada por `GENERATE_TIMEOUT` en ambos casos.
 
 ### Lo que hacemos nosotros no necesita watcher
 
@@ -1357,27 +1399,29 @@ refresca al abrir la pestaña, al actuar y con el boton, y la interfaz lo dice e
 vez de fingir un directo que no existe.
 
 Fuera de la fase 3: los **puertos reenviados** son ya la fase 4 (§5.14), y el
-**estado preciso de agentes** sigue pendiente porque necesita un tunel inverso y
-reporters instalados alli. La escalera de reconexion, que estaba en esta lista,
+**estado preciso de agentes** quedaba fuera: necesitaba algo vivo en el host
+que recibiera los reportes. Llego con el motor del host (§5.16), sin tunel
+inverso. La escalera de reconexion, que estaba en esta lista,
 es ahora §5.12.
 
-### La decision sobre el ayudante en el host: NO se construye
+### La decision sobre el ayudante en el host: no para la fase 3, reabierta por las fases 2 y 5
 
-Estaba anotado como decision pendiente y aqui queda tomada, con lo medido.
+Para ficheros, git y busqueda se decidio, con lo medido, no desplegar nada en el
+host.
 
-**Que hacen los maduros.** Zed sube un binario `remote_server` a `~/.zed_server`
-atado a la version exacta del cliente, y multiplexa con `ControlMaster` — que el
-OpenSSH de Windows no implementa, o sea que su transporte no es copiable aqui.
-VS Code instala su servidor y paga el precio en compatibilidad: desde la 1.99
-exige **glibc ≥ 2.28**, y **Alpine/musl no esta soportado**; los sistemas viejos
-necesitan un sysroot y `patchelf`.
+**Que se observo en clientes comparables.** Los que despliegan un servidor en el
+host lo atan a la version exacta del cliente —cada actualizacion deja
+inalcanzable lo que corria en el anterior— o lo construyen sobre un runtime que
+el host tiene que traer (Node, una libc minima, compilar modulos nativos alli).
+Y muchos multiplexan con `ControlMaster`, que el OpenSSH de Windows no
+implementa, asi que ese transporte no es copiable aqui.
 
-**Por que aqui no hace falta.** Cada pieza que salio de la shell le quito su
+**Por que la fase 3 no lo necesito.** Cada pieza que salio de la shell le quito su
 razon de ser: los ficheros van por SFTP (§5.10), el explorador tambien (§5.8) y
 la sonda pregunta en la shell que el host reporto (§5.3). Lo unico que queda con
 forma de shell es git — y el panel de Cambios **pide el diff por fichero al
 seleccionarlo**, no todos de golpe, asi que su forma natural son comandos
-sueltos: ~2 s al abrir la pestaña y ~2 s por fichero abierto. Lento, no roto. Los
+sueltos: ~2 s al abrir la pestana y ~2 s por fichero abierto. Lento, no roto. Los
 dos casos que parecian imposibles (stdin y binarios) los resuelve el SFTP que ya
 esta abierto.
 
@@ -1385,14 +1429,17 @@ esta abierto.
 clase de fallo nueva —"no pude instalar el servidor en tu maquina"— que hoy no
 existe. Justo en la parte que mas se le pide a esta funcion: que sea facil.
 
-**Que reabriria la decision.** Que Cambios, ya construido sobre `exec`, se sienta
-lento en un host real. Entonces la conversacion deja de ser "¿ayudante si o no?"
-y pasa a ser "estos N segundos por clic valen un binario que desplegar", que es
-una pregunta que se responde con un numero. Mientras tanto la alternativa mas
-barata sigue anotada: **mantener un canal de shell abierto** y escribirle los
-comandos (§5.3), que quita el arranque de shell sin desplegar nada.
+**Que la reabre.** Las dos fases pendientes de §7 no se pueden hacer sin algo
+vivo en el host: terminales que sobrevivan a una desconexion (fase 5) necesitan
+un dueno de las PTY fuera de la sesion SSH, y el estado preciso de agentes
+(fase 2) necesita reporters escuchando alli. La pregunta deja de ser "¿ayudante
+si o no?" y pasa a ser **cual y como**: la respuesta que se perfila es el mismo
+codigo de workspace que el desktop usa en local, compilado estatico (sin runtime
+que el host deba traer), subido por SFTP desde el desktop (sin Internet en el
+host) y con una ventana de protocolo en vez de version exacta. Es lo que se
+construyo: §5.16.
 
-## 5.12 Como se prueba esto contra un host de verdad — IMPLEMENTADO
+## 5.15 Como se prueba esto contra un host de verdad — IMPLEMENTADO
 
 Hasta ahora **todas** las pruebas en vivo hablaban con el `sshd` de la maquina que
 las ejecuta, que en este proyecto siempre ha sido Windows con `cmd`. La mitad
@@ -1427,7 +1474,7 @@ primera vez.
 
 ## 5.14 Puertos del host — IMPLEMENTADO (fase 4)
 
-`src-tauri/src/ssh/forward.rs`, `src-tauri/src/ssh/ports.rs`,
+`src-tauri/src/ssh/forward.rs`, `crates/workspace-engine/src/ports.rs` (en el motor del host),
 `src-tauri/src/portscan.rs`, `src/lib/state/ports.svelte.ts`,
 `src/lib/components/PortsStatusButton.svelte`.
 
@@ -1441,12 +1488,12 @@ que uno acaba de levantar alli era abrir el navegador *en* esa maquina.
 | Camino | Coste | Que ve |
 |---|---|---|
 | **Anunciado** — la terminal imprimio su URL (`portscan.rs`) | **Cero**: esos bytes ya venian de camino a la terminal | Lo que el propio servidor dice de si mismo, en cualquier host y con cualquier shell, porque habla el *programa* y no la maquina |
-| **Encontrado** — se le pregunta al host (`ssh/ports.rs`) | Un comando allí, o sea un arranque de shell (~2 s, §5.3) | Todo lo que escucha, incluido lo que nadie anuncio o lo que ya corria antes de abrir uxnan |
+| **Encontrado** — se le pregunta al motor del host (`ports::listening`, `Call::Ports`) | Una llamada al motor: en Linux lee la tabla del kernel (`/proc/net/tcp{,6}`) sin lanzar nada; en macOS `lsof` (un proceso que no es la shell de la persona recibe la tabla de `netstat` vacia, medido) y en Windows `netstat -ano`, ejecutados sin shell | Todo lo que escucha, incluido lo que nadie anuncio o lo que ya corria antes de abrir uxnan |
 
-Por eso el primero es automatico y el segundo es un **boton**. Sondear cada
-pocos segundos mantendria un canal permanentemente ocupado en la maquina de
-otro para responder una pregunta que casi nunca se esta haciendo — la misma
-decision que ya tomo el panel de Cambios (§5.11).
+El primero es automatico y el segundo es un **boton**. Con el motor preguntar ya
+no cuesta un arranque de shell, pero sondear seguiria siendo trabajo constante en
+la maquina de otro para una pregunta que casi nunca se esta haciendo. Un host sin
+motor no tiene este camino, y lo dice.
 
 **Quitar las secuencias de escape no es cosmetico.** Vite imprime su puerto en
 negrita: los bytes en el cable son `http://localhost:\e[1m5173\e[22m/`. Un
@@ -1530,26 +1577,522 @@ usuario ya configuro.
 Al desconectar un host se cierran sus tuneles: un socket que lleva conexiones
 sobre una conexion que ya no existe las aceptaria hacia la nada.
 
+## 5.16 El motor del host (`uxnan-host`) — IMPLEMENTADO para terminales
+
+Tres crates, una sola implementacion por capa:
+
+- `crates/workspace-engine` — el gestor de PTY que el desktop ya usaba en local
+  (movido, no copiado: `crate::pty` lo reexporta), un **modelo de pantalla**
+  (`vt100`) y el **vigilante de carpetas** (`watch`), que usan tanto el arbol
+  local (`fswatch.rs`) como el daemon. El motor es el mismo en las dos maquinas.
+- `crates/host-protocol` — tramas con longitud (control JSON, bytes de terminal
+  en crudo, ping/pong) sobre **un** flujo de bytes, y un saludo que se encuentra
+  en una **ventana** de versiones (`PROTOCOL_MIN..=PROTOCOL`), no en una version
+  exacta: una actualizacion de la app no deja huerfanas las terminales que tiene
+  un daemon de la version anterior.
+- `crates/uxnan-host` — el binario del host: `version`, `attach` y `serve`.
+
+**Despliegue** (`src-tauri/src/ssh/engine.rs`). `uname -sm` decide la build
+(Linux x86_64/aarch64 musl estatico, macOS arm64/x86_64) — en Windows,
+`%PROCESSOR_ARCHITECTURE%` (cmd) o `$env:PROCESSOR_ARCHITECTURE` (PowerShell)
+elige entre `x86_64`/`aarch64-pc-windows-msvc`, se instala `uxnan-host.exe` y se
+ejecuta como cada shell ejecuta un programa (`run_line`: `"ruta" arg` en cmd,
+`& "ruta" arg` en PowerShell, con `\`); se sube por el SFTP que
+el host ya tiene a `~/.uxnan/host/versions/<version>-<hash>/` (carpetas `0700`,
+nombre temporal unico y renombrado, porque un rename SFTP no reemplaza; dos
+instalaciones simultaneas de la misma build no se pisan: gana la primera y la
+segunda conserva la suya), y el propio binario prueba que corre ahi (`version`,
+con su ventana de protocolo). Nada se descarga ni se compila en el host. La
+carpeta se nombra por version **y contenido**, asi que otra build nunca reutiliza
+en silencio lo que ya hubiera, y una actualizacion nunca reemplaza el programa
+del que arranco un daemon vivo. **Las builds viejas las quita el propio host**
+(`crates/uxnan-host/src/versions.rs`): cada proceso que corre de una build —el
+daemon, y cada `attach` mientras dura su conexion— tiene un `flock` compartido
+sobre el `.in-use` de su carpeta; un daemon que arranca borra las demas carpetas
+que nadie tiene y que tienen mas de 10 minutos (una subida reciente esta a punto
+de correr).
+
+**Distribucion: empaquetados, no descargados.** Cada instalador lleva las cuatro
+builds (Linux x86_64/aarch64 musl, macOS arm64/x86_64; ~1.5–1.9 MB cada una) como
+recursos `host-engine/<triple>/uxnan-host`: una laptop Windows maneja un servidor
+Linux, asi que la plataforma del host no es la de la app. Nada que bajar ni que
+verificar dos veces, y funciona sin Internet en ninguno de los dos lados. La
+release las compila en un job propio (`release-desktop.yml` → `host-engine`: Linux
+con zig en Ubuntu, el par Apple en `macos-14`) con la version de la release, y cada
+instalador falla si falta alguna (`scripts/build-host-engine.mjs --require`). La app
+las busca en su carpeta de recursos, luego en `$UXNAN_HOST_BINARIES` y, en debug,
+en `src-tauri/host-engine/` y `target/<triple>/release/`.
+
+**Conexion.** Un canal `exec` de `uxnan-host attach`, que une su stdin/stdout al
+socket del daemon (`~/.uxnan/host/run/engine.sock`, en carpeta `0700`) y lo
+arranca desacoplado (`setsid`, SIGHUP ignorado) si no corre. **Un solo socket,
+sea cual sea la version**: una app nueva llega al daemon que tiene las terminales
+del host —de la build que sea— y se encuentran en la ventana de protocolo; el
+daemon nuevo toma el relevo solo cuando el viejo se queda sin nada y sale. Un
+socket por version haria que la app nueva arrancara otro daemon al lado y no
+viera nunca las terminales del viejo, justo lo que una actualizacion no debe
+hacer. Una llamada que el daemon no conoce (de un cliente mas nuevo) se responde
+con un error y la conexion sigue: colgar dejaria sin terminales por una funcion
+que ninguna usa. Versiones: 1 = terminales; 2 = vigilar carpetas; 3 = hooks de
+agentes; 4 = `Attach { history }`; 5 = `StopAgent` (cerrar el agente de una
+terminal y solo a el, con el mismo `agentstop` que el desktop, que como
+`procscan` vive ahora en el motor); 6 = `TranscriptPreview` (la vista previa
+de un turno terminado, leida en el host por el mismo lector que el desktop,
+`workspace_engine::transcript`, con la misma regla: solo un `.jsonl` dentro de
+la carpeta de transcripts de ese agente); 7 = herramientas de los agentes
+(`AgentTools`, `Event::Mcp`/`ClientMessage::McpAnswer`, `Event::OpenUrl`). 8 = los hooks de cada agente uno a uno (`HooksStatus`, `SetHook`,
+`HookConfig`: el mismo instalador corrido en el host, con el `PATH` de su shell de
+login); 9 = los ficheros del proyecto (`Call::Fs(FsCall)` → `Reply::Value`, el
+`workspace_engine::fs` de la app corrido alli, §5.10); 10 = su git
+(`Call::Git(GitCall)`, el `workspace_engine::git` de la app, y `ErrorCode::Git`
+para lo que git rechaza, §5.10b); 11 = que agente corre cada terminal
+(`WatchAgents`, `Event::Agent`: capa 3 en el host, §6). Imprime
+una linea `UXNAN-HOST-READY` antes de las tramas: un shell de login puede haber
+impreso cualquier cosa antes. **Todas** las terminales del host van por ese canal,
+asi que dejan de contar una a una contra el `MaxSessions` del host.
+
+**Windows.** El canal del daemon es una *named pipe* por cuenta y hogar del motor,
+con la lista de acceso de un solo usuario (la misma `UserOnlyDacl` que el archivo de
+descubrimiento del desktop, en `control-protocol::private`), que rechaza clientes
+remotos y se crea con `FIRST_PIPE_INSTANCE` (un segundo daemon encuentra el nombre
+ocupado). `attach` lo arranca fuera del *job* de la sesion SSH
+(`CREATE_BREAKAWAY_FROM_JOB`, desacoplado): Win32-OpenSSH termina el job de una sesion
+al cerrarla. Si el job no permite salir, el daemon arranca igual y el log dice que
+termina con la sesion. Un grupo de procesos nuevo nace con **Ctrl+C ignorado**, y
+eso lo heredan sus hijos: el daemon lo restituye al arrancar
+(`SetConsoleCtrlHandler(NULL, FALSE)`), o Ctrl+C no interrumpiria nada en una
+terminal del host. Lo encontro la sonda de capa 3 en el host Windows de CI. El
+candado de build es `LockFileEx`; el archivo de endpoint,
+el formato de los reporters `.cmd`. Probado en CI (`windows-ssh-host`: el runner
+alcanza su propio OpenSSH Server) con la suite de terminales en vivo — `cmd` como
+shell, y ConPTY pidiendo la posicion del cursor (`ESC[6n`) antes de dibujar, que
+xterm.js responde en la app. **Donde el motor no puede correr** (sin build: ARM de
+32 bits, i686, BSD; `home` con `noexec`) la terminal es un canal sobre la sesion
+(§5.7): se conserva como respaldo explicito, nunca como camino paralelo, para que un
+host siempre de una shell.
+
+**Latido.** El desktop pregunta cada 10 s y da el enlace por perdido tras 30 s
+sin oir nada (cualquier trama cuenta como señal de vida). Entonces cierra el canal
+y cuelga la conexion SSH de esa generacion, para que el vigilante de sesion vea
+el fin y la escalera de reconexion traiga el host —y sus terminales— de vuelta,
+en vez de esperar los ~2 min del keepalive SSH en un enlace medio abierto.
+Cerrar o desconectar el host cierra el canal del motor de forma explicita: un
+canal abierto mantiene viva la conexion debajo.
+
+**Lo que garantiza el daemon** (`crates/uxnan-host/src/daemon.rs`):
+
+- Una terminal es del daemon, no de la conexion. Perder al cliente es
+  **desengancharse**; cerrar la terminal es una llamada explicita.
+- **Orden sin huecos al reengancharse:** el lector de la PTY alimenta el modelo
+  de pantalla y reparte a los espectadores bajo el mismo candado, y `attach` toma
+  ese candado para cortar el snapshot y registrar al espectador; el cliente recibe
+  la respuesta, el snapshot y luego todo lo que sigue, nada dos veces y nada
+  perdido.
+- **El historial, solo a quien empieza vacio:** con `history` (protocolo 4) el
+  snapshot lleva antes las lineas por encima de la pantalla (hasta 2.000, con
+  sus colores) para que caigan en el scrollback del espectador; el desktop lo
+  pide al reencontrar una terminal tras reiniciar la app, no al reengancharla
+  tras un corte (ya tiene el suyo). Va en trozos de 64 KiB.
+- **Un espectador lento se corta**, no se acumula sin limite: cola acotada por
+  conexion; el cliente vuelve y recibe un snapshot nuevo.
+- Una terminal terminada sigue **adjuntable** un rato (su ultima pantalla).
+- Un socket rancio se **prueba** antes de reemplazarlo: nunca se borra uno con un
+  daemon vivo detras; y al salir, un daemon solo borra el socket si sigue siendo
+  el suyo (mismo inodo) — uno congelado y reemplazado no le quita el socket al
+  que lo reemplazo.
+- Sin nada que hacer —ni clientes ni terminales vivas— sale solo a los 30 min.
+- Su log registra solo ciclo de vida; jamas lo que una terminal mostro o recibio.
+
+**Del lado del desktop** (`src-tauri/src/ssh/terminals.rs`), la misma forma que la
+terminal local (§5.7): el frontend elige el id, `pty:output:{id}` y
+`pty:exit:{id}`. Lo nuevo es lo que pasa **entre** conexiones: al caer, la
+terminal se desengancha y la pestana lo dice en una linea tenue —no se informa un
+fin que no ocurrio—; al volver el host, se reengancha y se repinta desde la
+pantalla del daemon. Si el daemon cambio de epoca (el host reinicio), solo
+entonces se informa el fin. Tras reiniciar la app, la pestana se reconoce por su
+`sid` persistente, que el daemon guarda como etiqueta de la terminal, y se
+reengancha en vez de abrir otra — y el frontend no vuelve a lanzar su comando
+(`spawnPty`: una terminal encontrada de nuevo ya gasto su lanzamiento). Cerrar una
+pestana con el host lejos deja el cierre pendiente y se envia al volver.
+
+**Probado:** 11 pruebas del motor (PTY y pantalla), 4 del protocolo, 6 contra el
+binario real por su socket (sobrevivir a la conexion y repintar, ultima pantalla
+de un programa terminado, rechazo fuera de la ventana, salida por inactividad,
+`attach` arrancando un daemon desacoplado) y, en vivo contra un host Linux real:
+instalar por SFTP, abrir, perder la conexion y encontrar la terminal desde una
+sesion nueva.
+
+**Vigilar la carpeta del proyecto** (protocolo 2). `fs_set_watch` recibe el
+target; para un host, el motor vigila la carpeta **alli** con el mismo vigilante
+que la local (`workspace_engine::watch`: `notify`, debounce de 300 ms, `.git`
+fuera de las rutas y nada fuera de la carpeta —macOS entrega del historial la
+creacion de la propia carpeta y de su padre—) y el
+desktop emite el mismo `fs:changed`, con `target` (la misma ruta puede existir en
+las dos maquinas) y `git` cuando cambio algo bajo `.git` (un commit o un stage en
+una terminal, que el arbol ignora y el panel de Cambios no). El arbol y las
+pestanas recargan lo que muestran; Cambios espera a que la rafaga se calme
+(800 ms) y lee el host una vez. La vigilancia se vuelve a armar cuando el host
+vuelve.
+
+**Estado preciso de agentes** (protocolo 3, fase 2). Sin tunel inverso: el
+reporter de cada agente postea a un receptor del **propio motor**, en el
+loopback del host, y el reporte viaja por el canal que ya existe.
+
+- *Cableado.* `WireHooks` corre en el host el **mismo instalador** que el
+  desktop (`workspace_engine::agent_hooks`): los mismos scripts en
+  `~/.uxnan/hooks/` del host y el mismo registro en la config de cada agente,
+  conservando lo ajeno, los permisos del fichero y el `.bak`. El alcance es
+  `Reach::PresentAgents`: solo los agentes de los que el host da señales (su
+  ejecutable en el `PATH` del shell de login —el del daemon es el minimo de un
+  `ssh host cmd`— o su carpeta de config); nunca se crea la carpeta de otro
+  producto. El desktop lo pide al conectar si `auto_install_hooks` esta activo.
+- *Receptor.* `127.0.0.1:<puerto>` con token propio del daemon (24 bytes de
+  `/dev/urandom`), una sola ruta (`POST /hook`), cuerpos con `Content-Length`,
+  `Expect: 100-continue` atendido, topes de 16 KiB de cabeceras, 512 KiB de
+  cuerpo y 5 s por peticion. Responde `204` en el acto: ningun reporter lee la
+  respuesta y ninguno debe esperar a un enlace lento. Las coordenadas tambien
+  quedan en `~/.uxnan/host/run/endpoint.env` (`0600`).
+- *Entorno.* Cada terminal del motor arranca con `UXNAN_AGENT_ID` (lo manda el
+  desktop: el id de la pestana) y, despues —para que ganen—, `UXNAN_HOOK_URL`,
+  `UXNAN_HOOK_TOKEN` y `UXNAN_ENDPOINT_FILE` del daemon. El daemon borra de su
+  propio entorno esas claves heredadas (`pty::PER_TERMINAL_KEYS`, la misma lista
+  que `launchenv`) y ya **no** cambia su umask: las terminales la heredan, y un
+  fichero creado en ellas debe salir como en cualquier sesion SSH (sus propios
+  ficheros llevan modo explicito).
+- *Entrega.* `Event::Hook { session, headers, body }` — las cabeceras
+  `x-uxnan-*` (nunca el token) y el cuerpo tal cual — solo a las conexiones que
+  miran **esa** terminal; sin nadie mirando se guardan los 64 mas recientes y se
+  entregan tras la pantalla al reengancharse. El desktop los procesa **en
+  orden** y los busca por sesion (`tab_for`): tras reiniciar la app la pestana
+  tiene otro id y el agente conserva el viejo. Reescribe `x-uxnan-agent-id` al
+  de la pestana y llama al mismo `hooks::handle_report` con
+  `ReportOrigin::Host`, que no lee en esta maquina ninguna ruta que el reporte
+  nombre: la vista previa de un turno terminado se le pide al motor del host
+  (`TranscriptPreview`), que lee el transcript alli.
+
+Probado contra el binario real (un reporte del script real llega solo a su
+terminal, espera mientras nadie mira y llega tras la pantalla; el cableado
+registra los reporters y conserva lo ajeno; la umask de las terminales) y en
+vivo contra un host Linux: un reporte cruza un reinicio de la app hasta la
+pestana nueva, y **el Claude Code del host** corrio un turno cuyos hooks
+(`UserPromptSubmit`, `Stop`, `SessionEnd`) llegaron a esta maquina.
+
+**Herramientas de los agentes del host** (protocolo 7). El receptor del motor
+atiende ademas `POST /browser` (el shim de `$BROWSER`; responde 204 y viaja como
+`Event::OpenUrl` a una conexion que mira esa terminal — sin nadie mirando, no se
+abre despues) y `POST /mcp` (con `Authorization: Bearer` o `X-Uxnan-Token`; viaja
+como `Event::Mcp` con un ticket, el desktop responde con `ClientMessage::McpAnswer`
+lo que respondio su propio `control::mcp::handle` como `Caller::Launch` de la
+pestana, y la peticion espera hasta 300 s; si esa conexion se va, se le responde
+502 en vez de dejarla colgada). El MCP del desktop es JSON peticion/respuesta, sin
+SSE, asi que un ticket por llamada basta. `AgentTools` da los *hechos* del host —
+su endpoint, el token, el shim, el archivo de Claude que el motor escribio en
+`~/.uxnan/host/run/mcp/claude-<port>.json`, la version de OpenCode instalada alli—
+y el desktop construye el catalogo de lanzamiento de ese host con el **mismo**
+codigo que el suyo (`workspace_engine::mcp_launch`, movido desde `mcpinject`):
+`mcp_info(target)` para el frontend y las variables de la terminal en
+`pty_create`, bajo los mismos ajustes que una terminal local. Un `localhost:<p>`
+que el host pide abrir se trae aqui por el mismo reenvio que "Abrir" del indicador
+de puertos. Probado en vivo: el Claude del host llamo a `uxnan_status` por el
+motor e imprimio la pestana con la que se le respondio.
+
+**Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
+empaquete los binarios del host; Windows con PowerShell como `DefaultShell` y ARM64
+sin probar en vivo. Pasar la sesion de un agente del host a un chat (§5.18), las
+filas del host en Ajustes → Hooks, los ficheros, git y busqueda servidos por el
+motor (§5.10–§5.10i) y el trabajo headless (§5.19) ya estan hechos.
+
+## 5.17 La pagina del host, el doctor y el modo sin conexion — IMPLEMENTADO (F7)
+
+**La pagina del host** se abre con *Detalles* en su fila de Ajustes → Hosts
+(`HostDetailsDialog`). Tiene cuatro partes:
+
+- **La comprobacion** (`ssh_host_doctor` → `ssh/doctor.rs`), un paso por fila:
+  la ruta resuelta (directa, por bastiones, o un `ProxyCommand`, que no se sondea
+  aparte), si el primer salto contesta por TCP y en cuanto, si la clave esta en
+  `known_hosts`, el inicio de sesion, la shell, el motor (version, plataforma o el
+  motivo por el que no corre), la ida y vuelta que mide el latido del motor
+  (`round_trip`, la misma que se publica como `SshHostSession.latencyMs`) y el
+  reenvio del agente. **Nunca inicia sesion para averiguarlo**: lee lo que la app
+  sabe y sondea el primer salto, asi que no cuesta nada ni pide nada. Lo que solo
+  una sesion puede contestar dice *Conecta para comprobarlo* hasta que la hay.
+- **La maquina**: el inventario completo (§5.6), con la version de cada agente.
+- **Las terminales del host** (`ssh_host_sessions`): todas las que tiene el
+  motor, tambien las que ninguna pestana de esta ventana muestra —las deja una
+  ejecucion anterior de la app—, con si estan abiertas aqui. *Terminar* una
+  (`ssh_host_session_end`) va cercado a la conexion que el usuario ve y pide
+  confirmacion.
+- *Olvidar host*, y *Conectar* / *Desconectar*.
+
+**El estado del host, en un solo sitio** (`hosts.stateOf` → conectado,
+conectando, esperandote, sin conexion; `HOST_STATE_TONE` le da el color). Lo
+usan la fila de Ajustes, la pagina, la ficha del proyecto en la barra lateral
+(un punto, y la latencia en el tooltip) y la pestana de una terminal del host
+(una insignia con el nombre del host y su punto; el titulo se atenua mientras el
+host no esta). Nadie decide el estado por su cuenta.
+
+**Modo sin conexion.** Cuando un host se va, el arbol de ficheros que ya habia
+leido algo lo **conserva**, marcado sin conexion y con cuando se leyo
+(`OfflineNote`: "build-box esta sin conexion — esto se leyo hace 3 minutos"); no
+es `mutable` mientras tanto y se vuelve a leer cuando el host vuelve. Cambios e
+Historial hacen lo mismo con la misma nota. Un arbol que nunca recibio su primera
+respuesta sigue diciendo que espera. Es la regla de §6: lo que se muestra de otra
+maquina nunca se presenta como actual.
+
+**La limpieza de worktrees en un host** tiene su selector de maquina en Ajustes →
+Git → Limpieza (`MachinePicker`, el mismo que Ajustes → Hooks); escanear, medir y
+quitar van al motor de ese host (§5.10i), y quitar va cercado.
+
+**Lo que queda fuera:** el coste por comando de §5.3 no se mide —con el motor, el
+trabajo repetido ya no paga un `exec` por llamada, y en un host sin motor la
+medida costaria justo ese `exec`—; queda anotado en `FOR-DEV.md`. Agrupar los
+proyectos por host en la barra lateral queda para un posible rediseño del panel
+izquierdo, a decidir por el mantenedor.
+
+## 5.18 El bridge del host — IMPLEMENTADO (F8)
+
+**Un dueño por capacidad.** Las conversaciones y el telefono son del bridge;
+en un host, del **bridge del host**: el mismo `uxnan-bridge`, instalado en esa
+cuenta. El desktop le habla igual que al suyo, por el canal de control local
+(`02a` §5.8.15). El trabajo headless **no** es del bridge ni aqui ni alli: es
+del motor de trabajo, y en un host lo hace su motor (§5.19).
+
+**Como se llega, sin abrir ningun puerto** (`ssh/bridge.rs`):
+
+- **El registro lo lee el motor del host**: `~/.uxnan/local-control.json` de esa
+  cuenta, con el puerto y el token. Es el unico sitio donde existe el token, y no
+  toca el disco de esta maquina: vive en memoria lo que dura el enlace.
+- **El socket es un canal SSH `direct-tcpip` al `127.0.0.1` del host.** `sshd`
+  lo abre desde el loopback de esa maquina, que es el par que el bridge exige, asi
+  que su autorizacion no cambia —loopback, sin `Origin`, el token—. El cliente
+  WebSocket es el mismo (`Connection::open_over`); el local hace lo mismo sobre
+  TCP.
+
+**Un enlace por host, que vive lo que su motor** (`bridgeclient/hosts.rs`).
+Empieza cuando arranca el motor de una conexion y termina cuando ese motor se
+pierde; una reconexion trae motor nuevo y enlace nuevo, que reanuda el registro
+del bridge donde se quedo. No hay modos: si el host tiene bridge, el desktop se
+enlaza; si no, lo dice (`notRunning`) y vuelve a mirar cada 30 s —una lectura de
+fichero por el canal del motor, que no le cuesta nada al host— o al momento con
+`bridge_host_retry`. Un enlace de un motor viejo nunca pisa el estado del nuevo
+(por generacion). `bridge_call` recibe el `target`: `ssh:<hostId>` va al bridge de
+ese host. Eventos: `bridge:host-status` y `bridge:host-notification`, con su
+`hostId`. **Nada de esto instala ni arranca un bridge.**
+
+**Probado en vivo** contra un bridge de usar y tirar en un host Linux real
+(`a_hosts_own_bridge_answers_through_the_engine`: instalado en una carpeta propia
+de la prueba, con ella como `HOME` y el LAN apagado, y borrado al final):
+`bridge/status` contesto por el canal directo y por el enlace de la app.
+
+**El chat de un proyecto del host** (desktop): una tienda y una replica por
+maquina (`bridges.for`, `chatFor`), el panel de un chat provee la de su maquina
+(`provideChat`), y un proyecto del host ofrece chat **mientras su bridge esta
+conectado** (`bridges.offersChat`); si se cae, la pestana lo dice
+(`ChatHostGate`).
+
+**Instalarlo y mantenerlo vivo es del motor del host** (protocolo 15,
+`Call::Bridge`: `Status`, `Install`, `Supervise { on }`; `uxnan-host` →
+`bridge.rs`; comandos `host_bridge_status|install|supervise`, estos dos cercados):
+
+- **Encontrarlo.** Un bridge que el usuario instalo el mismo —en el `PATH` de su
+  shell de login (`own`)— es el que se usa: fue su eleccion. Si no, el de
+  `~/.uxnan/bridge` (`managed`). Uno que ya corre (su propio servicio, una
+  terminal) se respeta: el motor nunca arranca un segundo.
+- **Instalarlo** en la cuenta: `npm install --global --prefix ~/.uxnan/bridge
+  uxnan-bridge@latest` con el npm de su Node —sin administrador, nada fuera de la
+  cuenta—. Esa disposicion la reconoce `bridge/update`, que usa el npm junto al
+  Node que lo corre, asi que despues se actualiza solo (`canApply: true`, medido).
+  Si la cuenta aun no tiene `~/.uxnan/daemon-config.json`, se escribe con
+  `lanEnabled: false` y `mdnsEnabled: false`: **ningun puerto abierto por
+  defecto**; uno que ya existe es del usuario y no se toca. Con el LAN apagado el
+  endpoint HTTP del bridge sigue en `127.0.0.1` (bridge `[Unreleased]`), asi que
+  las aprobaciones de Claude Code funcionan sin publicar nada; un bridge anterior
+  a ese cambio pierde solo esas aprobaciones.
+- **Mantenerlo vivo** (decision del maintainer: el motor, no un servicio del SO).
+  El motor ya sobrevive a la sesion SSH, asi que arranca `node cli.js start
+  --service` —sin `INVOCATION_ID`, para que su actualizacion no se crea una unidad
+  de systemd— y lo vuelve a arrancar si termina, con espera creciente (2 s a 60 s)
+  mientras termine rapido; tambien tras su propia actualizacion, que instala la
+  version nueva y sale. Sin linger, sin administrador, igual en Linux, macOS y
+  Windows. El deseo vive en `~/.uxnan/host/bridge.json` y lo retoma el siguiente
+  daemon; mientras se vigila el bridge el daemon no se apaga por inactividad. Su
+  salida va a `~/.uxnan/host/bridge.log`.
+
+**Sus secretos sobreviven a un reinicio** (§3): el motor solo arranca el bridge
+cuando tiene la llave que esta app le entrego (`Unlock`) y se la pasa por la
+entrada estandar (`start --secret-key-stdin`); el bridge abre con ella
+`~/.uxnan/secrets.sealed` —la primera vez copia lo que tenia el llavero, asi que
+conserva su identidad— y con una llave que no lo abre se niega a arrancar y no lo
+toca, en vez de nacer con otra identidad. Probado en vivo en un host Linux: dos
+arranques con la misma identidad (la que ya tenia en el llavero del kernel),
+ningun secreto legible en el fichero (`600`), y una llave ajena rechazada sin
+tocarlo. Limite: un segundo ordenador con su propia llave no puede abrir los
+secretos que sello el primero; el motor se queda con la primera llave que recibe.
+
+**Probado:** contra el daemon real con un bridge simulado (arranca, se reinicia al
+morir, se suelta al pedirlo) y en vivo en un host Linux real, armado por
+`UXNAN_SSH_TEST_BRIDGE=1` (`a_hosts_bridge_is_installed_and_kept_running_by_its_engine`):
+instalado, vigilado, alcanzado por el enlace con `lanEnabled: false`, y detenido.
+
+**Las herramientas de esta app para los agentes del bridge del host** van por
+el motor, como las de sus terminales. El endpoint del motor tiene un segundo
+token, solo para esos agentes (`AgentTools.bridge_token`, protocolo 15): vale
+para `/mcp` y nunca para `/hook` ni `/browser`. Al enlazarse, el desktop le da al
+bridge del host `desktop/attach { mcpUrl: el /mcp del motor, token }` (bajo el
+mismo ajuste que al bridge local). El motor reenvia esas llamadas a cualquier
+cliente conectado como `Event::Mcp { bridge_cwd }` (la carpeta de la
+conversacion, de su cabecera `x-uxnan-cwd`), y el desktop las contesta como
+`Caller::Bridge { cwd, target: ssh:<id> }`: el alcance es el proyecto de esa
+carpeta **en ese host**, nunca la misma ruta aqui (el alcance de cualquier
+llamador lee ya la carpeta en su maquina).
+
+**Probado en vivo** con el Claude Code real de un host
+(`a_terminal_session_continues_as_a_chat_on_the_hosts_bridge_with_this_apps_tools`):
+una sesion dejada como en una terminal continuo en el chat del bridge del host
+(`agentSessionId`), y su agente llamo a `uxnan_status` por el motor y recibio la
+respuesta de este lado.
+
+**El traspaso terminal → chat en un host** sigue la misma regla: un
+`TerminalSessions` por maquina (`terminalSessionsFor`). Las terminales de un host
+avisan al bridge de ese host de la sesion que tienen (`agent/hold`), responden
+alli sus peticiones de traspaso, "Continuar como chat" abre el chat en ese bridge
+y "Abrir en terminal" lanza la CLI del propio host. Probado con pruebas y en
+vivo (arriba).
+
+**La pagina del host** lo ofrece (`HostBridgeSection`): de quien es y su version,
+si corre y quien lo mantiene, si esta ventana esta enlazada y como llegan los
+telefonos; Instalar, Iniciar y mantener, Detener; *Configurar relay* (el mismo
+`RelaySetupDialog`, sobre la replica de relay de ese host, `relayFor`) o, si el
+relay de esta maquina existe con su token recordado, *Usar mi relay*: el bridge
+local admite la llave del host (`relay/admitHost`, solo canal local) y el del
+host hace `relay/use` con esa URL, sin teclear nada; *Abrir en
+la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
+(`BridgeDialog` con su `target`; `bridge_pairing_qr` rechaza un QR sin relay ni
+LAN).
+
+## 5.19 El trabajo headless en el host — IMPLEMENTADO (F8, por el motor)
+
+**Lo hace el motor del host, no su bridge** — una desviacion deliberada del plan,
+que se lo pedia al bridge del host. La razon es la regla "un motor, dos
+lugares": aqui, el trabajo headless (pasos de orquestacion, automatizaciones,
+borrador de commit, nombre de una conversacion) nunca fue del bridge, sino de
+`agentrun`, el runner de una sola pasada. Pedirselo al bridge del host habria
+sido un segundo runner con otro comportamiento; el motor del host enlaza el
+mismo codigo. Ademas sirve a los siete CLIs y no exige un bridge instalado en el
+host — solo el motor, que ya esta ahi para las terminales.
+
+`agentrun`, `agentcli` y `which` se mudaron al crate `uxnan-workspace-engine`
+(la app los re-exporta), junto con `precondition`, la puerta de una
+automatizacion. **Protocolo 16** del motor:
+
+- `AgentRun { agent, model, prompt, cwd, timeoutMs, autonomous, extra, job,
+  memoryLimitMb }` → el `HeadlessResult` de `agentrun::run_headless`, ejecutado
+  alli con el `PATH` de una shell de login (el motor lo fija al arrancar, como
+  ve una terminal suya). `ErrorCode::Agent` y `ErrorCode::Cancelled` traen sus
+  propias palabras.
+- `AgentCancel { job }` → si habia una ejecucion con ese nombre; termina su
+  arbol de procesos (`agentrun::cancel`).
+- `Precondition { command, timeoutSeconds, cwd }` → el `PreconditionResult` de
+  una linea de shell en esa carpeta, en la shell de esa maquina.
+
+Quien lo usa, siempre con la maquina **de la carpeta**, nunca la ruta sola:
+
+- **Orquestacion:** un paso headless cuyo worktree es de un proyecto del host
+  (`StepTarget.machine`, o el proyecto de la ruta) corre alli por
+  `agent_run_headless` con `target`; cancelarlo llega al motor (`host_jobs`).
+  `task/create` de un coordinador lleva la maquina del worktree que resolvio.
+  Un paso de un host no ocupa plazas del presupuesto de esta maquina.
+- **Automatizaciones:** `Automation.target` (`02f` → *En un host*). La misma
+  secuencia del runner (`runner::run`) con el trabajo en `Place::Host`; el
+  runner, sin conexion SSH propia, entrega la corrida a la app abierta
+  (`automations/handoff.rs`), que tiene la conexion.
+- **Borrador de commit** (§5.10h) y **nombre de una conversacion**
+  (`convtitle::generate_with`): los escribe el agente del host.
+
+**Probado** contra el daemon real (`an_automation_gate_runs_in_its_folder_on_the_host`,
+`a_headless_run_on_the_host_answers_from_its_folder_and_can_be_cancelled`) y en
+vivo contra un Linux real con su propio Claude Code
+(`a_headless_run_and_a_gate_happen_on_the_host`).
+
+**Limite honesto:** una automatizacion de un host corre mientras la app esta
+abierta y conectada a el. Correrla con esta maquina apagada pide algo **en el
+host** que lleve la hora — su motor programando la corrida, o su bridge — y es
+una decision del mantenedor (`FOR-DEV.md` → *Remote hosts*, el motor, punto 3).
+
+## 5.20 El `ssh` del sistema como portador — IMPLEMENTADO (F9)
+
+**Para que.** El cliente en proceso (russh) reproduce llaves, agentes,
+contrasenas, segundo factor, bastiones y `ProxyCommand`, y le cuenta cada paso a
+la interfaz. Hay configuraciones que no puede reproducir: Kerberos
+(`GSSAPIAuthentication`), llaves FIDO2 (`sk-*` o un `SecurityKeyProvider`),
+tarjetas (`PKCS11Provider`), autenticacion por host, un `ProxyUseFdpass`, un
+`KnownHostsCommand`. Para esas, el OpenSSH de la maquina se conecta solo, como
+`ssh <host>` en una terminal, y lleva los mismos canales (`ssh/system.rs`).
+
+**Un solo portador por conexion, no un segundo camino.** `Connection` tiene un
+`Carrier` (`Builtin` | `System`) y todo lo de arriba pide canales neutrales:
+`exec`/`exec_bytes`, `exec_stream` (el motor), `sftp_stream`, `tcp` (puertos
+reenviados, el bridge del host, el tunel a un bastion), `is_closed` y
+`hang_up`. Lo unico que solo existe en el integrado es la terminal de canal
+plano (`ssh/pty.rs`): en el portador del sistema las terminales son del motor.
+
+**Como se lleva cada canal.** Donde la plataforma comparte conexiones (macOS,
+Linux) un maestro `ssh -M -S <socket> -N` inicia sesion una vez y cada canal es
+un cliente suyo: `-T <comando>`, `-s sftp` (asi el motor se sube igual: no se
+pierde nada), `-W host:puerto`. El socket vive en `~/.uxnan/ssh-mux[-dev]/`
+(0700; una carpeta por build), y al primer uso se limpian los sockets muertos y
+se cierra el maestro huerfano de una ejecucion que no colgo. Medido contra un
+Linux real: iniciar sesion 0.8-1.3 s, un comando compartido 0.17 s. **Windows**
+no tiene `ControlMaster`, asi que alli cada canal es su propio `ssh` y su propio
+inicio de sesion (~1 s por comando, medido sin compartir); colgar termina los
+procesos de cada canal abierto. La pagina del host lo dice.
+
+**Nunca una pregunta que no puede mostrar.** Todo corre con `BatchMode=yes`: un
+host que pide contrasena, frase de paso o decidir una llave nueva falla con la
+frase de OpenSSH (`systemSshFailed`, con `detail`) en vez de colgarse. Lo que no
+pregunta —un ticket de Kerberos, el toque de una llave, un agente— funciona. Las
+llaves de host son de OpenSSH: lee los mismos `known_hosts`. Un fallo de red se
+clasifica como el integrado (`Unreachable`), asi que la escalera de reconexion
+lo trata igual. El reenvio del agente sigue la configuracion: el maestro y cada
+canal leen el mismo `ForwardAgent` (medido: por la conexion compartida solo
+llega si ambos lo piden, y lo piden porque leen la misma configuracion).
+
+**Quien lo elige.** `SshHost.carrier` (`auto` | `builtin` | `system`, en la
+pagina del host, `ssh_host_set_carrier`). `auto` usa el integrado salvo que la
+ruta —cualquier salto— pida algo de la lista de arriba (`system::needs_system`,
+leido de `ssh -G`; una llave `sk-` se reconoce por su `.pub` y solo si existe).
+El motivo viaja como codigo (`SystemNeed.code`) para que la interfaz lo diga en
+el idioma de la persona; un host que necesita a la persona (una llave de
+seguridad) no se reconecta solo al arrancar. `host/list`/`host/show` dicen
+`carrier` y `systemSsh`.
+
+**Probado** en vivo contra un Linux real, compartiendo y sin compartir sesion
+(`the_system_ssh_carries_every_channel_the_app_uses`,
+`…_without_sharing_a_login`): comandos, un flujo TCP a su `sshd` y uno rechazado
+con su motivo, SFTP, el motor instalado por el, una terminal dentro del motor y
+colgar. El carril de Windows de CI corre los mismos contra su `sshd`.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
 |---|---|
 | Capa 2 — titulo / OSC | **Funciona sin trabajo extra**: viaja en el stream de bytes del PTY |
-| Capa 1 — hooks HTTP | Requiere tunel inverso + instalar los reporters en el host. Fase posterior |
-| Capa 3 — deteccion de proceso | Requiere sondeo remoto de procesos. Fase posterior |
+| Capa 1 — hooks HTTP | **Funciona con el motor** (Linux, macOS, Windows): los reporters, cableados alli, postean al receptor del motor y el reporte viaja por su canal (§5.16). Sin el motor: no |
+| Capa 3 — deteccion de proceso | **Funciona con el motor**: el motor lee la tabla de procesos del host cada 2 s —solo mientras alguien mira y la app le dijo que agentes buscar (`WatchAgents`)— con el mismo `procscan` que la app usa aqui, y avisa cuando cambia el agente de una terminal (`Event::Agent`), tambien a quien vuelve a conectarse. La pestaña lo recibe como el mismo `agent:detected` local (§5.16) |
 
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
-| Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
-| Ficheros | **Funciona** por SFTP (§5.10): listar, abrir, **guardar** (en el sitio, con fencing) y **previsualizar** imagenes y PDF. Sin marcado de ignorados y sin refresco automatico |
-| Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
-| Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
-| Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
-| Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
-| Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
+| Terminal | **Funciona**: en Linux, macOS y Windows vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en un host donde el motor no puede correr (sin build, `home` con `noexec`), canal sobre la sesion (§5.7) |
+| Ficheros | **Funciona** por el motor (§5.10): listar con ignorados marcados, abrir, **guardar** (atomico, conservando el modo, con fencing) y **previsualizar** imagenes y PDF. Sin motor: no hay ficheros de proyecto, y se dice |
+| Rama y estado git de la fila | **Funciona** por el motor (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes y el borrador lo escribe el agente del host en el worktree, o el de aqui si el host no lo tiene (§5.10h). |
+| Trabajo headless (orquestacion, automatizaciones, nombre de una conversacion) | **Funciona** por el motor (§5.19), con los CLIs del host. Una automatizacion de un host necesita la app abierta y conectada |
+| Buscar (nombre y contenido) | **Funciona** por el motor, con el mismo recorrido que aqui (§5.10e), sea o no un repositorio. |
+| Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por el motor y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
+| Cambios / Historial | **Funciona** por el motor: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull (con el agente que reenvia la conexion), ejecutados en el host. Se refresca con el vigilante del motor. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
-| Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
+| Refresco automatico de cualquiera de los anteriores | **Si con el motor** (Linux, macOS, Windows): el motor vigila la carpeta **alli** y empuja los cambios —tambien los de `.git`— como el mismo `fs:changed`, con su target (§5.16). Sin el motor: al abrir, al actuar y con el boton; sondear cuesta ~2 s por `exec` (§5.3) |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
 marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
@@ -1559,11 +2102,11 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
-| 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
+| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Su sesion pasa a un chat del bridge del host (§5.18). Falta Windows |
+| 3 | Archivos, git y worktrees remotos | **Hecha**, servida por el motor del host desde F4 del plan 037: ficheros (§5.10, leer, **guardar** y **previsualizar**), worktrees (§5.10i: listar, crear, quitar), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
-| 5 | Continuidad y recursos remotos | Pendiente |
+| 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador (Linux, macOS y Windows); faltan los recursos remotos |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
 
 ## 8. Fuera de alcance (con motivo)

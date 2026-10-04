@@ -37,7 +37,7 @@
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
-  import { LOCAL_TARGET } from "$lib/target";
+  import { bridges } from "$lib/bridge/client.svelte";
 
   let { repo, open = $bindable(false) }: { repo: RepoData; open?: boolean } = $props();
 
@@ -196,8 +196,9 @@
       { heading: i18n.t("launcher.sectionTerminals"), items: terminals },
       { heading: i18n.t("launcher.sectionAgents"), items: agents },
     ];
-    // A chat runs on the local bridge: offered for a project on this machine.
-    if (projects.targetForPath(repo.path) === LOCAL_TARGET)
+    // A chat runs on a bridge: this machine's, or a host's own while it is
+    // connected (`02g` §5.18).
+    if (bridges.offersChat(projects.targetForPath(repo.path)))
       groups.push({
         heading: i18n.t("launcher.sectionChat"),
         items: [{ value: "chat", label: i18n.t("launcher.newChat"), keywords: ["chat", "mobile", "bridge"] }],

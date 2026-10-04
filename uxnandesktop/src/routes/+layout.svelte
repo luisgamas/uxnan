@@ -2,7 +2,7 @@
   import { welcome } from "$lib/state/welcome.svelte";
   import "../app.css";
   import { onMount, untrack } from "svelte";
-  import { bridge } from "$lib/bridge/client.svelte";
+  import { bridge, bridges } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
   import { relay } from "$lib/bridge/relay.svelte";
   import { terminalSessions } from "$lib/state/terminalSessions.svelte";
@@ -88,6 +88,9 @@
     // store that mirrors its conversations for the chat tabs.
     void bridge.start();
     chat.start();
+    // The own bridge of each connected host that runs one (`02g` §5.18): one
+    // store and one replica per host, fed by the hosts' events.
+    void bridges.start();
     // The bridge's relay (Settings → Bridge & mobile → Remote access).
     relay.start();
     // Tell the bridge which agent sessions this window's terminals hold, and

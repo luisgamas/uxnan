@@ -9,12 +9,14 @@
 //! notice its file changed on disk — without a manual refresh.
 //!
 //! Only one root is watched at a time (the active worktree); re-pointing the
-//! watch drops the previous debouncer (stopping its background thread) and
-//! builds a fresh one. Paths under a `.git` directory are ignored — git's own
-//! churn must never drive the user-facing tree (which also hides `.git`).
+//! watch drops the previous one (stopping its background thread) and builds a
+//! fresh one. The watcher itself is the workspace engine's
+//! (`uxnan_workspace_engine::watch`), the same one a host's engine runs on a
+//! remote project: what it reports is held to the watched folder, and git's own
+//! churn under `.git` never drives the user-facing tree (which also hides
+//! `.git`).
 
-use std::collections::BTreeSet;
-use std::path::{Component, Path};
+use std::path::Path;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -33,81 +35,59 @@ pub struct FsChangedEvent {
     pub root: String,
     /// Affected paths (forward-slash): changed entries + their parent dirs.
     pub paths: Vec<String>,
+    /// Which machine the root is on (`local`, or `ssh:<hostId>` for a folder a
+    /// host's engine watches): the same path can exist on both, and a change
+    /// on one must not reload the other.
+    pub target: String,
+    /// Something under the root's `.git` changed (a commit, a stage, a
+    /// checkout made outside the app). Only a host's engine reports it — this
+    /// machine's git panel has its own status watcher.
+    pub git: bool,
 }
-
-type FsDebouncer = Debouncer<RecommendedWatcher, FileIdMap>;
 
 /// Holds the active filesystem watcher. Re-pointing the watch swaps the inner
-/// debouncer; dropping the old one stops its watcher thread.
+/// one; dropping the old one stops its watcher thread.
 #[derive(Default)]
 pub struct FsWatcher {
-    inner: Mutex<Option<FsDebouncer>>,
-}
-
-fn normalize(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-/// True when `path` lives inside (or is) a `.git` directory — its internals are
-/// never browsed/edited, so their churn must not drive the tree.
-fn is_ignored(path: &Path) -> bool {
-    path.components()
-        .any(|c| matches!(c, Component::Normal(name) if name == ".git"))
+    inner: Mutex<Option<uxnan_workspace_engine::watch::Watch>>,
 }
 
 impl FsWatcher {
     /// Watch `root` recursively (or stop watching when `None`). Idempotent: a
     /// new call always replaces the previous watch.
     pub async fn set(&self, app: &AppHandle, root: Option<String>) -> notify::Result<()> {
-        // Drop the previous debouncer first so its thread stops before a new one
+        // Drop the previous watch first so its thread stops before a new one
         // starts (avoids two watchers briefly racing on the same tree).
         *self.inner.lock().await = None;
         let Some(root) = root else {
             return Ok(());
         };
-        let root_norm = root.replace('\\', "/");
         let emit_app = app.clone();
-        let emit_root = root_norm.clone();
-        let mut debouncer = new_debouncer(
-            Duration::from_millis(300),
-            None,
-            move |result: DebounceEventResult| {
-                let Ok(events) = result else {
-                    return; // watcher errors are non-fatal; skip this batch
-                };
-                let mut paths: BTreeSet<String> = BTreeSet::new();
-                for event in events {
-                    for path in &event.paths {
-                        if is_ignored(path) {
-                            continue;
-                        }
-                        paths.insert(normalize(path));
-                        if let Some(parent) = path.parent() {
-                            paths.insert(normalize(parent));
-                        }
-                    }
-                }
-                if paths.is_empty() {
-                    return;
-                }
-                let _ = emit_app.emit(
-                    "fs:changed",
-                    FsChangedEvent {
-                        root: emit_root.clone(),
-                        paths: paths.into_iter().collect(),
-                    },
-                );
-            },
-        )?;
-        debouncer
-            .watcher()
-            .watch(Path::new(&root), RecursiveMode::Recursive)?;
-        // Track the root in the file-id cache too, so renames/removals under it
-        // are resolved correctly by the debouncer.
-        debouncer
-            .cache()
-            .add_root(Path::new(&root), RecursiveMode::Recursive);
-        *self.inner.lock().await = Some(debouncer);
+        let emit_root = root.replace('\\', "/");
+        let watch = uxnan_workspace_engine::watch::start(&root, move |batch| {
+            // An overflow lists nothing; reporting the root makes the tree
+            // reload what it shows from the top. Git's own churn alone is not
+            // reported here: this machine's git panel has its own status
+            // watcher.
+            let paths = if batch.overflow {
+                vec![emit_root.clone()]
+            } else {
+                batch.paths
+            };
+            if paths.is_empty() {
+                return;
+            }
+            let _ = emit_app.emit(
+                "fs:changed",
+                FsChangedEvent {
+                    root: emit_root.clone(),
+                    paths,
+                    target: "local".to_string(),
+                    git: false,
+                },
+            );
+        })?;
+        *self.inner.lock().await = Some(watch);
         Ok(())
     }
 }
@@ -129,7 +109,7 @@ pub struct BrowseChangedEvent {
 /// watch (navigating) or closing the dialog swaps/drops the inner debouncer.
 #[derive(Default)]
 pub struct BrowseWatcher {
-    inner: Mutex<Option<FsDebouncer>>,
+    inner: Mutex<Option<Debouncer<RecommendedWatcher, FileIdMap>>>,
 }
 
 impl BrowseWatcher {
@@ -165,24 +145,5 @@ impl BrowseWatcher {
             .watch(Path::new(&dir_norm), RecursiveMode::NonRecursive)?;
         *self.inner.lock().await = Some(debouncer);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ignores_paths_inside_dot_git() {
-        assert!(is_ignored(Path::new("/repo/.git/index")));
-        assert!(is_ignored(Path::new("/repo/.git")));
-        assert!(is_ignored(Path::new("C:/repo/.git/refs/heads/main")));
-        assert!(!is_ignored(Path::new("/repo/src/main.rs")));
-        assert!(!is_ignored(Path::new("/repo/.gitignore")));
-    }
-
-    #[test]
-    fn normalize_uses_forward_slashes() {
-        assert_eq!(normalize(Path::new("a/b/c.txt")), "a/b/c.txt");
     }
 }

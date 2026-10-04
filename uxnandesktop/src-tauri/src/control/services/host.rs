@@ -114,7 +114,7 @@ async fn view<R: tauri::Runtime>(app: &AppHandle<R>, host: &SshHost) -> Value {
         .read()
         .await
         .get(&host.id)
-        .filter(|conn| !conn.handle().is_closed())
+        .filter(|conn| !conn.is_closed())
         .cloned();
     let shell = state
         .ssh_shells
@@ -131,13 +131,31 @@ async fn view<R: tauri::Runtime>(app: &AppHandle<R>, host: &SshHost) -> Value {
         "source": serde_json::to_value(host.source).unwrap_or(Value::Null),
         "needsPrompt": host.needs_prompt,
         "connected": session.is_some(),
+        "carrier": serde_json::to_value(host.carrier).unwrap_or(Value::Null),
     });
     if let Some(conn) = session {
+        if let Some(need) = conn.system_need() {
+            out["systemSsh"] = json!(need.code);
+        }
         let (open, limit) = conn.channels();
         out["generation"] = json!(conn.generation());
         out["channels"] = json!({ "open": open, "limit": limit });
         if let Some(shell) = shell {
             out["shell"] = json!(shell);
+        }
+        // The engine that is already running, never one started to answer: a
+        // read must not install or launch anything on someone's machine.
+        if let Some(engine) = state.ssh_engines.live(&host.id).await {
+            let welcome = engine.welcome();
+            out["engine"] = json!({
+                "version": welcome.version,
+                "protocol": welcome.protocol,
+                "os": welcome.os,
+                "arch": welcome.arch,
+            });
+            if let Some(ms) = engine.latency_ms() {
+                out["latencyMs"] = json!(ms);
+            }
         }
     }
     out
@@ -182,6 +200,16 @@ pub async fn show<R: tauri::Runtime>(
         .collect();
     out["projects"] = json!(projects);
     out["terminals"] = json!(super::terminal::enrich(app, tabs).await);
+    let state = app.state::<AppState>();
+    if out["connected"] == json!(true) {
+        if let Some(engine) = state.ssh_engines.live(&host.id).await {
+            // A listing that fails leaves the field out rather than claiming
+            // the host holds nothing.
+            if let Ok(held) = crate::commands::engine_sessions(&state, &host.id, &engine).await {
+                out["engineSessions"] = json!(held);
+            }
+        }
+    }
     Ok(out)
 }
 

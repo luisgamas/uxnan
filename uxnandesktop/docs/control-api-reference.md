@@ -55,7 +55,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `project/list` (MCP tool `project_list`) — List the projects registered in Uxnan: id, name, folder, whether it is a git repository, the machine it lives on, and its worktrees with branch and change counts.
 - `project/show` (MCP tool `project_show`) — Describe one project: the same record `project/list` gives, for the project you select.
 - `host/list` (MCP tool `host_list`) — List the remote machines Uxnan is registered against, with the state of their live SSH session: connected or not, the shell each one starts, and the channels in use against the limit it enforces.
-- `host/show` (MCP tool `host_show`) — Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.
+- `host/show` (MCP tool `host_show`) — Describe one host: the record `host/list` gives (with its engine and latency), plus the projects registered on it, the terminals open against its session, and every terminal its engine holds.
 - `worktree/list` (MCP tool `worktree_list`) — List worktrees: path, branch, HEAD, whether it is the main checkout, and which live agents run in it.
 - `worktree/show` (MCP tool `worktree_show`) — Describe one worktree: path, branch, HEAD, the project it belongs to, its dirty/ahead/behind counts and the agents running in it.
 - `terminal/list` (MCP tool `terminal_list`) — List the terminal tabs open in Uxnan: id, title, working directory, the worktree it belongs to, and — when an agent runs in it — the agent, its model and its live state (working, waiting, blocked, done).
@@ -210,8 +210,10 @@ Report the running Uxnan Desktop: its version, the control protocol version, whi
   - `version` (integer) — The group's feature version.
   - `enabled` (boolean) — Whether the group is switched on.
 - `caller` (object) — Who the app takes you for, from the token you presented.
-  - `kind` (string) — `launch` (a process the app started) or `control` (the user's shell).
+  - `kind` (string) — `launch` (a process the app started), `control` (the user's shell) or `bridge` (an agent a bridge runs for one of its chats).
   - `terminalId` (string, optional) — For a launch caller: the terminal it said it is (null when it did not say).
+  - `cwd` (string, optional) — For a bridge caller: its conversation's folder, which scopes it (null when it did not say).
+  - `target` (string, optional) — For a bridge caller: the machine that folder is on — null for this computer's bridge, `ssh:<hostId>` for a host's own bridge.
 - `counts` (object) — What the app holds right now.
   - `projects` (integer) — Registered projects.
   - `terminals` (integer) — Live terminals.
@@ -375,13 +377,21 @@ List the remote machines Uxnan is registered against, with the state of their li
   - `port` (integer) — Its SSH port.
   - `user` (string) — The user Uxnan logs in as.
   - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
-  - `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+  - `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
   - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+  - `carrier` (string) — What carries its connection, as the person set it: `auto` (the built-in client, unless its SSH configuration asks for something only OpenSSH itself can do), `builtin` or `system` (the machine's own `ssh`).
+  - `systemSsh` (string, optional) — While connected through the system `ssh`: why — `kerberos`, `smartcard`, `securityKeyProvider`, `securityKey`, `hostbased`, `fdpass`, `knownHostsCommand`, or `chosen` (the person picked it). Absent on the built-in client. Through it the host works the same, but a password or passphrase cannot be typed in Uxnan: OpenSSH runs without a prompt.
   - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
   - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
   - `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
     - `open` (integer) — Channels in use right now.
     - `limit` (integer | null) — The host's own limit, once it has refused one. Null until then.
+  - `engine` (object, optional) — The host engine (`uxnan-host`) running there, while connected through it. Absent on a host the engine cannot run on: its terminals are plain channels that end with the connection, and it has no files, git or search.
+    - `version` (string) — The engine's version.
+    - `protocol` (integer) — The protocol version both ends agreed on.
+    - `os` (string) — The host's OS as the engine reports it (`linux`, `macos`, `windows`).
+    - `arch` (string) — Its CPU architecture (`x86_64`, `aarch64`).
+  - `latencyMs` (integer, optional) — The link's round trip in milliseconds, as the engine's heartbeat last measured it. Absent until it has been measured, and on a host without the engine.
 
 **Request**
 
@@ -396,7 +406,7 @@ List the remote machines Uxnan is registered against, with the state of their li
 
 ### `host/show`
 
-Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.
+Describe one host: the record `host/list` gives (with its engine and latency), plus the projects registered on it, the terminals open against its session, and every terminal its engine holds.
 
 - **Group:** `read` · read-only
 - **MCP:** `host_show`
@@ -416,13 +426,21 @@ Describe one host: the record `host/list` gives, plus the projects registered on
 - `port` (integer) — Its SSH port.
 - `user` (string) — The user Uxnan logs in as.
 - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
-- `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+- `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
 - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+- `carrier` (string) — What carries its connection, as the person set it: `auto` (the built-in client, unless its SSH configuration asks for something only OpenSSH itself can do), `builtin` or `system` (the machine's own `ssh`).
+- `systemSsh` (string, optional) — While connected through the system `ssh`: why — `kerberos`, `smartcard`, `securityKeyProvider`, `securityKey`, `hostbased`, `fdpass`, `knownHostsCommand`, or `chosen` (the person picked it). Absent on the built-in client. Through it the host works the same, but a password or passphrase cannot be typed in Uxnan: OpenSSH runs without a prompt.
 - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
 - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
 - `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
   - `open` (integer) — Channels in use right now.
   - `limit` (integer | null) — The host's own limit, once it has refused one. Null until then.
+- `engine` (object, optional) — The host engine (`uxnan-host`) running there, while connected through it. Absent on a host the engine cannot run on: its terminals are plain channels that end with the connection, and it has no files, git or search.
+  - `version` (string) — The engine's version.
+  - `protocol` (integer) — The protocol version both ends agreed on.
+  - `os` (string) — The host's OS as the engine reports it (`linux`, `macos`, `windows`).
+  - `arch` (string) — Its CPU architecture (`x86_64`, `aarch64`).
+- `latencyMs` (integer, optional) — The link's round trip in milliseconds, as the engine's heartbeat last measured it. Absent until it has been measured, and on a host without the engine.
 - `projects` (array of object) — The registered projects that live on this host.
   - `id` (string) — The project id — what `id:<projectId>` selects.
   - `name` (string) — The display name — what `name:<project name>` selects.
@@ -452,6 +470,13 @@ Describe one host: the record `host/list` gives, plus the projects registered on
     - `cwd` (string, optional) — The folder its terminal was opened in, when known.
     - `firstSeen` (integer) — Epoch seconds of its first report.
     - `lastUpdate` (integer) — Epoch seconds of its latest report.
+- `engineSessions` (array of object, optional) — Every terminal the host engine holds, newest first — including ones no tab of this window shows. Absent without a live engine.
+  - `session` (integer) — The engine's id for it, unique on that host.
+  - `label` (string) — What the terminal was opened as.
+  - `cwd` (string) — The folder it was opened in, on the host.
+  - `alive` (boolean) — Whether its program is still running.
+  - `startedAgoMs` (integer) — How long ago it started — an age, since the two machines' clocks do not agree.
+  - `tab` (string | null) — The terminal id of the tab in this window that shows it; null for one no tab shows (an earlier run of the app left it there).
 
 **Request**
 
@@ -876,6 +901,7 @@ List the saved automations (unattended, recurring agent runs): id, name, whether
   - `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
   - `tags` (array of string) — Free-form labels the list groups by.
   - `workingDir` (string) — The folder a run executes in.
+  - `target` (string) — The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it.
   - `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
   - `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
   - `steps` (array of object) — Its steps, in order.
@@ -918,6 +944,7 @@ Describe one saved automation in full: what `automation/list` gives plus each st
 - `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
 - `tags` (array of string) — Free-form labels the list groups by.
 - `workingDir` (string) — The folder a run executes in.
+- `target` (string) — The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it.
 - `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
 - `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
 - `steps` (array of object) — Its steps, in order.
@@ -1323,7 +1350,7 @@ Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the p
 
 ### `automation/propose`
 
-Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
+Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach — on a host, when your project is there, and the run then happens on that host while Uxnan is connected to it; each step names an agent installed on the machine the folder is on (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `automation_propose`
@@ -1335,6 +1362,7 @@ Draft a saved automation **for the person to decide on**: Uxnan opens its automa
 |---|---|---|---|
 | `name` | string | yes | What to call it. At most 200 characters. |
 | `workingDir` | string | yes | Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project. |
+| `target` | string | no | The machine `workingDir` is on: `local` or a host's `ssh:<id>` (`host/list`). Only the control token names one; a launch token's is its own project's machine. Default `local`. |
 | `steps` | array of object | yes | The steps, in order. At most 20. |
 | `description` | string | no | A sentence saying what it is for. |
 | `tags` | array of string | no | Free-form labels the list groups by. |
@@ -1800,7 +1828,7 @@ Scroll your workspace's browser page — or one scrollable element, by its `ref`
 
 ### `host/connect`
 
-Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.
+Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase the person has not given in this session of the app, a second factor, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `host_connect`
@@ -1820,11 +1848,11 @@ Open a session on a registered host that has none — the same path startup take
 - `host` (object) — What the attempt came to.
   - `id` (string) — The host id.
   - `connected` (boolean) — Whether there is a live session now. True also when one was already open.
-  - `status` (string) — `connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`.
+  - `status` (string) — `connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `systemSshFailed` (the host is reached through the machine's own `ssh`, which stopped — `detail` is what it said, e.g. a host key it does not know or a login it refused), `failed` or `noUsableMethod`.
   - `generation` (integer, optional) — The connection incarnation, when connected.
   - `shell` (string, optional) — The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected.
   - `reason` (string, optional) — For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not.
-  - `detail` (string, optional) — A sentence naming the host and what happened, for `unreachable`.
+  - `detail` (string, optional) — A sentence naming the host and what happened, for `unreachable`, `proxyFailed` and `systemSshFailed`.
 
 **Request**
 
@@ -2097,7 +2125,7 @@ Start (or re-run) a saved orchestration run by id: every step is reset and the e
 
 ### `automation/run`
 
-Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run.
+Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run. One that works on a host (`target`) runs there, through that host's engine, and needs the host connected — otherwise the run is recorded as unavailable, saying why.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `automation_run`
@@ -2558,7 +2586,7 @@ Finish a run you drive: record its outcome and summary and end it. Workers still
 
 ### `task/create`
 
-Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.
+Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output — on the machine its worktree is on, so a host project's task runs on that host with that host's agent. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.
 
 - **Group:** `orchestrate` · mutates (receipted, audited)
 - **MCP:** `task_create`

@@ -117,6 +117,7 @@ export const METHOD_NAMES = [
   'relay/update',
   'relay/rotate',
   'relay/remove',
+  'relay/admitHost',
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach',
   'desktop/detach',

@@ -7,8 +7,9 @@
   // reads as three features instead of one.
   //
   // Everything that needs the user (an unknown key, a password, a key that
-  // changed) arrives as a dialog raised from the store, not as state each row
-  // has to interpret.
+  // changed, a second factor) arrives as a dialog raised from the store, not as
+  // state each row has to interpret. Editing a host reuses the add form — one
+  // form, two purposes — rather than a second copy of the same fields.
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -20,6 +21,7 @@
   import StatusDot from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import RemoteFolderPicker from "$lib/components/RemoteFolderPicker.svelte";
+  import HostDetailsDialog from "$lib/components/HostDetailsDialog.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { hostAgents } from "$lib/agentAvailability";
@@ -28,9 +30,10 @@
   import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import KeyIcon from "@hugeicons/core-free-icons/Key01Icon";
   import DeleteIcon from "@hugeicons/core-free-icons/Delete02Icon";
+  import EditIcon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-  import { hosts } from "$lib/state/hosts.svelte";
+  import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
   import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
   import { app } from "$lib/state/app.svelte";
   import type { SshHost } from "$lib/types";
@@ -41,10 +44,19 @@
   let addOpen = $state(false);
   let importOpen = $state(false);
   let removing = $state<string | null>(null);
+  /** The host whose page is open, if any. */
+  let detailsOf = $state<SshHost | null>(null);
+  let detailsOpen = $state(false);
   /** The host whose folders are being browsed, if any. */
   let picking = $state<SshHost | null>(null);
   let pickerOpen = $state(false);
   let secret = $state("");
+  /** One answer per question of a pending second factor. */
+  let answers = $state<string[]>([]);
+  /** The host the form is editing, or `null` when it adds a new one. */
+  let editing = $state<SshHost | null>(null);
+  /** An imported host takes everything but its label from `~/.ssh/config`. */
+  const editingImported = $derived(editing?.source === "sshConfig");
 
   // A new host, with the fields OpenSSH itself needs and nothing more. Anything
   // else (identity files, proxies) comes from the user's own config on import.
@@ -65,10 +77,31 @@
     void hosts.load();
   });
 
+  function clearDraft(): void {
+    draftLabel = draftUser = draftHostname = "";
+    draftIdentity = draftProxyJump = "";
+    draftForwardAgent = false;
+    draftPort = "22";
+    editing = null;
+  }
+
+  /** Fill the form with a host and open it for editing. */
+  function startEdit(host: SshHost): void {
+    editing = host;
+    draftLabel = host.label;
+    draftUser = host.user;
+    draftHostname = host.hostname;
+    draftPort = String(host.port);
+    draftIdentity = host.identityFiles?.[0] ?? "";
+    draftProxyJump = host.proxyJump ?? "";
+    draftForwardAgent = host.forwardAgent ?? false;
+    addOpen = true;
+  }
+
   async function submitDraft(): Promise<void> {
     if (!canSubmitDraft) return;
     const port = Number.parseInt(draftPort, 10);
-    const added = await hosts.add({
+    const draft = {
       label: draftLabel.trim() || `${draftUser.trim()}@${draftHostname.trim()}`,
       hostname: draftHostname.trim(),
       port: Number.isFinite(port) && port > 0 ? port : 22,
@@ -76,13 +109,11 @@
       identityFiles: draftIdentity.trim() ? [draftIdentity.trim()] : [],
       proxyJump: draftProxyJump.trim() || null,
       forwardAgent: draftForwardAgent,
-      source: "manual",
-    });
-    if (added) {
-      draftLabel = draftUser = draftHostname = "";
-      draftIdentity = draftProxyJump = "";
-      draftForwardAgent = false;
-      draftPort = "22";
+      source: "manual" as const,
+    };
+    const saved = editing ? await hosts.update(editing.id, draft) : await hosts.add(draft);
+    if (saved) {
+      clearDraft();
       addOpen = false;
     }
   }
@@ -121,6 +152,17 @@
     secret = "";
     void hosts.submitPendingCredential(value);
   }
+
+  // A fresh set of answer fields for each round the server asks.
+  $effect(() => {
+    answers = (hosts.pendingChallenge?.challenge.prompts ?? []).map(() => "");
+  });
+
+  function submitAnswers(): void {
+    const given = answers;
+    answers = [];
+    void hosts.answerPendingChallenge(given);
+  }
 </script>
 
 <SettingsSection title={i18n.t("hosts.title")} description={i18n.t("hosts.description")}>
@@ -145,136 +187,169 @@
         {@const connected = hosts.isConnected(host.id)}
         {@const busy = hosts.isBusy(host.id)}
         {@const inventory = hosts.inventories[host.id]}
-        <li class="flex min-h-12 items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-          <StatusDot
-            tone={connected ? "ok" : "off"}
-            label={connected ? i18n.t("hosts.connected") : i18n.t("hosts.disconnected")}
-          />
-          <div class="min-w-0 flex-1">
-            <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
-            <p class={cn(text.meta, "truncate")}>
-              {host.user}@{host.hostname}{host.port === 22 ? "" : `:${host.port}`}
-            </p>
-            {#if inventory}
-              {@const found = hostAgents(AGENT_CATALOG, inventory)}
-              <!-- What the machine itself reported. Only shown once it has
-                   answered, so an empty line never reads as "nothing there".
-                   The agents are **logos**, not names: a row this size fits
-                   three names before truncating, and a truncated list of names
-                   is worse than no list — it looks like the host has three. The
-                   rest collapse into `+N`, and the whole strip opens a popover
-                   with every one of them, its version, and what else the machine
-                   reported. Same shape the sidebar uses for running agents. -->
-              <div class="flex min-w-0 items-center gap-2">
-                {#if found.length > 0}
-                  <Popover.Root>
-                    <Popover.Trigger
-                      class={cn(
-                        row.agentAvatarStrip,
-                        focus.ring,
-                        "flex-none gap-0.5 rounded-md px-0.5 hover:bg-foreground/[0.05]",
-                      )}
-                      aria-label={i18n.t("hosts.agentsPopoverTitle", { host: host.label })}
-                    >
-                      {#each found.slice(0, VISIBLE_AGENTS) as agent (agent.key)}
-                        <AgentLogo logo={agent.logo} class={icon.decorative} />
-                      {/each}
-                      {#if found.length > VISIBLE_AGENTS}
-                        <span class={cn(row.agentOverflow, "size-auto px-1")}>
-                          +{found.length - VISIBLE_AGENTS}
-                        </span>
-                      {/if}
-                    </Popover.Trigger>
-                    <!-- `status` width and `padding="none"`: the widest role the
-                         overlay tokens define, because the values here are a
-                         host's own version strings and some are long
-                         (`0.2.112 (9bbd559437) [stable]`). Narrower, the name
-                         truncates to make room for them — which loses the half
-                         the reader is scanning for. -->
-                    <Popover.Content width="status" padding="none" align="start">
-                      <div class="border-b border-border/60 px-3 py-2.5">
-                        <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
-                        <p class={cn(text.meta, "truncate")}>
-                          {[inventory.os, inventory.multiplexer || i18n.t("hosts.noMultiplexer")]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <!-- Versions are the reason this popover is worth opening:
-                           they were read on that machine and are shown nowhere
-                           else. `overlay.item` is the shared 36px row and
-                           `overlay.dataRow` the label/value grid that keeps a
-                           4-unit gutter between them, so a long version can never
-                           run into the name it belongs to. -->
-                      <!-- What the machine is *missing* is one line, not a list:
-                           the catalogue knows 31 agents and a host has a handful,
-                           so listing the rest would be 25 rows of noise. The one
-                           absence that changes what uxnan can do there is **git**
-                           — without it there is no branch, no review, no history
-                           and no search on that host — so that is the one this
-                           says, where the reader is already looking. -->
-                      {#if !inventory.git}
-                        <p class={cn(text.meta, "border-b border-border/60 px-3 py-2")}>
-                          {i18n.t("hosts.noGit")}
-                        </p>
-                      {/if}
-                      <ul class={cn(overlay.menuCompactViewport, "py-1")}>
-                        {#each found as agent (agent.key)}
-                          <li class={cn(overlay.item, "flex items-center gap-2.5")}>
-                            <AgentLogo logo={agent.logo} class={cn(icon.brand, "shrink-0")} />
-                            <span class={cn(overlay.dataRow, "min-w-0 flex-1")}>
-                              <span class="truncate" title={agent.name}>{agent.name}</span>
-                              {#if agent.version}
-                                <span
-                                  class={cn(text.meta, "truncate font-mono")}
-                                  title={agent.version}
-                                >{agent.version}</span>
-                              {/if}
-                            </span>
-                          </li>
+        <!-- The row wraps rather than squeezes: the name and what the machine
+             reported keep the line while it has room for a host name and its
+             address (10rem), and below that the actions drop under them,
+             right-aligned, instead of truncating the name to nothing. A
+             connected host carries six actions, so a narrow window reaches
+             this sooner than it looks. -->
+        <li class="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 py-2.5 first:pt-0 last:pb-0">
+          <div class="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
+            <StatusDot
+              tone={HOST_STATE_TONE[hosts.stateOf(host.id)]}
+              label={i18n.t(`hostPage.state.${hosts.stateOf(host.id)}`)}
+            />
+            <div class="min-w-0 flex-1">
+              <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
+              <p class={cn(text.meta, "truncate")}>
+                {host.user}@{host.hostname}{host.port === 22 ? "" : `:${host.port}`}
+              </p>
+              {#if inventory}
+                {@const found = hostAgents(AGENT_CATALOG, inventory)}
+                <!-- What the machine itself reported. Only shown once it has
+                     answered, so an empty line never reads as "nothing there".
+                     The agents are **logos**, not names: a row this size fits
+                     three names before truncating, and a truncated list of names
+                     is worse than no list — it looks like the host has three. The
+                     rest collapse into `+N`, and the whole strip opens a popover
+                     with every one of them, its version, and what else the machine
+                     reported. Same shape the sidebar uses for running agents. -->
+                <div class="flex min-w-0 items-center gap-2">
+                  {#if found.length > 0}
+                    <Popover.Root>
+                      <Popover.Trigger
+                        class={cn(
+                          row.agentAvatarStrip,
+                          focus.ring,
+                          "flex-none gap-0.5 rounded-md px-0.5 hover:bg-foreground/[0.05]",
+                        )}
+                        aria-label={i18n.t("hosts.agentsPopoverTitle", { host: host.label })}
+                      >
+                        {#each found.slice(0, VISIBLE_AGENTS) as agent (agent.key)}
+                          <AgentLogo logo={agent.logo} class={icon.decorative} />
                         {/each}
-                      </ul>
-                    </Popover.Content>
-                  </Popover.Root>
-                {/if}
-                <p class={cn(text.meta, "min-w-0 truncate")}>
-                  {[
-                    inventory.os,
-                    found.length === 0 ? i18n.t("hosts.agentsNone") : "",
-                    inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-            {/if}
+                        {#if found.length > VISIBLE_AGENTS}
+                          <span class={cn(row.agentOverflow, "size-auto px-1")}>
+                            +{found.length - VISIBLE_AGENTS}
+                          </span>
+                        {/if}
+                      </Popover.Trigger>
+                      <!-- `status` width and `padding="none"`: the widest role the
+                           overlay tokens define, because the values here are a
+                           host's own version strings and some are long
+                           (`0.2.112 (9bbd559437) [stable]`). Narrower, the name
+                           truncates to make room for them — which loses the half
+                           the reader is scanning for. -->
+                      <Popover.Content width="status" padding="none" align="start">
+                        <div class="border-b border-border/60 px-3 py-2.5">
+                          <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
+                          <p class={cn(text.meta, "truncate")}>
+                            {[inventory.os, inventory.multiplexer || i18n.t("hosts.noMultiplexer")]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <!-- Versions are the reason this popover is worth opening:
+                             they were read on that machine and are shown nowhere
+                             else. `overlay.item` is the shared 36px row and
+                             `overlay.dataRow` the label/value grid that keeps a
+                             4-unit gutter between them, so a long version can never
+                             run into the name it belongs to. -->
+                        <!-- What the machine is *missing* is one line, not a list:
+                             the catalogue knows 31 agents and a host has a handful,
+                             so listing the rest would be 25 rows of noise. The one
+                             absence that changes what uxnan can do there is **git**
+                             — without it there is no branch, no review, no history
+                             and no search on that host — so that is the one this
+                             says, where the reader is already looking. -->
+                        {#if !inventory.git}
+                          <p class={cn(text.meta, "border-b border-border/60 px-3 py-2")}>
+                            {i18n.t("hosts.noGit")}
+                          </p>
+                        {/if}
+                        <ul class={cn(overlay.menuCompactViewport, "py-1")}>
+                          {#each found as agent (agent.key)}
+                            <li class={cn(overlay.item, "flex items-center gap-2.5")}>
+                              <AgentLogo logo={agent.logo} class={cn(icon.brand, "shrink-0")} />
+                              <span class={cn(overlay.dataRow, "min-w-0 flex-1")}>
+                                <span class="truncate" title={agent.name}>{agent.name}</span>
+                                {#if agent.version}
+                                  <span
+                                    class={cn(text.meta, "truncate font-mono")}
+                                    title={agent.version}
+                                  >{agent.version}</span>
+                                {/if}
+                              </span>
+                            </li>
+                          {/each}
+                        </ul>
+                      </Popover.Content>
+                    </Popover.Root>
+                  {/if}
+                  <p class={cn(text.meta, "min-w-0 truncate")}>
+                    {[
+                      inventory.os,
+                      found.length === 0 ? i18n.t("hosts.agentsNone") : "",
+                      inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              {/if}
+            </div>
           </div>
-          {#if connected}
-            <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
-              {i18n.t("hosts.openTerminal")}
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+            {#if connected}
+              <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
+                {i18n.t("hosts.openTerminal")}
+              </Button>
+              <Button variant="ghost" size="sm" onclick={() => { picking = host; pickerOpen = true; }}>
+                {i18n.t("hosts.addProject")}
+              </Button>
+              <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
+                {i18n.t("hosts.disconnect")}
+              </Button>
+            {:else}
+              <Button variant="outline" size="sm" disabled={busy} onclick={() => hosts.connect(host.id)}>
+                {busy ? i18n.t("hosts.connecting") : i18n.t("hosts.connect")}
+              </Button>
+            {/if}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={i18n.t("hostPage.openTitle", { host: host.label })}
+              onclick={() => {
+                detailsOf = host;
+                detailsOpen = true;
+              }}
+            >
+              {i18n.t("hostPage.open")}
             </Button>
-            <Button variant="ghost" size="sm" onclick={() => { picking = host; pickerOpen = true; }}>
-              {i18n.t("hosts.addProject")}
-            </Button>
-            <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
-              {i18n.t("hosts.disconnect")}
-            </Button>
-          {:else}
-            <Button variant="outline" size="sm" disabled={busy} onclick={() => hosts.connect(host.id)}>
-              {busy ? i18n.t("hosts.connecting") : i18n.t("hosts.connect")}
-            </Button>
-          {/if}
-          <button
-            type="button"
-            class={cn(
-              "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-destructive",
-              focus.ring,
-            )}
-            title={i18n.t("hosts.remove")}
-            onclick={() => (removing = host.id)}
-          >
-            <Icon icon={DeleteIcon} class={icon.action} />
-          </button>
+            <button
+              type="button"
+              class={cn(
+                "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground",
+                focus.ring,
+              )}
+              title={i18n.t("hosts.edit")}
+              aria-label={i18n.t("hosts.editTitle", { host: host.label })}
+              onclick={() => startEdit(host)}
+            >
+              <Icon icon={EditIcon} class={icon.action} />
+            </button>
+            <button
+              type="button"
+              class={cn(
+                "rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-destructive",
+                focus.ring,
+              )}
+              title={i18n.t("hosts.remove")}
+              onclick={() => (removing = host.id)}
+            >
+              <Icon icon={DeleteIcon} class={icon.action} />
+            </button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -289,22 +364,26 @@
           focus.ring,
         )}
       >
-        {i18n.t("hosts.addTitle")}
+        {editing ? i18n.t("hosts.editTitle", { host: editing.label }) : i18n.t("hosts.addTitle")}
         <Icon
           icon={ChevronDownIcon}
           class={cn(icon.action, "text-muted-foreground transition-transform", addOpen && "rotate-180")}
         />
       </Collapsible.Trigger>
       <Collapsible.Content class="pt-3">
+        {#if editingImported}
+          <p class={cn(text.meta, "mb-3")}>{i18n.t("hosts.editFromConfig")}</p>
+        {/if}
         <div class="grid gap-3 sm:grid-cols-[1fr_1fr]">
           <div class="space-y-1.5">
             <Label for="host-user">{i18n.t("hosts.fieldUser")}</Label>
-            <Input id="host-user" bind:value={draftUser} placeholder="dev" autocomplete="off" />
+            <Input id="host-user" disabled={editingImported} bind:value={draftUser} placeholder="dev" autocomplete="off" />
           </div>
           <div class="space-y-1.5">
             <Label for="host-name">{i18n.t("hosts.fieldHostname")}</Label>
             <Input
               id="host-name"
+              disabled={editingImported}
               bind:value={draftHostname}
               placeholder="10.0.0.5"
               autocomplete="off"
@@ -312,7 +391,7 @@
           </div>
           <div class="space-y-1.5">
             <Label for="host-port">{i18n.t("hosts.fieldPort")}</Label>
-            <Input id="host-port" bind:value={draftPort} inputmode="numeric" autocomplete="off" />
+            <Input id="host-port" disabled={editingImported} bind:value={draftPort} inputmode="numeric" autocomplete="off" />
           </div>
           <div class="space-y-1.5">
             <Label for="host-label">{i18n.t("hosts.fieldLabel")}</Label>
@@ -330,6 +409,7 @@
               <Label for="host-identity">{i18n.t("hosts.fieldIdentity")}</Label>
               <Input
                 id="host-identity"
+                disabled={editingImported}
                 bind:value={draftIdentity}
                 placeholder="~/.ssh/id_ed25519"
                 autocomplete="off"
@@ -339,6 +419,7 @@
               <Label for="host-jump">{i18n.t("hosts.fieldProxyJump")}</Label>
               <Input
                 id="host-jump"
+                disabled={editingImported}
                 bind:value={draftProxyJump}
                 placeholder={i18n.t("hosts.fieldProxyJumpHint")}
                 autocomplete="off"
@@ -346,16 +427,28 @@
             </div>
           </div>
           <div class="flex items-start gap-2.5">
-            <Checkbox id="host-forward" bind:checked={draftForwardAgent} />
+            <Checkbox id="host-forward" disabled={editingImported} bind:checked={draftForwardAgent} />
             <div class="min-w-0 space-y-0.5">
               <Label for="host-forward">{i18n.t("hosts.fieldForwardAgent")}</Label>
               <p class={text.meta}>{i18n.t("hosts.fieldForwardAgentHint")}</p>
             </div>
           </div>
         </div>
-        <div class="mt-3 flex justify-end">
+        <div class="mt-3 flex justify-end gap-2">
+          {#if editing}
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => {
+                clearDraft();
+                addOpen = false;
+              }}
+            >
+              {i18n.t("common.cancel")}
+            </Button>
+          {/if}
           <Button size="sm" disabled={!canSubmitDraft} onclick={submitDraft}>
-            {i18n.t("hosts.addAction")}
+            {editing ? i18n.t("hosts.saveAction") : i18n.t("hosts.addAction")}
           </Button>
         </div>
       </Collapsible.Content>
@@ -425,8 +518,10 @@
   ondismiss={() => (hosts.pendingKey = null)}
 />
 
-<!-- A key that *changed* is not a prompt. There is nothing to confirm here,
-     only something to be told, so this dialog offers no way to proceed. -->
+<!-- A key that *changed* is not a trust prompt. Closing is the default and the
+     first action; replacing the record is offered only as the explicit "the
+     machine was reinstalled", in the destructive style, because it is the one
+     case where agreeing could hand a session to an impostor. -->
 <Dialog.Root
   open={hosts.keyMismatch !== null}
   onOpenChange={(open) => {
@@ -449,6 +544,9 @@
       </div>
     </dl>
     <Dialog.Footer>
+      <Button variant="destructive" onclick={() => hosts.replaceChangedKey()}>
+        {i18n.t("hosts.mismatchReplace")}
+      </Button>
       <Button variant="outline" onclick={() => hosts.dismissKeyMismatch()}>
         {i18n.t("common.close")}
       </Button>
@@ -456,8 +554,9 @@
   </Dialog.Content>
 </Dialog.Root>
 
-<!-- A password or a key passphrase. Held for one attempt and never stored, so
-     the field is cleared the moment it is handed over. -->
+<!-- A password or a key passphrase, for the host or a bastion on the way. The
+     backend holds it in memory for this session of the app; the field here is
+     cleared the moment it is handed over. -->
 <Dialog.Root
   open={hosts.pendingCredential !== null}
   onOpenChange={(open) => {
@@ -475,7 +574,9 @@
           : i18n.t("hosts.passwordTitle", { host: hosts.pendingCredential?.label ?? "" })}
       </Dialog.Title>
       <Dialog.Description>
-        {#if hosts.pendingCredential?.kind === "passphrase"}
+        {#if hosts.pendingCredential?.kind === "passphrase" && hosts.pendingCredential?.wrong}
+          {i18n.t("hosts.passphraseWrong", { path: hosts.pendingCredential?.path ?? "" })}
+        {:else if hosts.pendingCredential?.kind === "passphrase"}
           {i18n.t("hosts.passphraseBody", { path: hosts.pendingCredential?.path ?? "" })}
         {:else if (hosts.pendingCredential?.attempted.length ?? 0) > 0}
           {i18n.t("hosts.passwordAfterRefused", {
@@ -514,6 +615,60 @@
   </Dialog.Content>
 </Dialog.Root>
 
+<!-- A second factor: the server's own questions, asked in its own words, with
+     echo where it allows it (a code) and hidden where it does not. The
+     connection waits on the backend while this is open; closing drops it. -->
+<Dialog.Root
+  open={hosts.pendingChallenge !== null}
+  onOpenChange={(open) => {
+    if (!open) {
+      answers = [];
+      void hosts.cancelPendingChallenge();
+    }
+  }}
+>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>
+        {i18n.t("hosts.challengeTitle", { host: hosts.pendingChallenge?.label ?? "" })}
+      </Dialog.Title>
+      <Dialog.Description>
+        {hosts.pendingChallenge?.challenge.instructions || i18n.t("hosts.challengeBody")}
+      </Dialog.Description>
+    </Dialog.Header>
+    <div class="space-y-3">
+      {#each hosts.pendingChallenge?.challenge.prompts ?? [] as prompt, index (index)}
+        <div class="space-y-1.5">
+          <Label for={`host-answer-${index}`}>{prompt.text.trim()}</Label>
+          <Input
+            id={`host-answer-${index}`}
+            type={prompt.echo ? "text" : "password"}
+            bind:value={answers[index]}
+            autocomplete="one-time-code"
+            onkeydown={(e: KeyboardEvent) => {
+              if (e.key === "Enter") submitAnswers();
+            }}
+          />
+        </div>
+      {/each}
+    </div>
+    <Dialog.Footer>
+      <Button
+        variant="outline"
+        onclick={() => {
+          answers = [];
+          void hosts.cancelPendingChallenge();
+        }}
+      >
+        {i18n.t("common.cancel")}
+      </Button>
+      <Button disabled={answers.some((a) => a.length === 0)} onclick={submitAnswers}>
+        {i18n.t("hosts.challengeSubmit")}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
 <ConfirmDialog
   open={removing !== null}
   title={i18n.t("hosts.removeTitle", { host: hosts.labelOf(removing ?? "") })}
@@ -541,4 +696,16 @@
       }}
     />
   {/key}
+{/if}
+
+{#if detailsOf}
+  <HostDetailsDialog
+    bind:open={detailsOpen}
+    host={detailsOf}
+    onforget={() => {
+      const forgetting = detailsOf;
+      detailsOpen = false;
+      if (forgetting) removing = forgetting.id;
+    }}
+  />
 {/if}

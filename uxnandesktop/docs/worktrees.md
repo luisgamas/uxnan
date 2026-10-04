@@ -5,7 +5,7 @@ folders are created**, how to change it, and the rules the resolver applies so
 the result is a path git accepts and the app can find again.
 
 Spec: [`architecture/02c-git-worktrees.md`](../architecture/02c-git-worktrees.md)
-§2.1. Implementation: [`src-tauri/src/worktreeloc.rs`](../src-tauri/src/worktreeloc.rs).
+§2.1. Implementation: [`crates/workspace-engine/src/worktreeloc.rs`](../src-tauri/crates/workspace-engine/src/worktreeloc.rs) — the workspace engine's, so a host places its worktrees by the same rules.
 
 ## Settings → Git
 
@@ -58,6 +58,18 @@ Precedence: dialog location → project root → global setting.
   -xdf` deletes it (with any uncommitted agent work inside), and every tool that
   walks the tree — analyzers, watchers, the app's own file tree — would walk one
   copy of the project per worktree.
+
+## On a host
+
+A project that lives on an SSH host gets the same worktrees, made by that host's
+engine with these same rules (`architecture/02g-remote-hosts.md` §5.10i). The
+managed root is the host's own `~/uxnan/worktrees`; the **global** custom root
+is a folder on this machine, so on a host only a project's own root applies;
+`sibling` puts the folder next to the repository there. Creating and removing
+are fenced to the connection you are looking at and refused while the host is
+disconnected. The cleanup below works on a host too: with a host connected,
+Settings → Git → Cleanup offers a machine picker, and that host's engine scans
+and cleans its own managed folders by the same rules.
 
 ## Cleanup
 

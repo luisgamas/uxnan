@@ -12,7 +12,7 @@ import { AGENT_CATALOG } from "./agentCatalog";
  *  step in the first place. */
 function supportedInRust(): string[] {
   const source = readFileSync(
-    new URL("../../src-tauri/src/agentcli.rs", import.meta.url),
+    new URL("../../src-tauri/crates/workspace-engine/src/agentcli.rs", import.meta.url),
     "utf-8",
   );
   const match = /pub const SUPPORTED:\s*\[&str;\s*\d+\]\s*=\s*\[([^\]]*)\]/s.exec(source);

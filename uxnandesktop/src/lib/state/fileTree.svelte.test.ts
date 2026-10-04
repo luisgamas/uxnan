@@ -244,7 +244,7 @@ describe("waiting for a host", () => {
     // else, but not this, so a host that was down kept a line on screen over a
     // tree that has nothing to do with it.
     backend.setCommands({
-      ssh_fs_list: () => {
+      fs_list_dir: () => {
         throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
       },
     });
@@ -260,7 +260,7 @@ describe("waiting for a host", () => {
     // The other half: a tree that just listed is not waiting for anything,
     // whatever it was doing a moment ago.
     backend.setCommands({
-      ssh_fs_list: () => {
+      fs_list_dir: () => {
         throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
       },
     });
@@ -268,14 +268,14 @@ describe("waiting for a host", () => {
     await settle();
     expect(fileTree.awaitingHost).toBe(true);
 
-    backend.setCommands({ ssh_fs_list: () => [] });
+    backend.setCommands({ fs_list_dir: () => [] });
     await fileTree.loadDir("C:/on/host", true);
     expect(fileTree.awaitingHost).toBe(false);
   });
 });
 
 describe("changing a host's tree", () => {
-  it("sends every action to the host, fenced, and none to this machine", async () => {
+  it("sends every action to the host, fenced", async () => {
     // The hole this closes: the tree's actions called the local commands with
     // whatever path the row carried. A host's path usually fails here — but a
     // Windows host's `C:/Users/…/x.ts` can exist on *this* Windows machine too,
@@ -283,17 +283,17 @@ describe("changing a host's tree", () => {
     const { sessions } = await import("./sessions.svelte");
     sessions.replace([{ hostId: "h1", generation: 2, label: "gamas" }]);
     backend.setCommands({
-      ssh_fs_list: () => [],
-      ssh_fs_create_file: () => "C:/app/new.ts",
-      ssh_fs_rename: () => "C:/app/renamed.ts",
-      ssh_fs_delete: () => null,
+      fs_list_dir: () => [],
+      fs_create_file: () => "C:/app/new.ts",
+      fs_rename: () => "C:/app/renamed.ts",
+      fs_delete: () => null,
     });
     fileTree.setRoot("C:/app", "ssh:h1");
     await settle();
 
     await fileTree.createEntry("C:/app", "new.ts", "file");
-    expect(backend.lastCallTo("ssh_fs_create_file")?.args).toMatchObject({
-      hostId: "h1",
+    expect(backend.lastCallTo("fs_create_file")?.args).toMatchObject({
+      target: "ssh:h1",
       expect: { targetId: "ssh:h1", generation: 2 },
     });
 
@@ -301,7 +301,11 @@ describe("changing a host's tree", () => {
       { name: "new.ts", path: "C:/app/new.ts", isDir: false, ignored: false },
       "renamed.ts",
     );
-    expect(backend.lastCallTo("ssh_fs_rename")?.args).toMatchObject({ newName: "renamed.ts" });
+    expect(backend.lastCallTo("fs_rename")?.args).toMatchObject({
+      newName: "renamed.ts",
+      target: "ssh:h1",
+      expect: { targetId: "ssh:h1", generation: 2 },
+    });
 
     await fileTree.deleteEntry({
       name: "renamed.ts",
@@ -309,17 +313,16 @@ describe("changing a host's tree", () => {
       isDir: false,
       ignored: false,
     });
-    expect(backend.lastCallTo("ssh_fs_delete")).toBeDefined();
-
-    expect(backend.lastCallTo("fs_create_file")).toBeUndefined();
-    expect(backend.lastCallTo("fs_rename")).toBeUndefined();
-    expect(backend.lastCallTo("fs_delete")).toBeUndefined();
+    expect(backend.lastCallTo("fs_delete")?.args).toMatchObject({
+      target: "ssh:h1",
+      expect: { targetId: "ssh:h1", generation: 2 },
+    });
   });
 
   it("says what a delete there actually does, and stops offering it when the host drops", async () => {
     const { sessions } = await import("./sessions.svelte");
     sessions.replace([{ hostId: "h1", generation: 2, label: "gamas" }]);
-    backend.setCommands({ ssh_fs_list: () => [] });
+    backend.setCommands({ fs_list_dir: () => [] });
     fileTree.setRoot("C:/app", "ssh:h1");
     await settle();
 
@@ -337,16 +340,15 @@ describe("changing a host's tree", () => {
 });
 
 describe("searching a host's project", () => {
-  it("asks that machine, never this one, and offers the box only while it can", async () => {
-    // Search was hidden for a host until now because both walks read *this*
-    // filesystem — pointed at a host they would answer "no matches", which is a
-    // lie the user cannot tell from an empty result.
+  it("asks that machine, and offers the box only while it can", async () => {
+    // A search that lost its target would walk *this* filesystem and answer
+    // "no matches" — a lie the user cannot tell from an empty result.
     const { sessions } = await import("./sessions.svelte");
     sessions.replace([{ hostId: "h1", generation: 1, label: "gamas" }]);
     backend.setCommands({
-      ssh_fs_list: () => [],
-      ssh_fs_search_files: () => ({ entries: [], truncated: false }),
-      ssh_fs_search_content: () => ({ files: [], total: 0, truncated: false }),
+      fs_list_dir: () => [],
+      fs_search_files: () => ({ entries: [], truncated: false }),
+      fs_search_content: () => ({ files: [], total: 0, truncated: false }),
     });
     fileTree.setRoot("C:/app", "ssh:h1");
     await settle();
@@ -355,21 +357,19 @@ describe("searching a host's project", () => {
     fileTree.query = "needle";
     fileTree.scheduleSearch();
     await settle();
-    expect(backend.lastCallTo("ssh_fs_search_files")?.args).toMatchObject({
-      hostId: "h1",
+    expect(backend.lastCallTo("fs_search_files")?.args).toMatchObject({
+      target: "ssh:h1",
       root: "C:/app",
       query: "needle",
     });
-    expect(backend.lastCallTo("fs_search_files")).toBeUndefined();
 
     fileTree.contentQuery = "needle";
     fileTree.scheduleContentSearch();
     await settle();
-    expect(backend.lastCallTo("ssh_fs_search_content")?.args).toMatchObject({
-      hostId: "h1",
+    expect(backend.lastCallTo("fs_search_content")?.args).toMatchObject({
+      target: "ssh:h1",
       root: "C:/app",
     });
-    expect(backend.lastCallTo("fs_search_content")).toBeUndefined();
 
     // Nothing can be asked of a host that is not connected, so the box is not
     // offered rather than offered and failing.
@@ -377,15 +377,15 @@ describe("searching a host's project", () => {
     expect(fileTree.searchable).toBe(false);
   });
 
-  it("shows what the host said when the folder is not a repository there", async () => {
-    // Searching asks git. An empty result would be indistinguishable from "no
-    // matches", so the reason is carried through to the panel.
+  it("shows what the host said when its search could not run", async () => {
+    // An empty result would be indistinguishable from "no matches", so the
+    // reason is carried through to the panel.
     const { sessions } = await import("./sessions.svelte");
     sessions.replace([{ hostId: "h1", generation: 1, label: "gamas" }]);
     backend.setCommands({
-      ssh_fs_list: () => [],
-      ssh_fs_search_files: () => {
-        throw new Error("C:/app could not be searched on that host: ... not a repository there");
+      fs_list_dir: () => [],
+      fs_search_files: () => {
+        throw new Error("this host's projects are served by its engine, which does not run there");
       },
     });
     fileTree.setRoot("C:/app", "ssh:h1");
@@ -394,7 +394,28 @@ describe("searching a host's project", () => {
     fileTree.query = "needle";
     fileTree.scheduleSearch();
     await settle();
-    expect(fileTree.error).toMatch(/not a repository/);
+    expect(fileTree.error).toMatch(/its engine/);
     expect(fileTree.searchResults).toEqual([]);
+  });
+});
+
+describe("fileTree — changes reported by a host's engine", () => {
+  it("reloads a host's folder when its engine reports a change there, and only then", async () => {
+    backend.setCommands({ fs_list_dir: () => [] });
+    (fileTree as unknown as { listening: boolean }).listening = false;
+    fileTree.setRoot("/srv/app", "ssh:h1");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("fs_list_dir").length).toBeGreaterThan(0);
+    backend.clearCalls();
+
+    // The same path on another machine is another folder.
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "local" });
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "ssh:h2" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("fs_list_dir")).toHaveLength(0);
+
+    backend.emit("fs:changed", { root: "/srv/app", paths: ["/srv/app"], target: "ssh:h1" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(backend.callsTo("fs_list_dir").length).toBeGreaterThan(0);
   });
 });

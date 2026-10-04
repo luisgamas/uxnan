@@ -219,6 +219,7 @@ mod tests {
             enabled: true,
             tags: vec![],
             working_dir: "/work".into(),
+            target: Default::default(),
             worktree_per_run: false,
             base_branch: None,
             schedule,

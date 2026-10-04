@@ -22,6 +22,7 @@
 
 import { SvelteMap } from 'svelte/reactivity';
 import type { Thread, Turn } from '$shared/models/thread';
+import type { ThreadLiveState } from '$shared/models/sync';
 import type { BridgeNotification } from './client.svelte';
 import { requestIdOf } from './timeline';
 
@@ -48,23 +49,33 @@ const SEEN_KEY = 'uxnan.chat.seen';
  * chat's other client-only state (`outbox`): the bridge owns the
  * conversations, this holds only which of them this desktop has looked at.
  */
-export const localSeenStore: SeenStore = {
-  load() {
-    try {
-      const raw = localStorage.getItem(SEEN_KEY);
-      return raw ? parseSeenMarks(JSON.parse(raw)) : null;
-    } catch {
-      return null;
-    }
-  },
-  save(marks) {
-    try {
-      localStorage.setItem(SEEN_KEY, JSON.stringify(marks));
-    } catch {
-      /* storage unavailable: the marks live in memory only */
-    }
-  },
-};
+export const localSeenStore: SeenStore = seenStoreAt(SEEN_KEY);
+
+/** The marks of a host's own bridge, kept apart from this machine's: the
+ *  baseline is "by that bridge's clock", and a different machine's clock. */
+export function hostSeenStore(target: string): SeenStore {
+  return seenStoreAt(`${SEEN_KEY}.${target}`);
+}
+
+function seenStoreAt(key: string): SeenStore {
+  return {
+    load() {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? parseSeenMarks(JSON.parse(raw)) : null;
+      } catch {
+        return null;
+      }
+    },
+    save(marks) {
+      try {
+        localStorage.setItem(key, JSON.stringify(marks));
+      } catch {
+        /* storage unavailable: the marks live in memory only */
+      }
+    },
+  };
+}
 
 /** Stored marks, validated (`null` when they are not marks at all). */
 export function parseSeenMarks(value: unknown): SeenMarks | null {
@@ -151,6 +162,34 @@ export class ThreadActivity {
       if (!listed.has(id)) this.#forget(id);
     }
     this.#settleMarks(threads, listed);
+  }
+
+  /**
+   * Adopt the bridge's whole live set (`SyncChanges.live`): running where a
+   * turn is in flight, waiting where its agent holds a request open, and
+   * neither for a thread that was and no longer is — even one that did not
+   * change since the last revision, which a thread list alone cannot tell.
+   */
+  adoptLive(live: readonly ThreadLiveState[]): void {
+    const now = new Map(live.map((l) => [l.threadId, l]));
+    for (const id of [...this.#running]) {
+      if (now.get(id)?.activeTurnId) continue;
+      this.#running.delete(id);
+      this.#requests.delete(id);
+      this.#state.delete(id);
+    }
+    for (const id of [...this.#requests.keys()]) {
+      if (!now.get(id)?.awaitingInput?.length) {
+        this.#requests.delete(id);
+        this.#refresh(id);
+      }
+    }
+    for (const [id, state] of now) {
+      this.#checking.delete(id);
+      if (state.activeTurnId) this.#running.add(id);
+      if (state.awaitingInput?.length) this.#requests.set(id, new Set(state.awaitingInput));
+      this.#refresh(id);
+    }
   }
 
   /** Follow one bridge notification. */

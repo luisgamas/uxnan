@@ -38,19 +38,50 @@ pub async fn bridge_call(
     state: State<'_, AppState>,
     method: String,
     params: Option<Value>,
+    target: Option<String>,
 ) -> Result<Value, CommandError> {
-    state
-        .bridge
-        .call(&method, params.unwrap_or(Value::Null), CALL_TIMEOUT)
-        .await
-        .map_err(|err| {
-            let code = match &err {
-                BridgeCallError::NotConnected => "BRIDGE_NOT_CONNECTED",
-                BridgeCallError::InvalidMethod => "INVALID_INPUT",
-                BridgeCallError::Call(_) => "BRIDGE_ERROR",
-            };
-            CommandError::new(code, err.to_string())
-        })
+    let params = params.unwrap_or(Value::Null);
+    // The bridge of the machine `target` names: this one's, or a host's own.
+    let result = match target
+        .as_deref()
+        .map(crate::target::TargetId::parse)
+        .transpose()
+        .map_err(CommandError::from)?
+    {
+        Some(crate::target::TargetId::Ssh(host)) => {
+            state
+                .host_bridges
+                .call(&host, &method, params, CALL_TIMEOUT)
+                .await
+        }
+        _ => state.bridge.call(&method, params, CALL_TIMEOUT).await,
+    };
+    result.map_err(|err| {
+        let code = match &err {
+            BridgeCallError::NotConnected => "BRIDGE_NOT_CONNECTED",
+            BridgeCallError::InvalidMethod => "INVALID_INPUT",
+            BridgeCallError::Call(_) => "BRIDGE_ERROR",
+        };
+        CommandError::new(code, err.to_string())
+    })
+}
+
+/// The bridge of every connected host that has, or had, one this run.
+#[tauri::command]
+pub async fn bridge_hosts_status(
+    state: State<'_, AppState>,
+) -> Result<Vec<super::hosts::HostBridgeStatus>, CommandError> {
+    Ok(state.host_bridges.statuses().await)
+}
+
+/// Look for a host's bridge now, instead of at its next rediscovery.
+#[tauri::command]
+pub async fn bridge_host_retry(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<(), CommandError> {
+    state.host_bridges.retry(&host_id).await;
+    Ok(())
 }
 
 /// What is installed: the bridge (and its version), npm, Node.js — plus the
@@ -129,29 +160,64 @@ pub fn pairing_qr_svg(text: &str) -> Result<String, CommandError> {
 
 /// Ask the running bridge for a pairing payload and draw it.
 #[tauri::command]
-pub async fn bridge_pairing_qr(state: State<'_, AppState>) -> Result<PairingQr, CommandError> {
-    let payload = state
-        .bridge
-        .call(
-            "bridge/generatePairingQr",
-            Value::Null,
-            Duration::from_secs(15),
-        )
+pub async fn bridge_pairing_qr(
+    state: State<'_, AppState>,
+    target: Option<String>,
+) -> Result<PairingQr, CommandError> {
+    // This machine's bridge, or a host's own (`02g` §5.18) — the phone pairs
+    // with that machine, as one more of its PCs.
+    let host = match target
+        .as_deref()
+        .map(crate::target::TargetId::parse)
+        .transpose()
+        .map_err(CommandError::from)?
+    {
+        Some(crate::target::TargetId::Ssh(host)) => Some(host),
+        _ => None,
+    };
+    let call = |method: &'static str, timeout: Duration| {
+        let host = host.clone();
+        let state = &state;
+        async move {
+            match host {
+                Some(host) => {
+                    state
+                        .host_bridges
+                        .call(&host, method, Value::Null, timeout)
+                        .await
+                }
+                None => state.bridge.call(method, Value::Null, timeout).await,
+            }
+        }
+    };
+    let payload = call("bridge/generatePairingQr", Duration::from_secs(15))
         .await
         .map_err(|err| CommandError::new("BRIDGE_ERROR", err.to_string()))?;
+    if !reachable(&payload) {
+        // A QR with neither the LAN nor the relay in it is one the phone
+        // refuses: say why, instead of drawing it.
+        return Err(CommandError::new(
+            "BRIDGE_NO_TRANSPORT",
+            "that bridge has no way for a phone to reach it: set up the relay, or open its LAN",
+        ));
+    }
     let expires_at = payload
         .get("expiresAt")
         .and_then(Value::as_i64)
         .unwrap_or(0);
     // The same bridge's manual code, so the dialog can offer it next to the
     // QR. An older bridge doesn't know the method: the QR still stands.
-    let code = state
-        .bridge
-        .call("bridge/pairingCode", Value::Null, Duration::from_secs(5))
-        .await
-        .ok()
-        .as_ref()
-        .and_then(pairing_code_of);
+    // The code is traded over the bridge's LAN listener, so it is only
+    // offered when the QR names one.
+    let code = if has_hosts(&payload) {
+        call("bridge/pairingCode", Duration::from_secs(5))
+            .await
+            .ok()
+            .as_ref()
+            .and_then(pairing_code_of)
+    } else {
+        None
+    };
     Ok(PairingQr {
         svg: pairing_qr_svg(&pairing_qr_text(&payload))?,
         expires_at,
@@ -159,9 +225,34 @@ pub async fn bridge_pairing_qr(state: State<'_, AppState>) -> Result<PairingQr, 
     })
 }
 
+/// Whether a pairing payload names any address for the LAN.
+fn has_hosts(payload: &Value) -> bool {
+    payload
+        .get("hosts")
+        .and_then(Value::as_array)
+        .is_some_and(|h| !h.is_empty())
+}
+
+/// Whether a phone could reach the bridge a pairing payload describes: over
+/// its LAN, or through a relay.
+fn reachable(payload: &Value) -> bool {
+    has_hosts(payload) || payload.get("relay").is_some_and(Value::is_object)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_payload_is_only_drawn_when_a_phone_could_reach_it() {
+        let lan = serde_json::json!({ "hosts": ["10.0.0.5:19850"] });
+        let relay = serde_json::json!({ "relay": { "url": "wss://r", "routingId": "x" } });
+        let neither = serde_json::json!({ "hosts": [] });
+        assert!(reachable(&lan) && has_hosts(&lan));
+        assert!(reachable(&relay) && !has_hosts(&relay));
+        assert!(!reachable(&neither));
+        assert!(!reachable(&serde_json::json!({})));
+    }
 
     #[test]
     fn the_code_is_read_from_the_bridge_answer() {

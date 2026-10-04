@@ -231,7 +231,11 @@ async fn run_agent(
         0,
     )
     .await?;
+    reply_of(result)
+}
 
+/// The agent's answer from a finished run — its stdout — or why there is none.
+fn reply_of(result: crate::agentrun::HeadlessResult) -> Result<String, AppError> {
     if result.exit_code != Some(0) {
         let detail = result.stderr.trim();
         let detail = if detail.is_empty() {
@@ -351,20 +355,31 @@ async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentMo
     result
 }
 
-/// Draft a message from a diff that has already been read.
+/// A commit message for a project that lives on another machine, from the
+/// staged `diff` read **there** (`ssh::git::diff`).
 ///
-/// Split out from [`generate`] for the project that lives on another machine:
-/// the diff comes from **that** host (`ssh::git::diff`) while the agent CLI runs
-/// **here**, because the agent is this machine's and the host has no reason to
-/// have one installed.
-///
-/// `cwd` is where the CLI is started. For a local project it is the worktree —
-/// the natural place. For a remote one there is no such folder on this machine,
-/// so the caller passes somewhere ordinary: the whole input is in the prompt, so
-/// the directory is only where the process happens to stand. A CLI that insists
-/// on trusting a folder before doing anything fails there rather than hanging —
-/// the run is bounded by [`GENERATE_TIMEOUT`] — and the button reports it.
-pub async fn from_diff(diff: &str, cfg: &AiCommitSettings, cwd: &str) -> Result<String, AppError> {
+/// `on_host` runs the agent on that host, in the worktree (`HostEngine::
+/// agent_run`), with the arguments this module would use here: the agent then
+/// stands in the project with the host's own sign-in, as it would locally. It
+/// answers `None` when the agent is not installed there; the draft is then
+/// made **here** instead, standing in `here_cwd` — any ordinary folder, since
+/// the whole input is in the prompt — so the feature never waits on an install
+/// on every host.
+pub async fn for_host<F, Fut>(
+    diff: &str,
+    cfg: &AiCommitSettings,
+    here_cwd: &str,
+    on_host: F,
+) -> Result<String, AppError>
+where
+    F: FnOnce(HostRun) -> Fut,
+    Fut: std::future::Future<Output = Result<Option<crate::agentrun::HeadlessResult>, AppError>>,
+{
+    if !cfg.enabled {
+        return Err(AppError::Invalid(
+            "AI commit-message generation is disabled".to_string(),
+        ));
+    }
     if diff.trim().is_empty() {
         return Err(AppError::Invalid(
             "nothing is staged to summarize".to_string(),
@@ -372,7 +387,24 @@ pub async fn from_diff(diff: &str, cfg: &AiCommitSettings, cwd: &str) -> Result<
     }
     let agent = cfg.agent_id.trim();
     let prompt = build_prompt(cfg, diff);
-    let raw = run_agent(agent, &cfg.model, &prompt, cwd).await?;
+    let run = HostRun {
+        agent: agent.to_string(),
+        model: cfg.model.clone(),
+        prompt: prompt.clone(),
+        timeout_ms: GENERATE_TIMEOUT.as_millis() as u64,
+        extra: crate::agentcli::no_session_args(agent),
+    };
+    let raw = match on_host(run).await? {
+        Some(result) => reply_of(result)?,
+        None => {
+            if agentcli::resolve(agent).is_none() {
+                return Err(AppError::Agent(format!(
+                    "the selected agent ('{agent}') isn't installed on the host or here"
+                )));
+            }
+            run_agent(agent, &cfg.model, &prompt, here_cwd).await?
+        }
+    };
     let message = sanitize_message(&raw);
     if message.is_empty() {
         return Err(AppError::Agent(
@@ -380,6 +412,17 @@ pub async fn from_diff(diff: &str, cfg: &AiCommitSettings, cwd: &str) -> Result<
         ));
     }
     Ok(message)
+}
+
+/// The one-shot run [`for_host`] asks a host for: what [`run_agent`] would
+/// start here — a summarizing turn, never autonomous, leaving no session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostRun {
+    pub agent: String,
+    pub model: String,
+    pub prompt: String,
+    pub timeout_ms: u64,
+    pub extra: Vec<String>,
 }
 
 /// Build the agent prompt from the config and the (capped) staged diff.
@@ -556,5 +599,69 @@ mod tests {
             "feat: x\n\nbody"
         );
         assert_eq!(sanitize_message("```text\nfix: y\n```"), "fix: y");
+    }
+
+    fn finished(stdout: &str, exit_code: Option<i32>) -> crate::agentrun::HeadlessResult {
+        crate::agentrun::HeadlessResult {
+            stdout: stdout.to_string(),
+            stderr: "boom".to_string(),
+            exit_code,
+            stdout_bytes: stdout.len(),
+            stderr_bytes: 4,
+            truncated: false,
+            peak_memory_mb: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_host_draft_runs_on_the_host_with_the_local_run_s_arguments() {
+        let mut asked = None;
+        let message = for_host("diff --git a b", &cfg(), "/nowhere", |run| {
+            asked = Some(run);
+            async { Ok(Some(finished("```\nfeat: draft on the host\n```", Some(0)))) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(message, "feat: draft on the host");
+        let run = asked.unwrap();
+        assert_eq!(run.agent, "claude");
+        assert_eq!(run.timeout_ms, GENERATE_TIMEOUT.as_millis() as u64);
+        assert_eq!(run.extra, crate::agentcli::no_session_args("claude"));
+        assert!(run.prompt.contains("diff --git a b"));
+    }
+
+    #[tokio::test]
+    async fn a_host_draft_reports_the_host_run_failing() {
+        let err = for_host("diff", &cfg(), "/nowhere", |_| async {
+            Ok(Some(finished("", Some(1))))
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("boom"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_host_draft_never_asks_the_host_for_nothing() {
+        let host_never = |_| async { panic!("the host must not be asked") };
+        let empty = for_host("  \n", &cfg(), "/nowhere", host_never).await;
+        assert!(matches!(empty, Err(AppError::Invalid(_))));
+        let off = AiCommitSettings {
+            enabled: false,
+            ..cfg()
+        };
+        let disabled = for_host("diff", &off, "/nowhere", host_never).await;
+        assert!(matches!(disabled, Err(AppError::Invalid(_))));
+    }
+
+    #[tokio::test]
+    async fn a_host_without_the_agent_falls_back_here_and_says_when_neither_has_it() {
+        let missing = AiCommitSettings {
+            agent_id: "definitely-not-an-agent".into(),
+            ..cfg()
+        };
+        let err = for_host("diff", &missing, "/nowhere", |_| async { Ok(None) })
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("on the host or here"), "{err}");
     }
 }

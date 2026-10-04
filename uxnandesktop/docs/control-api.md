@@ -104,15 +104,25 @@ A project whose `target` is `ssh:<hostId>` lives on a registered host, and
 everything about it — its worktrees, its git, its terminals — goes through one
 SSH session the app holds. `host/list` and `host/show` describe those machines
 **from that session**, not from the settings: connected or not, the shell it
-starts, the channels in use against the limit the host turned out to enforce.
-`host/connect` opens a session on one that has none — the same path startup
-takes for the hosts that need nothing.
+starts, the channels in use against the limit the host turned out to enforce,
+and — on a host running the host engine — that engine's version and platform
+and the link's round trip (`latencyMs`), read from the engine already running:
+a read never starts one. `host/show` adds `engineSessions`, every terminal that
+engine holds, `tab: null` for one no tab of the window shows. Both say what
+carries the connection: `carrier` is the setting (`auto`, `builtin`, `system`)
+and `systemSsh` — while connected through the machine's own `ssh` — why
+(`kerberos`, `securityKey`, `chosen`, …; `docs/remote-hosts.md` → *When your own
+`ssh` connects instead*). `host/connect` opens a session on one that has none —
+the same path startup takes for the hosts that need nothing — and answers
+`systemSshFailed`, with OpenSSH's own `detail`, when that `ssh` stopped.
 
 Two things it deliberately does not do:
 
 - **It takes no credential.** A host that wants a password or a key passphrase
-  comes back as `needsPassword` / `needsPassphrase` and stops there; so does one
-  whose host key is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
+  the person has not given in this session of the app comes back as
+  `needsPassword` / `needsPassphrase` and stops there; so does one that wants a
+  second factor (`needsAnswers`), and one whose host key — its own or a
+  bastion's — is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
   `hostRevoked` — nothing is trusted). Those are the person's to finish in
   Settings → Hosts, and the result carries no fingerprint, key path or
   credential method for a caller to work with.
@@ -552,7 +562,14 @@ A few things a caller from outside should know:
 
 The console client. A separate binary (`src-tauri/crates/uxnan-cli`), built
 with the app's workspace, that depends on the protocol crate and nothing of
-Tauri. Named `uxnan-cli` on purpose, so it is never mistaken for the app.
+Tauri. Named `uxnan-cli` on purpose, so it is never mistaken for the app. How
+it finds the running app and calls it — the discovery file, the private-file
+and live-process checks, one HTTP `POST` — is its own small crate,
+`uxnan-control-client` (`src-tauri/crates/control-client`), which the app's
+automation runner uses too: a scheduled run of an automation on a host is
+handed to the open app on a route of its own (`/automations/v1/handoff`,
+control token only), which is **not** a catalog entry and starts nothing but a
+run the person already scheduled (`docs/automations.md` → *On a host*).
 
 ```
 uxnan-cli status

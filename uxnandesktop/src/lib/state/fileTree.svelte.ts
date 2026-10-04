@@ -61,6 +61,12 @@ class FileTreeStore {
   /** The tree is on a host that has no session yet. Not an error — the panel
    *  says it is waiting, and `retryForHost` fills it in when the host connects. */
   awaitingHost = $state(false);
+  /** When this tree last read a folder, so a host that drops can leave what
+   *  was read on screen, saying how old it is (`offlineSince` / `OfflineNote`). */
+  readAt = $state<number | null>(null);
+  /** The tree is of a host that dropped: what it shows is what was read then,
+   *  read-only, until the host is back. */
+  offline = $state(false);
 
   /** The connection this tree's mutations must run against, or `undefined` when
    *  it is not a host's (local) or the host is not connected — which the router
@@ -84,12 +90,9 @@ class FileTreeStore {
     return isLocalTarget(this.target);
   }
 
-  /** Whether searching this tree is possible.
-   *
-   *  Local always. On a host it asks git there (`ssh::search`), so it needs a
-   *  live connection — and a folder that is not a repository on that machine
-   *  answers with that as the reason, which the panel shows in place of results
-   *  rather than pretending nothing matched. */
+  /** Whether searching this tree is possible: local always; on a host, while
+   *  it is connected — its engine walks the project there, the same walk as
+   *  here, and a host nothing can be sent to has no search to offer. */
   get searchable(): boolean {
     return isLocalTarget(this.target) || this.mutable;
   }
@@ -162,6 +165,8 @@ class FileTreeStore {
     this.listening = true;
     try {
       await listen<FsChangedEvent>("fs:changed", (e) => {
+        // The machine first: a host's folder can have the same path as one here.
+        if ((e.payload.target ?? LOCAL_TARGET) !== this.target) return;
         if (e.payload.root === this.root) this.applyFsChange(e.payload.paths);
       });
     } catch {
@@ -203,6 +208,8 @@ class FileTreeStore {
     // project's folders — which had listed perfectly well — because this reset
     // cleared the error and everything else but not this flag.
     this.awaitingHost = false;
+    this.offline = false;
+    this.readAt = null;
     this.query = "";
     this.searchScope = null;
     this.contentQuery = "";
@@ -247,6 +254,7 @@ class FileTreeStore {
     try {
       const entries = await listDirOn(this.target, dir);
       this.childrenByDir = { ...this.childrenByDir, [dir]: entries };
+      this.readAt = Date.now();
       this.error = null;
       // A tree that just listed is not waiting for anything, whatever it was
       // doing a moment ago — including the host coming back on its own.
@@ -293,6 +301,7 @@ class FileTreeStore {
   retryForHost(hostId: string): void {
     if (sshHostId(this.target) !== hostId) return;
     this.awaitingHost = false;
+    this.offline = false;
     this.error = null;
     const root = this.root;
     if (root) void this.loadDir(root, true);
@@ -308,16 +317,24 @@ class FileTreeStore {
    *  just a tree that was quietly a memory. Every panel in this app is supposed
    *  to say what it cannot know; this one was claiming the opposite.
    *
-   *  It goes back to the same state a cold start has, so `retryForHost` fills it
-   *  in again when the host returns. */
+   *  So a tree that had read something keeps it on screen, **marked offline**
+   *  with when it was read (`OfflineNote`) — the user keeps their place, and
+   *  nothing claims to be current. Nothing can change it meanwhile: it is not
+   *  `mutable`, and the half-done edits (a draft, a rename) go. A tree that had
+   *  read nothing goes back to a cold start's waiting state. Either way
+   *  `retryForHost` reads it again when the host returns. */
   hostWentAway(hostId: string): void {
     if (sshHostId(this.target) !== hostId) return;
-    this.childrenByDir = {};
-    this.expanded = new Set();
-    this.selectedEntry = null;
     this.draft = null;
     this.renamingPath = null;
     this.error = null;
+    if (Object.keys(this.childrenByDir).length > 0 && this.readAt !== null) {
+      this.offline = true;
+      return;
+    }
+    this.childrenByDir = {};
+    this.expanded = new Set();
+    this.selectedEntry = null;
     this.awaitingHost = true;
   }
 

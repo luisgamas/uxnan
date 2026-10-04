@@ -65,7 +65,7 @@ pub async fn workspace_of<R: tauri::Runtime>(
         let tab = Resolver::new(app, caller).current_terminal().await?;
         return Ok(tab.workspace);
     }
-    if let Caller::Bridge { cwd: Some(cwd) } = caller {
+    if let Caller::Bridge { cwd: Some(cwd), .. } = caller {
         return Ok(cwd.clone());
     }
     let active = Bridge::ask(app, "browser/active", Value::Null).await?;

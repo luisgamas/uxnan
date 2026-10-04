@@ -40,7 +40,7 @@
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
   import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
-  import { LOCAL_TARGET } from "$lib/target";
+  import { bridges } from "$lib/bridge/client.svelte";
 
   let {
     path,
@@ -85,7 +85,8 @@
   const launchable = $derived(app.launchableAgentsOn(projects.targetForPath(path)));
   // A chat runs on the local bridge, so it is offered for a folder on this
   // machine only.
-  const chatLocal = $derived(projects.targetForPath(path) === LOCAL_TARGET);
+  // This machine's bridge, or a host's own while it is connected (`02g` §5.18).
+  const chatLocal = $derived(bridges.offersChat(projects.targetForPath(path)));
   // The owning project, for the GitHub submenu: its main-worktree path is what
   // the inline view is scoped to (same value the project card passes). A non-git
   // folder has no GitHub to offer.

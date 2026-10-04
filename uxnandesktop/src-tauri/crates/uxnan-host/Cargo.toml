@@ -1,0 +1,47 @@
+[package]
+name = "uxnan-host"
+description = "The daemon Uxnan Desktop runs on a remote machine: it owns that machine's terminals so they outlive the SSH connection, and serves them to the desktop over it."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "uxnan-host"
+path = "src/main.rs"
+
+[dependencies]
+uxnan-host-protocol = { path = "../host-protocol" }
+uxnan-workspace-engine = { path = "../workspace-engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The endpoint's token, from the operating system's random source on every
+# platform (`/dev/urandom` exists only on Unix). Already in the tree.
+getrandom = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "io-std", "sync", "time", "macros", "process"] }
+
+[target.'cfg(unix)'.dependencies]
+# `setsid`, `umask` and ignoring SIGHUP when the daemon detaches from the SSH
+# session that started it. Already in the tree through the terminal crates.
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# The daemon's named pipe, its access list and its lock files on a Windows
+# host; the same crate and version the app uses.
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+  "Win32_System_IO",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+] }
+# The access list that makes the pipe the user's alone — the one the app's
+# discovery file gets (`private::UserOnlyDacl`).
+uxnan-control-protocol = { path = "../control-protocol" }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["process"] }

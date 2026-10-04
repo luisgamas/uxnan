@@ -15,6 +15,10 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import FolderSelectDialog from "$lib/components/FolderSelectDialog.svelte";
+  import MachinePicker, { LOCAL_MACHINE } from "$lib/components/MachinePicker.svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { expectation, type TargetId } from "$lib/target";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Spinner } from "$lib/components/ui/spinner";
   import { app } from "$lib/state/app.svelte";
@@ -95,6 +99,31 @@
   let scanning = $state(false);
   let removing = $state(false);
 
+  // Whose managed folders the list is about: this machine, or a connected
+  // host, whose engine scans and cleans its own with the same rules. One at a
+  // time, like the Hooks list; a new pick starts from a fresh scan.
+  let machine = $state<string>(LOCAL_MACHINE);
+  const target = $derived<TargetId>(machine === LOCAL_MACHINE ? "local" : `ssh:${machine}`);
+
+  function pickMachine(id: string) {
+    if (id === machine) return;
+    machine = id;
+    candidates = null;
+    sizes = {};
+    selected = new Set();
+  }
+
+  /** The fence a removal on a host is sent with: the connection the user is
+   *  looking at. Without one nothing is sent. */
+  function removalFence() {
+    if (machine === LOCAL_MACHINE) return undefined;
+    const generation = sessions.generationOf(machine);
+    if (generation === undefined) {
+      throw new Error(i18n.t("settings.worktreeCleanupHostAway", { host: hosts.labelOf(machine) }));
+    }
+    return expectation(target, generation);
+  }
+
   const bucketOf = (scope: WorktreeCleanupScope, kind: WorktreeCleanupKind) =>
     candidates?.filter((c) => c.scope === scope && c.kind === kind) ?? [];
   const scopeHas = (scope: WorktreeCleanupScope) =>
@@ -122,8 +151,11 @@
   async function scan() {
     if (scanning) return;
     scanning = true;
+    const asked = machine;
     try {
-      const found = await worktreeCleanupScan();
+      const found = await worktreeCleanupScan(target);
+      // A pick of another machine meanwhile wins.
+      if (asked !== machine) return;
       candidates = found;
       // Orphans are pre-selected: git owns nothing there, so there is nothing to
       // weigh up. Everything else the user picks deliberately.
@@ -140,7 +172,9 @@
   async function loadSizes(paths: string[]) {
     if (paths.length === 0) return;
     try {
-      const measured = await worktreeCleanupSizes(paths);
+      const asked = machine;
+      const measured = await worktreeCleanupSizes(paths, target);
+      if (asked !== machine) return;
       const next = { ...sizes };
       paths.forEach((path, i) => (next[path] = measured[i] ?? 0));
       sizes = next;
@@ -160,7 +194,7 @@
     if (removing || selected.size === 0) return;
     removing = true;
     try {
-      const outcome = await worktreeCleanupRemove([...selected]);
+      const outcome = await worktreeCleanupRemove([...selected], target, removalFence());
       if (outcome.removed.length > 0) {
         toast.success(
           i18n.plural(
@@ -359,6 +393,15 @@
     description={i18n.t("settings.worktreeCleanupDesc")}
     headerAction={cleanupAction}
   >
+    {#if hosts.connected.length > 0}
+      <div class="mb-4 max-w-xs">
+        <MachinePicker
+          value={machine}
+          ariaLabel={i18n.t("settings.worktreeCleanupMachineAria")}
+          onpick={pickMachine}
+        />
+      </div>
+    {/if}
     {#if candidates === null}
       <p class={text.meta}>{i18n.t("settings.worktreeCleanupIdle")}</p>
     {:else if candidates.length === 0}

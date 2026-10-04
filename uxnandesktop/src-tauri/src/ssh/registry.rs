@@ -160,8 +160,10 @@ pub fn add_host(
         if !(hand_written && from_import) {
             let id = existing.id.clone();
             let needs_prompt = existing.needs_prompt;
+            let carrier = existing.carrier;
             *existing = host_from(draft, id);
             existing.needs_prompt = needs_prompt;
+            existing.carrier = carrier;
         }
         return AddOutcome {
             host: hosts[index].clone(),
@@ -187,6 +189,52 @@ pub fn add_host(
     }
 }
 
+/// Edit a registered host in place, keeping its id (and so its projects).
+///
+/// A host imported from `~/.ssh/config` takes its connection settings from that
+/// file at every connect, so only its label is the app's to change — editing
+/// the rest here would be overwritten by the next connect and lie in between.
+/// A hand-written host is the user's record entirely. Either way the "needs a
+/// prompt" mark is cleared: the way the host is reached may have changed, and
+/// the next connect learns it again.
+pub fn update_host(hosts: &mut [SshHost], id: &str, draft: HostDraft) -> Option<SshHost> {
+    let existing = hosts.iter_mut().find(|h| h.id == id)?;
+    if existing.source == SshHostSource::SshConfig {
+        existing.label = draft.label;
+    } else {
+        let mut updated = host_from(draft, existing.id.clone());
+        updated.source = SshHostSource::Manual;
+        updated.config_host = None;
+        // The carrier is set on the host's page, not in this form: an edit
+        // keeps it.
+        updated.carrier = existing.carrier;
+        *existing = updated;
+    }
+    existing.needs_prompt = false;
+    Some(existing.clone())
+}
+
+/// Bring an imported host's snapshot up to date with what its configuration
+/// resolved to just now. The snapshot is only what the interface shows; the
+/// connection always uses the fresh values. Answers whether anything changed,
+/// so the caller saves only then.
+pub fn refresh_snapshot(host: &mut SshHost, resolved: &super::config::ResolvedHost) -> bool {
+    if host.source != SshHostSource::SshConfig {
+        return false;
+    }
+    let before = host.clone();
+    host.hostname = resolved.hostname.clone();
+    host.port = resolved.port;
+    host.user = resolved.user.clone();
+    host.identity_files = resolved.identity_files.clone();
+    host.identity_agent = resolved.identity_agent.clone();
+    host.identities_only = resolved.identities_only;
+    host.forward_agent = resolved.forward_agent;
+    host.proxy_command = resolved.proxy_command.clone();
+    host.proxy_jump = resolved.proxy_jump.clone();
+    *host != before
+}
+
 fn host_from(draft: HostDraft, id: String) -> SshHost {
     SshHost {
         id,
@@ -203,6 +251,7 @@ fn host_from(draft: HostDraft, id: String) -> SshHost {
         proxy_jump: draft.proxy_jump,
         source: draft.source,
         needs_prompt: false,
+        carrier: Default::default(),
     }
 }
 
@@ -449,5 +498,84 @@ mod tests {
         add(&mut hosts, &mut tombs, again, "h2");
         assert!(hosts[0].needs_prompt);
         assert_eq!(hosts[0].label, "edited");
+    }
+
+    fn draft_at(host: &str, port: u16, user: &str) -> HostDraft {
+        HostDraft {
+            port,
+            ..draft(host, user)
+        }
+    }
+
+    #[test]
+    fn editing_a_typed_host_rewrites_it_and_keeps_its_id() {
+        let mut hosts = Vec::new();
+        let mut tombs = Vec::new();
+        let added = add_host(&mut hosts, &mut tombs, draft_at("box", 22, "me"), || {
+            "id-1".into()
+        })
+        .host;
+        hosts[0].needs_prompt = true;
+        let mut edit = draft_at("box.lan", 2222, "dev");
+        edit.proxy_jump = Some("bastion".into());
+        let updated = update_host(&mut hosts, &added.id, edit).unwrap();
+        assert_eq!(updated.id, "id-1");
+        assert_eq!(
+            (
+                updated.hostname.as_str(),
+                updated.port,
+                updated.user.as_str()
+            ),
+            ("box.lan", 2222, "dev")
+        );
+        assert_eq!(updated.proxy_jump.as_deref(), Some("bastion"));
+        assert!(!updated.needs_prompt, "a changed route is learned again");
+        assert!(update_host(&mut hosts, "nope", draft_at("x", 22, "y")).is_none());
+    }
+
+    #[test]
+    fn editing_an_imported_host_changes_only_its_label() {
+        let mut hosts = Vec::new();
+        let mut tombs = Vec::new();
+        let mut imported = draft_at("10.0.0.5", 22, "me");
+        imported.config_host = Some("build-box".into());
+        imported.source = SshHostSource::SshConfig;
+        let added = add_host(&mut hosts, &mut tombs, imported, || "id-2".into()).host;
+        let mut edit = draft_at("evil.example", 22, "root");
+        edit.label = "Build box".into();
+        let updated = update_host(&mut hosts, &added.id, edit).unwrap();
+        assert_eq!(updated.label, "Build box");
+        assert_eq!(updated.hostname, "10.0.0.5", "the config file owns this");
+        assert_eq!(updated.config_host.as_deref(), Some("build-box"));
+    }
+
+    #[test]
+    fn an_imported_snapshot_follows_its_configuration_and_a_typed_one_does_not() {
+        let mut hosts = Vec::new();
+        let mut tombs = Vec::new();
+        let mut imported = draft_at("10.0.0.5", 22, "me");
+        imported.config_host = Some("build-box".into());
+        imported.source = SshHostSource::SshConfig;
+        add_host(&mut hosts, &mut tombs, imported, || "id-3".into());
+        let resolved = super::super::config::ResolvedHost {
+            hostname: "10.0.0.9".into(),
+            port: 22,
+            user: "me".into(),
+            proxy_jump: Some("bastion".into()),
+            ..Default::default()
+        };
+        assert!(refresh_snapshot(&mut hosts[0], &resolved));
+        assert_eq!(hosts[0].hostname, "10.0.0.9");
+        assert!(
+            !refresh_snapshot(&mut hosts[0], &resolved),
+            "nothing new the second time"
+        );
+
+        let mut typed = hosts[0].clone();
+        typed.source = SshHostSource::Manual;
+        assert!(!refresh_snapshot(
+            &mut typed,
+            &super::super::config::ResolvedHost::default()
+        ));
     }
 }

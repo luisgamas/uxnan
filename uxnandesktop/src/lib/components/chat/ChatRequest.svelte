@@ -17,7 +17,7 @@
   import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
   import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
   import type { ApprovalDecision } from "$shared/models/approval";
-  import { chat as chatStore } from "$lib/bridge/chat.svelte";
+  import { useChat } from "$lib/bridge/chat.svelte";
   import type { Conversation } from "$lib/bridge/conversation.svelte";
   import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
@@ -44,6 +44,8 @@
     /** This card takes the number keys (the first open request in the dock). */
     keys?: boolean;
   } = $props();
+  // The replica of the machine this chat is on (its pane provides it).
+  const chatStore = useChat();
 
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const type = $derived(str(block.type));

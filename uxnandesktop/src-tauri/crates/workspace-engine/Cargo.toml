@@ -1,0 +1,61 @@
+[package]
+name = "uxnan-workspace-engine"
+description = "The workspace engine behind Uxnan Desktop — terminals and the screen they show — used in process on this machine and by the host daemon on a remote one."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Reading and writing project files, and searching them (`fs`): the same crates
+# and versions the app used for it.
+tokio = { version = "1", features = ["fs", "rt", "io-util", "process", "time", "macros", "sync"] }
+ignore = "0.4"
+globset = "0.4"
+regex = "1"
+base64 = "0.22"
+# Git for the file tree and the git panels (`git`, `gitfast`): libgit2 without
+# its network transports, statically linked — it builds for every host target.
+# Everything libgit2 does only partially runs the git CLI instead.
+git2 = { version = "0.20", default-features = false }
+# The control surface's header and variable names an agent identifies itself
+# with (`mcp_launch`).
+uxnan-control-protocol = { path = "../control-protocol" }
+# Pseudoterminals: ConPTY on Windows, openpty elsewhere. The same crate and
+# version the app has always used for its terminals.
+portable-pty = "0.9"
+# The screen a terminal shows, kept so a client that reconnects is repainted
+# exactly — a full-screen agent UI included — instead of replaying raw bytes
+# from the middle of an escape sequence. Pure Rust, MIT, three small
+# dependencies (vte, unicode-width, itoa).
+vt100 = "0.16"
+# Watching a project folder for the file tree, editor and git panel. The same
+# crates and versions the app's other watchers use; `notify` is re-exported by
+# the debouncer, so the two are pinned together.
+notify = "6"
+notify-debouncer-full = "0.3"
+# The agents' hook installer (`agent_hooks`, `codex_trust`): it reads and merges
+# their JSON and TOML configs and reproduces Codex's per-hook trust hash. The
+# same crates and versions the app already used for it.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml_edit = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+# A unique name for a worktree moved aside before it is deleted
+# (`worktreeclean`). The same crate and version the app uses.
+uuid = { version = "1", features = ["v4"] }
+# The process table: which agent a terminal runs (`procscan`) and ending it
+# (`agentstop`). The same crate and version the app uses.
+sysinfo = "0.33"
+
+[target.'cfg(windows)'.dependencies]
+# The 8.3 short path the hook installer gives a reporter whose path has spaces
+# (`agent_hooks::short_path`). The same crate and version the app uses.
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
+tempfile = "3"
+uuid = { version = "1", features = ["v4"] }

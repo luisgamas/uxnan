@@ -1034,7 +1034,7 @@ model** — updating only one silently leaves that surface a version behind:
 | List | Where | Feeds |
 |---|---|---|
 | Bridge seed | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the phone's model picker (`agent/models`) |
-| Desktop table | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the desktop's AI commit-message / PR-body drafting picker |
+| Desktop table | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` | the desktop's AI commit-message / PR-body drafting picker |
 
 Keep the **same ids, labels and order** in both (newest/most capable first). Use
 canonical ids only: never append a date suffix or a routing variant (`…[1m]`,

@@ -15,11 +15,17 @@
 //! worktree → execute the graph → prune old history. Every outcome, including
 //! every refusal, is written to the run record — an execution nobody watched
 //! must still be able to explain itself afterwards.
+//!
+//! **An automation on a host** (`Automation::target`) runs the same sequence
+//! ([`run`]) with the work done by that host's engine ([`Place::Host`]). This
+//! process has no SSH connection — it would have to stand up a second one,
+//! with its own prompts, beside the window's — so it hands the run to the
+//! running app, which holds the connection (`handoff`). With the app closed or
+//! the host not connected, the run is recorded as unavailable, saying why.
 
 use std::io::Write;
-use std::path::PathBuf;
-use std::process::Stdio;
 
+use super::place::Place;
 use super::store::AutomationStore;
 use super::{graph, now_ms, validate, Automation, AutomationRun, Overlap, RunStatus, RunTrigger};
 use crate::budget;
@@ -202,12 +208,51 @@ async fn execute(args: RunnerArgs) -> i32 {
         return EXIT_OK;
     }
 
+    if let Some(host_id) = automation.target.ssh_host_id() {
+        return match super::handoff::send(&automation.id, args.trigger) {
+            Ok(()) => EXIT_OK,
+            Err(why) => {
+                record_unavailable(
+                    &store,
+                    &automation,
+                    args.trigger,
+                    format!("this automation works on the host {host_id}, and {why}"),
+                );
+                EXIT_NOT_RUNNABLE
+            }
+        };
+    }
+    run(&store, automation, args.trigger, &Place::Here).await
+}
+
+/// Record a run that could not start at all, and why — the account a person
+/// reads when a scheduled run did nothing.
+pub fn record_unavailable(
+    store: &AutomationStore,
+    automation: &Automation,
+    trigger: RunTrigger,
+    why: String,
+) {
+    let mut run = AutomationRun::start(automation, new_run_id(), trigger);
+    log_line(&store.log_path(&run.id), &format!("skipped: {why}"));
+    finish(store, &mut run, RunStatus::SkippedUnavailable, Some(why));
+}
+
+/// Run `automation` with its work done at `place`, and return the exit code
+/// the runner process reports. The one sequence for both machines: the
+/// runner calls it for this machine, the app for a host it is connected to.
+pub async fn run(
+    store: &AutomationStore,
+    automation: Automation,
+    trigger: RunTrigger,
+    place: &Place,
+) -> i32 {
     let errors = validate(&automation);
     if !errors.is_empty() {
         let run_id = new_run_id();
-        let mut run = AutomationRun::start(&automation, run_id, args.trigger);
+        let mut run = AutomationRun::start(&automation, run_id, trigger);
         finish(
-            &store,
+            store,
             &mut run,
             RunStatus::SkippedUnavailable,
             Some(errors.join(" ")),
@@ -217,7 +262,7 @@ async fn execute(args: RunnerArgs) -> i32 {
 
     let run_id = new_run_id();
     let log = store.log_path(&run_id);
-    let mut run = AutomationRun::start(&automation, run_id.clone(), args.trigger);
+    let mut run = AutomationRun::start(&automation, run_id.clone(), trigger);
     log_line(
         &log,
         &format!(
@@ -235,7 +280,7 @@ async fn execute(args: RunnerArgs) -> i32 {
     {
         log_line(&log, "skipped: a previous run is still in flight");
         finish(
-            &store,
+            store,
             &mut run,
             RunStatus::SkippedOverlap,
             Some("a previous run of this automation was still running".into()),
@@ -243,10 +288,10 @@ async fn execute(args: RunnerArgs) -> i32 {
         return EXIT_OK;
     }
 
-    if !std::path::Path::new(&automation.working_dir).is_dir() {
+    if !place.has_folder(&automation.working_dir).await {
         log_line(&log, "skipped: the working folder is gone");
         finish(
-            &store,
+            store,
             &mut run,
             RunStatus::SkippedUnavailable,
             Some(format!(
@@ -261,7 +306,8 @@ async fn execute(args: RunnerArgs) -> i32 {
 
     // The gate: a cheap shell command decides whether this run is worth an agent.
     if let Some(pre) = &automation.policy.precondition {
-        match graph::run_precondition(&pre.command, pre.timeout_seconds, &automation.working_dir)
+        match place
+            .precondition(&pre.command, pre.timeout_seconds, &automation.working_dir)
             .await
         {
             Ok(result) => {
@@ -276,7 +322,7 @@ async fn execute(args: RunnerArgs) -> i32 {
                 run.precondition = Some(result);
                 if !passed {
                     finish(
-                        &store,
+                        store,
                         &mut run,
                         RunStatus::SkippedPrecondition,
                         Some("the precondition did not pass".into()),
@@ -287,7 +333,7 @@ async fn execute(args: RunnerArgs) -> i32 {
             Err(e) => {
                 log_line(&log, &format!("precondition error: {e}"));
                 finish(
-                    &store,
+                    store,
                     &mut run,
                     RunStatus::SkippedUnavailable,
                     Some(e.to_string()),
@@ -301,7 +347,7 @@ async fn execute(args: RunnerArgs) -> i32 {
     // touches the tree the user is in.
     let mut cwd = automation.working_dir.clone();
     if automation.worktree_per_run {
-        match create_run_worktree(&store, &automation, &run_id).await {
+        match place.create_run_worktree(store, &automation, &run_id).await {
             Ok(path) => {
                 log_line(&log, &format!("worktree {path}"));
                 run.worktree_path = Some(path.clone());
@@ -309,24 +355,27 @@ async fn execute(args: RunnerArgs) -> i32 {
             }
             Err(e) => {
                 log_line(&log, &format!("worktree failed: {e}"));
-                finish(&store, &mut run, RunStatus::SkippedUnavailable, Some(e));
+                finish(store, &mut run, RunStatus::SkippedUnavailable, Some(e));
                 return EXIT_NOT_RUNNABLE;
             }
         }
     }
-    seed_codex_trust(&automation, &cwd, &log);
+    // Codex's trust lives in that machine's own config; a host's `codex exec`
+    // runs with `--skip-git-repo-check` and needs none to start (`agentcli`).
+    if place.is_here() {
+        seed_codex_trust(&automation, &cwd, &log);
+    }
     let _ = store.write_run(&run);
 
-    let prev_vars = graph::previous_run_vars(&store, &automation.id);
-    let limits = limits();
+    let prev_vars = graph::previous_run_vars(store, &automation.id);
     graph::execute(
-        &store,
+        store,
         &automation,
         &mut run,
         &prev_vars,
         &cwd,
-        limits.policy,
-        limits.memory_ceiling_mb,
+        place,
+        limits(),
     )
     .await;
     log_line(&log, &format!("finished {:?}", run.status));
@@ -380,85 +429,6 @@ fn finish(
     run.error = error;
     run.finished_at = Some(now_ms());
     let _ = store.write_run(run);
-}
-
-/// Create the run's own worktree next to the store, on a branch named after the
-/// automation so the work is easy to find and review later.
-///
-/// FOR-DEV: these worktrees are intentionally left in place (you want to inspect
-/// what an unattended run did), so nothing garbage-collects them yet — pruning a
-/// run record should also offer to remove its worktree. See FOR-DEV.md.
-async fn create_run_worktree(
-    store: &AutomationStore,
-    automation: &Automation,
-    run_id: &str,
-) -> Result<String, String> {
-    let dir: PathBuf = store
-        .watch_root()
-        .parent()
-        .unwrap_or(&store.watch_root())
-        .join("worktrees")
-        .join(&automation.id)
-        .join(run_id);
-    let path = dir.to_string_lossy().to_string();
-    let branch = format!("automation/{}-{}", slug(&automation.name), short(run_id));
-    let base = automation
-        .base_branch
-        .clone()
-        .unwrap_or_else(|| "HEAD".into());
-
-    if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    let mut cmd = crate::winproc::command("git");
-    cmd.args(["-C", &automation.working_dir])
-        .args(["worktree", "add", "-b", &branch, &path, &base])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = cmd
-        .spawn()
-        .map_err(|e| format!("failed to run git: {e}"))?
-        .wait_with_output()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if detail.is_empty() {
-            "git could not create the run worktree".into()
-        } else {
-            detail
-        });
-    }
-    Ok(path)
-}
-
-/// Branch-safe form of an automation name.
-fn slug(name: &str) -> String {
-    let mut out = String::new();
-    let mut last_dash = true;
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-            last_dash = false;
-        } else if !last_dash {
-            out.push('-');
-            last_dash = true;
-        }
-    }
-    let trimmed = out.trim_matches('-').to_string();
-    if trimmed.is_empty() {
-        "automation".into()
-    } else {
-        trimmed.chars().take(40).collect()
-    }
-}
-
-/// First segment of a uuid, enough to disambiguate a branch name.
-fn short(run_id: &str) -> String {
-    run_id.split('-').next().unwrap_or(run_id).to_string()
 }
 
 fn new_run_id() -> String {
@@ -563,16 +533,37 @@ mod tests {
     }
 
     #[test]
-    fn slugs_are_branch_safe() {
-        assert_eq!(slug("Nightly triage"), "nightly-triage");
-        assert_eq!(slug("  Revisión de PR  "), "revisi-n-de-pr");
-        assert_eq!(slug("***"), "automation");
-        assert!(slug(&"x".repeat(100)).len() <= 40);
-    }
-
-    #[test]
-    fn short_run_id_takes_the_first_uuid_segment() {
-        assert_eq!(short("6f1c2b3a-dead-beef-0000-111122223333"), "6f1c2b3a");
-        assert_eq!(short("plain"), "plain");
+    fn a_run_that_could_not_start_says_where_it_works_and_why() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(dir.path());
+        let automation = Automation {
+            id: "a1".into(),
+            name: "Nightly on the server".into(),
+            description: String::new(),
+            icon: None,
+            enabled: true,
+            tags: vec![],
+            working_dir: "/srv/app".into(),
+            target: crate::target::TargetId::Ssh("h1".into()),
+            worktree_per_run: false,
+            base_branch: None,
+            schedule: super::super::Schedule::DailyAt { hour: 3, minute: 0 },
+            policy: super::super::Policy::default(),
+            steps: vec![],
+            created_at: 0,
+            updated_at: 0,
+        };
+        record_unavailable(
+            &store,
+            &automation,
+            RunTrigger::Scheduled,
+            "the host was not connected".into(),
+        );
+        let runs = store.list_runs("a1").unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, RunStatus::SkippedUnavailable);
+        assert_eq!(runs[0].target, crate::target::TargetId::Ssh("h1".into()));
+        assert_eq!(runs[0].error.as_deref(), Some("the host was not connected"));
+        assert!(runs[0].finished_at.is_some());
     }
 }

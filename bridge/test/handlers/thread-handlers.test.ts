@@ -649,3 +649,53 @@ test('a conversation starts in its agent default mode, keeps to the modes it off
   await bridge.stop();
   await rmrf(baseDir);
 });
+
+test('sync/changes lists every live thread, even one that did not change since the cursor', async () => {
+  // The phone keeps its cursor across restarts: an incremental answer leaves
+  // out a thread whose turn started before it, so the live set must come whole.
+  const { bridge, baseDir } = await boot();
+  const adapter = new ControlledAdapter();
+  bridge.context.agentManager.register(adapter);
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, title: 'Chat', agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+  const sendRes = await bridge.router.dispatch(
+    makeRequest('2', 'turn/send', { threadId, text: 'work for a while' }),
+  );
+  assert.ok('result' in sendRes);
+  const turnId = (sendRes.result as { turnId: string }).turnId;
+
+  // Caught up to now: nothing changed since, but the turn is still running.
+  const first = await bridge.router.dispatch(makeRequest('3', 'sync/changes', {}));
+  assert.ok('result' in first);
+  const { rev, storeId } = first.result as { rev: number; storeId: string };
+  const again = await bridge.router.dispatch(
+    makeRequest('4', 'sync/changes', { since: rev, storeId }),
+  );
+  assert.ok('result' in again);
+  const caughtUp = again.result as {
+    threads: unknown[];
+    live?: { threadId: string; activeTurnId?: string }[];
+  };
+  assert.equal(caughtUp.threads.length, 0, 'nothing changed since the cursor');
+  assert.deepEqual(caughtUp.live, [{ threadId, activeTurnId: turnId }]);
+
+  // Once it ends, the live set is empty: the thread is idle.
+  adapter.complete(threadId, turnId, 'done');
+  await waitFor(
+    async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
+  );
+  const after = await bridge.router.dispatch(
+    makeRequest('5', 'sync/changes', { since: rev, storeId }),
+  );
+  assert.ok('result' in after);
+  assert.deepEqual((after.result as { live?: unknown[] }).live, []);
+
+  await bridge.stop();
+  await rmrf(baseDir);
+});

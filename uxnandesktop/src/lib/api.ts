@@ -3,7 +3,7 @@
 // `src-tauri/src/commands.rs`.
 
 import { invoke } from '@tauri-apps/api/core';
-import type { TargetExpectation } from '$lib/target';
+import type { TargetExpectation, TargetId } from '$lib/target';
 import type {
   Automation,
   AutomationRun,
@@ -34,14 +34,20 @@ import type {
   FsEntry,
   ListeningPort,
   SshConfigAlias,
-  SshGitReview,
-  SshGitStatus,
+  GitReview,
+  HostBridgeInstalled,
+  HostBridgeState,
+  HostDoctor,
+  HostSession,
+  RepoStatus,
   SshConnectReport,
   SshHostInventory,
   SshHost,
+  SshCarrier,
+  SshCarrierView,
   SshHostAdded,
   SshHostDraft,
-  SshHostProbe,
+  SshSecret,
   SshHostSession,
   SshRemoteListing,
   SshResolvedHost,
@@ -269,6 +275,21 @@ export function uninstallAgentHooks(agent: string): Promise<AgentHooksStatus> {
  *  disclosure. For OpenCode and Pi — whose reporter *is* a file — its source. */
 export function renderAgentHooksConfig(agent: string): Promise<string> {
   return invoke<string>('render_agent_hooks_config', { agent });
+}
+
+/** One connected host's hooks, read there by its engine. */
+export function hostHooks(hostId: string): Promise<HookAgentEntry[]> {
+  return invoke<HookAgentEntry[]>('host_hooks', { hostId });
+}
+
+/** Install (`on`) or remove one agent's reporter on a host. */
+export function setHostHook(hostId: string, agent: string, on: boolean): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>('host_hook_set', { hostId, agent, on });
+}
+
+/** Exactly what the installer writes for one agent on a host. */
+export function hostHookConfig(hostId: string, agent: string): Promise<string> {
+  return invoke<string>('host_hook_config', { hostId, agent });
 }
 
 /** (Re)install the managed hooks for every supported agent at once. */
@@ -500,22 +521,30 @@ export function worktreeCleanupCount(): Promise<number> {
  *  blocked by uncommitted work (listed, never removable). Read-only, and it only
  *  ever looks inside the managed roots — a worktree beside its repository is
  *  never listed and never touched. */
-export function worktreeCleanupScan(): Promise<WorktreeCleanupCandidate[]> {
-  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan');
+export function worktreeCleanupScan(target?: TargetId | null): Promise<WorktreeCleanupCandidate[]> {
+  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan', { target: target ?? null });
 }
 
 /** Size on disk of each path, in bytes, in the order asked. Separate from the
  *  scan because walking a checkout's `node_modules` costs more than every git
  *  query in the scan combined — the list appears first, the sizes fill in. */
-export function worktreeCleanupSizes(paths: string[]): Promise<number[]> {
-  return invoke<number[]>('worktree_cleanup_sizes', { paths });
+export function worktreeCleanupSizes(paths: string[], target?: TargetId | null): Promise<number[]> {
+  return invoke<number[]>('worktree_cleanup_sizes', { paths, target: target ?? null });
 }
 
 /** Remove the given worktrees. Every path is re-verified against a fresh scan
  *  (inside a managed root, still disposable, still clean), so a stale list can
  *  never delete the wrong folder; refusals come back with their reason. */
-export function worktreeCleanupRemove(paths: string[]): Promise<WorktreeCleanupOutcome> {
-  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', { paths });
+export function worktreeCleanupRemove(
+  paths: string[],
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<WorktreeCleanupOutcome> {
+  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', {
+    paths,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Set (or clear, with `null`) a project's own managed-worktree root, overriding
@@ -581,16 +610,15 @@ export function worktreeList(repoId: string): Promise<WorktreeEntry[]> {
   return invoke<WorktreeEntry[]>('worktree_list', { repoId });
 }
 
-/** Summarize a worktree's working-tree status (dirty count + ahead/behind). */
-export function worktreeStatus(path: string): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('worktree_status', { path });
-}
-
 /** Whether `branch` already landed in its repo's default base — merged outright
  *  or squashed. Read-only: the same check the removal runs on its way to a safe
  *  delete, asked without deleting anything. */
-export function branchIntegrated(path: string, branch: string): Promise<boolean> {
-  return invoke<boolean>('branch_integrated', { path, branch });
+export function branchIntegrated(
+  path: string,
+  branch: string,
+  target?: TargetId | null,
+): Promise<boolean> {
+  return invoke<boolean>('branch_integrated', { path, branch, target: target ?? null });
 }
 
 // --- Remote hosts (SSH) ----------------------------------------------------
@@ -627,13 +655,6 @@ export function sshHostRemove(hostId: string): Promise<boolean> {
   return invoke<boolean>('ssh_host_remove', { hostId });
 }
 
-/** Reach a host and report what `known_hosts` says about the key it presents.
- *  Writes nothing and offers no credential. On `unknown`, the backend holds the
- *  key so `sshHostTrust` can record exactly what the server presented. */
-export function sshHostProbe(hostId: string): Promise<SshHostProbe> {
-  return invoke<SshHostProbe>('ssh_host_probe', { hostId });
-}
-
 /** Record the key the last probe saw, after the user confirmed its fingerprint.
  *  Only valid right after an `unknown` probe — there is deliberately no way to
  *  trust a *changed* key. */
@@ -642,11 +663,34 @@ export function sshHostTrust(hostId: string): Promise<boolean> {
 }
 
 /** Open an authenticated session on a host and keep it. Idempotent: a host that
- *  is already connected reports that rather than connecting twice. `password` is
- *  passed only on a retry, after the app has asked for one — it is used for that
- *  attempt and never stored. */
-export function sshHostConnect(hostId: string, password?: string): Promise<SshConnectReport> {
-  return invoke<SshConnectReport>('ssh_host_connect', { hostId, password: password ?? null });
+ *  is already connected reports that rather than connecting twice. `secret` is
+ *  passed on a retry, after the app asked for a password or a passphrase; the
+ *  backend keeps it in memory for this session of the app, never on disk. */
+export function sshHostConnect(hostId: string, secret?: SshSecret): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_connect', { hostId, secret: secret ?? null });
+}
+
+/** Answer the questions a host's second factor asked (`needsAnswers`), on the
+ *  connection that is waiting for them. */
+export function sshHostAnswer(hostId: string, answers: string[]): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_answer', { hostId, answers });
+}
+
+/** Give up on a connection waiting for second-factor answers. */
+export function sshHostCancel(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_cancel', { hostId });
+}
+
+/** Replace the key on file for a host whose key changed, after the person
+ *  confirmed the change is theirs. The old entries are backed up first. */
+export function sshHostReplaceKey(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_replace_key', { hostId });
+}
+
+/** Edit a registered host. An imported one only takes a new label: the rest
+ *  comes from `~/.ssh/config` at every connect. */
+export function sshHostUpdate(hostId: string, draft: SshHostDraft): Promise<SshHost> {
+  return invoke<SshHost>('ssh_host_update', { hostId, draft });
 }
 
 /** Ask a connected host what it has: OS, home, git, a multiplexer, and the agent
@@ -658,208 +702,19 @@ export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
 
 /** List the folders inside `path` on a connected host. An empty `path` starts at
  *  that machine's home — only it knows where that is. */
+/** Pin what carries a host's connection (`auto` lets its configuration
+ *  decide). Takes effect at the next connect. */
+export function sshHostSetCarrier(hostId: string, carrier: SshCarrier): Promise<SshHost> {
+  return invoke<SshHost>('ssh_host_set_carrier', { hostId, carrier });
+}
+
+/** What would carry a host if it connected now, and why. */
+export function sshHostCarrier(hostId: string): Promise<SshCarrierView> {
+  return invoke<SshCarrierView>('ssh_host_carrier', { hostId });
+}
+
 export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
   return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
-}
-
-/** A worktree's git state **on a host**: branch plus changed/ahead/behind.
- *
- *  Runs git there through the shell that machine reported, with every argument
- *  quoted for it. `isRepo: false` covers "not a repository", "no git installed"
- *  and "the shell could not be named" — all of which the UI must render as *not
- *  read*, never as "no changes". */
-export function sshGitStatus(hostId: string, path: string): Promise<SshGitStatus> {
-  return invoke<SshGitStatus>('ssh_git_status', { hostId, path });
-}
-
-/** Everything the Changes tab needs about a worktree on a host, in **one** round
- *  trip: HEAD, ahead/behind, the changed files and their line counts.
- *
- *  One call rather than the local layer's four because each one costs a shell
- *  start on that machine — measured at ~2s on a real host — and the panel asks
- *  for all of them at once. `isRepo: false` means *not read*, never "clean". */
-export function sshGitReview(hostId: string, path: string): Promise<SshGitReview> {
-  return invoke<SshGitReview>('ssh_git_review', { hostId, path });
-}
-
-/** A file's unified diff on a host, staged or unstaged. */
-export function sshGitDiff(
-  hostId: string,
-  path: string,
-  file: string,
-  staged: boolean,
-): Promise<string> {
-  return invoke<string>('ssh_git_diff', { hostId, path, file, staged });
-}
-
-/** A file's diff against HEAD on a host — the editor's change gutter. Not the
- *  same question as `sshGitDiff`: the gutter marks every line that differs from
- *  the committed file, so staging a hunk must not clear it. */
-export function sshGitDiffHead(hostId: string, path: string, file: string): Promise<string> {
-  return invoke<string>('ssh_git_diff_head', { hostId, path, file });
-}
-
-/** Draft a commit message for a project on a host: the diff is read there, the
- *  agent runs here (its CLI and credentials are this machine's). */
-export function sshGitGenerateCommitMessage(hostId: string, path: string): Promise<string> {
-  return invoke<string>('ssh_git_generate_commit_message', { hostId, path });
-}
-
-/** Before/after versions of an **image** on a host, for the visual diff.
- *
- *  The committed side is read with `git show` keeping its bytes as bytes (the
- *  text path would turn a PNG into replacement characters), and the working-tree
- *  side over SFTP. Nothing has to be installed on the host to encode it. */
-export function sshGitImageDiff(
-  hostId: string,
-  path: string,
-  file: string,
-  staged: boolean,
-): Promise<ImageDiff> {
-  return invoke<ImageDiff>('ssh_git_image_diff', { hostId, path, file, staged });
-}
-
-/** A host worktree's history, newest first. Same shape as the local log, so the
- *  History tab and the branch graph render either machine unchanged. */
-export function sshGitLog(
-  hostId: string,
-  path: string,
-  limit: number,
-  skip: number,
-): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>('ssh_git_log', { hostId, path, limit, skip });
-}
-
-/** One commit's patch, on a host. */
-export function sshGitShow(hostId: string, path: string, hash: string): Promise<string> {
-  return invoke<string>('ssh_git_show', { hostId, path, hash });
-}
-
-/** Stage a file on a host. Fenced like every mutation: `expect` names the
- *  machine and connection the user was looking at, and the backend refuses
- *  before anything is sent when that no longer holds. */
-export function sshGitStage(
-  hostId: string,
-  path: string,
-  file: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_stage', { hostId, path, file, expect: expect ?? null });
-}
-
-export function sshGitUnstage(
-  hostId: string,
-  path: string,
-  file: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_unstage', { hostId, path, file, expect: expect ?? null });
-}
-
-export function sshGitStageAll(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_stage_all', { hostId, path, expect: expect ?? null });
-}
-
-export function sshGitUnstageAll(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_unstage_all', { hostId, path, expect: expect ?? null });
-}
-
-/** Throw a file's changes away on a host — the one action here that cannot be
- *  undone, and the reason the fence exists at all. */
-export function sshGitDiscard(
-  hostId: string,
-  path: string,
-  file: string,
-  untracked: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_discard', {
-    hostId,
-    path,
-    file,
-    untracked,
-    expect: expect ?? null,
-  });
-}
-
-/** Apply a patch on a host — the per-hunk stage/unstage/discard. The patch
- *  travels over SFTP, never through that machine's shell. */
-export function sshGitApply(
-  hostId: string,
-  path: string,
-  patch: string,
-  cached: boolean,
-  reverse: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_apply', {
-    hostId,
-    path,
-    patch,
-    cached,
-    reverse,
-    expect: expect ?? null,
-  });
-}
-
-/** Commit on a host. The message travels over SFTP for the same reason: a
- *  multi-line message with quotes in it must never be quoted for a shell. */
-export function sshGitCommit(
-  hostId: string,
-  path: string,
-  message: string,
-  amend: boolean,
-  signOff: boolean,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_git_commit', {
-    hostId,
-    path,
-    message,
-    amend,
-    signOff,
-    expect: expect ?? null,
-  });
-}
-
-/** Fetch, push or pull **on the host**, answering the worktree's new distance
- *  from its upstream. The credentials are that machine's own — the project lives
- *  there, so its remote is reachable from there. */
-export function sshGitSync(
-  hostId: string,
-  path: string,
-  action: 'fetch' | 'push' | 'pull',
-  expect?: TargetExpectation,
-): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('ssh_git_sync', { hostId, path, action, expect: expect ?? null });
-}
-
-/** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it
- *  works the same whatever shell that machine starts, with nothing installed
- *  there. Shapes are the local layer's own, so the tree renders either machine. */
-export function sshFsList(hostId: string, path: string): Promise<FsEntry[]> {
-  return invoke<FsEntry[]>('ssh_fs_list', { hostId, path });
-}
-
-/** Read a text file on a host, for the editor. Same guards as the local reader:
- *  binary and over-cap files come back flagged rather than mangled. */
-export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
-  return invoke<FileContent>('ssh_fs_read', { hostId, path });
-}
-
-/** Read an image or PDF on a host as an inline `data:` URL, for the preview
- *  pane. Same guards as the local reader (25 MiB cap, known image/PDF only), and
- *  the size is asked before the bytes cross the link. */
-export function sshFsReadDataUrl(hostId: string, path: string): Promise<string> {
-  return invoke<string>('ssh_fs_read_data_url', { hostId, path });
 }
 
 /** Ask a host what TCP ports it is listening on, right now.
@@ -894,118 +749,6 @@ export function sshForwards(): Promise<ForwardInfo[]> {
   return invoke<ForwardInfo[]>('ssh_forwards');
 }
 
-/** Save a text file on a host. Fenced: `expect` names the machine the caller
- *  prepared the save for, and the backend refuses the write outright when that
- *  no longer matches — the same absolute path usually exists on both machines,
- *  so a misrouted save is the one that looks like success. */
-export function sshFsWrite(
-  hostId: string,
-  path: string,
-  content: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_fs_write', { hostId, path, content, expect: expect ?? null });
-}
-
-/** Create an empty file on a host (the tree's "New File"). `path` is a bare name
- *  or an intercalated relative path (`sub/dir/file.ts`), validated by the same
- *  rules as locally — a name that could escape its folder never reaches the host.
- *  Fenced like every mutation. */
-export function sshFsCreateFile(
-  hostId: string,
-  dir: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_create_file', { hostId, dir, path, expect: expect ?? null });
-}
-
-/** Create a folder on a host (the tree's "New Folder"). */
-export function sshFsCreateDir(
-  hostId: string,
-  dir: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_create_dir', { hostId, dir, path, expect: expect ?? null });
-}
-
-/** Rename an entry on a host, within its folder. Answers the new path. */
-export function sshFsRename(
-  hostId: string,
-  path: string,
-  newName: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_rename', { hostId, path, newName, expect: expect ?? null });
-}
-
-/** Delete a file or folder on a host — **permanently**. SSH has no trash, so
- *  unlike the local delete this cannot be undone, and the dialog says so. */
-export function sshFsDelete(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<void> {
-  return invoke<void>('ssh_fs_delete', { hostId, path, expect: expect ?? null });
-}
-
-/** Copy a file next to itself on a host under a free "… copy" name. */
-export function sshFsDuplicate(
-  hostId: string,
-  path: string,
-  expect?: TargetExpectation,
-): Promise<string> {
-  return invoke<string>('ssh_fs_duplicate', { hostId, path, expect: expect ?? null });
-}
-
-/** Filename search in a host's project.
- *
- *  Asks **git** on that machine (`git ls-files`) instead of walking it over
- *  SFTP: a walk would be one request per folder across a network, and "the files
- *  git would list" is already what the local search means, so both machines
- *  answer about the same project. A folder that is not a repository there is
- *  refused with that as the reason. */
-export function sshFsSearchFiles(
-  hostId: string,
-  root: string,
-  query: string,
-  includeHidden: boolean,
-  filters: SearchFilters,
-  limit: number,
-): Promise<FileSearch> {
-  return invoke<FileSearch>('ssh_fs_search_files', {
-    hostId,
-    root,
-    query,
-    includeHidden,
-    filters,
-    limit,
-  });
-}
-
-/** Content search in a host's project, through `git grep` — the matching lines
- *  come back, the files never cross the link. The highlight offsets are computed
- *  on this side with the same regex the local search uses, because `git grep`
- *  reports lines and not columns. */
-export function sshFsSearchContent(
-  hostId: string,
-  root: string,
-  query: ContentQuery,
-  includeHidden: boolean,
-  filters: SearchFilters,
-  limit: number,
-): Promise<ContentSearch> {
-  return invoke<ContentSearch>('ssh_fs_search_content', {
-    hostId,
-    root,
-    query,
-    includeHidden,
-    filters,
-    limit,
-  });
-}
-
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */
@@ -1024,6 +767,58 @@ export function sshHostsResumable(): Promise<string[]> {
   return invoke<string[]>('ssh_hosts_resumable');
 }
 
+/** A host's connection, step by step — the host page's check. Never signs in
+ *  to find out; the steps that need a session wait for one. */
+export function sshHostDoctor(hostId: string): Promise<HostDoctor> {
+  return invoke<HostDoctor>('ssh_host_doctor', { hostId });
+}
+
+/** The terminals a connected host's engine holds, newest first — including ones
+ *  no tab of this window shows. */
+export function sshHostSessions(hostId: string): Promise<HostSession[]> {
+  return invoke<HostSession[]>('ssh_host_sessions', { hostId });
+}
+
+/** End one terminal a host's engine holds, and whatever runs in it. Fenced. */
+export function sshHostSessionEnd(
+  hostId: string,
+  session: number,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('ssh_host_session_end', { hostId, session, expect: expect ?? null });
+}
+
+/** A host's own bridge, as its engine sees it (`02g` §5.18). */
+export function hostBridgeStatus(hostId: string): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_status', { hostId });
+}
+
+/** Install the bridge into the host account, then keep it running. Fenced. */
+export function hostBridgeInstall(
+  hostId: string,
+  expect?: TargetExpectation,
+): Promise<HostBridgeInstalled> {
+  return invoke<HostBridgeInstalled>('host_bridge_install', { hostId, expect: expect ?? null });
+}
+
+/** Whether the host's engine keeps its bridge running. Fenced. */
+export function hostBridgeSupervise(
+  hostId: string,
+  on: boolean,
+  expect?: TargetExpectation,
+): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_supervise', { hostId, on, expect: expect ?? null });
+}
+
+/** Open or close the host bridge's LAN listener. Fenced. */
+export function hostBridgeSetLan(
+  hostId: string,
+  on: boolean,
+  expect?: TargetExpectation,
+): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_set_lan', { hostId, on, expect: expect ?? null });
+}
+
 /** The hosts with a live session, and which incarnation each one is. */
 export function sshHostsConnected(): Promise<SshHostSession[]> {
   return invoke<SshHostSession[]>('ssh_hosts_connected');
@@ -1031,33 +826,55 @@ export function sshHostsConnected(): Promise<SshHostSession[]> {
 
 // --- Filesystem: file tree + editor ----------------------------------------
 
+// Every `fs_*` call below names the machine it is for: `target` is this one
+// when absent, or a host, whose files its engine serves. A mutation on a host
+// carries `expect` — the machine and connection the caller prepared it for —
+// and the backend refuses it when that no longer holds. `$lib/fsRouter` is the
+// one caller that builds those.
+
 /** List the immediate children of a directory (sub-dirs first, then files) for
  *  the file-tree tab. Lazy — called per folder on expand. */
-export function fsListDir(path: string): Promise<FsEntry[]> {
-  return invoke<FsEntry[]>('fs_list_dir', { path });
+export function fsListDir(path: string, target?: TargetId | null): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>('fs_list_dir', { path, target: target ?? null });
 }
 
 /** Read a single text file for the editor (binary / too-large guards in flags). */
-export function fsReadFile(path: string): Promise<FileContent> {
-  return invoke<FileContent>('fs_read_file', { path });
+export function fsReadFile(path: string, target?: TargetId | null): Promise<FileContent> {
+  return invoke<FileContent>('fs_read_file', { path, target: target ?? null });
 }
 
-/** Read a local previewable file (image/PDF) as an inline
- *  `data:<mime>;base64,…` URL. Rejects other types and oversized files. */
-export function fsReadDataUrl(path: string): Promise<string> {
-  return invoke<string>('fs_read_data_url', { path });
+/** Read a previewable file (image/PDF) as an inline `data:<mime>;base64,…`
+ *  URL. Rejects other types and oversized files. */
+export function fsReadDataUrl(path: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('fs_read_data_url', { path, target: target ?? null });
 }
 
-/** Overwrite a file with the editor's content (atomic on the backend). */
-export function fsWriteFile(path: string, content: string): Promise<void> {
-  return invoke('fs_write_file', { path, content });
+/** Overwrite a file with the editor's content (atomic on the backend, keeping
+ *  the file's mode). */
+export function fsWriteFile(
+  path: string,
+  content: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('fs_write_file', { path, content, target: target ?? null, expect: expect ?? null });
 }
 
 /** Rename a file on disk to a new bare file name, keeping it in the same folder.
  *  Returns the new absolute, forward-slash path. Rejects path separators,
  *  traversal, and clobbering an existing sibling. */
-export function fsRename(path: string, newName: string): Promise<string> {
-  return invoke<string>('fs_rename', { path, newName });
+export function fsRename(
+  path: string,
+  newName: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_rename', {
+    path,
+    newName,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Whether `path` currently exists on disk. Used by the boot reconciler to drop
@@ -1088,27 +905,46 @@ export function termBuffersSet(buffers: Record<string, string>): Promise<void> {
  *  File"). `path` is a bare name or a VSCode-style intercalated relative path
  *  (`sub/dir/file.js`) whose parent segments are created as folders; the leaf
  *  must not already exist. Returns the new absolute, forward-slash path. */
-export function fsCreateFile(dir: string, path: string): Promise<string> {
-  return invoke<string>('fs_create_file', { dir, path });
+export function fsCreateFile(
+  dir: string,
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_create_file', { dir, path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Create a new empty directory at `path` inside `dir` (file tree "New Folder").
  *  Same intercalated-path / no-clobber guards as {@link fsCreateFile}, with every
  *  segment created as a folder. */
-export function fsCreateDir(dir: string, path: string): Promise<string> {
-  return invoke<string>('fs_create_dir', { dir, path });
+export function fsCreateDir(
+  dir: string,
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_create_dir', { dir, path, target: target ?? null, expect: expect ?? null });
 }
 
-/** Move a file or directory to the OS trash (file tree "Delete") — recoverable,
- *  not a permanent unlink. Refuses a filesystem root. */
-export function fsDelete(path: string): Promise<void> {
-  return invoke('fs_delete', { path });
+/** The file tree's "Delete": to the OS trash on this machine (recoverable), for
+ *  good on a host, which has none — the dialog says which. Refuses a filesystem
+ *  root either way. */
+export function fsDelete(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('fs_delete', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Duplicate a single file next to itself under a unique "… copy" name (file tree
  *  "Duplicate"). Directories are refused. Returns the new absolute path. */
-export function fsDuplicate(path: string): Promise<string> {
-  return invoke<string>('fs_duplicate', { path });
+export function fsDuplicate(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('fs_duplicate', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Project-wide filename search for the Files tab: recursively find files under
@@ -1122,8 +958,16 @@ export function fsSearchFiles(
   includeHidden: boolean,
   filters: SearchFilters,
   limit: number,
+  target?: TargetId | null,
 ): Promise<FileSearch> {
-  return invoke<FileSearch>('fs_search_files', { root, query, includeHidden, filters, limit });
+  return invoke<FileSearch>('fs_search_files', {
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+    target: target ?? null,
+  });
 }
 
 /** Project-wide **content** search for the Files tab: find the lines under `root`
@@ -1137,8 +981,16 @@ export function fsSearchContent(
   includeHidden: boolean,
   filters: SearchFilters,
   limit: number,
+  target?: TargetId | null,
 ): Promise<ContentSearch> {
-  return invoke<ContentSearch>('fs_search_content', { root, query, includeHidden, filters, limit });
+  return invoke<ContentSearch>('fs_search_content', {
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+    target: target ?? null,
+  });
 }
 
 /** The current conversation (title + coarse status) of the Zero agent running in
@@ -1320,69 +1172,126 @@ export function browserSessions(): Promise<BrowserPageState[]> {
 }
 
 /** Browser-control MCP coordinates + supported-agent catalog for Settings →
- *  Browser (the live `/mcp` endpoint + token for the copy-paste snippet). */
-export function mcpInfo(): Promise<McpInfo> {
-  return invoke('mcp_info');
+ *  Browser (the live `/mcp` endpoint + token for the copy-paste snippet). With
+ *  an `ssh:<host>` target, the catalog a launch on that host needs — reached
+ *  through its engine — rather than this machine's. */
+export function mcpInfo(target?: string): Promise<McpInfo> {
+  return invoke('mcp_info', target ? { target } : {});
 }
 
 /** Set (or clear with `null`) the worktree root the filesystem watcher follows.
- *  The backend then emits `fs:changed` as files under it change on disk. */
-export function fsSetWatch(path: string | null): Promise<void> {
-  return invoke('fs_set_watch', { path });
-}
-
-/** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
- *  Empty for a clean or untracked file. */
-export function gitDiffHead(path: string, file: string): Promise<string> {
-  return invoke<string>('git_diff_head', { path, file });
+ *  The backend then emits `fs:changed` as files under it change on disk. With a
+ *  host `target`, the folder is watched **there** by the host's engine, and its
+ *  changes arrive as the same event carrying that target. */
+export function fsSetWatch(path: string | null, target?: TargetId | null): Promise<void> {
+  return invoke('fs_set_watch', { path, target: target ?? null });
 }
 
 // --- Git status, diffs & staging (right-panel review) ----------------------
+//
+// Every call names the machine its worktree is on: `target` is this one when
+// absent, or a host, whose engine runs the same git there. A mutation on a host
+// carries `expect` and is refused when it no longer holds; `$lib/gitRouter`
+// is the one caller that builds those.
 
-/** List a worktree's changed files (staged + unstaged + untracked). */
-export function gitStatus(path: string): Promise<FileChange[]> {
-  return invoke<FileChange[]>('git_status', { path });
+/** Working-tree-vs-HEAD diff for one file, for the editor's change gutter.
+ *  Empty for a clean or untracked file. */
+export function gitDiffHead(path: string, file: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_diff_head', { path, file, target: target ?? null });
 }
 
-/** Per-file added/deleted line counts vs HEAD (for the changed-files list). */
+/** Everything the Changes tab draws about a worktree, in one answer.
+ *  `isRepo: false` means *not a repository*, never "clean". */
+export function gitReview(path: string, target?: TargetId | null): Promise<GitReview> {
+  return invoke<GitReview>('git_review', { path, target: target ?? null });
+}
+
+/** A worktree's branch and its row counts. `isRepo: false` means *not read*,
+ *  never "clean". */
+export function gitRepoStatus(path: string, target?: TargetId | null): Promise<RepoStatus> {
+  return invoke<RepoStatus>('git_repo_status', { path, target: target ?? null });
+}
+
+/** Per-file added/deleted line counts vs HEAD, on this machine — what the
+ *  status watcher's snapshot refreshes (a host's arrive in `gitReview`). */
 export function gitNumstat(path: string): Promise<FileNumstat[]> {
   return invoke<FileNumstat[]>('git_numstat', { path });
 }
 
 /** Unified diff for one file (`staged` = index-vs-HEAD, else worktree-vs-index). */
-export function gitDiff(path: string, file: string, staged: boolean): Promise<string> {
-  return invoke<string>('git_diff', { path, file, staged });
+export function gitDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+  target?: TargetId | null,
+): Promise<string> {
+  return invoke<string>('git_diff', { path, file, staged, target: target ?? null });
 }
 
 /** Before/after image versions for a changed image file (base64), for the visual
  *  diff viewer. `staged` mirrors `gitDiff`. */
-export function gitImageDiff(path: string, file: string, staged: boolean): Promise<ImageDiff> {
-  return invoke<ImageDiff>('git_image_diff', { path, file, staged });
+export function gitImageDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+  target?: TargetId | null,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>('git_image_diff', { path, file, staged, target: target ?? null });
 }
 
 /** Stage one file. */
-export function gitStage(path: string, file: string): Promise<void> {
-  return invoke('git_stage', { path, file });
+export function gitStage(
+  path: string,
+  file: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_stage', { path, file, target: target ?? null, expect: expect ?? null });
 }
 
 /** Unstage one file. */
-export function gitUnstage(path: string, file: string): Promise<void> {
-  return invoke('git_unstage', { path, file });
+export function gitUnstage(
+  path: string,
+  file: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_unstage', { path, file, target: target ?? null, expect: expect ?? null });
 }
 
 /** Stage every change. */
-export function gitStageAll(path: string): Promise<void> {
-  return invoke('git_stage_all', { path });
+export function gitStageAll(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_stage_all', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Unstage everything. */
-export function gitUnstageAll(path: string): Promise<void> {
-  return invoke('git_unstage_all', { path });
+export function gitUnstageAll(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_unstage_all', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Discard a file's local changes (tracked → restore HEAD; untracked → delete). */
-export function gitDiscard(path: string, file: string, untracked: boolean): Promise<void> {
-  return invoke('git_discard', { path, file, untracked });
+export function gitDiscard(
+  path: string,
+  file: string,
+  untracked: boolean,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_discard', {
+    path,
+    file,
+    untracked,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Apply a single-hunk unified-diff patch to stage/unstage/discard it. `cached`
@@ -1392,8 +1301,17 @@ export function gitApply(
   patch: string,
   cached: boolean,
   reverse: boolean,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
 ): Promise<void> {
-  return invoke('git_apply', { path, patch, cached, reverse });
+  return invoke('git_apply', {
+    path,
+    patch,
+    cached,
+    reverse,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** Commit the staged changes with `message`. With `amend`, rewrites the current
@@ -1404,19 +1322,33 @@ export function gitCommit(
   message: string,
   amend = false,
   signOff = false,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
 ): Promise<void> {
-  return invoke('git_commit', { path, message, amend, signOff });
+  return invoke('git_commit', {
+    path,
+    message,
+    amend,
+    signOff,
+    target: target ?? null,
+    expect: expect ?? null,
+  });
 }
 
 /** List the worktree's commit history (newest first), `limit` commits from
  *  `skip`. Powers the History tab + branch graph. */
-export function gitLog(path: string, limit: number, skip: number): Promise<CommitInfo[]> {
-  return invoke<CommitInfo[]>('git_log', { path, limit, skip });
+export function gitLog(
+  path: string,
+  limit: number,
+  skip: number,
+  target?: TargetId | null,
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>('git_log', { path, limit, skip, target: target ?? null });
 }
 
 /** Unified diff a single commit introduced (vs its first parent). */
-export function gitShow(path: string, hash: string): Promise<string> {
-  return invoke<string>('git_show', { path, hash });
+export function gitShow(path: string, hash: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_show', { path, hash, target: target ?? null });
 }
 
 /** Set (or clear) the worktree the backend watcher polls for live status. */
@@ -1427,39 +1359,56 @@ export function gitSetWatch(path: string | null): Promise<void> {
 /** Fetch the current branch's remote and return the refreshed working-tree
  *  status (ahead/behind now reflect the server), so the user can see whether
  *  there are new upstream commits to pull. */
-export function gitFetch(path: string): Promise<WorktreeStatus> {
-  return invoke<WorktreeStatus>('git_fetch', { path });
+export function gitFetch(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>('git_fetch', { path, target: target ?? null, expect: expect ?? null });
 }
 
-/** Push the current branch. */
-export function gitPush(path: string): Promise<void> {
-  return invoke('git_push', { path });
+/** Push the current branch. On a host it runs there, with that machine's
+ *  credentials and the agent this connection forwards. */
+export function gitPush(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_push', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Pull fast-forward-only. */
-export function gitPull(path: string): Promise<void> {
-  return invoke('git_pull', { path });
+export function gitPull(
+  path: string,
+  target?: TargetId | null,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke('git_pull', { path, target: target ?? null, expect: expect ?? null });
 }
 
 /** Draft a commit message for the worktree's staged changes using the configured
  *  AI agent (Settings → AI commit). Rejects when disabled/unconfigured, nothing
- *  is staged, or the agent fails/times out. */
-export function generateCommitMessage(path: string): Promise<string> {
-  return invoke<string>('git_generate_commit_message', { path });
+ *  is staged, or the agent fails/times out. On a host the agent runs there, in
+ *  the worktree; this machine drafts it only when the host lacks the agent. */
+export function generateCommitMessage(path: string, target?: TargetId | null): Promise<string> {
+  return invoke<string>('git_generate_commit_message', { path, target: target ?? null });
 }
 
 /** Name an agent conversation from its opening exchange, using that session's own
- *  CLI on its cheapest model. Best-effort: callers ignore a rejection and keep
- *  whatever label the session already had. */
+ *  CLI on its cheapest model — on the machine the session runs on (a host's
+ *  session is named by that host's agent). Best-effort: callers ignore a
+ *  rejection and keep whatever label the session already had. */
 export function generateConversationTitle(
   agentId: string,
   transcript: string,
   cwd: string,
+  target?: string | null,
 ): Promise<string> {
   return invoke<string>('generate_conversation_title', {
     agentId,
     transcript,
     cwd,
+    target: target && target !== 'local' ? target : null,
   });
 }
 
@@ -1494,6 +1443,8 @@ export function agentRunHeadless(
   cwd: string,
   timeoutMs?: number,
   jobId?: string,
+  /** The machine `cwd` is on; a host's `ssh:<id>` runs it there. */
+  target?: string,
 ): Promise<HeadlessResult> {
   return invoke<HeadlessResult>('agent_run_headless', {
     agent,
@@ -1502,6 +1453,7 @@ export function agentRunHeadless(
     cwd,
     timeoutMs: timeoutMs ?? null,
     jobId: jobId ?? null,
+    target: target && target !== 'local' ? target : null,
   });
 }
 

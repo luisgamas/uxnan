@@ -171,12 +171,25 @@ pub fn automations_runs_dir() -> Result<String, CommandError> {
 /// Spawns **the same headless runner the OS scheduler spawns**, so a manual run
 /// and a scheduled one cannot behave differently. Returns as soon as the process
 /// is launched — progress is read from the run record, which the runner rewrites
-/// as steps advance.
+/// as steps advance. A host's automation runs that same sequence in this
+/// process instead, through the host's engine (`handoff::start`), since this
+/// process is the one holding the connection.
 #[tauri::command]
-pub fn automations_run_now<R: tauri::Runtime>(
-    _app: AppHandle<R>,
+pub async fn automations_run_now<R: tauri::Runtime>(
+    app: AppHandle<R>,
     id: String,
 ) -> Result<(), CommandError> {
+    // A host's automation runs here, in the app that holds the connection —
+    // the runner would only hand it straight back (`handoff`).
+    let on_host = store()?
+        .get(&id)
+        .map_err(CommandError::from)?
+        .is_some_and(|a| !a.target.is_local());
+    if on_host {
+        return super::handoff::start(&app, &id, super::RunTrigger::Manual)
+            .await
+            .map_err(CommandError::from);
+    }
     let exe = oscheduler::current_exe().map_err(CommandError::from)?;
     let mut args = oscheduler::run_args(&id);
     // Same runner, tagged as manual so the history can tell them apart.

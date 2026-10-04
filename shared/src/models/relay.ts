@@ -78,6 +78,17 @@ export interface RelayCredentialParams {
   remember?: boolean;
 }
 
+/**
+ * `relay/admitHost`: let another of the user's machines — a remote host's own
+ * bridge — host on this bridge's relay, by adding that bridge's identity key
+ * (`RelayStatus.hostKey` there) to the Worker's hosts. Redeploys with the
+ * remembered token unless one is given. Accepted over the local control
+ * channel only.
+ */
+export interface RelayAdmitHostParams extends RelayCredentialParams {
+  hostKey: string;
+}
+
 export interface RelayRemoveParams extends RelayCredentialParams {
   /** Also delete the Worker from the Cloudflare account. */
   deleteWorker?: boolean;

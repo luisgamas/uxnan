@@ -12,6 +12,7 @@
 // ("no agent `gpt` is installed; installed: claude, codex") rather than a draft
 // that silently does something else.
 
+import { parseTargetId } from "$lib/target";
 import {
   defaultPolicy,
   newStep,
@@ -25,6 +26,8 @@ import {
 export interface ProposedAutomation {
   name?: unknown;
   workingDir?: unknown;
+  /** The machine the folder is on, as the backend resolved it. */
+  target?: unknown;
   description?: unknown;
   tags?: unknown;
   steps?: unknown;
@@ -89,8 +92,8 @@ export function scheduleFrom(value: unknown): Schedule {
 
 /** Build the draft, or throw the sentence the agent reads.
  *
- *  `installed` is the agent ids this machine has (`ai_commit_agents`); `id`
- *  mints the automation's id. */
+ *  `installed` is the agent ids the machine the folder is on has (this one's
+ *  `ai_commit_agents`, or a host's inventory); `id` mints the automation's id. */
 export function buildProposal(
   params: ProposedAutomation,
   installed: string[],
@@ -98,6 +101,8 @@ export function buildProposal(
 ): Automation {
   const name = str(params.name);
   const workingDir = str(params.workingDir);
+  const target = parseTargetId(str(params.target)) ?? "local";
+  const where = target === "local" ? "this machine" : "the host the folder is on";
   const raw = Array.isArray(params.steps) ? params.steps : [];
   if (!name) throw new Error("a proposed automation needs a name");
   if (!workingDir) throw new Error("a proposed automation needs a working folder");
@@ -117,7 +122,7 @@ export function buildProposal(
     const agent = str(s.agent);
     if (!installed.includes(agent)) {
       throw new Error(
-        `no agent \`${agent}\` is installed on this machine; installed: ${
+        `no agent \`${agent}\` is installed on ${where}; installed: ${
           installed.join(", ") || "none"
         }`,
       );
@@ -152,6 +157,7 @@ export function buildProposal(
     enabled: false,
     tags: Array.isArray(params.tags) ? params.tags.map(str).filter(Boolean) : [],
     workingDir,
+    target,
     worktreePerRun: params.worktreePerRun === true,
     baseBranch: null,
     schedule: scheduleFrom(params.schedule),

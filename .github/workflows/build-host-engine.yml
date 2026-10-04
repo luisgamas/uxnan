@@ -1,0 +1,96 @@
+name: Build — host engines (uxnan-host)
+
+# The program Uxnan Desktop puts on a remote host (`crates/uxnan-host`), built
+# for every platform an installer carries it for: static musl for Linux on both
+# arches (cross-compiled through zig), and the Apple pair. One definition, two
+# callers: the release (`release-desktop.yml`), at the tag's version, and CI
+# (`ci-desktop.yml`), whose installer legs bundle exactly what a release would
+# — so this job meets its first real run on a pull request, not on a tag.
+# Each leg uploads `host-engine-<name>`; the caller downloads them all into
+# `uxnandesktop/src-tauri/host-engine/` and runs `build-host-engine.mjs --require`.
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: "A desktop release tag: the engines are built at its version. Empty builds the workspace's own."
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: host engine (${{ matrix.name }})
+    strategy:
+      fail-fast: true # an installer without one of them must not be built
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+            targets: 'x86_64-unknown-linux-musl aarch64-unknown-linux-musl'
+          - os: macos-14
+            name: macos
+            targets: 'aarch64-apple-darwin x86_64-apple-darwin'
+          # MSVC builds, the ARM64 one cross-compiled with the runner's ARM64
+          # tools.
+          - os: windows-latest
+            name: windows
+            targets: 'x86_64-pc-windows-msvc aarch64-pc-windows-msvc'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve the version from the tag
+        if: inputs.release-tag != ''
+        id: meta
+        shell: bash
+        env:
+          TAG: ${{ inputs.release-tag }}
+        run: node uxnandesktop/scripts/desktop-release-tag.mjs "$TAG" >> "$GITHUB_OUTPUT"
+
+      # The app accepts an engine on a host only when its version is the app's
+      # own (`ssh/engine.rs` → `runs_here`), so the engine is built with the same
+      # version the installers get.
+      - name: Sync the version into the workspace
+        if: inputs.release-tag != ''
+        shell: bash
+        working-directory: uxnandesktop
+        run: |
+          V="${{ steps.meta.outputs.version }}"
+          BASE="${V%%-*}"
+          perl -0pi -e 's/^version = "[^"]*"/version = "'"$BASE"'"/m' src-tauri/Cargo.toml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - name: Set up zig
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@v2
+
+      - name: Install cargo-zigbuild
+        if: runner.os == 'Linux'
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build the host engines
+        working-directory: uxnandesktop
+        # bash on every runner: under PowerShell (the Windows default)
+        # `$TARGETS` is a PowerShell variable, not the environment's.
+        shell: bash
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: node scripts/build-host-engine.mjs --build --targets "$TARGETS"
+
+      - name: Hand them to the installer legs
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-engine-${{ matrix.name }}
+          path: uxnandesktop/src-tauri/host-engine/
+          if-no-files-found: error

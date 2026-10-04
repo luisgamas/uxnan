@@ -1,10 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "build": {
-    "beforeDevCommand": "node scripts/build-cli.mjs && npm run dev",
-    "beforeBuildCommand": "npm run build && node scripts/build-cli.mjs"
+    "beforeDevCommand": "node scripts/build-cli.mjs && node scripts/build-host-engine.mjs && npm run dev",
+    "beforeBuildCommand": "npm run build && node scripts/build-cli.mjs && node scripts/build-host-engine.mjs"
   },
   "bundle": {
-    "externalBin": ["binaries/uxnan-cli"]
+    "externalBin": ["binaries/uxnan-cli"],
+    "resources": {
+      "host-engine/": "host-engine/"
+    }
   }
 }

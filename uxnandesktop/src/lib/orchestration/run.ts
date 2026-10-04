@@ -60,6 +60,10 @@ export interface StepTarget {
   agentType?: string;
   /** The workspace (worktree path, or "" for Global) the step runs in. */
   workspace?: string;
+  /** headless: the machine that workspace is on — a host's `ssh:<id>`, where
+   *  the step then runs, by that host's engine. Absent: the machine the
+   *  workspace's project is registered on, this one when none is. */
+  machine?: string;
   /** headless (Stage 2): the agent id to run in print-mode. */
   agent?: string;
   /** headless (Stage 2): the model id (empty = the CLI's default model). */

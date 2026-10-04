@@ -268,11 +268,13 @@ class BridgeReplica {
     final reset = changes['reset'] == true;
     final threads = changes['threads'];
     final removedThreads = _strings(changes['removedThreadIds']);
+    final live = changes['live'];
     await _threads.applyReplicaThreads(
       deviceId: deviceId,
       threads: threads is List ? threads : const [],
       removedIds: removedThreads,
       reset: reset,
+      live: live is List ? live : null,
     );
     final projects = [
       for (final raw in changes['projects'] as List? ?? const [])

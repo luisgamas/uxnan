@@ -158,16 +158,20 @@ export class Conversation {
   #applied = 0;
   hasOlder = $derived(this.oldestOffset > 0);
 
-  constructor(threadId: string, call: BridgeCall) {
+  /** Where this thread's unsent messages are kept (`outboxKey`). */
+  readonly #outbox: string;
+
+  constructor(threadId: string, call: BridgeCall, outbox: string = threadId) {
     this.threadId = threadId;
     this.#call = call;
-    this.pending = readOutbox(threadId);
+    this.#outbox = outbox;
+    this.pending = readOutbox(outbox);
   }
 
   /** The only writer of `pending`, so the outbox never disagrees with it. */
   #setPending(next: PendingSend[]): void {
     this.pending = next;
-    writeOutbox(this.threadId, next);
+    writeOutbox(this.#outbox, next);
   }
 
   /** Load (or re-sync) the newest page and the thread's live state. */

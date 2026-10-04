@@ -613,6 +613,7 @@ async fn a_linked_worktree_outside_the_project_folder_is_in_its_scope() {
                     env: Vec::new(),
                     cols: 80,
                     rows: 24,
+                    login: false,
                 },
                 |_| {},
                 || {},
@@ -717,6 +718,7 @@ async fn terminal_close_refuses_a_working_agent_and_relays_the_window() {
                     env: Vec::new(),
                     cols: 80,
                     rows: 24,
+                    login: false,
                 },
                 |_| {},
                 || {},
@@ -844,6 +846,7 @@ async fn a_launch_token_reaches_only_its_terminals_project() {
                 env: Vec::new(),
                 cols: 80,
                 rows: 24,
+                login: false,
             },
             |_| {},
             || {},
@@ -1172,6 +1175,7 @@ async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
                 env: Vec::new(),
                 cols: 80,
                 rows: 24,
+                login: false,
             },
             |_| {},
             || {},
@@ -1205,6 +1209,10 @@ async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
     assert_eq!(hosts[0]["source"], "manual");
     assert!(hosts[0].get("generation").is_none(), "{body}");
     assert!(hosts[0].get("channels").is_none(), "{body}");
+    // Nor an engine or a latency: those are read from a running engine, and a
+    // read never starts one.
+    assert!(hosts[0].get("engine").is_none(), "{body}");
+    assert!(hosts[0].get("latencyMs").is_none(), "{body}");
 
     // One host, with what is on it. The local project is not.
     let (_, body) = post(
@@ -1217,6 +1225,9 @@ async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
     assert_eq!(body["result"]["id"], "h-b", "{body}");
     assert_eq!(body["result"]["projects"], json!([]));
     assert_eq!(body["result"]["terminals"], json!([]));
+    // Without an engine there is no listing of what it holds — left out, never
+    // an empty list that would read as "it holds nothing".
+    assert!(body["result"].get("engineSessions").is_none(), "{body}");
 
     // An id nobody has.
     let (_, body) = post(
@@ -1263,6 +1274,7 @@ fn host(id: &str, label: &str) -> crate::model::SshHost {
         proxy_jump: None,
         source: crate::model::SshHostSource::Manual,
         needs_prompt: false,
+        carrier: Default::default(),
     }
 }
 
@@ -1342,6 +1354,7 @@ async fn a_proposed_automation_is_checked_scoped_and_handed_to_the_window() {
                 env: Vec::new(),
                 cols: 80,
                 rows: 24,
+                login: false,
             },
             |_| {},
             || {},
@@ -1532,4 +1545,47 @@ async fn a_bridge_agent_reaches_only_its_conversations_project() {
     )
     .await;
     assert_eq!(status, 401);
+}
+
+/// An agent of a host's own bridge names a folder on that host: its scope is
+/// the host's project, never a project here at the same absolute path — the
+/// same path names a different folder on every machine.
+#[tokio::test]
+async fn a_host_bridges_agent_is_scoped_to_the_project_on_that_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, local) = repo_in(dir.path()).await;
+    let mut on_host = local.clone();
+    on_host.id = "repo-host".into();
+    on_host.name = "on-host".into();
+    on_host.target = TargetId::Ssh("h1".into());
+    let mut data = AppData::default();
+    data.repos.push(local);
+    data.repos.push(on_host);
+    let s = server(data).await;
+    let app = s._app.handle().clone();
+
+    let from_host = crate::control::Caller::Bridge {
+        cwd: Some(path.clone()),
+        target: Some("ssh:h1".into()),
+    };
+    let seen = super::resolve::Resolver::new(&app, &from_host)
+        .projects()
+        .await;
+    assert_eq!(
+        seen.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+        ["repo-host"]
+    );
+
+    // This machine's bridge with the same folder: the local project.
+    let from_here = crate::control::Caller::Bridge {
+        cwd: Some(path),
+        target: None,
+    };
+    let seen = super::resolve::Resolver::new(&app, &from_here)
+        .projects()
+        .await;
+    assert_eq!(
+        seen.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+        ["repo-1"]
+    );
 }

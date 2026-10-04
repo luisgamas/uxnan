@@ -345,13 +345,19 @@ class ThreadManager {
   /// Applies one `sync/changes` answer's conversations to this phone's copy
   /// of [deviceId]'s bridge (architecture/02a §5.8.17): upserts [threads],
   /// forgets [removedIds], and on a full snapshot ([reset]) also forgets every
-  /// conversation of that PC the bridge no longer has. A thread the bridge
-  /// reports as running shows as working at once.
+  /// conversation of that PC the bridge no longer has.
+  ///
+  /// [live] is the bridge's whole live set (`SyncChanges.live`): every thread
+  /// of that PC running or waiting on the user right now, whether or not it
+  /// changed since the last revision — what makes the list right the moment
+  /// the phone reconnects, without opening a chat. A bridge too old to send it
+  /// (`null`) leaves the running flag to each thread's own `activeTurnId`.
   Future<void> applyReplicaThreads({
     required String deviceId,
     required List<Object?> threads,
     required List<String> removedIds,
     required bool reset,
+    List<Object?>? live,
   }) async {
     final kept = <String>{};
     for (final raw in threads) {
@@ -359,19 +365,69 @@ class ThreadManager {
       final json = raw.cast<String, dynamic>();
       await _adoptBridgeThread(json, deviceId: deviceId);
       kept.add(json['id'] as String);
-      if (json['activeTurnId'] is String && !_live.containsKey(json['id'])) {
+      if (live == null &&
+          json['activeTurnId'] is String &&
+          !_live.containsKey(json['id'])) {
         _setActivity(json['id'] as String, ThreadActivity.running);
       }
     }
     for (final id in removedIds) {
       await _forgetThread(id);
     }
-    if (!reset) return;
-    for (final thread in await _threadRepository.getThreads()) {
-      if (thread.deviceId == deviceId && !kept.contains(thread.id)) {
-        await _forgetThread(thread.id);
+    if (reset) {
+      for (final thread in await _threadRepository.getThreads()) {
+        if (thread.deviceId == deviceId && !kept.contains(thread.id)) {
+          await _forgetThread(thread.id);
+        }
       }
     }
+    if (live != null) await _adoptLiveState(deviceId, live);
+  }
+
+  /// Makes this phone's live state for [deviceId]'s threads what the bridge
+  /// says it is now: running where a turn is in flight, waiting where its
+  /// agent holds a request open, and neither everywhere else — which also
+  /// clears a "working" left from before a disconnect. A thread this phone is
+  /// following on the stream keeps what the stream told it: that is newer
+  /// than any snapshot.
+  Future<void> _adoptLiveState(String deviceId, List<Object?> live) async {
+    final running = <String>{};
+    final awaiting = <String, Set<String>>{};
+    for (final raw in live) {
+      if (raw is! Map || raw['threadId'] is! String) continue;
+      final id = raw['threadId'] as String;
+      if (raw['activeTurnId'] is String) running.add(id);
+      final open = raw['awaitingInput'];
+      if (open is List) {
+        final ids = open.whereType<String>().toSet();
+        if (ids.isNotEmpty) awaiting[id] = ids;
+      }
+    }
+    final mine = {
+      for (final thread in await _threadRepository.getThreads())
+        if (thread.deviceId == deviceId) thread.id,
+    };
+    final activity = Map<String, ThreadActivity>.from(_activity.value);
+    final waiting = {
+      for (final entry in _awaitingInput.value.entries)
+        entry.key: {...entry.value},
+    };
+    for (final id in mine) {
+      if (_live.containsKey(id)) continue;
+      if (running.contains(id)) {
+        activity[id] = ThreadActivity.running;
+      } else if (activity[id] == ThreadActivity.running) {
+        activity.remove(id);
+      }
+      final open = awaiting[id];
+      if (open != null) {
+        waiting[id] = open;
+      } else {
+        waiting.remove(id);
+      }
+    }
+    _activity.add(activity);
+    _awaitingInput.add(waiting);
   }
 
   /// Asks the bridge which folders are worktrees of the repository at [cwd].

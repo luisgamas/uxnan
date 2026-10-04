@@ -100,6 +100,17 @@ describe("grouping", () => {
     const groups = groupAutomations([other], "folder");
     expect(groups[0].label).toBe("notes");
   });
+
+  it("never groups a host's folder with this machine's folder of the same path", () => {
+    const here = automation("Here", [step("s1", "claude")], { workingDir: "/srv/app" });
+    const there = automation("There", [step("s1", "claude")], {
+      workingDir: "/srv/app",
+      target: "ssh:h1",
+    });
+    const groups = groupAutomations([here, there], "folder");
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.items.map((a) => a.name))).toEqual([["Here"], ["There"]]);
+  });
 });
 
 describe("folder labels", () => {

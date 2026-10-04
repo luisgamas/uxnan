@@ -187,8 +187,11 @@ other off in a reconnect loop (the windows flicker and the chat freezes).
 
 ## Opening a chat
 
-Chats are offered for folders on **this** machine (the bridge runs here, so a
-folder on an SSH host is not one it can work in):
+Chats are offered for folders on **this** machine, and for a folder on an SSH
+host while **that host's own bridge** is connected — the account there runs
+`uxnan-bridge`, and the conversation runs on it, with that machine's agents and
+sign-ins (`docs/remote-hosts.md`). A host without one is not offered a chat;
+a host chat tab whose bridge goes away says so, and comes back with it:
 
 - the tab strip's **+** → *Chat* → **New chat**, plus the folder's three newest
   conversations (one started on the phone included);
@@ -492,6 +495,18 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   `timeline.ts` (pure: grouping a turn's parts into work groups, splitting the
   closing answer, work summaries, changed files, durations) and
   `streamingMarkdown.ts` (the phone's streaming split and render window).
+- **One store and one replica per machine with a bridge.** `bridge` / `chat` are
+  this machine's; a connected host whose account runs its own bridge gets its
+  own `BridgeClientStore` (`bridges.for("ssh:<id>")`, fed by the
+  `bridge:host-status` / `bridge:host-notification` events) and its own
+  `ChatStore` (`chatFor(target)`), with seen marks and outbox kept apart
+  (`hostSeenStore`, `outboxKey`). A chat tab carries the `target` its thread
+  lives on, and its pane provides that machine's replica to every chat
+  component below it (`provideChat` / `useChat`); outside a pane, actions find
+  the replica by thread (`chatOfThread`). Reads from derived values use
+  `chatStatusesAt(target, path)` / `chatStatusOf(target, threadId)`, which
+  never create a replica. The chat UI does not offer host projects yet
+  (`02g` §5.18).
 - **Streaming performance.** Deltas are coalesced per render window
   (`streamCoalesceWindow`: 16–100 ms by reply length) and a reply renders as
   settled Markdown chunks, one `MarkdownView` each, so only the chunk being

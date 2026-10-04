@@ -1,10 +1,18 @@
-# The desktop app and the two small crates that share its control protocol: the
-# protocol itself (`crates/control-protocol`, no Tauri, no async — the contract)
-# and the console client (`crates/uxnan-cli`). One lockfile, one toolchain, one
+# The desktop app and the small crates that share its control protocol: the
+# protocol itself (`crates/control-protocol`, no Tauri, no async — the contract),
+# the client that finds and calls the running app (`crates/control-client`) and
+# the console client (`crates/uxnan-cli`). One lockfile, one toolchain, one
 # `cargo test --workspace`. The members take the app's version from here so a
 # release bumps all three in the one place the release tooling already edits.
 [workspace]
-members = ["crates/control-protocol", "crates/uxnan-cli"]
+members = [
+    "crates/control-protocol",
+    "crates/control-client",
+    "crates/uxnan-cli",
+    "crates/workspace-engine",
+    "crates/host-protocol",
+    "crates/uxnan-host",
+]
 resolver = "2"
 
 [workspace.package]
@@ -45,6 +53,10 @@ tauri-build = { version = "2", features = [] }
 # The control protocol (catalog, envelopes, discovery file, selectors) shared with
 # `uxnan-cli`, so the app and its console client cannot disagree on a name.
 uxnan-control-protocol = { path = "crates/control-protocol" }
+# Finding the running app from outside it (the discovery file) — the client
+# `uxnan-cli` speaks with, used by the automation runner to hand a host's run
+# to the window that holds the connection.
+uxnan-control-client = { path = "crates/control-client" }
 # `devtools`: keep web DevTools available in release builds too, so the integrated
 # developer browser can debug the pages agents serve.
 # `macos-private-api` exists solely for the desktop pet window: a transparent
@@ -89,7 +101,16 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros", "net", "io-util"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
-portable-pty = "0.9"
+# The keys a host bridge's secrets are sealed with live in this machine's OS
+# keychain (`hostkeys.rs`, `02g` §3): Keychain on macOS, Credential Manager on
+# Windows, Secret Service on Linux — through zbus, pure Rust, never the kernel
+# keyring, which a reboot clears.
+keyring = { version = "3.6", default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "tokio"] }
+# The workspace engine — terminals today — shared with the host daemon, so a
+# remote host runs the same code as this machine (`crates/workspace-engine`).
+uxnan-workspace-engine = { path = "crates/workspace-engine" }
+# The wire to a host's daemon (`crates/host-protocol`, `ssh/engine.rs`).
+uxnan-host-protocol = { path = "crates/host-protocol" }
 sysinfo = "0.33"
 # libgit2 bindings for high-frequency status/diff (the 3 s watcher + the review
 # panel), avoiding a subprocess per poll. Worktree mgmt / push / pull stay on the
@@ -112,6 +133,8 @@ toml_edit = "0.22"
 # MIT/Apache-2.0. See `codex_trust.rs`.
 sha2 = "0.10"
 hex = "0.4"
+# OS randomness for the host bridge keys (`hostkeys.rs`); already in the tree.
+getrandom = "0.3"
 # Filesystem watcher for the right-panel file tree + the open-file editor: a
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a
@@ -148,6 +171,10 @@ russh = "0.62.6"
 # needs nothing installed there, which is why remote files go through it rather
 # than through commands typed at a prompt. Apache-2.0, pure Rust, ~54 KiB.
 russh-sftp = "2.4.0"
+# Wipes the passwords and passphrases held for the app session from memory when
+# they are replaced or dropped (`ssh/secrets.rs`). Already in the tree through
+# the SSH and crypto crates; MIT/Apache-2.0.
+zeroize = "1"
 # SHA-1, for exactly one thing: reading OpenSSH's hashed `known_hosts` entries
 # (`|1|salt|hmac`), whose lookup keys are HMAC-SHA1 by that file format's own
 # definition. Not a security primitive here — the host key itself is compared

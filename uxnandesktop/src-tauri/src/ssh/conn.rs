@@ -105,18 +105,18 @@ impl Endpoint {
 /// closed and no credential was offered.
 pub enum Handshake {
     /// Host key verified against `known_hosts`. The transport is up and waiting
-    /// for authentication.
-    Ready(Connection),
+    /// for authentication. Boxed: it is the one large variant, and every other
+    /// outcome is a sentence.
+    Ready(Box<Connection>),
     /// Nothing on file for this host. Show the fingerprint, ask, and — only if
     /// the user agrees — record `trust_line` and connect again.
-    Unknown {
-        fingerprint: String,
-        key: PresentedKey,
-    },
+    Unknown { key: PresentedKey },
     /// A key is on file and it is not this one. Refuse; show both fingerprints.
     Changed {
-        presented_fingerprint: String,
         stored_fingerprint: String,
+        /// What was presented, so a rotation the user confirms records exactly
+        /// this key — never one that travelled through the interface.
+        key: PresentedKey,
     },
     /// The host is `@revoked` in `known_hosts`.
     Revoked { fingerprint: String },
@@ -213,13 +213,108 @@ impl Drop for ChannelLease {
     }
 }
 
+/// What carries a connection: the built-in client, or the system's `ssh`
+/// (`system.rs`, for configurations only OpenSSH itself can reproduce).
+enum Carrier {
+    Builtin(client::Handle<Client>),
+    System(super::system::SystemSsh),
+}
+
+/// A byte stream over a connection — one channel's, whichever carrier holds it.
+pub trait HostIo: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> HostIo for T {}
+pub type HostStream = Box<dyn HostIo>;
+
+/// Why the host would not open a TCP stream to a destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpRefusal {
+    pub kind: TcpRefusalKind,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TcpRefusalKind {
+    /// That machine's `sshd` refuses to forward at all (`AllowTcpForwarding no`).
+    Prohibited,
+    /// The host tried and nothing answered there.
+    ConnectFailed,
+    Other,
+}
+
+impl TcpRefusal {
+    fn from_russh(error: &russh::Error) -> Self {
+        let kind = match error {
+            russh::Error::ChannelOpenFailure(
+                russh::ChannelOpenFailure::AdministrativelyProhibited,
+            ) => TcpRefusalKind::Prohibited,
+            russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::ConnectFailed) => {
+                TcpRefusalKind::ConnectFailed
+            }
+            _ => TcpRefusalKind::Other,
+        };
+        Self {
+            kind,
+            detail: error.to_string(),
+        }
+    }
+}
+
+/// A TCP stream the host opened to a destination (`direct-tcpip`, or the
+/// system client's `-W`).
+pub enum TcpChannel {
+    Builtin(russh::Channel<client::Msg>),
+    System(Box<super::system::ProcessStream>),
+}
+
+impl TcpChannel {
+    /// Whether the far end closed it within `grace` — how "nothing answered
+    /// there" arrives, since a host accepts the channel before it connects.
+    pub async fn closed_within(&mut self, grace: Duration) -> Option<TcpRefusal> {
+        match self {
+            TcpChannel::Builtin(channel) => {
+                let died = matches!(
+                    tokio::time::timeout(grace, channel.wait()).await,
+                    Ok(Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close) | None)
+                );
+                let _ = channel.eof().await;
+                died.then(|| TcpRefusal {
+                    kind: TcpRefusalKind::ConnectFailed,
+                    detail: "the host closed the stream at once".to_string(),
+                })
+            }
+            TcpChannel::System(stream) => stream.closed_within(grace).await,
+        }
+    }
+
+    pub fn into_stream(self) -> HostStream {
+        match self {
+            TcpChannel::Builtin(channel) => Box::new(channel.into_stream()),
+            TcpChannel::System(stream) => stream,
+        }
+    }
+}
+
 /// A live, host-key-verified transport to one host.
 pub struct Connection {
-    handle: client::Handle<Client>,
+    carrier: Carrier,
     endpoint: Endpoint,
     generation: u64,
     /// Channels in use, and what this host turned out to allow.
     budget: Arc<ChannelBudget>,
+    /// The hops this connection travels through (`ProxyJump`), first to last.
+    /// Never read — held, because dropping a bastion's connection would cut the
+    /// tunnel this one is carried in.
+    #[allow(dead_code)]
+    via: Vec<Connection>,
+    /// The `ProxyCommand` process carrying this connection, held for the same
+    /// reason and killed when the connection goes.
+    #[allow(dead_code)]
+    proxy: Option<tokio::process::Child>,
+    /// `ForwardAgent`: every session channel asks the host to forward our agent.
+    forwards_agent: bool,
+    /// A key recorded without asking, under `StrictHostKeyChecking accept-new`.
+    /// Taken once by the caller, which writes it to `known_hosts`.
+    learned: Option<PresentedKey>,
 }
 
 impl Connection {
@@ -229,13 +324,33 @@ impl Connection {
         self.generation
     }
 
-    /// Where this connection is dialled. Nothing reads it yet — the reconnect
-    /// ladder (`FOR-DEV.md`) is what will, since coming back needs to know where
-    /// to go — and it is kept because it is this connection's *identity*, not a
-    /// feature waiting to be written.
-    #[allow(dead_code)]
+    /// Where this connection is dialled — the host itself, even when the bytes
+    /// travel through a bastion. Read by messages that name the machine.
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
+    }
+
+    /// Carry this connection through `jumps` (kept alive as long as it is) and
+    /// the `ProxyCommand` that dialled the first of them, if any.
+    pub fn carried_by(
+        mut self,
+        jumps: Vec<Connection>,
+        proxy: Option<tokio::process::Child>,
+    ) -> Self {
+        self.via = jumps;
+        self.proxy = proxy;
+        self
+    }
+
+    /// Ask the host to forward our agent on every session channel from now on.
+    /// Only for the target of a route: a bastion has no business signing.
+    pub fn set_forwards_agent(&mut self, forwards: bool) {
+        self.forwards_agent = forwards;
+    }
+
+    /// The key accepted without asking (`accept-new`), once.
+    pub fn take_learned_key(&mut self) -> Option<PresentedKey> {
+        self.learned.take()
     }
 
     /// Channels in use on this connection, and the limit this host turned out
@@ -246,13 +361,145 @@ impl Connection {
         (self.budget.open(), self.budget.observed_limit())
     }
 
-    pub fn handle(&self) -> &client::Handle<Client> {
-        &self.handle
+    /// A connection carried by the system `ssh`, already logged in.
+    pub fn over_system(ssh: super::system::SystemSsh, endpoint: Endpoint) -> Self {
+        Connection {
+            carrier: Carrier::System(ssh),
+            endpoint,
+            generation: next_generation(),
+            budget: Arc::new(ChannelBudget::default()),
+            via: Vec::new(),
+            proxy: None,
+            forwards_agent: false,
+            learned: None,
+        }
     }
 
-    /// Mutable access, needed by the authentication exchange.
+    /// Why the system `ssh` carries this connection, when it does.
+    pub fn system_need(&self) -> Option<&super::system::SystemNeed> {
+        match &self.carrier {
+            Carrier::System(ssh) => ssh.need(),
+            Carrier::Builtin(_) => None,
+        }
+    }
+
+    /// The built-in client's handle, when it carries this connection — for
+    /// what only it does: a plain terminal channel, the bastions of a route.
+    pub fn builtin(&self) -> Option<&client::Handle<Client>> {
+        match &self.carrier {
+            Carrier::Builtin(handle) => Some(handle),
+            Carrier::System(_) => None,
+        }
+    }
+
+    /// Mutable access, needed by the authentication exchange — which only ever
+    /// runs on a connection the built-in client's handshake just made; the
+    /// system `ssh` logs in by itself.
     pub fn handle_mut(&mut self) -> &mut client::Handle<Client> {
-        &mut self.handle
+        match &mut self.carrier {
+            Carrier::Builtin(handle) => handle,
+            Carrier::System(_) => unreachable!("authentication runs on the built-in client only"),
+        }
+    }
+
+    /// Whether the transport has ended.
+    pub fn is_closed(&self) -> bool {
+        match &self.carrier {
+            Carrier::Builtin(handle) => handle.is_closed(),
+            Carrier::System(ssh) => ssh.is_closed(),
+        }
+    }
+
+    /// End the connection, telling the host why.
+    pub async fn hang_up(&self, reason: &str) {
+        match &self.carrier {
+            Carrier::Builtin(handle) => {
+                let _ = handle
+                    .disconnect(russh::Disconnect::ByApplication, reason, "")
+                    .await;
+            }
+            Carrier::System(ssh) => ssh.hang_up().await,
+        }
+    }
+
+    /// A slot in the channel budget for a channel the system `ssh` opens. Its
+    /// sessions are the host's sessions too (`MaxSessions` counts them), so
+    /// they are counted the same way — refused straight away at a known limit.
+    fn system_lease(&self, purpose: &str) -> Result<ChannelLease, AppError> {
+        if !self.budget.has_room() {
+            return Err(self.at_capacity(purpose));
+        }
+        self.budget.open.fetch_add(1, Ordering::Relaxed);
+        Ok(ChannelLease {
+            budget: Arc::clone(&self.budget),
+        })
+    }
+
+    /// A command's stdin and stdout as one stream, on its own channel — what
+    /// the host engine speaks over. Held for as long as it lives, so refused
+    /// rather than queued at the host's limit.
+    pub async fn exec_stream(
+        &self,
+        purpose: &str,
+        command: &str,
+    ) -> Result<(HostStream, ChannelLease), AppError> {
+        match &self.carrier {
+            Carrier::Builtin(_) => {
+                let (channel, lease) = self.open_channel(purpose, false).await?;
+                channel
+                    .exec(true, command)
+                    .await
+                    .map_err(|e| AppError::Invalid(format!("could not start {purpose}: {e}")))?;
+                Ok((Box::new(channel.into_stream()), lease))
+            }
+            Carrier::System(ssh) => {
+                let lease = self.system_lease(purpose)?;
+                Ok((Box::new(ssh.exec_stream(command).await?), lease))
+            }
+        }
+    }
+
+    /// The host's SFTP server, on its own channel.
+    pub async fn sftp_stream(&self) -> Result<(HostStream, ChannelLease), AppError> {
+        match &self.carrier {
+            Carrier::Builtin(_) => {
+                let (channel, lease) = self.open_channel("a file channel", false).await?;
+                channel.request_subsystem(true, "sftp").await.map_err(|e| {
+                    AppError::Invalid(format!("this host does not offer SFTP: {e}"))
+                })?;
+                Ok((Box::new(channel.into_stream()), lease))
+            }
+            Carrier::System(ssh) => {
+                let lease = self.system_lease("a file channel")?;
+                Ok((Box::new(ssh.sftp_stream().await?), lease))
+            }
+        }
+    }
+
+    /// A TCP stream to `host:port`, opened by the host. `origin_port` is the
+    /// local port it serves, for the host's logs (`0` when none does).
+    pub async fn tcp(
+        &self,
+        host: &str,
+        port: u16,
+        origin_port: u16,
+    ) -> Result<TcpChannel, TcpRefusal> {
+        match &self.carrier {
+            Carrier::Builtin(handle) => handle
+                .channel_open_direct_tcpip(
+                    host.to_string(),
+                    u32::from(port),
+                    "127.0.0.1",
+                    u32::from(origin_port),
+                )
+                .await
+                .map(TcpChannel::Builtin)
+                .map_err(|e| TcpRefusal::from_russh(&e)),
+            Carrier::System(ssh) => ssh
+                .tcp_stream(host, port)
+                .await
+                .map(|stream| TcpChannel::System(Box::new(stream))),
+        }
     }
 
     /// Open a channel on this connection, counted against what the host allows.
@@ -272,6 +519,12 @@ impl Connection {
         purpose: &str,
         wait: bool,
     ) -> Result<(russh::Channel<client::Msg>, ChannelLease), AppError> {
+        let Carrier::Builtin(handle) = &self.carrier else {
+            return Err(AppError::Invalid(format!(
+                "{purpose} needs the built-in SSH client, and this host is reached through the \
+                 system ssh — its terminals run in the host engine"
+            )));
+        };
         let deadline = tokio::time::Instant::now() + CHANNEL_WAIT;
         loop {
             if self.budget.has_room() {
@@ -279,8 +532,16 @@ impl Connection {
                 let lease = ChannelLease {
                     budget: Arc::clone(&self.budget),
                 };
-                match self.handle.channel_open_session().await {
-                    Ok(channel) => return Ok((channel, lease)),
+                match handle.channel_open_session().await {
+                    Ok(channel) => {
+                        if self.forwards_agent {
+                            // A refusal is the host's policy (`AllowAgentForwarding
+                            // no`), not a broken channel: the channel is still fine
+                            // for everything that does not need the agent.
+                            let _ = channel.agent_forward(false).await;
+                        }
+                        return Ok((channel, lease));
+                    }
                     Err(e) => {
                         // The host refused. `lease` is dropped as this scope
                         // ends, so the count goes back to what is really open —
@@ -374,6 +635,10 @@ impl Connection {
     /// a cap the future simply never completes, and the caller waits forever for
     /// a command that will never end.
     pub async fn exec(&self, command: &str) -> Result<CommandOutput, AppError> {
+        if let Carrier::System(ssh) = &self.carrier {
+            let _lease = self.system_lease("this command")?;
+            return ssh.exec(command).await;
+        }
         tokio::time::timeout(EXEC_TIMEOUT, self.exec_unbounded(command))
             .await
             .unwrap_or_else(|_| {
@@ -397,6 +662,10 @@ impl Connection {
     /// `[Convert]::ToBase64String`) and a shell redirect whose encoding differs
     /// per shell. This needs nothing installed and no syntax at all.
     pub async fn exec_bytes(&self, command: &str) -> Result<Vec<u8>, AppError> {
+        if let Carrier::System(ssh) = &self.carrier {
+            let _lease = self.system_lease("this command")?;
+            return ssh.exec_bytes(command).await;
+        }
         let (mut channel, _lease) = self.open_channel("this command", true).await?;
         channel
             .exec(true, command)
@@ -477,13 +746,42 @@ pub struct CommandOutput {
     pub exit_code: Option<u32>,
 }
 
-/// The russh client handler. Its only job is the host-key decision; it records
-/// the verdict so [`connect`] can report *why* a refused handshake was refused
-/// rather than collapsing every failure into "could not connect".
+/// How the presented host key is judged: against which records, under which
+/// name, and whether a key with no record may be accepted without asking.
+#[derive(Debug, Clone)]
+pub struct KeyPolicy {
+    /// Every `known_hosts` file the host's configuration names, concatenated.
+    pub known_hosts: String,
+    /// The name the key is filed under: `HostKeyAlias`, or the hostname.
+    pub name: String,
+    pub port: u16,
+    /// `StrictHostKeyChecking accept-new`: record a key that has no entry
+    /// instead of stopping to ask. Never applies to a key that **changed**.
+    pub accept_new: bool,
+}
+
+impl KeyPolicy {
+    /// Judge by `known_hosts` under the hostname itself, asking about new keys.
+    #[cfg(test)]
+    pub fn ask(known_hosts: &str, endpoint: &Endpoint) -> Self {
+        Self {
+            known_hosts: known_hosts.to_string(),
+            name: endpoint.hostname.clone(),
+            port: endpoint.port,
+            accept_new: false,
+        }
+    }
+}
+
+/// The russh client handler. It makes the host-key decision — recording the
+/// verdict so [`handshake`] can report *why* a refused handshake was refused
+/// rather than collapsing every failure into "could not connect" — and splices
+/// the agent channels a host opens back to us when we asked it to forward.
 pub struct Client {
-    known_hosts: String,
-    endpoint: Endpoint,
+    policy: KeyPolicy,
     seen: Arc<Mutex<Option<(Verdict, PresentedKey)>>>,
+    /// The agent to forward, when this connection forwards one.
+    forward_agent: Option<super::auth::AgentSource>,
 }
 
 impl client::Handler for Client {
@@ -500,26 +798,46 @@ impl client::Handler for Client {
             Err(_) => return Ok(false),
         };
         let verdict = hostkey::verify(
-            &self.known_hosts,
-            &self.endpoint.hostname,
-            self.endpoint.port,
+            &self.policy.known_hosts,
+            &self.policy.name,
+            self.policy.port,
             &presented,
         );
-        let accept = matches!(verdict, Verdict::Trusted);
+        let accept = match verdict {
+            Verdict::Trusted => true,
+            Verdict::Unknown => self.policy.accept_new,
+            Verdict::Changed { .. } | Verdict::Revoked => false,
+        };
         if let Ok(mut slot) = self.seen.lock() {
             *slot = Some((verdict, presented));
         }
         Ok(accept)
     }
+
+    /// The host wants to reach our agent, because git there is signing with a
+    /// key held here. Accepted only on a connection that asked for forwarding;
+    /// a host opening this channel unasked is refused by dropping `reply`.
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let Some(source) = self.forward_agent.clone() else {
+            return Ok(());
+        };
+        reply.accept().await;
+        tokio::spawn(async move {
+            let Some(mut agent) = super::auth::open_agent_stream(&source).await else {
+                return;
+            };
+            let mut remote = channel.into_stream();
+            let _ = tokio::io::copy_bidirectional(&mut remote, &mut agent).await;
+        });
+        Ok(())
+    }
 }
 
-/// Reach `endpoint` and decide, from `known_hosts`, whether to keep the
-/// connection.
-///
-/// Errors are reserved for *transport* failures (unreachable, timed out,
-/// protocol error). A host-key refusal is not an error — it is a
-/// [`Handshake`] variant, because the caller has something to show the user and
-/// possibly an action to offer.
 /// Why a host could not be reached, told apart.
 ///
 /// The whole point is that these lead to **different actions**, and one failure
@@ -600,36 +918,92 @@ fn classify_dial(error: &russh::Error) -> Unreachable {
     Unreachable::Handshake
 }
 
+/// Reach `endpoint` directly and decide, from `known_hosts` under its hostname,
+/// whether to keep the connection — the simplest route, used by the live tests.
+/// The app dials through [`super::dial`], which builds the route and the
+/// policy from the host's configuration.
+#[cfg(test)]
 pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake, AppError> {
+    let policy = KeyPolicy::ask(known_hosts, &endpoint);
+    let stream = match dial_tcp(&endpoint).await {
+        Ok(stream) => stream,
+        Err((why, detail)) => return Ok(Handshake::Unreachable { why, detail }),
+    };
+    handshake(stream, endpoint, policy, None).await
+}
+
+/// Open the TCP connection to `endpoint`, or say why it could not be opened
+/// (the kind, and a sentence naming the host).
+pub async fn dial_tcp(endpoint: &Endpoint) -> Result<tokio::net::TcpStream, (Unreachable, String)> {
+    match tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        tokio::net::TcpStream::connect(endpoint.socket_addr()),
+    )
+    .await
+    {
+        Ok(Ok(stream)) => {
+            let _ = stream.set_nodelay(true);
+            Ok(stream)
+        }
+        Ok(Err(e)) => {
+            let why = classify_dial(&russh::Error::IO(e));
+            Err((why, why.explain(endpoint)))
+        }
+        Err(_) => Err((Unreachable::Timeout, Unreachable::Timeout.explain(endpoint))),
+    }
+}
+
+/// Run the SSH handshake over an already-open byte stream — a TCP socket, a
+/// tunnel through a bastion, or a `ProxyCommand`'s pipes — and decide by
+/// `policy` whether to keep it.
+///
+/// Errors are reserved for failures on our side. Everything about the host is
+/// a [`Handshake`] variant, because the caller has something to show the user
+/// and possibly an action to offer.
+pub async fn handshake<S>(
+    stream: S,
+    endpoint: Endpoint,
+    policy: KeyPolicy,
+    forward_agent: Option<super::auth::AgentSource>,
+) -> Result<Handshake, AppError>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let seen: Arc<Mutex<Option<(Verdict, PresentedKey)>>> = Arc::new(Mutex::new(None));
+    let recorded = hostkey::recorded_algorithms(&policy.known_hosts, &policy.name, policy.port);
     let handler = Client {
-        known_hosts: known_hosts.to_string(),
-        endpoint: endpoint.clone(),
+        policy,
         seen: Arc::clone(&seen),
+        forward_agent,
     };
 
     let config = Arc::new(client::Config {
         inactivity_timeout: Some(INACTIVITY_TIMEOUT),
         keepalive_interval: Some(KEEPALIVE_INTERVAL),
         keepalive_max: KEEPALIVE_MAX_MISSED,
+        preferred: russh::Preferred {
+            key: std::borrow::Cow::Owned(host_key_order(&recorded)),
+            ..russh::Preferred::DEFAULT
+        },
         ..Default::default()
     });
 
     let attempt = tokio::time::timeout(
         HANDSHAKE_TIMEOUT,
-        client::connect(config, endpoint.socket_addr(), handler),
+        client::connect_stream(config, stream, handler),
     )
     .await;
 
     // Read the verdict first: when the handshake failed *because we refused the
     // key*, that is the real answer and the transport error is just its echo.
     let observed = seen.lock().ok().and_then(|s| s.clone());
+    let mut learned = None;
     if let Some((verdict, key)) = observed {
         match verdict {
             Verdict::Changed { stored_fingerprint } => {
                 return Ok(Handshake::Changed {
-                    presented_fingerprint: key.fingerprint(),
                     stored_fingerprint,
+                    key,
                 })
             }
             Verdict::Revoked => {
@@ -637,12 +1011,11 @@ pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake,
                     fingerprint: key.fingerprint(),
                 })
             }
-            Verdict::Unknown => {
-                return Ok(Handshake::Unknown {
-                    fingerprint: key.fingerprint(),
-                    key,
-                })
+            Verdict::Unknown if attempt.as_ref().is_ok_and(|r| r.is_ok()) => {
+                // Accepted under `accept-new`: the caller records it.
+                learned = Some(key);
             }
+            Verdict::Unknown => return Ok(Handshake::Unknown { key }),
             Verdict::Trusted => {}
         }
     }
@@ -664,12 +1037,33 @@ pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake,
         }
     };
 
-    Ok(Handshake::Ready(Connection {
-        handle,
+    Ok(Handshake::Ready(Box::new(Connection {
+        carrier: Carrier::Builtin(handle),
         endpoint,
         generation: next_generation(),
         budget: Arc::new(ChannelBudget::default()),
-    }))
+        via: Vec::new(),
+        proxy: None,
+        forwards_agent: false,
+        learned,
+    })))
+}
+
+/// The host-key algorithms to ask for, with the ones already on file for this
+/// host first (see [`hostkey::recorded_algorithms`] for why that order is a
+/// security property, not a preference).
+fn host_key_order(recorded: &[String]) -> Vec<russh::keys::Algorithm> {
+    let defaults: Vec<russh::keys::Algorithm> = russh::Preferred::DEFAULT.key.to_vec();
+    let on_file = |alg: &russh::keys::Algorithm| {
+        recorded.iter().any(|r| {
+            // `known_hosts` files every RSA key as `ssh-rsa`, whichever hash
+            // the handshake signs it with.
+            (alg.clone().is_rsa() && r == "ssh-rsa") || r == alg.as_str()
+        })
+    };
+    let (mut first, rest): (Vec<_>, Vec<_>) = defaults.into_iter().partition(|a| on_file(a));
+    first.extend(rest);
+    first
 }
 
 #[cfg(test)]
@@ -832,10 +1226,11 @@ mod tests {
             tokio::time::sleep(idle).await;
 
             assert!(
-                !conn.handle().is_closed(),
+                !conn.is_closed(),
                 "the connection was reaped while idle; the keepalive is not doing its job"
             );
-            conn.handle()
+            conn.builtin()
+                .unwrap()
                 .channel_open_session()
                 .await
                 .expect("an idle connection still opens channels");
@@ -846,7 +1241,8 @@ mod tests {
         #[ignore = "needs a local sshd; run explicitly with --ignored"]
         async fn an_unknown_host_is_refused_and_reports_a_usable_fingerprint() {
             match connect(Endpoint::new("127.0.0.1", LOCAL_SSHD), "").await {
-                Ok(Handshake::Unknown { fingerprint, key }) => {
+                Ok(Handshake::Unknown { key }) => {
+                    let fingerprint = key.fingerprint();
                     assert!(fingerprint.starts_with("SHA256:"), "{fingerprint}");
                     assert!(!key.algorithm.is_empty());
                     println!(
@@ -905,9 +1301,10 @@ mod tests {
 
             match connect(Endpoint::new("127.0.0.1", LOCAL_SSHD), &stored).await {
                 Ok(Handshake::Changed {
-                    presented_fingerprint,
                     stored_fingerprint,
+                    key: presented,
                 }) => {
+                    let presented_fingerprint = presented.fingerprint();
                     assert_eq!(presented_fingerprint, key.fingerprint());
                     assert_eq!(stored_fingerprint, impostor.fingerprint());
                     assert_ne!(presented_fingerprint, stored_fingerprint);
@@ -940,12 +1337,16 @@ mod tests {
             };
 
             // 1. Never seen → refused, with a fingerprint to show the user.
-            let Ok(Handshake::Unknown { key, fingerprint }) =
+            let Ok(Handshake::Unknown { key }) =
                 connect(Endpoint::new(host.clone(), port), "").await
             else {
                 panic!("an empty known_hosts must refuse {host}:{port}");
             };
-            println!("remote {host}:{port} → {fingerprint} ({})", key.algorithm);
+            println!(
+                "remote {host}:{port} → {} ({})",
+                key.fingerprint(),
+                key.algorithm
+            );
 
             // 2. Recorded → verifies, and the transport is up.
             let trusted = hostkey::trust_line(&host, port, &key);
@@ -965,9 +1366,10 @@ mod tests {
             let stored = hostkey::trust_line(&host, port, &impostor);
             match connect(Endpoint::new(host, port), &stored).await {
                 Ok(Handshake::Changed {
-                    presented_fingerprint,
                     stored_fingerprint,
+                    key: presented,
                 }) => {
+                    let presented_fingerprint = presented.fingerprint();
                     assert_eq!(presented_fingerprint, key.fingerprint());
                     assert_ne!(presented_fingerprint, stored_fingerprint);
                     println!("remote mismatch correctly reported as changed");

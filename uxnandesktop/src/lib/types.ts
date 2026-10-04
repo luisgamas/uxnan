@@ -766,8 +766,9 @@ export type SshHostSource = "manual" | "sshConfig";
 /** A registered remote machine (mirror of Rust `SshHost`).
  *
  *  Holds **no secret**: alias, address, user and a *reference* to an identity
- *  file. Keys and passwords come from the system agent, from disk, or from a
- *  prompt that lives in memory for one attempt. */
+ *  file. Keys and passwords come from the agent the host's configuration names,
+ *  from disk, or from what the person typed — held in memory for the app's
+ *  session, never written. */
 export interface SshHost {
   /** Stable id, and the only thing a project stores. Never the hostname. */
   id: string;
@@ -790,6 +791,34 @@ export interface SshHost {
   /** Set after a connection that needed a passphrase or password, so startup can
    *  reconnect the silent hosts and leave the rest until the user is present. */
   needsPrompt?: boolean;
+  /** What carries the connection (mirror of Rust `SshCarrier`): the
+   *  configuration decides, or it is pinned to one. Absent = `auto`. */
+  carrier?: SshCarrier;
+}
+
+export type SshCarrier = "auto" | "builtin" | "system";
+
+/** Why the system `ssh` carries a host (mirror of Rust `ssh::system::SystemNeed`):
+ *  what in its configuration only OpenSSH itself can do, or the person's choice. */
+export interface SystemSshNeed {
+  code:
+    | "kerberos"
+    | "smartcard"
+    | "securityKeyProvider"
+    | "hostbased"
+    | "fdpass"
+    | "knownHostsCommand"
+    | "securityKey"
+    | "chosen";
+  /** The key file, for `securityKey`. */
+  file?: string | null;
+}
+
+/** What would carry a host if it connected now (Rust `SshCarrierView`). */
+export interface SshCarrierView {
+  carrier: SshCarrier;
+  /** Why the system `ssh` would; `null` is the built-in client. */
+  system: SystemSshNeed | null;
 }
 
 /** What the form (or an imported alias) sends. Never an id — those are minted
@@ -820,32 +849,18 @@ export interface SshHostAdded {
   updatedExisting: boolean;
 }
 
-/** What reaching a host said about its identity, before any credential. */
-export interface SshHostProbe {
-  status: "trusted" | "unknown" | "changed" | "revoked";
-  /** In OpenSSH's own format, so it can be compared with `ssh-keygen -lf`. */
-  fingerprint?: string | null;
-  algorithm?: string | null;
-  /** For `changed`: what `known_hosts` holds instead. Show both. */
-  storedFingerprint?: string | null;
-}
-
-/** A worktree's git state on a host (mirror of Rust `ssh::git::RemoteGitStatus`).
- *
- *  `isRepo: false` is the honest catch-all — not a repository, no git installed,
- *  or a shell that could not be named — and must never be rendered as "clean". */
-export interface SshGitStatus extends WorktreeStatus {
+/** A worktree's branch and row counts (mirror of Rust `git::RepoStatus`), from
+ *  whichever machine it is on. `isRepo: false` means *not a repository* and
+ *  must never be rendered as "clean". */
+export interface RepoStatus extends WorktreeStatus {
   branch: string | null;
   isRepo: boolean;
 }
 
-/** Everything the Changes tab reads about a worktree on a host, answered in one
- *  remote command (mirror of Rust `ssh::git::RemoteReview`).
- *
- *  The pieces are the local layer's own shapes on purpose, so the panel renders
- *  either machine with the components it already has. `isRepo: false` carries
- *  the same meaning as in `SshGitStatus`: *not read*, never "clean". */
-export interface SshGitReview extends WorktreeStatus {
+/** Everything the Changes tab reads about a worktree, in one answer (mirror of
+ *  Rust `git::Review`). The pieces are the shapes the panel already renders;
+ *  `isRepo: false` carries the same meaning as in `RepoStatus`. */
+export interface GitReview extends WorktreeStatus {
   files: FileChange[];
   numstat: FileNumstat[];
   /** The worktree's HEAD, so History knows when it has to reload. Absent in a
@@ -886,6 +901,68 @@ export interface SshHostSession {
    *  mutation the app prepares, so a save prepared against one connection cannot
    *  execute against its replacement. */
   generation: number;
+  /** The link's latency as the host engine's heartbeat last measured it. */
+  latencyMs?: number | null;
+  /** Why the system `ssh` carries this session, when it does. */
+  systemSsh?: SystemSshNeed | null;
+}
+
+/** A host's connection, step by step (mirror of Rust `ssh::doctor::HostDoctor`):
+ *  facts, which the host page words. */
+export interface HostDoctor {
+  /** Each bastion's label, then the host's. */
+  hops: string[];
+  proxyCommand: boolean;
+  routeError: string | null;
+  reachMs: number | null;
+  reachError: string | null;
+  keySettled: boolean;
+  connected: boolean;
+  shell: string | null;
+  engine: { version: string; protocol: number; os: string; arch: string } | null;
+  engineError: string | null;
+  roundTripMs: number | null;
+  forwardAgent: boolean;
+}
+
+/** A bridge installed on a host (mirror of `uxnan_host_protocol::BridgeInstall`). */
+export interface HostBridgeInstall {
+  /** `own`: the user installed it themselves; `managed`: Uxnan did. */
+  kind: "own" | "managed";
+  version: string;
+  cli: string;
+}
+
+/** A host's own bridge as its engine sees it (`BridgeState`). */
+export interface HostBridgeState {
+  node: string | null;
+  npm: string | null;
+  install: HostBridgeInstall | null;
+  running: number | null;
+  supervised: boolean;
+  supervise: boolean;
+  lastError: string | null;
+  /** Its configuration opens the LAN listener. */
+  lan: boolean;
+}
+
+/** How an install on a host ended (`BridgeInstalled`). */
+export interface HostBridgeInstalled {
+  ok: boolean;
+  version: string | null;
+  tail: string[];
+}
+
+/** One terminal a host's engine holds (mirror of Rust `HostSession`). */
+export interface HostSession {
+  session: number;
+  label: string;
+  cwd: string;
+  alive: boolean;
+  /** An age, never a timestamp: the two machines' clocks do not agree. */
+  startedAgoMs: number;
+  /** The tab of this window that shows it, if one does. */
+  tab: string | null;
 }
 
 /** What a host reported about itself (mirror of Rust `HostInventory`). */
@@ -913,14 +990,18 @@ export interface SshConnectReport {
     | "hostRevoked"
     | "needsPassword"
     | "needsPassphrase"
+    | "needsAnswers"
     | "failed"
     | "noUsableMethod"
-    | "unreachable";
+    | "unreachable"
+    | "proxyFailed"
+    | "systemSshFailed";
   /** For `unreachable`: which kind it was. They lead to different actions — a
    *  machine that is asleep is worth another try, a name that does not resolve
    *  is not — and one failure string made them indistinguishable. */
   reason?: "timeout" | "unknownAddress" | "refused" | "handshake" | null;
-  /** For `unreachable`: a sentence naming the host and what happened. */
+  /** For `unreachable` and `proxyFailed`: a sentence naming the host and what
+   *  happened. */
   detail?: string | null;
   /** Connection incarnation, for `connected`. Travels with every mutation
    *  prepared against this session. */
@@ -934,10 +1015,43 @@ export interface SshConnectReport {
   shell?: RemoteShellKind | null;
   fingerprint?: string | null;
   storedFingerprint?: string | null;
+  /** For `hostUnknown`: the host's configuration says `StrictHostKeyChecking
+   *  yes`, so its key can be shown but not trusted from here. */
+  strict: boolean;
   /** For `needsPassphrase`: which key file needs one. */
   path?: string | null;
+  /** For `needsPassphrase`: one was given and did not open the key. */
+  wrong: boolean;
   /** What was offered and refused, in order. */
   attempted: string[];
+  /** For `needsAnswers`: the server's questions, as it asked them. */
+  challenge?: SshChallenge | null;
+  /** The bastion the outcome is about, when it is one on the way and not the
+   *  host itself. `null` means the host. */
+  hop?: string | null;
+  /** Identity of the hop that asked (`user@hostname:port`), to send its secret
+   *  back with. */
+  hopKey?: string | null;
+  /** Keys recorded without asking (`StrictHostKeyChecking accept-new`), as
+   *  `[label, fingerprint]` pairs. */
+  learnedKeys: [string, string][];
+}
+
+/** Questions a keyboard-interactive server asked — a one-time code, a second
+ *  factor (mirror of Rust `ssh::auth::Challenge`). */
+export interface SshChallenge {
+  name: string;
+  instructions: string;
+  prompts: { text: string; echo: boolean }[];
+}
+
+/** Something the person typed for one hop of a host's route (mirror of Rust
+ *  `SshSecret`). */
+export interface SshSecret {
+  kind: "password" | "passphrase";
+  hopKey: string;
+  path?: string | null;
+  value: string;
 }
 
 /** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust
@@ -1190,7 +1304,7 @@ export interface ForwardRefusal {
 }
 
 /** A TCP port a host reported listening on (mirror of Rust
- *  `ssh::ports::ListeningPort`), from the on-demand scan. */
+ *  the engine's `ports::ListeningPort`), from the on-demand scan. */
 export interface ListeningPort {
   port: number;
   /** Bound to loopback only — the case a forward exists to solve. */
@@ -1335,6 +1449,13 @@ export interface FileNumstat {
 export interface FsChangedEvent {
   root: string;
   paths: string[];
+  /** The machine the root is on (`local` or `ssh:<hostId>`). The same path can
+   *  exist on both, and a change on one must not reload the other. */
+  target?: TargetId;
+  /** Something under the root's `.git` changed (a commit, a stage, a checkout
+   *  made outside the app) — reported by a host's engine only, for the git
+   *  panel, since a host has no status poller. */
+  git?: boolean;
 }
 
 /** Payload of the `browse:changed` event (mirror of Rust `BrowseChangedEvent`):
@@ -1584,6 +1705,8 @@ export type SavedTab =
       title: string;
       customTitle?: string;
       cwd: string;
+      /** The machine whose bridge holds the conversation; absent = this one. */
+      target?: TargetId;
       /** The bridge thread; absent while the tab still shows the new-chat setup. */
       threadId?: string;
       /** Agent preselected for a chat not started yet (bridge `AgentId`). */
