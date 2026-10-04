@@ -3072,6 +3072,14 @@ trae un `rev` que no es el siguiente al ultimo aplicado. El almacen de hilos y
 el registro de proyectos son la **unica** fuente de esas notificaciones
 (`onChange`), de modo que ningun handler puede cambiar algo y olvidar avisar.
 
+**El estado vivo viaja entero:** cada respuesta de `sync/changes` lleva `live`
+(`ThreadLiveState[]`, sin revision, como `clients`): cada hilo con un turno en
+marcha (`activeTurnId`) o con aprobaciones o preguntas abiertas
+(`awaitingInput`). El telefono guarda su cursor entre reinicios, asi que una
+respuesta incremental dejaria fuera un hilo cuyo turno empezo antes y se veria
+inactivo hasta abrirlo; con `live` el telefono y el desktop saben al reconectar
+que esta trabajando, que espera al usuario y que ya no, sin pedir nada por hilo.
+
 **Orden canonico:** `Turn.seq` (1..n por hilo, asignado al guardar el turno y
 nunca reutilizado; los turnos anteriores se numeran en su orden guardado). Un
 turno importado de la historia nativa toma la siguiente posicion. Los clientes

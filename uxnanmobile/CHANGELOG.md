@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The chat list shows what each agent is doing as soon as the app
+  connects.** A chat whose agent was already working, or waiting for your
+  approval, read as idle until you opened it; one that finished while the app
+  was away could stay "working". The list now adopts the bridge's live set on
+  every sync — working, waiting for you, or neither — without opening a chat.
+
 ## [0.0.39-alpha.20261003+20261006] - 20261003
 ### Added
 

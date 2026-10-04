@@ -1,6 +1,12 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.2.3 | **Fecha:** 2026-10-04 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.2.4 | **Fecha:** 2026-10-04 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.2.4):** `SyncChanges.live` — `ThreadLiveState[]`, every
+> conversation running or waiting on the user right now (`activeTurnId?`,
+> `awaitingInput?`), whole on every answer and not revisioned, so a client that
+> reconnects with a saved cursor converges on which threads are live. No new
+> method.
 >
 > **Executive summary (1.2.3):** `relay/admitHost { hostKey, apiToken?,
 > remember? }` — let another of the user's machines (a remote host's own

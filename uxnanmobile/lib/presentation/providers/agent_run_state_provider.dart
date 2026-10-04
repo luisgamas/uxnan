@@ -45,12 +45,9 @@ final agentRunStatusProvider =
   // The agent asked something and is holding the turn. Tracked per thread by
   // the manager as the blocks arrive, so this is just as true for a thread the
   // user has never opened — which is the whole point of showing it in a list.
-  // FOR-DEV: exact for a thread this phone has streamed or resynced, and
-  // in-memory only — after a restart one that asked before the app closed reads
-  // as `working` until the next `turn/list` replays its blocks. Degrading to
-  // `working` is deliberate: it never claims a `waiting` that isn't there.
-  // Making it exact needs the bridge to say so (a `stream/thread/state`
-  // notification or a field on `thread/list`) — see FOR-DEV.md.
+  // Exact after a restart or a reconnect too: every `sync/changes` answer
+  // carries the bridge's whole live set (`SyncChanges.live`), which the
+  // manager adopts — including a thread that did not change since the cursor.
   final awaiting = ref.watch(threadAwaitingInputProvider(threadId));
   if (awaiting) {
     return (state: AgentRunState.waiting, errored: errored, stale: false);

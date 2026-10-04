@@ -190,6 +190,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A chat that finished or started asking while the desktop was reconnecting
+  shows it at once.** The activity tracker adopts the bridge's live set on
+  every sync (`SyncChanges.live`): working, waiting for you, or neither —
+  including a thread that did not change since the last sync.
 - **A terminal on a Windows host opens in the shell its owner chose for SSH.**
   With OpenSSH's `DefaultShell` set to PowerShell, the host engine still
   started `cmd` for every terminal; it now starts what an SSH login there

@@ -232,6 +232,9 @@ export class ChatStore {
     this.clients = changes.clients;
     if (Array.isArray(changes.devices)) this.devices = changes.devices;
     this.activity.adoptList([...this.threads.values()]);
+    // The live set comes whole on every answer: it corrects what the replica's
+    // own `activeTurnId`s, unchanged since the cursor, no longer tell.
+    if (Array.isArray(changes.live)) this.activity.adoptLive(changes.live);
     this.#rev = changes.rev;
     this.#storeId = changes.storeId;
     this.threadsLoaded = true;

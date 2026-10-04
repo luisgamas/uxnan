@@ -17,6 +17,7 @@ import {
   makeNotification,
   type AccessMode,
   type DesktopTools,
+  type ThreadLiveState,
   type AgentCommand,
   type AgentCommandInvocation,
   type AgentDescriptor,
@@ -1324,6 +1325,21 @@ export class AgentManager {
 
   activeTurnId(threadId: string): string | undefined {
     return this.#activeTurnByThread.get(threadId);
+  }
+
+  /** Every thread with a turn in flight or a request open, as `sync/changes`
+   *  carries it (`SyncChanges.live`). */
+  liveStates(): ThreadLiveState[] {
+    const ids = new Set([...this.#activeTurnByThread.keys(), ...this.#awaitingInput.keys()]);
+    return [...ids].map((threadId) => {
+      const activeTurnId = this.#activeTurnByThread.get(threadId);
+      const awaiting = this.#awaitingInput.get(threadId);
+      return {
+        threadId,
+        ...(activeTurnId !== undefined ? { activeTurnId } : {}),
+        ...(awaiting && awaiting.size > 0 ? { awaitingInput: [...awaiting] } : {}),
+      };
+    });
   }
 
   /** Uxnan Desktop's tools for the agents this bridge runs, per local client

@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **`SyncChanges.live`** (`ThreadLiveState { threadId, activeTurnId?,
+  awaitingInput? }`): every conversation running or waiting on the user right
+  now, whole on every `sync/changes` answer and not revisioned — so a client
+  reconnecting with a saved cursor knows which threads are live, including ones
+  that did not change since. Optional (absent on an older bridge).
 - **`relay/admitHost { hostKey, apiToken?, remember? }`** (`RelayAdmitHostParams`):
   let another of the user's machines — a remote host's own bridge — host on
   this bridge's relay. 102 methods.

@@ -222,3 +222,24 @@ describe("sidebarChats", () => {
     expect(shown.map((t) => t.id)).toEqual(["open", "busy"]);
   });
 });
+
+describe("the bridge's live set", () => {
+  it("marks working and waiting threads, and clears one that ended while away", () => {
+    const a = new ThreadActivity({ store: memoryStore().store });
+    // The replica still says it runs (unchanged since the cursor): the live
+    // set is what tells otherwise.
+    a.adoptList([thread("t1", 10, { activeTurnId: "tu1" }), thread("t2", 10)]);
+    expect(a.of("t1")).toBe("working");
+
+    a.adoptLive([{ threadId: "t2", activeTurnId: "tu2", awaitingInput: ["ap1"] }]);
+    expect(a.of("t1")).toBe("idle");
+    expect(a.of("t2")).toBe("waiting");
+
+    // The approval was answered elsewhere; the turn goes on.
+    a.adoptLive([{ threadId: "t2", activeTurnId: "tu2" }]);
+    expect(a.of("t2")).toBe("working");
+
+    a.adoptLive([]);
+    expect(a.of("t2")).toBe("idle");
+  });
+});

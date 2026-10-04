@@ -88,6 +88,18 @@ export interface ClientPresence {
   route?: ConnectionRoute;
 }
 
+/**
+ * A conversation whose agent is doing something right now — live state the
+ * bridge holds in memory, never persisted and never revisioned.
+ */
+export interface ThreadLiveState {
+  threadId: string;
+  /** The turn in flight, when one runs. */
+  activeTurnId?: string;
+  /** The approvals and questions its agent is waiting on, by request id. */
+  awaitingInput?: string[];
+}
+
 export interface SyncChanges {
   /** Identity of the bridge's state directory; changes only if it is recreated. */
   storeId: string;
@@ -106,6 +118,14 @@ export interface SyncChanges {
   removedThreadIds: string[];
   /** Who is connected right now (live, not revisioned). */
   clients: ClientPresence[];
+  /**
+   * Every conversation that is running or waiting on the user right now —
+   * whole on every answer, revisioned or not, so a client that reconnects
+   * (or restarts with a saved cursor) knows at once which threads are live,
+   * including ones that did not change since its last revision. A thread
+   * absent here is idle. Absent on an older bridge.
+   */
+  live?: ThreadLiveState[];
   /** Every paired phone, as it stands (small; always whole). */
   devices: TrustedDevice[];
 }

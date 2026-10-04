@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A phone shows which chats are working the moment it reconnects.** Every
+  `sync/changes` answer now carries the live set (`SyncChanges.live`): each
+  thread with a turn in flight or an approval or question open. The phone keeps
+  its sync cursor across restarts, so an incremental answer used to leave out a
+  thread whose turn had started before — it read as idle until opened.
+
 ### Added
 
 - **`relay/admitHost`: let one of your other machines use your relay.** The
