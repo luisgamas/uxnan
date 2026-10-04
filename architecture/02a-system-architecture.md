@@ -3824,6 +3824,11 @@ el telefono, el desktop y el CLI le preguntan por `relay/*` (§1 de `02b`):
 - `relay/remove { deleteWorker?, apiToken?, remember? }` — deja de usarlo;
   con `deleteWorker` quita la clave de este PC del Worker y borra el Worker si
   no queda ningun PC.
+- `relay/admitHost { hostKey, apiToken?, remember? }` — solo por el canal
+  local: agrega al Worker la clave de otra maquina del usuario (el bridge propio
+  de un host remoto, `uxnandesktop/architecture/02g` §5.18), conservando las
+  demas, con el token recordado salvo que se pase uno. Ese bridge usa despues
+  el relay con `relay/use` y esta URL; nadie vuelve a teclear el token.
 - `relay/status` y la notificacion `stream/relay/updated` (el `RelayStatus`
   completo: endpoint, estado `off|connecting|connected|error`, `lastError`,
   versiones, `tokenRemembered`, `connectedPhones`, `hostKey`).

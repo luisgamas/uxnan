@@ -106,6 +106,7 @@ import type {
 import type { PushPlatform } from '../notifications/push-payload.js';
 import type {
   RelayCredentialParams,
+  RelayAdmitHostParams,
   RelayRemoveParams,
   RelaySetParams,
   RelaySetupParams,
@@ -651,6 +652,9 @@ export interface JsonRpcMethodRegistry {
   // through the shared settings.
   'relay/rotate': { params: void; result: RelayStatus };
   'relay/remove': { params: RelayRemoveParams; result: RelayStatus };
+  // Let another of the user's machines (a host's own bridge) on this relay.
+  // Local control channel only.
+  'relay/admitHost': { params: RelayAdmitHostParams; result: RelayStatus };
 
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };

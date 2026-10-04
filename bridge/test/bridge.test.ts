@@ -186,3 +186,23 @@ test('a bridge started from code never takes a persistent identity', async () =>
   for (const bridge of bridges) await bridge.stop();
   for (const dir of dirs) await rmrf(dir);
 });
+
+test('relay/admitHost is refused to a phone: who may host on the relay is this machine’s call', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  try {
+    const phone = await bridge.router.dispatch(
+      makeRequest('p', 'relay/admitHost', { hostKey: 'ab'.repeat(32) }),
+      { sessionId: 'phone', deviceId: 'phone' },
+    );
+    assert.ok('error' in phone && phone.error.code === JsonRpcErrorCode.AuthenticationRequired);
+    // Over the local channel it gets as far as the relay: none is set up here.
+    const local = await bridge.router.dispatch(
+      makeRequest('l', 'relay/admitHost', { hostKey: 'ab'.repeat(32) }),
+      { sessionId: 'local:desktop', deviceId: 'local:desktop', local: 'desktop' },
+    );
+    assert.ok('error' in local && /No relay is set up/.test(local.error.message));
+  } finally {
+    await bridge.stop();
+    await rmrf(baseDir);
+  }
+});

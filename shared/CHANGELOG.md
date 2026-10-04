@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **`relay/admitHost { hostKey, apiToken?, remember? }`** (`RelayAdmitHostParams`):
+  let another of the user's machines — a remote host's own bridge — host on
+  this bridge's relay. 102 methods.
+
 ## [0.0.31-alpha.20261003] - 20261003
 ### Added
 

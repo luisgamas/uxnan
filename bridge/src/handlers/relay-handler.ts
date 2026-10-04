@@ -5,7 +5,7 @@
  * a phone can set the relay up without the desktop (the token travels inside
  * the E2EE channel and is never echoed back).
  */
-import { RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { decisionTime } from '../conversation/thread-store.js';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
@@ -37,6 +37,18 @@ export function registerRelayHandlers(router: HandlerRouter): void {
   router.register('relay/update', (p, ctx: BridgeContext) => ctx.relay().update(credentials(p)));
 
   router.register('relay/rotate', (_p, ctx: BridgeContext) => ctx.relay().rotate());
+
+  // Changing who may host on the user's relay is this machine's decision:
+  // over the local control channel only, never from a phone.
+  router.register('relay/admitHost', (p, ctx: BridgeContext, session) => {
+    if (!session?.local) {
+      throw new RpcError(
+        JsonRpcErrorCode.AuthenticationRequired,
+        'relay/admitHost is only accepted over the local control channel',
+      );
+    }
+    return ctx.relay().admitHost({ hostKey: requireString(p, 'hostKey'), ...credentials(p) });
+  });
 
   router.register('relay/remove', (p, ctx: BridgeContext) => {
     const deleteWorker = optionalBoolean(p, 'deleteWorker');

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **`relay/admitHost`: let one of your other machines use your relay.** The
+  bridge that deployed the relay adds another bridge's identity key to the
+  Worker — a remote host's own bridge, for example — with the token it
+  remembers, so that bridge joins with `relay/use` and nobody types the token
+  again. Accepted over the local control channel only, never from a phone.
+
 ### Changed
 
 - **Turning the LAN off no longer turns off Claude Code's "request approval".**
