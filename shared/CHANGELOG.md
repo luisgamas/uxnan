@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.32-alpha.20261004] - 20261004
 ### Added
 
 - **`SyncChanges.live`** (`ThreadLiveState { threadId, activeTurnId?,
