@@ -617,13 +617,14 @@ fn sweep_once(dir: &Path) {
     if SWEPT.swap(true, Ordering::SeqCst) {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        #[cfg(unix)]
-        {
+    // Only where there are masters at all: Windows' OpenSSH has none.
+    #[cfg(unix)]
+    {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
             if std::os::unix::net::UnixStream::connect(&path).is_err() {
                 let _ = std::fs::remove_file(&path);
                 continue;
@@ -643,6 +644,8 @@ fn sweep_once(dir: &Path) {
             );
         }
     }
+    #[cfg(not(unix))]
+    let _ = dir;
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -781,7 +784,14 @@ impl ProcessStream {
     /// The reason, read from what `ssh` said, when it did.
     pub async fn closed_within(&mut self, grace: Duration) -> Option<TcpRefusal> {
         let _ = tokio::time::timeout(grace, self.child.wait()).await.ok()?;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // The process is gone; its last words may still be on their way
+        // through the reader.
+        for _ in 0..20 {
+            if !self.stderr.lock().unwrap().trim().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
         let mut said = self.stderr.lock().unwrap().clone();
         if let Some((master, from)) = &self.master {
             let master = master.lock().unwrap();
@@ -792,7 +802,14 @@ impl ProcessStream {
         let lower = said.to_ascii_lowercase();
         let kind = if lower.contains("administratively prohibited") {
             TcpRefusalKind::Prohibited
-        } else if lower.contains("connect failed") || lower.contains("open failed") {
+        } else if said.trim().is_empty()
+            || lower.contains("connect failed")
+            || lower.contains("open failed")
+            || lower.contains("forwarding failed")
+        {
+            // A stream that ended at once, saying nothing more than that, is
+            // the host finding nothing there — what the built-in client reads
+            // from a channel closed straight after opening.
             TcpRefusalKind::ConnectFailed
         } else {
             TcpRefusalKind::Other
