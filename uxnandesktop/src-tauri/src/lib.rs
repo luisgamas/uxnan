@@ -537,6 +537,7 @@ pub fn run() {
             commands::host_bridge_status,
             commands::host_bridge_install,
             commands::host_bridge_supervise,
+            commands::host_bridge_set_lan,
             bridgeclient::commands::bridge_host_retry,
             bridgeclient::commands::bridge_install_probe,
             bridgeclient::commands::bridge_install,

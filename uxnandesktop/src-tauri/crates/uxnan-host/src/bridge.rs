@@ -321,6 +321,21 @@ pub async fn serve(
             let this = supervisor.clone();
             tokio::task::spawn_blocking(move || serde_json::to_value(this.state())).await
         }
+        BridgeCall::SetLan { on } => {
+            if let Err(e) = set_lan_in(&account_home().join(".uxnan"), on) {
+                return Outcome::Error {
+                    code: uxnan_host_protocol::ErrorCode::Io,
+                    message: format!("could not change the bridge's configuration: {e}"),
+                };
+            }
+            log::line(&format!(
+                "bridge: LAN listener {}",
+                if on { "opened" } else { "closed" }
+            ));
+            supervisor.restart();
+            let this = supervisor.clone();
+            tokio::task::spawn_blocking(move || serde_json::to_value(this.state())).await
+        }
     };
     match value {
         Ok(Ok(value)) => Outcome::Ok {
@@ -362,6 +377,36 @@ fn closed_by_default_in(dir: &Path) -> bool {
     .is_ok()
 }
 
+/// Whether the configuration in `dir` opens the LAN listener — the bridge's
+/// default (`true`) when it does not say.
+fn lan_in(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("daemon-config.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| v.get("lanEnabled").and_then(serde_json::Value::as_bool))
+        .unwrap_or(true)
+}
+
+/// Set `lanEnabled` and `mdnsEnabled` in the configuration in `dir`, keeping
+/// every other key the user (or the bridge) put there.
+fn set_lan_in(dir: &Path, on: bool) -> std::io::Result<()> {
+    let file = dir.join("daemon-config.json");
+    let mut config = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}));
+    config["lanEnabled"] = serde_json::Value::Bool(on);
+    config["mdnsEnabled"] = serde_json::Value::Bool(on);
+    std::fs::create_dir_all(dir)?;
+    let tmp = dir.join("daemon-config.json.uxnan-tmp");
+    std::fs::write(
+        &tmp,
+        serde_json::to_string_pretty(&config).map_err(std::io::Error::other)?,
+    )?;
+    std::fs::rename(tmp, file)
+}
+
 #[derive(Default)]
 struct Inner {
     /// Asked to keep it running.
@@ -389,6 +434,15 @@ impl Supervisor {
             .unwrap_or(false);
         if wish {
             log::line("keeping the bridge running, as asked before");
+            self.set(true);
+        }
+    }
+
+    /// Start the bridge this daemon runs again, so it reads its configuration
+    /// anew. Nothing to do for one it does not run.
+    pub fn restart(&self) {
+        let wish = self.inner.lock().unwrap().wish;
+        if wish {
             self.set(true);
         }
     }
@@ -440,6 +494,7 @@ impl Supervisor {
             supervised: inner.child.is_some() && inner.child == running,
             supervise: inner.wish,
             last_error: inner.last_error.clone(),
+            lan: lan_in(&account_home().join(".uxnan")),
         }
     }
 
@@ -666,6 +721,30 @@ mod tests {
             std::fs::read_to_string(theirs.path().join("daemon-config.json")).unwrap(),
             r#"{"lanEnabled":true}"#
         );
+    }
+
+    #[test]
+    fn opening_the_lan_keeps_every_other_setting_and_closing_it_is_remembered() {
+        let dir = tempfile::tempdir().unwrap();
+        // The bridge's default, with no file: the LAN is open.
+        assert!(lan_in(dir.path()));
+        std::fs::write(
+            dir.path().join("daemon-config.json"),
+            r#"{"lanEnabled":false,"mdnsEnabled":false,"lanPort":19999,"agents":{"x":{}}}"#,
+        )
+        .unwrap();
+        assert!(!lan_in(dir.path()));
+        set_lan_in(dir.path(), true).unwrap();
+        assert!(lan_in(dir.path()));
+        let kept: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("daemon-config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(kept["lanPort"], 19999);
+        assert_eq!(kept["agents"]["x"], serde_json::json!({}));
+        assert_eq!(kept["mdnsEnabled"], true);
+        set_lan_in(dir.path(), false).unwrap();
+        assert!(!lan_in(dir.path()));
     }
 
     #[cfg(unix)]

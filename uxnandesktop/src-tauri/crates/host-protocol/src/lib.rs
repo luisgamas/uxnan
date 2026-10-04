@@ -385,6 +385,10 @@ pub enum BridgeCall {
     /// Whether this daemon keeps the bridge running (`on`) or leaves it be.
     /// Remembered across the daemon's restarts.
     Supervise { on: bool },
+    /// Open the bridge's LAN listener (and mDNS) on this machine's network, or
+    /// close it again — written into its configuration, the rest of which is
+    /// kept; a bridge this daemon runs is restarted to take it.
+    SetLan { on: bool },
 }
 
 /// A bridge installed on this machine.
@@ -418,6 +422,10 @@ pub struct BridgeState {
     pub supervise: bool,
     /// Why the last start, or the last install, did not work.
     pub last_error: Option<String>,
+    /// Whether its configuration opens the LAN listener (the bridge's own
+    /// default, `true`, when the file does not say).
+    #[serde(default)]
+    pub lan: bool,
 }
 
 /// How an install ended.

@@ -98,7 +98,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   administrator), and keeps it running without an OS service, restarting it
   when it ends; it updates itself there like anywhere else. A bridge it
   installs opens no port: its LAN listener starts off, and the phone is meant
-  to reach it through your relay. The host page does not offer it yet.
+  to reach it through your relay; opening the LAN on that host (for the same
+  network, or a tailnet) is a separate choice, and the engine restarts the
+  bridge to take it. A phone pairs with a host's bridge the way it pairs with
+  this machine's — and a QR no phone could use (no relay, no LAN) is refused
+  with the reason instead of drawn. The host page does not offer these yet.
 - **Chats for a project on a host.** While a host's own bridge is connected,
   its projects offer chats like local ones — from the tab strip, the row menu,
   the launcher and the sidebar — and they run on that bridge, with that

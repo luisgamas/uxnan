@@ -1488,6 +1488,26 @@ pub async fn host_bridge_supervise(
     Ok(standing)
 }
 
+/// Open (or close) the host bridge's LAN listener on that machine's network.
+/// Off by default; opening it publishes a port there, which is the owner's
+/// decision. A bridge the engine runs is restarted to take it. Fenced.
+#[tauri::command]
+pub async fn host_bridge_set_lan(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    on: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<uxnan_host_protocol::BridgeState, CommandError> {
+    let engine = host_engine_fenced(&app, &state, &host_id, expect.as_ref()).await?;
+    let standing = engine
+        .bridge(uxnan_host_protocol::BridgeCall::SetLan { on })
+        .await
+        .map_err(CommandError::from)?;
+    state.host_bridges.retry(&host_id).await;
+    Ok(standing)
+}
+
 /// A connected host's engine, for a call that changes that machine: refused
 /// unless the caller's expectation still names this connection.
 async fn host_engine_fenced(
