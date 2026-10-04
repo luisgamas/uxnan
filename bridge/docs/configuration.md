@@ -175,6 +175,15 @@ the CLI starts (`uxnan-bridge start`, `qr`). A bridge started from code
 (`startBridge()` in a test or a scratch run) keeps them in memory unless it
 passes `useKeychain: true`, so it can never come up as your real bridge.
 
+**`start --secret-key-stdin`** keeps them in `secrets.sealed` instead — a file
+sealed with AES-256-GCM under a 32-byte key read from the first line of standard
+input (64 hex digits) and never stored. It is how Uxnan Desktop runs a bridge on
+a remote host, whose only keyring is often the kernel's (cleared by a reboot):
+the desktop keeps the key in its own OS keychain and the host engine hands it
+over at each start. The first start copies what the keychain held, so the
+identity is kept; a file the key does not open stops the start (exit 1) and is
+left untouched — never replaced by a new identity.
+
 `agent-processes.json` is the running daemon's record of the agent processes it
 started — `{ "version": 1, "processes": [{ pid, command, args, cwd, startedAt,
 ownerPid, ownerStartedAt }] }` — added as each one starts and removed when it

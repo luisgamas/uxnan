@@ -182,6 +182,9 @@ pub struct AppState {
     /// The bridges of connected hosts (`bridgeclient::hosts`): one link per
     /// host whose account runs one, alive as long as that host's engine.
     pub host_bridges: Arc<crate::bridgeclient::hosts::HostBridges>,
+    /// Where the keys of host bridges' sealed secrets are kept (`hostkeys`):
+    /// the OS keychain — memory in tests, which never touch the real one.
+    pub host_keys: Arc<dyn crate::hostkeys::KeyStore>,
     /// Receipts of the control surface's `create` entries, by idempotency key
     /// (`control::receipts`): a retried call gets its first answer back.
     pub control_receipts: crate::control::receipts::Receipts,
@@ -240,6 +243,11 @@ impl AppState {
             host_bridges: crate::bridgeclient::hosts::HostBridges::new(
                 crate::bridgeclient::client_id_for(&data_dir),
             ),
+            host_keys: if cfg!(test) {
+                Arc::new(crate::hostkeys::MemoryKeys::default())
+            } else {
+                Arc::new(crate::hostkeys::OsKeychain::new())
+            },
             control_receipts: crate::control::receipts::Receipts::default(),
             agent_changes: Arc::new(tokio::sync::Notify::new()),
             control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),

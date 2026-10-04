@@ -1315,6 +1315,23 @@ async fn engine_for<R: tauri::Runtime>(
                 crate::diagnostics::log(level, "ssh-engine", &message);
             });
         }
+        // The key its bridge's secrets are sealed with (`hostkeys`), from this
+        // machine's keychain: the engine holds it and hands it to the bridge
+        // at each start. An engine too old to keep a bridge just declines.
+        {
+            let app = app.clone();
+            let engine = std::sync::Arc::clone(&engine);
+            let host = host_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = unlock_host_bridge(&app, &host, &engine).await {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Warn,
+                        "bridge",
+                        &format!("{host}: its bridge's key was not handed over: {e}"),
+                    );
+                }
+            });
+        }
         // The host's own bridge, if its account runs one: linked through this
         // engine, and gone with it (`bridgeclient::hosts`).
         {
@@ -1368,6 +1385,50 @@ async fn engine_for<R: tauri::Runtime>(
         });
     }
     Ok(engine)
+}
+
+/// Hand a host engine the key of its bridge's sealed secrets, made and kept in
+/// this machine's keychain (`hostkeys`). Never logged.
+async fn unlock_host_bridge<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    host_id: &str,
+    engine: &ssh::engine::HostEngine,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let host = state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+        .ok_or_else(|| format!("no host {host_id}"))?;
+    // The machine it unlocks: its address — or, for one imported from the
+    // SSH configuration that leaves the address to `ssh -G`, its alias.
+    let machine = if host.hostname.trim().is_empty() {
+        host.config_host.clone().unwrap_or_else(|| host.id.clone())
+    } else {
+        host.hostname.clone()
+    };
+    let account = crate::hostkeys::account(
+        &crate::bridgeclient::client_id_for(&state.data_dir),
+        &host.user,
+        &machine,
+        host.port,
+    );
+    let store = std::sync::Arc::clone(&state.host_keys);
+    let key = tauri::async_runtime::spawn_blocking(move || {
+        crate::hostkeys::key_for(store.as_ref(), &account)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    engine
+        .bridge::<uxnan_host_protocol::BridgeState>(uxnan_host_protocol::BridgeCall::Unlock { key })
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// A host's connection, step by step, for the host page's check: the way

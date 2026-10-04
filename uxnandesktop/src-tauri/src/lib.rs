@@ -41,6 +41,7 @@ mod git;
 pub mod control;
 pub mod github;
 mod hooks;
+pub mod hostkeys;
 mod keyboard;
 pub mod launchenv;
 mod mcpinject;

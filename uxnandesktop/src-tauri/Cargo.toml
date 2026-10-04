@@ -95,6 +95,11 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros", "net", "io-util"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+# The keys a host bridge's secrets are sealed with live in this machine's OS
+# keychain (`hostkeys.rs`, `02g` §3): Keychain on macOS, Credential Manager on
+# Windows, Secret Service on Linux — through zbus, pure Rust, never the kernel
+# keyring, which a reboot clears.
+keyring = { version = "3.6", default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "tokio"] }
 # The workspace engine — terminals today — shared with the host daemon, so a
 # remote host runs the same code as this machine (`crates/workspace-engine`).
 uxnan-workspace-engine = { path = "crates/workspace-engine" }
@@ -122,6 +127,8 @@ toml_edit = "0.22"
 # MIT/Apache-2.0. See `codex_trust.rs`.
 sha2 = "0.10"
 hex = "0.4"
+# OS randomness for the host bridge keys (`hostkeys.rs`); already in the tree.
+getrandom = "0.3"
 # Filesystem watcher for the right-panel file tree + the open-file editor: a
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a

@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,081 Rust tests (714 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
+`docs/chat.md`). 1,083 Rust tests (716 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 37 in `uxnan-host` (27 against the daemon itself) + 45
 integration), of which 52 are ignored probes that need something real to talk to
 (44 live SSH probes — 41 against a real `sshd` and 3 against a **Linux host in a
@@ -1157,17 +1157,12 @@ already written for the day phase 2 below lands — nothing to relax then.
          server and the integrated browser — reach it through the engine.)
       4. **A host's own bridge (F8) — what is still owed.** Built and proven
          live on a real Linux host: the link (`02g` §5.18), install and
-         supervision by the engine, the host page, the relay (`relay/admitHost`),
+         supervision by the engine, secrets that survive a reboot (sealed with a
+         key this app keeps in the OS keychain, `02g` §3), the host page, the relay (`relay/admitHost`),
          pairing, chats for host projects, the terminal → chat hand-off with a
          real Claude Code (`a_terminal_session_continues_as_a_chat_on_the_hosts_bridge_with_this_apps_tools`),
          and this app's tools for that bridge's agents through the engine. Owed:
-         (a) **the host bridge's identity across a reboot** — it lives in that
-         account's kernel keyring, which a reboot clears (a `user` key, never on
-         disk). Storing it in a file must not break "never in plaintext": the
-         maintainer decides between an encrypted file whose key this app keeps
-         in the OS keychain (the first secret it would persist — `02g` §3) and
-         another way; until then a reboot means pairing the phone again and
-         admitting the bridge to the relay again; (b) headless work on the host
+         (a) headless work on the host on the host
          (orchestration, automations, the AI commit draft) asked of that
          bridge.
 
@@ -1757,7 +1752,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,081 Rust + 1,838 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,083 Rust + 1,838 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

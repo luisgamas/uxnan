@@ -43,6 +43,7 @@ import { LockFile } from './lock-file.js';
 import { SecureDeviceState } from './secure-device-state.js';
 import { InMemorySecretStore, type SecretStore } from './secret-store.js';
 import { createDefaultSecretStore } from './keyring-secret-store.js';
+import { SealedFileSecretStore } from './sealed-file-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
 import { generatePairingPayload } from './qr.js';
@@ -126,6 +127,14 @@ export interface StartBridgeOptions {
    * real identity.
    */
   useKeychain?: boolean;
+  /**
+   * Keep the secrets in `~/.uxnan/secrets.sealed`, sealed with this 32-byte
+   * key, instead of the OS keychain — for a host whose only keyring is the
+   * kernel's, which a reboot clears. The key is handed in at every start and
+   * never stored by the bridge; with [useKeychain] the first open copies what
+   * the keychain held, so the identity is kept.
+   */
+  secretKey?: Buffer;
   logLevel?: LogLevel;
   /** Inject a clock (epoch ms) for testability. */
   now?: () => number;
@@ -250,9 +259,15 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   const secretStore =
     options.secretStore ??
-    (options.useKeychain === true
-      ? await createDefaultSecretStore(logger)
-      : new InMemorySecretStore());
+    (options.secretKey
+      ? await SealedFileSecretStore.open(
+          state.pathFor(DAEMON_FILES.sealedSecrets),
+          options.secretKey,
+          options.useKeychain === true ? await createDefaultSecretStore(logger) : undefined,
+        )
+      : options.useKeychain === true
+        ? await createDefaultSecretStore(logger)
+        : new InMemorySecretStore());
   const deviceState = new SecureDeviceState(secretStore);
   await deviceState.loadOrCreate();
 

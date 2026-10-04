@@ -78,8 +78,8 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,081 backend tests**
-in total — 714 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,083 backend tests**
+in total — 716 unit tests in the app crate, 18 in `uxnan-control-protocol`, 14
 in `uxnan-cli`, 248 in `uxnan-workspace-engine` (its git, libgit2 fast path, worktree placement and cleanup among them), 5 in `uxnan-host-protocol`, 37 in
 `uxnan-host` (27 against the real daemon over its socket — among them the bridge it keeps running and its agents reaching the app's tools but never a hook, started again when it dies and let go when asked, a project's
 files listed, saved and searched on the host, its git read, staged and

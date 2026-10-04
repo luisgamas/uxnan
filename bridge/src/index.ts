@@ -88,6 +88,12 @@ export {
 export { SecureDeviceState, type PublicIdentity } from './secure-device-state.js';
 export { InMemorySecretStore, type SecretStore } from './secret-store.js';
 export {
+  BRIDGE_SECRET_KEYS,
+  SealedFileSecretStore,
+  SealedSecretsError,
+  parseSecretKey,
+} from './sealed-file-secret-store.js';
+export {
   KeyringSecretStore,
   createDefaultSecretStore,
   loadNativeKeyringBackend,

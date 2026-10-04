@@ -321,6 +321,17 @@ pub async fn serve(
             let this = supervisor.clone();
             tokio::task::spawn_blocking(move || serde_json::to_value(this.state())).await
         }
+        BridgeCall::Unlock { key } => {
+            if !is_key(&key) {
+                return Outcome::Error {
+                    code: uxnan_host_protocol::ErrorCode::Invalid,
+                    message: "the key must be 64 hex digits".into(),
+                };
+            }
+            supervisor.unlock(key);
+            let this = supervisor.clone();
+            tokio::task::spawn_blocking(move || serde_json::to_value(this.state())).await
+        }
         BridgeCall::SetLan { on } => {
             if let Err(e) = set_lan_in(&account_home().join(".uxnan"), on) {
                 return Outcome::Error {
@@ -407,10 +418,18 @@ fn set_lan_in(dir: &Path, on: bool) -> std::io::Result<()> {
     std::fs::rename(tmp, file)
 }
 
+/// 64 hex digits — the only shape a key is accepted in.
+fn is_key(key: &str) -> bool {
+    key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 #[derive(Default)]
 struct Inner {
     /// Asked to keep it running.
     wish: bool,
+    /// The key the bridge's secrets are sealed with, as the client handed it.
+    /// Memory only; the bridge gets it on standard input.
+    key: Option<String>,
     /// The bridge this daemon started, while it runs.
     child: Option<u32>,
     last_error: Option<String>,
@@ -435,6 +454,16 @@ impl Supervisor {
         if wish {
             log::line("keeping the bridge running, as asked before");
             self.set(true);
+        }
+    }
+
+    /// Hold the key the bridge's secrets are sealed with. The first one wins:
+    /// a running bridge already opened its secrets with it, and a second
+    /// client's different key would only fail to open them on the next start.
+    pub fn unlock(&self, key: String) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.key.is_none() {
+            inner.key = Some(key);
         }
     }
 
@@ -495,6 +524,7 @@ impl Supervisor {
             supervise: inner.wish,
             last_error: inner.last_error.clone(),
             lan: lan_in(&account_home().join(".uxnan")),
+            unlocked: inner.key.is_some(),
         }
     }
 
@@ -553,6 +583,12 @@ impl Supervisor {
             self.fail("Node.js was not found on this machine".into());
             return Step::Wait(IDLE_LOOK);
         };
+        // Its secrets are sealed with a key only the client holds: without it
+        // the bridge would come up with a new identity and unpair every phone.
+        let Some(key) = self.inner.lock().unwrap().key.clone() else {
+            self.fail("waiting for the computer that keeps this bridge's key".into());
+            return Step::Wait(Duration::from_secs(2));
+        };
         let log_path = bridge_log();
         if std::fs::metadata(&log_path)
             .map(|m| m.len() > LOG_CAP)
@@ -574,13 +610,13 @@ impl Supervisor {
         let mut command = tokio::process::Command::new(&node);
         command
             .arg(&install.cli)
-            .args(["start", "--service"])
+            .args(["start", "--service", "--secret-key-stdin"])
             .env("PATH", path_env(&dirs))
             // Not a systemd unit: the bridge must not hand its update helper
             // to `systemd-run` as if it were one.
             .env_remove("INVOCATION_ID")
             .current_dir(account_home())
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::from(out))
             .stderr(Stdio::from(err))
             .kill_on_drop(true);
@@ -591,6 +627,13 @@ impl Supervisor {
                 return Step::Wait(IDLE_LOOK);
             }
         };
+        // The key, on standard input, then end of input: never an argument
+        // or an environment variable another process of the account could read.
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(format!("{key}\n").as_bytes()).await;
+            let _ = stdin.shutdown().await;
+        }
         let pid = child.id();
         {
             let mut inner = self.inner.lock().unwrap();

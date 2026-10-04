@@ -36,6 +36,8 @@ function safeName(value: string, what: string): string {
 
 export const DAEMON_FILES = {
   config: 'daemon-config.json',
+  /** The secrets sealed with a key handed in at start (`--secret-key-stdin`). */
+  sealedSecrets: 'secrets.sealed',
   status: 'bridge-status.json',
   pairing: 'pairing-session.json',
   pairingCode: 'pairing-code.json',

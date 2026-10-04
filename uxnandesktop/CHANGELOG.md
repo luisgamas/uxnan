@@ -112,6 +112,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with the same dialog as here; *Open on this host's network* is the
   one switch that publishes a port there, off by default; and *Pair a phone*
   opens the pairing window for that bridge.
+- **A host's bridge keeps its identity across a reboot.** Its secrets live in
+  a file there sealed with AES-256-GCM, under a key this app makes for that
+  host and keeps in your OS keychain (Keychain, Credential Manager, Secret
+  Service) — the one secret this app stores, and only where the system encrypts
+  it. The host engine is handed the key at each connect and gives it to the
+  bridge when it starts it, so a reboot no longer means pairing your phone
+  again. The bridge's current identity is kept when it moves to the file.
 - **A host bridge's agents use this app's tools.** A chat on a host's own
   bridge gets the same tools as one here — the browser, terminals, files — through
   that host's engine: its agents call the engine's own endpoint with a token that

@@ -389,6 +389,11 @@ pub enum BridgeCall {
     /// close it again — written into its configuration, the rest of which is
     /// kept; a bridge this daemon runs is restarted to take it.
     SetLan { on: bool },
+    /// The key the bridge's secrets are sealed with on this machine (64 hex
+    /// digits), which the client keeps in its OS keychain. Held in memory only
+    /// and handed to the bridge on standard input at each start; until it
+    /// arrives, the bridge is not started. Never logged, never written.
+    Unlock { key: String },
 }
 
 /// A bridge installed on this machine.
@@ -426,6 +431,9 @@ pub struct BridgeState {
     /// default, `true`, when the file does not say).
     #[serde(default)]
     pub lan: bool,
+    /// Whether this daemon holds the key the bridge's secrets are sealed with.
+    #[serde(default)]
+    pub unlocked: bool,
 }
 
 /// How an install ended.

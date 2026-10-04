@@ -1766,6 +1766,12 @@ fn fake_managed_bridge(user_home: &Path) {
 const dir = path.join(os.homedir(), '.uxnan');
 fs.mkdirSync(dir, { recursive: true });
 const lock = path.join(dir, 'bridge.lock');
+// The key arrives on standard input: note what came, and how it was asked for.
+let key = '';
+process.stdin.on('data', (c) => { key += c; });
+process.stdin.on('end', () => {
+  fs.writeFileSync(path.join(dir, 'key-seen'), JSON.stringify({ key: key.trim(), argv: process.argv.slice(2) }));
+});
 fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
 process.on('SIGTERM', () => { try { fs.unlinkSync(lock); } catch {} process.exit(0); });
 setInterval(() => {}, 1000);
@@ -1823,16 +1829,43 @@ async fn the_daemon_keeps_the_hosts_bridge_running_and_lets_it_go_when_asked() {
     assert!(state["running"].is_null(), "{state}");
     assert_eq!(state["supervise"], false);
 
-    // Asked to keep it running: started, and known to be ours.
+    // Asked to keep it running, but its key has not arrived: not started,
+    // and saying why.
     let on = client
         .call(Call::Bridge(BridgeCall::Supervise { on: true }))
         .await;
     assert!(matches!(on, Outcome::Ok { .. }), "{on:?}");
+    let waiting = until_state(&mut client, "it waiting for its key", |s| {
+        s["lastError"].as_str().is_some_and(|e| e.contains("key"))
+    })
+    .await;
+    assert!(waiting["running"].is_null(), "{waiting}");
+    let key = "ab".repeat(32);
+    let unlocked = client
+        .call(Call::Bridge(BridgeCall::Unlock { key: key.clone() }))
+        .await;
+    assert!(matches!(unlocked, Outcome::Ok { .. }), "{unlocked:?}");
     let state = until_state(&mut client, "the bridge running", |s| {
         s["running"].is_u64() && s["supervised"] == true
     })
     .await;
     let first = state["running"].as_u64().unwrap();
+    assert_eq!(state["unlocked"], true);
+    // It got the key on standard input, and was asked to read it there.
+    let seen = daemon.user_home().join(".uxnan/key-seen");
+    for _ in 0..40 {
+        if seen.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let seen: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(seen).unwrap()).unwrap();
+    assert_eq!(seen["key"], key);
+    assert!(
+        seen["argv"].to_string().contains("--secret-key-stdin"),
+        "{seen}"
+    );
     let wish = std::fs::read_to_string(daemon.home.path().join("bridge.json")).unwrap();
     assert!(wish.contains("true"), "{wish}");
 

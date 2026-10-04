@@ -395,6 +395,12 @@ The same page has a **Bridge on this host** section — the host's own
   into the account's `~/.uxnan/bridge` with that machine's own npm — no
   administrator, nothing outside the account — and it updates itself there
   afterwards like anywhere else. It needs Node.js 18 or newer on the host.
+- **Its identity survives a reboot.** A server's only keyring is often the
+  kernel's, which a reboot clears — and a new identity would unpair your phone.
+  So the bridge there keeps its secrets in a file sealed with AES-256-GCM, under
+  a key this app makes for that host and keeps in your computer's keychain; the
+  host engine hands it over each time it starts the bridge, which never stores
+  it. Another computer with its own key cannot open them.
 - **Kept running by the host engine**, not by an OS service: the engine already
   outlives your SSH session, so it starts the bridge and starts it again if it
   ends — no lingering, no administrator, the same on Linux, macOS and Windows.

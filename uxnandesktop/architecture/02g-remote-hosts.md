@@ -40,7 +40,7 @@ capacidades acotadas) y fingirlo en la interfaz seria mentir.
 Lo que si se garantiza es que el trabajo aterriza en la maquina que el usuario
 quiso: el fencing de mutaciones de `02a` §2.9.
 
-## 3. Secretos: ninguno se escribe
+## 3. Secretos: ninguno se escribe en claro
 
 El registro de un host guarda alias, hostname, puerto, usuario y una
 **referencia** a un fichero de identidad. Nunca una llave, nunca una contrasena.
@@ -58,6 +58,21 @@ un codigo de un solo uso no se puede repetir.
 use las llaves que sostiene el agente **aqui**, sin que una llave privada salga
 de esta maquina. Cada canal de sesion pide el reenvio, y un canal de agente que
 el host abre hacia nosotros solo se acepta en una conexion que lo pidio.
+
+**La unica excepcion, decidida por el maintainer (2026-10-04):** la llave con la
+que el bridge propio de un host sella sus secretos (§5.18). Un host suele no
+tener mas llavero que el del kernel, que un reinicio borra —y con el la
+identidad del bridge, que desempareja cada telefono—; un fichero en claro romperia
+"nunca en texto plano". Asi que el bridge del host guarda sus secretos en
+`~/.uxnan/secrets.sealed`, sellado con AES-256-GCM, y la llave **se genera aqui,
+una por maquina y cuenta (`usuario@host:puerto`) y perfil de la app, y se guarda
+en el llavero del sistema de esta maquina** (`hostkeys.rs`: Keychain, Credential
+Manager, Secret Service por zbus; nunca el llavero del kernel). Es el unico
+secreto que esta app persiste, y solo donde la plataforma lo cifra. Se entrega al
+motor del host en cada conexion (`BridgeCall::Unlock`), que la tiene solo en
+memoria y se la da al bridge por la entrada estandar al arrancarlo; el bridge
+nunca la guarda. Funciona porque el bridge del host solo arranca con esta app
+conectada: el motor mismo lo arranca una conexion.
 
 ## 4. Configuracion SSH del usuario — IMPLEMENTADO
 
@@ -1903,6 +1918,17 @@ conectado** (`bridges.offersChat`); si se cae, la pestana lo dice
   daemon; mientras se vigila el bridge el daemon no se apaga por inactividad. Su
   salida va a `~/.uxnan/host/bridge.log`.
 
+**Sus secretos sobreviven a un reinicio** (§3): el motor solo arranca el bridge
+cuando tiene la llave que esta app le entrego (`Unlock`) y se la pasa por la
+entrada estandar (`start --secret-key-stdin`); el bridge abre con ella
+`~/.uxnan/secrets.sealed` —la primera vez copia lo que tenia el llavero, asi que
+conserva su identidad— y con una llave que no lo abre se niega a arrancar y no lo
+toca, en vez de nacer con otra identidad. Probado en vivo en un host Linux: dos
+arranques con la misma identidad (la que ya tenia en el llavero del kernel),
+ningun secreto legible en el fichero (`600`), y una llave ajena rechazada sin
+tocarlo. Limite: un segundo ordenador con su propia llave no puede abrir los
+secretos que sello el primero; el motor se queda con la primera llave que recibe.
+
 **Probado:** contra el daemon real con un bridge simulado (arranca, se reinicia al
 morir, se suelta al pedirlo) y en vivo en un host Linux real, armado por
 `UXNAN_SSH_TEST_BRIDGE=1` (`a_hosts_bridge_is_installed_and_kept_running_by_its_engine`):
@@ -1945,10 +1971,7 @@ la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
 LAN).
 
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-su identidad tras un reinicio (hoy es una llave `user` del llavero del kernel
-de esa cuenta, que un reinicio borra; guardarla en un archivo no puede romper
-"nunca en texto plano", y es decision del maintainer); y el trabajo headless en
-el host.
+y el trabajo headless en el host.
 
 ## 6. Que funciona y que no en un contexto remoto
 
