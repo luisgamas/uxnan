@@ -1164,12 +1164,12 @@ already written for the day phase 2 below lands — nothing to relax then.
          `bridge:host-status` / `bridge:host-notification`). Proven live
          against a scratch bridge on a real Linux host
          (`a_hosts_own_bridge_answers_through_the_engine`). Owed, in order:
-         (a) **the terminal → chat hand-off on a host** — chats for a host
-         project work (`02g` §5.18); `terminalSessions.svelte.ts` still
-         reports holds only to this machine's bridge and skips remote tabs
-         (`isRemote`): group `held()` by target, report to each tab's
-         bridge, answer `handoffRequested` on each host store, and
-         `openInTerminal` with the target and its agents;
+         (a) **the terminal → chat hand-off on a host, run live** — built
+         (one `TerminalSessions` per machine, `terminalSessionsFor`; holds
+         go to the host's own bridge, its hand-off requests are answered
+         there, "Continue as chat" opens the chat there and "Open in
+         terminal" launches the host's own CLI) and covered by unit tests;
+         not yet driven end to end with a real agent on a host;
          (b) **the host page's bridge section** — the engine already finds,
          installs and keeps the bridge running (protocol 15, `02g` §5.18;
          `host_bridge_status|install|supervise`), proven live; left is the

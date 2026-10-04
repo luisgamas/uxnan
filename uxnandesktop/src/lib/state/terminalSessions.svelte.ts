@@ -26,8 +26,8 @@ import type {
   AgentSessionHandoffRequestedParams,
   AgentSessionHoldsResult,
 } from '$shared/models/agent-session';
-import { bridge, type BridgeClientStore } from '$lib/bridge/client.svelte';
-import { chat, sessionKey, type ChatStore } from '$lib/bridge/chat.svelte';
+import { bridge, bridges, type BridgeClientStore } from '$lib/bridge/client.svelte';
+import { chat, chatFor, sessionKey, type ChatStore } from '$lib/bridge/chat.svelte';
 import { bridgeAgentForCommand, hookAgentForBridgeAgent } from '$lib/bridge/agents';
 import { resumeInvocation } from '$lib/agentResume';
 import { toast } from '$lib/toast';
@@ -36,7 +36,7 @@ import { terminals, type GroupTab, type TerminalTab } from './terminals.svelte';
 import { resolveAgentDisplay } from './agentDisplay';
 import { ptyRunning } from '$lib/terminal/instances';
 import { app } from './app.svelte';
-import { sshHostId, type TargetId } from '$lib/target';
+import { isLocalTarget, LOCAL_TARGET, type TargetId } from '$lib/target';
 
 /** A session one of the tabs holds, as the bridge is told. */
 export interface HeldSession {
@@ -57,14 +57,15 @@ type StopOutcome = 'notRunning' | 'exited' | 'killed';
  * written (a `pending` id is one nothing was said to yet, so there is nothing
  * to protect). A tab restored from the saved layout keeps its session's `live`
  * flag but runs nothing until its workspace is shown, so it holds nothing
- * until then. A remote terminal runs on another machine, whose sessions this
- * bridge does not see.
+ * until then. Only a terminal on `machine` counts: a host's terminals hold
+ * sessions on that host's own bridge, never this machine's (`02g` §5.18).
  */
 export function heldSessionOf(
   tab: GroupTab,
   running: (tabId: string) => boolean = ptyRunning,
+  machine: TargetId = LOCAL_TARGET,
 ): HeldSession | null {
-  if (tab.kind !== 'terminal' || tab.exited || tab.asleep || isRemote(tab)) return null;
+  if (tab.kind !== 'terminal' || tab.exited || tab.asleep || !onMachine(tab, machine)) return null;
   if (!running(tab.id)) return null;
   const session = tab.agentSession;
   if (!session || session.pending || session.live === false) return null;
@@ -79,10 +80,9 @@ export function heldSessionOf(
   };
 }
 
-/** A terminal on another machine (`ssh:<host>`): its agents' sessions live
- *  there, out of this bridge's sight. */
-function isRemote(tab: TerminalTab): boolean {
-  return sshHostId(tab.target as TargetId | undefined) !== null;
+/** Whether a terminal runs on `machine` (absent target = this machine). */
+function onMachine(tab: TerminalTab, machine: TargetId): boolean {
+  return ((tab.target as TargetId | undefined) ?? LOCAL_TARGET) === machine;
 }
 
 /** What `hold` sends, compared to know whether to send it again. */
@@ -99,6 +99,8 @@ export interface TerminalSessionsDeps {
   stopAgent?: (tabId: string) => Promise<unknown>;
   /** Whether a terminal's shell is running. */
   ptyRunning?: (tabId: string) => boolean;
+  /** The machine whose terminals and bridge these are; this one by default. */
+  machine?: TargetId;
 }
 
 export class TerminalSessions {
@@ -108,9 +110,12 @@ export class TerminalSessions {
   readonly #chat: ChatStore;
   readonly #stopAgent: (tabId: string) => Promise<unknown>;
   readonly #ptyRunning: (tabId: string) => boolean;
+  /** The machine whose terminals these are (`02g` §5.18). */
+  readonly machine: TargetId;
   #started = false;
 
   constructor(deps: TerminalSessionsDeps = {}) {
+    this.machine = deps.machine ?? LOCAL_TARGET;
     this.#client = deps.client ?? bridge;
     this.#chat = deps.chatStore ?? chat;
     this.#stopAgent = deps.stopAgent ?? ((id) => invoke<StopOutcome>('pty_stop_agent', { id }));
@@ -138,13 +143,29 @@ export class TerminalSessions {
         void this.#onHandoffRequested(n.params as AgentSessionHandoffRequestedParams);
       }
     });
+    // This machine's instance also stands one up for each host bridge as it
+    // appears, so a host's terminals tell their own bridge what they hold.
+    if (isLocalTarget(this.machine)) {
+      bridges.onHostStore((client) => {
+        if (hostSessions.has(client.target)) return;
+        const sessions = new TerminalSessions({
+          client,
+          chatStore: chatFor(client.target),
+          machine: client.target,
+          stopAgent: this.#stopAgent,
+          ptyRunning: this.#ptyRunning,
+        });
+        hostSessions.set(client.target, sessions);
+        sessions.start();
+      });
+    }
   }
 
   /** Every session the tabs hold now, by session key. Reactive. */
   held(): Map<string, HeldSession> {
     const out = new Map<string, HeldSession>();
     for (const { tab } of terminals.tabsWithWorkspace()) {
-      const held = heldSessionOf(tab, this.#ptyRunning);
+      const held = heldSessionOf(tab, this.#ptyRunning, this.machine);
       if (held) out.set(sessionKey(held.agentId, held.sessionId), held);
     }
     return out;
@@ -222,7 +243,7 @@ export class TerminalSessions {
   /** Whether "Continue as chat" is on offer for a tab, and why not otherwise. */
   continueAsChatState(tab: GroupTab): 'ready' | 'busy' | 'unavailable' {
     if (!this.#client.connected) return 'unavailable';
-    const held = heldSessionOf(tab, this.#ptyRunning);
+    const held = heldSessionOf(tab, this.#ptyRunning, this.machine);
     if (held) return held.busy ? 'busy' : 'ready';
     // An agent nothing runs any more still left its session to continue.
     return this.#exitedSession(tab) ? 'ready' : 'unavailable';
@@ -231,7 +252,7 @@ export class TerminalSessions {
   /** The session a tab's agent left there, when nothing runs it: the agent
    *  exited, or the tab was restored and its shell is not running yet. */
   #exitedSession(tab: GroupTab): { agentId: string; sessionId: string; cwd: string } | null {
-    if (tab.kind !== 'terminal' || isRemote(tab) || !tab.cwd) return null;
+    if (tab.kind !== 'terminal' || !onMachine(tab, this.machine) || !tab.cwd) return null;
     const session = tab.agentSession;
     if (!session || session.pending) return null;
     if (session.live !== false && this.#ptyRunning(tab.id)) return null;
@@ -247,7 +268,7 @@ export class TerminalSessions {
   async continueAsChat(tabId: string): Promise<void> {
     const tab = terminals.findTab(tabId);
     if (!tab || tab.kind !== 'terminal') return;
-    const held = heldSessionOf(tab, this.#ptyRunning);
+    const held = heldSessionOf(tab, this.#ptyRunning, this.machine);
     const session = held ?? this.#exitedSession(tab);
     if (!session || !tab.cwd) return;
     if (held?.busy) {
@@ -263,6 +284,7 @@ export class TerminalSessions {
     });
     terminals.openChat({
       cwd: tab.cwd,
+      target: this.machine,
       threadId: thread.id,
       workspace: terminals.workspaceOfTab(tabId),
     });
@@ -313,7 +335,11 @@ export class TerminalSessions {
     if (!agent || !thread.agentSessionId || !thread.cwd) return false;
     const session = { agent, id: thread.agentSessionId, capturedAt: Math.floor(Date.now() / 1000) };
     const invocation = resumeInvocation(session);
-    const profile = invocation ? app.findLaunchableAgent(invocation.command) : undefined;
+    // The agent as it is launched on this machine — a host's own CLI there.
+    const command = invocation?.command.trim().toLowerCase();
+    const profile = command
+      ? app.launchableAgentsOn(this.machine).find((a) => a.command.trim().toLowerCase() === command)
+      : undefined;
     if (!profile) {
       toast(i18n.t('sessions.noProfile', { command: invocation?.command ?? agent }));
       return false;
@@ -326,6 +352,7 @@ export class TerminalSessions {
       app.launchAgent(profile, {
         cwd,
         ...(workspace !== undefined ? { workspace } : {}),
+        ...(isLocalTarget(this.machine) ? {} : { target: this.machine }),
         title: thread.title,
         resume: session,
       }) !== null
@@ -340,3 +367,12 @@ function tabTitle(tab: TerminalTab): string | undefined {
 }
 
 export const terminalSessions = new TerminalSessions();
+
+/** One per host bridge, stood up by this machine's instance. */
+const hostSessions = new Map<string, TerminalSessions>();
+
+/** The sessions of the machine `target` names — this one's by default. */
+export function terminalSessionsFor(target: TargetId | string | null | undefined): TerminalSessions {
+  const t = (target ?? LOCAL_TARGET) as TargetId;
+  return isLocalTarget(t) ? terminalSessions : (hostSessions.get(t) ?? terminalSessions);
+}

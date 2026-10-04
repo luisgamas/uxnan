@@ -103,6 +103,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   bridge to take it. A phone pairs with a host's bridge the way it pairs with
   this machine's — and a QR no phone could use (no relay, no LAN) is refused
   with the reason instead of drawn. The host page does not offer these yet.
+- **"Continue as chat" works for a terminal on a host.** The agent session a
+  host terminal holds is told to that host's own bridge, which asks it for the
+  session when the phone or the desktop wants to continue it; "Continue as
+  chat" opens the conversation on that bridge, and "Open in terminal" resumes
+  it with that machine's own CLI.
 - **Chats for a project on a host.** While a host's own bridge is connected,
   its projects offer chats like local ones — from the tab strip, the row menu,
   the launcher and the sidebar — and they run on that bridge, with that

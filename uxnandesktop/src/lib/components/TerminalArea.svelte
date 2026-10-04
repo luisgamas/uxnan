@@ -21,7 +21,7 @@
   import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
-  import { terminalSessions } from "$lib/state/terminalSessions.svelte";
+  import { terminalSessionsFor } from "$lib/state/terminalSessions.svelte";
   import { toastError } from "$lib/toast";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import { divider, focus, icon, iconButton, overlay, shell, tab, text } from "$lib/design";
@@ -242,12 +242,15 @@
   // conversation the bridge drives — here and on the phone. Offered while the
   // agent's session is known here; waits for an agent that is working.
   function continueAsChatItems(tab: GroupTab): MenuItem[] {
-    const state = terminalSessions.continueAsChatState(tab);
+    if (tab.kind !== "terminal") return [];
+    // The terminals of the machine it runs on, whose bridge holds its session.
+    const sessions = terminalSessionsFor(tab.target);
+    const state = sessions.continueAsChatState(tab);
     if (state === "unavailable") return [];
     return [
       {
         label: state === "busy" ? i18n.t("sessions.continueAsChatWait") : i18n.t("sessions.continueAsChat"),
-        action: () => void terminalSessions.continueAsChat(tab.id).catch(toastError),
+        action: () => void sessions.continueAsChat(tab.id).catch(toastError),
         disabled: state === "busy",
       },
       { separator: true },
@@ -840,12 +843,12 @@
                                   <Icon icon={RotateCcwIcon} class="size-3" />
                                   {i18n.t("terminal.restart")}
                                 </Button>
-                                {#if terminalSessions.continueAsChatState(t) === "ready"}
+                                {#if terminalSessionsFor(t.target).continueAsChatState(t) === "ready"}
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     class="shrink-0 px-2"
-                                    onclick={() => void terminalSessions.continueAsChat(t.id).catch(toastError)}
+                                    onclick={() => void terminalSessionsFor(t.target).continueAsChat(t.id).catch(toastError)}
                                   >
                                     {i18n.t("sessions.continueAsChat")}
                                   </Button>

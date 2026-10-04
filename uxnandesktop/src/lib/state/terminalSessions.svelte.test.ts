@@ -322,3 +322,47 @@ describe('terminal ⇄ chat', () => {
     expect(tab?.agentSession).toMatchObject({ agent: 'claude', id: 's-9', live: true, pending: false });
   });
 });
+
+describe('a host’s terminals and its own bridge', () => {
+  it('each machine holds only its own terminals’ sessions', () => {
+    const here = terminal();
+    const there = terminal({ target: 'ssh:box' });
+    expect(heldSessionOf(here, running)?.tabId).toBe(here.id);
+    expect(heldSessionOf(there, running)).toBeNull();
+    expect(heldSessionOf(there, running, 'ssh:box')?.tabId).toBe(there.id);
+    expect(heldSessionOf(here, running, 'ssh:box')).toBeNull();
+  });
+
+  it('tells the host’s bridge what its terminal holds, and opens the chat there', async () => {
+    const client = new BridgeClientStore('ssh:box');
+    client.status = { state: 'connected' } as BridgeClientStore['status'];
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    client.call = vi.fn(async (method: string, params?: unknown) => {
+      if (method === 'agent/holds') return { holds: [] } as never;
+      calls.push({ method, params: params as Record<string, unknown> });
+      if (method === 'thread/start') {
+        return { id: 'th-h', projectId: 'p', title: 't', status: 'active', turnCount: 0, createdAt: 1, updatedAt: 1 } as never;
+      }
+      return {} as never;
+    }) as BridgeClientStore['call'];
+    const sessions = new TerminalSessions({
+      client,
+      chatStore: new ChatStore(client),
+      machine: 'ssh:box',
+      stopAgent: async () => {},
+      ptyRunning: running,
+    });
+    terminal();
+    const there = terminal({ target: 'ssh:box', cwd: '/srv/app' });
+    sessions.start();
+    await settle();
+    const holds = calls.filter((c) => c.method === 'agent/hold');
+    expect(holds).toHaveLength(1);
+    expect(holds[0].params.cwd).toBe('/srv/app');
+
+    await sessions.continueAsChat(there.id);
+    expect(calls.some((c) => c.method === 'thread/start' && c.params.cwd === '/srv/app')).toBe(true);
+    const chatTab = [...terminals.tabsWithWorkspace()].find(({ tab }) => tab.kind === 'chat')?.tab;
+    expect(chatTab && chatTab.kind === 'chat' ? chatTab.target : undefined).toBe('ssh:box');
+  });
+});

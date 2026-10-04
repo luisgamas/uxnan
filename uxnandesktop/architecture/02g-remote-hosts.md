@@ -1908,9 +1908,15 @@ morir, se suelta al pedirlo) y en vivo en un host Linux real, armado por
 `UXNAN_SSH_TEST_BRIDGE=1` (`a_hosts_bridge_is_installed_and_kept_running_by_its_engine`):
 instalado, vigilado, alcanzado por el enlace con `lanEnabled: false`, y detenido.
 
+**El traspaso terminal → chat en un host** sigue la misma regla: un
+`TerminalSessions` por maquina (`terminalSessionsFor`). Las terminales de un host
+avisan al bridge de ese host de la sesion que tienen (`agent/hold`), responden
+alli sus peticiones de traspaso, "Continuar como chat" abre el chat en ese bridge
+y "Abrir en terminal" lanza la CLI del propio host. Cubierto por pruebas; el
+recorrido en vivo con un agente real en un host queda pendiente.
+
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-la interfaz de todo esto en la pagina del host; pasar la sesion de una terminal
-del host a un chat; instalar el bridge en el host desde
+la interfaz de todo esto en la pagina del host; instalar el bridge en el host desde
 el desktop (prefijo npm en esa cuenta, npm al lado para que `bridge/update` se
 actualice solo, y como sigue corriendo sin sesion abierta); las herramientas de
 esta app para los agentes de ese bridge (`desktop/attach` con el `/mcp` del
