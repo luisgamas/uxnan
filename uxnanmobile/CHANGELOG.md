@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.40-alpha.20261004+20261007] - 20261004
 ### Fixed
 
 - **The chat list shows what each agent is doing as soon as the app
