@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.47-alpha.20261004] - 20261004
 ### Fixed
 
 - **A phone shows which chats are working the moment it reconnects.** Every
