@@ -16,7 +16,7 @@
   import { Icon } from "$lib/components/ui/icon";
   import ArrowUpRightIcon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
   import RelayTokenField, { CLOUDFLARE_TOKENS_URL } from "$lib/components/RelayTokenField.svelte";
-  import { relay } from "$lib/bridge/relay.svelte";
+  import { relay as localRelay, type RelayStore } from "$lib/bridge/relay.svelte";
   import { bridgeErrorText } from "$lib/bridge/client.svelte";
   import { openExternal } from "$lib/api";
   import { toast } from "$lib/toast";
@@ -24,7 +24,14 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
 
-  let { open = $bindable(false) }: { open?: boolean } = $props();
+  let {
+    open = $bindable(false),
+    relay = localRelay,
+  }: {
+    open?: boolean;
+    /** The bridge to deploy for — this machine's, or a host's own. */
+    relay?: RelayStore;
+  } = $props();
 
   let accountId = $state("");
   let apiToken = $state("");

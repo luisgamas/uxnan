@@ -35,6 +35,8 @@ import type {
   ListeningPort,
   SshConfigAlias,
   GitReview,
+  HostBridgeInstalled,
+  HostBridgeState,
   HostDoctor,
   HostSession,
   RepoStatus,
@@ -771,6 +773,37 @@ export function sshHostSessionEnd(
   expect?: TargetExpectation,
 ): Promise<void> {
   return invoke('ssh_host_session_end', { hostId, session, expect: expect ?? null });
+}
+
+/** A host's own bridge, as its engine sees it (`02g` §5.18). */
+export function hostBridgeStatus(hostId: string): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_status', { hostId });
+}
+
+/** Install the bridge into the host account, then keep it running. Fenced. */
+export function hostBridgeInstall(
+  hostId: string,
+  expect?: TargetExpectation,
+): Promise<HostBridgeInstalled> {
+  return invoke<HostBridgeInstalled>('host_bridge_install', { hostId, expect: expect ?? null });
+}
+
+/** Whether the host's engine keeps its bridge running. Fenced. */
+export function hostBridgeSupervise(
+  hostId: string,
+  on: boolean,
+  expect?: TargetExpectation,
+): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_supervise', { hostId, on, expect: expect ?? null });
+}
+
+/** Open or close the host bridge's LAN listener. Fenced. */
+export function hostBridgeSetLan(
+  hostId: string,
+  on: boolean,
+  expect?: TargetExpectation,
+): Promise<HostBridgeState> {
+  return invoke<HostBridgeState>('host_bridge_set_lan', { hostId, on, expect: expect ?? null });
 }
 
 /** The hosts with a live session, and which incarnation each one is. */

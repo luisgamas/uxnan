@@ -19,7 +19,14 @@ import type {
   RelayStatus,
   RelayUpdatedNotification,
 } from '$shared/models/relay';
-import { bridge, isUnknownMethodError, type BridgeClientStore, type BridgeNotification } from './client.svelte';
+import {
+  bridge,
+  bridges,
+  isUnknownMethodError,
+  type BridgeClientStore,
+  type BridgeNotification,
+} from './client.svelte';
+import { isLocalTarget, type TargetId } from '$lib/target';
 
 /** The notification that carries the whole status. */
 export const RELAY_UPDATED = 'stream/relay/updated';
@@ -166,3 +173,20 @@ export class RelayStore {
 }
 
 export const relay = new RelayStore(bridge);
+
+/** The relay as each host's own bridge describes it (`02g` §5.18), started
+ *  with that bridge's store so it is current the moment it connects. */
+const hostRelays = new Map<string, RelayStore>();
+bridges.onHostStore((client) => {
+  if (hostRelays.has(client.target)) return;
+  const store = new RelayStore(client);
+  hostRelays.set(client.target, store);
+  store.start();
+});
+
+/** The relay replica of the machine `target` names. */
+export function relayFor(target: TargetId | null | undefined): RelayStore {
+  if (!target || isLocalTarget(target)) return relay;
+  bridges.for(target);
+  return hostRelays.get(target) ?? relay;
+}

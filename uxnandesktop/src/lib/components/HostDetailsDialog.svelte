@@ -12,6 +12,7 @@
   import { Spinner } from "$lib/components/ui/spinner";
   import StatusDot, { type StatusTone } from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import HostBridgeSection from "$lib/components/HostBridgeSection.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { hostAgents } from "$lib/agentAvailability";
   import { AGENT_CATALOG } from "$lib/agentCatalog";
@@ -286,6 +287,8 @@
           {/if}
         {/if}
       </section>
+
+      <HostBridgeSection {host} {connected} />
 
       <section class="flex flex-col gap-1.5">
         <h3 class={text.section}>{i18n.t("hostPage.sessionsTitle")}</h3>

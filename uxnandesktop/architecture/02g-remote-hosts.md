@@ -1915,13 +1915,22 @@ alli sus peticiones de traspaso, "Continuar como chat" abre el chat en ese bridg
 y "Abrir en terminal" lanza la CLI del propio host. Cubierto por pruebas; el
 recorrido en vivo con un agente real en un host queda pendiente.
 
+**La pagina del host** lo ofrece (`HostBridgeSection`): de quien es y su version,
+si corre y quien lo mantiene, si esta ventana esta enlazada y como llegan los
+telefonos; Instalar, Iniciar y mantener, Detener; *Configurar relay* (el mismo
+`RelaySetupDialog`, sobre la replica de relay de ese host, `relayFor`); *Abrir en
+la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
+(`BridgeDialog` con su `target`; `bridge_pairing_qr` rechaza un QR sin relay ni
+LAN).
+
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-la interfaz de todo esto en la pagina del host; instalar el bridge en el host desde
-el desktop (prefijo npm en esa cuenta, npm al lado para que `bridge/update` se
-actualice solo, y como sigue corriendo sin sesion abierta); las herramientas de
-esta app para los agentes de ese bridge (`desktop/attach` con el `/mcp` del
-motor); emparejar el telefono con el y como lo alcanza; y el trabajo headless en
-el host.
+unir el bridge del host al relay sin volver a teclear el token (que el bridge
+local, dueño del relay, admita la llave del host); guardar su identidad en un
+almacen de archivo en hosts sin llavero persistente (hoy vive en el llavero del
+kernel de esa cuenta, que un reinicio puede borrar); las herramientas de esta app
+para los agentes de ese bridge (`desktop/attach` con el `/mcp` del motor); el
+recorrido en vivo del traspaso con un agente real; y el trabajo headless en el
+host.
 
 ## 6. Que funciona y que no en un contexto remoto
 

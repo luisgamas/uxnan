@@ -35,7 +35,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 36 in `uxnan-host` (2
 integration), of which 51 are ignored probes that need something real to talk to
 (43 live SSH probes — 40 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,833 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,836 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1170,12 +1170,13 @@ already written for the day phase 2 below lands — nothing to relax then.
          there, "Continue as chat" opens the chat there and "Open in
          terminal" launches the host's own CLI) and covered by unit tests;
          not yet driven end to end with a real agent on a host;
-         (b) **the host page's bridge section** — the engine already finds,
-         installs and keeps the bridge running (protocol 15, `02g` §5.18;
-         `host_bridge_status|install|supervise`), proven live; left is the
-         UI that offers it (the maintainer reviews it first), and its LAN
-         opt-in (Settings per host: open the LAN listener, for the same
-         network or a tailnet — off by default); (c) this app's tools for
+         (b) **joining the user's relay without retyping the token** — a
+         host's bridge joins the relay with `relay/setup` and the user's
+         Cloudflare token, typed again for each host. The local bridge,
+         which may remember the token, could admit a host's key itself
+         (a new `relay/*` method on the bridge, through `shared/`); and the
+         host's identity lives in that account's kernel keyring, which a
+         reboot may clear (a file-backed store for headless hosts); (c) this app's tools for
          that bridge's agents — `desktop/attach` there must name the host
          engine's own `/mcp`, not this machine's; (d) pairing the phone with it
          (`bridge/generatePairingQr` through the link) and reaching it — its
@@ -1768,7 +1769,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,078 Rust + 1,833 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,078 Rust + 1,836 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

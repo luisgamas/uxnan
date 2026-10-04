@@ -895,6 +895,34 @@ export interface HostDoctor {
   forwardAgent: boolean;
 }
 
+/** A bridge installed on a host (mirror of `uxnan_host_protocol::BridgeInstall`). */
+export interface HostBridgeInstall {
+  /** `own`: the user installed it themselves; `managed`: Uxnan did. */
+  kind: "own" | "managed";
+  version: string;
+  cli: string;
+}
+
+/** A host's own bridge as its engine sees it (`BridgeState`). */
+export interface HostBridgeState {
+  node: string | null;
+  npm: string | null;
+  install: HostBridgeInstall | null;
+  running: number | null;
+  supervised: boolean;
+  supervise: boolean;
+  lastError: string | null;
+  /** Its configuration opens the LAN listener. */
+  lan: boolean;
+}
+
+/** How an install on a host ended (`BridgeInstalled`). */
+export interface HostBridgeInstalled {
+  ok: boolean;
+  version: string | null;
+  tail: string[];
+}
+
 /** One terminal a host's engine holds (mirror of Rust `HostSession`). */
 export interface HostSession {
   session: number;

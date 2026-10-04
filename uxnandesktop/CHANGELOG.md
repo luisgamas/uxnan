@@ -102,7 +102,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   network, or a tailnet) is a separate choice, and the engine restarts the
   bridge to take it. A phone pairs with a host's bridge the way it pairs with
   this machine's — and a QR no phone could use (no relay, no LAN) is refused
-  with the reason instead of drawn. The host page does not offer these yet.
+  with the reason instead of drawn.
+- **A host's bridge on its page.** Settings → Hosts → Details shows the host's
+  own bridge — yours or Uxnan's, its version, whether it runs and who keeps it
+  running, whether this window is linked to it, and how phones reach it — with
+  Install, Start and keep running, and Stop; *Set up relay* deploys your relay
+  for it with the same dialog as here; *Open on this host's network* is the
+  one switch that publishes a port there, off by default; and *Pair a phone*
+  opens the pairing window for that bridge.
 - **"Continue as chat" works for a terminal on a host.** The agent session a
   host terminal holds is told to that host's own bridge, which asks it for the
   session when the phone or the desktop wants to continue it; "Continue as
