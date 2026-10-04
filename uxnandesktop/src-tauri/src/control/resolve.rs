@@ -16,6 +16,7 @@
 //! Paths are compared after normalizing separators and a trailing slash, and
 //! case-insensitively on Windows, the way the sidebar keys them.
 
+use crate::target::TargetId;
 use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Manager};
@@ -170,12 +171,24 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
     pub async fn scope(&self) -> &Scope {
         self.scope
             .get_or_init(|| async {
-                let cwd = match self.caller {
+                // The folder that scopes the caller, and the machine it is on:
+                // a host's own bridge names folders on that host; this
+                // machine's bridge and its terminals name folders here. The
+                // same path names a different folder on every machine.
+                let (cwd, machine) = match self.caller {
                     Caller::Control => return Scope::All,
-                    Caller::Bridge { cwd: None } | Caller::Launch { agent_id: None } => {
+                    Caller::Bridge { cwd: None, .. } | Caller::Launch { agent_id: None } => {
                         return Scope::None
                     }
-                    Caller::Bridge { cwd: Some(cwd) } => cwd.clone(),
+                    Caller::Bridge {
+                        cwd: Some(cwd),
+                        target,
+                    } => (
+                        cwd.clone(),
+                        target
+                            .clone()
+                            .unwrap_or_else(|| TargetId::Local.to_string()),
+                    ),
                     Caller::Launch { agent_id: Some(id) } => {
                         let state = self.app.state::<AppState>();
                         let cwd = state
@@ -187,10 +200,10 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                         let Some(cwd) = cwd else {
                             return Scope::None;
                         };
-                        cwd
+                        (cwd, TargetId::Local.to_string())
                     }
                 };
-                match self.project_of(&cwd).await {
+                match self.project_on(&cwd, &machine).await {
                     Some(project) => {
                         let folders = self.folders_of(&project).await;
                         Scope::Project {
@@ -241,6 +254,33 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
     /// location first (no git needed), else by the worktrees git lists — a
     /// linked worktree under the worktree root is the app's own creation and
     /// belongs to the project it was cut from. The deepest match wins.
+    /// The project on machine `target` that contains `path`, or one of whose
+    /// worktrees does — [`Self::project_of`], for a caller whose folder is
+    /// known to be on that machine.
+    async fn project_on(&self, path: &str, target: &str) -> Option<ProjectRef> {
+        let on_machine: Vec<ProjectRef> = self
+            .all_projects()
+            .await
+            .into_iter()
+            .filter(|p| p.target == target)
+            .collect();
+        if let Some(project) = project_containing(&on_machine, path) {
+            return Some(project);
+        }
+        self.worktrees_by_project()
+            .await
+            .iter()
+            .filter(|(project, _)| project.target == target)
+            .flat_map(|(project, entries)| {
+                entries
+                    .iter()
+                    .filter(|e| path_within(path, &e.path))
+                    .map(move |e| (project, path_key(&e.path).len()))
+            })
+            .max_by_key(|(_, depth)| *depth)
+            .map(|(project, _)| project.clone())
+    }
+
     async fn project_of(&self, path: &str) -> Option<ProjectRef> {
         if let Some(project) = project_containing(&self.all_projects().await, path) {
             return Some(project);
@@ -294,10 +334,10 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                 "reaches only the project of the terminal it names, and this request named none (send the agent-id header, or use uxnan-cli inside the terminal)"
             }
             Caller::Control => "is outside the caller's scope",
-            Caller::Bridge { cwd: Some(_) } => {
+            Caller::Bridge { cwd: Some(_), .. } => {
                 "reaches only the project its conversation's folder belongs to"
             }
-            Caller::Bridge { cwd: None } => {
+            Caller::Bridge { cwd: None, .. } => {
                 "reaches only the project of the folder it names, and this request named none (send the x-uxnan-cwd header)"
             }
         };

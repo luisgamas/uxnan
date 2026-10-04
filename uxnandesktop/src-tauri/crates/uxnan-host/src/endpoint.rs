@@ -46,6 +46,8 @@ pub struct Endpoint {
     /// `http://127.0.0.1:<port>`.
     pub base: String,
     pub token: String,
+    /// What agents this machine's bridge runs present: it reaches `/mcp` only.
+    pub bridge_token: String,
     /// The hook coordinates on disk, for a reporter whose environment went
     /// stale (an agent under a `tmux` that outlived a daemon).
     pub file: Option<PathBuf>,
@@ -97,9 +99,20 @@ pub struct Incoming {
     pub route: Route,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    /// Sent by an agent this machine's bridge runs (its own token), not by a
+    /// terminal.
+    pub from_bridge: bool,
 }
 
 impl Incoming {
+    /// A request header by its lowercase name (`x-uxnan-*` ones are kept).
+    pub fn header(&self, name: &str) -> Option<String> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+    }
+
     /// The terminal it came from: the header the shell reporters, the shim and
     /// the MCP clients send, or the envelope the JS reporters post.
     pub fn agent_id(&self) -> Option<String> {
@@ -189,8 +202,9 @@ pub async fn start(handler: Handler) -> std::io::Result<Endpoint> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
     let base = format!("http://{}", listener.local_addr()?);
     let token = new_token()?;
+    let bridge_token = new_token()?;
     let file = write_endpoint_file(&format!("{base}/hook"), &token);
-    let expected = token.clone();
+    let expected = (token.clone(), bridge_token.clone());
     tokio::spawn(async move {
         loop {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -199,7 +213,9 @@ pub async fn start(handler: Handler) -> std::io::Result<Endpoint> {
             let handler = Arc::clone(&handler);
             let expected = expected.clone();
             tokio::spawn(async move {
-                let arrived = tokio::time::timeout(ARRIVAL, read(&mut stream, &expected)).await;
+                let arrived =
+                    tokio::time::timeout(ARRIVAL, read(&mut stream, &expected.0, &expected.1))
+                        .await;
                 let answer = match arrived {
                     Ok(Ok(incoming)) => handler(incoming).await,
                     Ok(Err(refusal)) => refusal,
@@ -209,11 +225,16 @@ pub async fn start(handler: Handler) -> std::io::Result<Endpoint> {
             });
         }
     });
-    Ok(Endpoint { base, token, file })
+    Ok(Endpoint {
+        base,
+        token,
+        bridge_token,
+        file,
+    })
 }
 
 /// Read one request, or the answer that refuses it.
-async fn read(stream: &mut TcpStream, token: &str) -> Result<Incoming, Answer> {
+async fn read(stream: &mut TcpStream, token: &str, bridge_token: &str) -> Result<Incoming, Answer> {
     let gone = || Answer::empty(400);
     let mut buf = Vec::with_capacity(2048);
     let head_end = loop {
@@ -271,7 +292,11 @@ async fn read(stream: &mut TcpStream, token: &str) -> Result<Incoming, Answer> {
             _ => {}
         }
     }
-    if presented.as_deref() != Some(token) {
+    // The bridge's agents hold a token of their own, good for `/mcp` alone: a
+    // hook or a URL comes from a terminal, and only a terminal's token may
+    // send one.
+    let from_bridge = presented.as_deref() == Some(bridge_token);
+    if presented.as_deref() != Some(token) && !(from_bridge && route == Route::Mcp) {
         return Err(Answer::empty(401));
     }
     if chunked {
@@ -301,6 +326,7 @@ async fn read(stream: &mut TcpStream, token: &str) -> Result<Incoming, Answer> {
         route,
         headers,
         body: String::from_utf8_lossy(&body).into_owned(),
+        from_bridge: from_bridge && presented.as_deref() != Some(token),
     })
 }
 
@@ -357,6 +383,7 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
             body: body.to_string(),
+            from_bridge: false,
         }
     }
 
@@ -382,6 +409,7 @@ mod tests {
         let endpoint = Endpoint {
             base: "http://127.0.0.1:9".into(),
             token: "t".into(),
+            bridge_token: "b".into(),
             file: Some(PathBuf::from("/h/run/endpoint.env")),
         };
         let env = endpoint.env();

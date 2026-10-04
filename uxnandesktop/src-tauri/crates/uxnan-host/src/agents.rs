@@ -61,6 +61,7 @@ pub fn tools(endpoint: &crate::endpoint::Endpoint) -> Reply {
         mcp_url,
         browser_url: endpoint.browser_url(),
         token: endpoint.token.clone(),
+        bridge_token: Some(endpoint.bridge_token.clone()),
         browser_shim,
         claude_config,
         opencode_major,

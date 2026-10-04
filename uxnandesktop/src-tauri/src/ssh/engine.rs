@@ -314,7 +314,10 @@ type OnHook = Arc<std::sync::Mutex<Option<HookFn>>>;
 
 /// What hears an MCP call from one of this host's terminals:
 /// `(ticket, session, body)` — answered with [`HostEngine::answer_mcp`].
-pub type McpFn = Box<dyn Fn(u64, u32, String) + Send + Sync>;
+/// An MCP call from the host: its ticket, the terminal session it came from,
+/// its body, and — for an agent of the host's own bridge, which has no
+/// terminal — the conversation's folder as it named it (percent-encoded).
+pub type McpFn = Box<dyn Fn(u64, u32, String, Option<String>) + Send + Sync>;
 type OnMcp = Arc<std::sync::Mutex<Option<McpFn>>>;
 
 /// What hears a URL one of this host's terminals asked to open:
@@ -335,6 +338,9 @@ pub struct HostTools {
     pub mcp_url: String,
     pub browser_url: String,
     pub token: String,
+    /// What the host's own bridge hands its agents (`desktop/attach`): `/mcp`
+    /// only. `None` from an engine older than protocol 15.
+    pub bridge_token: Option<String>,
     pub browser_shim: Option<String>,
     pub claude_config: Option<String>,
     pub opencode_major: Option<u32>,
@@ -541,9 +547,10 @@ impl HostEngine {
                             ticket,
                             session,
                             body,
+                            bridge_cwd,
                         })) => {
                             if let Some(call) = reader_mcp.lock().unwrap().as_ref() {
-                                call(ticket, session, body);
+                                call(ticket, session, body, bridge_cwd);
                             }
                         }
                         Ok(ServerMessage::Event(Event::OpenUrl { session, url })) => {
@@ -1100,6 +1107,7 @@ impl HostEngine {
                         mcp_url,
                         browser_url,
                         token,
+                        bridge_token,
                         browser_shim,
                         claude_config,
                         opencode_major,
@@ -1107,6 +1115,7 @@ impl HostEngine {
                         mcp_url,
                         browser_url,
                         token,
+                        bridge_token,
                         browser_shim,
                         claude_config,
                         opencode_major,

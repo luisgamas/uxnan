@@ -1545,3 +1545,46 @@ async fn a_bridge_agent_reaches_only_its_conversations_project() {
     .await;
     assert_eq!(status, 401);
 }
+
+/// An agent of a host's own bridge names a folder on that host: its scope is
+/// the host's project, never a project here at the same absolute path — the
+/// same path names a different folder on every machine.
+#[tokio::test]
+async fn a_host_bridges_agent_is_scoped_to_the_project_on_that_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, local) = repo_in(dir.path()).await;
+    let mut on_host = local.clone();
+    on_host.id = "repo-host".into();
+    on_host.name = "on-host".into();
+    on_host.target = TargetId::Ssh("h1".into());
+    let mut data = AppData::default();
+    data.repos.push(local);
+    data.repos.push(on_host);
+    let s = server(data).await;
+    let app = s._app.handle().clone();
+
+    let from_host = crate::control::Caller::Bridge {
+        cwd: Some(path.clone()),
+        target: Some("ssh:h1".into()),
+    };
+    let seen = super::resolve::Resolver::new(&app, &from_host)
+        .projects()
+        .await;
+    assert_eq!(
+        seen.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+        ["repo-host"]
+    );
+
+    // This machine's bridge with the same folder: the local project.
+    let from_here = crate::control::Caller::Bridge {
+        cwd: Some(path),
+        target: None,
+    };
+    let seen = super::resolve::Resolver::new(&app, &from_here)
+        .projects()
+        .await;
+    assert_eq!(
+        seen.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+        ["repo-1"]
+    );
+}

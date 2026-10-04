@@ -1057,6 +1057,7 @@ async fn an_mcp_call_from_a_terminal_is_answered_by_the_app_watching_it() {
             ticket,
             session: s,
             body,
+            ..
         }) = client.control().await
         {
             assert_eq!(s, session);
@@ -1856,4 +1857,66 @@ async fn the_daemon_keeps_the_hosts_bridge_running_and_lets_it_go_when_asked() {
     .await;
     let wish = std::fs::read_to_string(daemon.home.path().join("bridge.json")).unwrap();
     assert!(wish.contains("false"), "{wish}");
+}
+
+#[tokio::test]
+async fn an_agent_of_the_hosts_own_bridge_reaches_the_app_but_never_a_hook() {
+    let daemon = Daemon::start(600);
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let (base, _) = endpoint_of(&daemon);
+    let Outcome::Ok {
+        reply: Reply::AgentTools { bridge_token, .. },
+    } = client.call(Call::AgentTools).await
+    else {
+        panic!("the engine says what its endpoint takes");
+    };
+    let bearer = format!("Bearer {}", bridge_token.expect("a bridge token"));
+
+    // A hook takes a terminal's token: the bridge's is refused there.
+    let (status, _) = post(&base, "/hook", &[("Authorization", &bearer)], "{}").await;
+    assert_eq!(status, 401);
+
+    // An MCP call with it is relayed to the app, naming the conversation's
+    // folder instead of a terminal.
+    let call = r#"{"jsonrpc":"2.0","id":7,"method":"tools/list"}"#;
+    let calling = tokio::spawn({
+        let base = base.clone();
+        let bearer = bearer.clone();
+        async move {
+            post(
+                &base,
+                "/mcp",
+                &[("Authorization", &bearer), ("X-Uxnan-Cwd", "%2Fsrv%2Fapp")],
+                call,
+            )
+            .await
+        }
+    });
+    let (ticket, cwd) = loop {
+        if let ServerMessage::Event(Event::Mcp {
+            ticket,
+            session,
+            bridge_cwd,
+            body,
+        }) = client.control().await
+        {
+            assert_eq!(session, 0);
+            assert_eq!(body, call);
+            break (ticket, bridge_cwd);
+        }
+    };
+    assert_eq!(cwd.as_deref(), Some("%2Fsrv%2Fapp"));
+    write_frame(
+        &mut client.stream,
+        &Frame::control(&ClientMessage::McpAnswer {
+            ticket,
+            status: 200,
+            body: r#"{"jsonrpc":"2.0","id":7,"result":{"tools":[]}}"#.into(),
+        }),
+    )
+    .await
+    .unwrap();
+    let (status, body) = calling.await.unwrap();
+    assert_eq!(status, 200);
+    assert!(body.contains("tools"), "{body}");
 }

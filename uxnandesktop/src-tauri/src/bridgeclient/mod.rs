@@ -225,6 +225,12 @@ impl BridgeClient {
         self.sync_desktop_tools().await;
     }
 
+    /// Whether agents get Uxnan's tools (Settings → Browser), which a host's
+    /// own bridge follows too.
+    pub fn tools_enabled(&self) -> bool {
+        self.tools_enabled.load(Ordering::SeqCst)
+    }
+
     /// Settings changed whether agents get Uxnan's tools. No-op when unchanged.
     pub async fn set_tools_enabled(&self, enabled: bool) {
         if self.tools_enabled.swap(enabled, Ordering::SeqCst) != enabled {

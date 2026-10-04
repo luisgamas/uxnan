@@ -112,6 +112,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with the same dialog as here; *Open on this host's network* is the
   one switch that publishes a port there, off by default; and *Pair a phone*
   opens the pairing window for that bridge.
+- **A host bridge's agents use this app's tools.** A chat on a host's own
+  bridge gets the same tools as one here — the browser, terminals, files — through
+  that host's engine: its agents call the engine's own endpoint with a token that
+  reaches the tools and nothing else, the engine relays the call here, and it is
+  answered as a chat's agent scoped to its conversation's folder on that host.
+  Proven with a real Claude Code on a host.
 - **"Continue as chat" works for a terminal on a host.** The agent session a
   host terminal holds is told to that host's own bridge, which asks it for the
   session when the phone or the desktop wants to continue it; "Continue as
@@ -191,6 +197,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   keep working.
 
 ### Fixed
+
+- **A chat's agent is scoped to the right machine's project.** An agent of this
+  computer's bridge whose folder had the same path as a project on a host could
+  be scoped to the host's project; the scope now always reads a folder on the
+  machine it is on.
 
 - **A chat that finished or started asking while the desktop was reconnecting
   shows it at once.** The activity tracker adopts the bridge's live set on

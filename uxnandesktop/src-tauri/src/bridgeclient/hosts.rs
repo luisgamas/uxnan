@@ -237,6 +237,7 @@ async fn run<R: tauri::Runtime>(
                         },
                     )
                     .await;
+                attach_tools(app, &connection, engine).await;
                 while let Some(Event::Notification { message, .. }) = events.recv().await {
                     let _ = app.emit(
                         HOST_NOTIFICATION_EVENT,
@@ -277,6 +278,55 @@ async fn run<R: tauri::Runtime>(
             _ = tokio::time::sleep(wait) => {}
             _ = retry.notified() => {}
         }
+    }
+}
+
+/// Give the host bridge's agents this app's tools (`desktop/attach`), the way
+/// this machine's bridge gets them: the host engine's own `/mcp` — a loopback
+/// URL on that machine, which the bridge requires — and the token the engine
+/// keeps for that bridge's agents, which reaches `/mcp` and nothing else. The
+/// engine relays each call here, where it is answered as a chat's agent scoped
+/// to its conversation's folder on that host. Under the same setting that gives
+/// them to this machine's bridge (Settings → Browser → agents' tools); an
+/// engine or a bridge too old for it leaves its agents without them, which is
+/// never fatal.
+async fn attach_tools<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    connection: &Connection,
+    engine: &HostEngine,
+) {
+    use tauri::Manager;
+    let enabled = app
+        .try_state::<crate::state::AppState>()
+        .map(|state| state.bridge.tools_enabled())
+        .unwrap_or(false);
+    let tools = if enabled {
+        engine.agent_tools().await
+    } else {
+        None
+    };
+    let result = match tools.and_then(|t| t.bridge_token.map(|token| (t.mcp_url, token))) {
+        Some((mcp_url, token)) => {
+            connection
+                .call(
+                    "desktop/attach",
+                    serde_json::json!({ "mcpUrl": mcp_url, "token": token }),
+                    Duration::from_secs(10),
+                )
+                .await
+        }
+        None => {
+            connection
+                .call("desktop/detach", Value::Null, Duration::from_secs(10))
+                .await
+        }
+    };
+    if let Err(err) = result {
+        crate::diagnostics::log(
+            crate::diagnostics::Level::Info,
+            "bridge",
+            &format!("a host's bridge did not take this app's tools for its agents: {err:?}"),
+        );
     }
 }
 

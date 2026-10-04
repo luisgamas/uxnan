@@ -942,7 +942,7 @@ pub(crate) fn serve_host_tools<R: tauri::Runtime>(
     let calls = std::sync::Arc::downgrade(engine);
     let (call_app, call_host, call_epoch) =
         (app.clone(), host_id.to_string(), engine.epoch().to_string());
-    engine.set_on_mcp(Box::new(move |ticket, session, body| {
+    engine.set_on_mcp(Box::new(move |ticket, session, body, bridge_cwd| {
         let (app, host, epoch, engine) = (
             call_app.clone(),
             call_host.clone(),
@@ -950,8 +950,16 @@ pub(crate) fn serve_host_tools<R: tauri::Runtime>(
             calls.clone(),
         );
         tauri::async_runtime::spawn(async move {
-            let caller = crate::control::Caller::Launch {
-                agent_id: host_tab(&app, &host, &epoch, session).await,
+            // An agent of the host's own bridge (no terminal) is a chat's
+            // agent, scoped to its conversation's folder on that host.
+            let caller = match bridge_cwd {
+                Some(cwd) => crate::control::Caller::Bridge {
+                    cwd: crate::control::server::percent_decode(&cwd).filter(|c| !c.is_empty()),
+                    target: Some(format!("ssh:{host}")),
+                },
+                None => crate::control::Caller::Launch {
+                    agent_id: host_tab(&app, &host, &epoch, session).await,
+                },
             };
             let response =
                 crate::control::mcp::handle(&app, caller, body.into_bytes().into()).await;

@@ -1908,12 +1908,30 @@ morir, se suelta al pedirlo) y en vivo en un host Linux real, armado por
 `UXNAN_SSH_TEST_BRIDGE=1` (`a_hosts_bridge_is_installed_and_kept_running_by_its_engine`):
 instalado, vigilado, alcanzado por el enlace con `lanEnabled: false`, y detenido.
 
+**Las herramientas de esta app para los agentes del bridge del host** van por
+el motor, como las de sus terminales. El endpoint del motor tiene un segundo
+token, solo para esos agentes (`AgentTools.bridge_token`, protocolo 15): vale
+para `/mcp` y nunca para `/hook` ni `/browser`. Al enlazarse, el desktop le da al
+bridge del host `desktop/attach { mcpUrl: el /mcp del motor, token }` (bajo el
+mismo ajuste que al bridge local). El motor reenvia esas llamadas a cualquier
+cliente conectado como `Event::Mcp { bridge_cwd }` (la carpeta de la
+conversacion, de su cabecera `x-uxnan-cwd`), y el desktop las contesta como
+`Caller::Bridge { cwd, target: ssh:<id> }`: el alcance es el proyecto de esa
+carpeta **en ese host**, nunca la misma ruta aqui (el alcance de cualquier
+llamador lee ya la carpeta en su maquina).
+
+**Probado en vivo** con el Claude Code real de un host
+(`a_terminal_session_continues_as_a_chat_on_the_hosts_bridge_with_this_apps_tools`):
+una sesion dejada como en una terminal continuo en el chat del bridge del host
+(`agentSessionId`), y su agente llamo a `uxnan_status` por el motor y recibio la
+respuesta de este lado.
+
 **El traspaso terminal → chat en un host** sigue la misma regla: un
 `TerminalSessions` por maquina (`terminalSessionsFor`). Las terminales de un host
 avisan al bridge de ese host de la sesion que tienen (`agent/hold`), responden
 alli sus peticiones de traspaso, "Continuar como chat" abre el chat en ese bridge
-y "Abrir en terminal" lanza la CLI del propio host. Cubierto por pruebas; el
-recorrido en vivo con un agente real en un host queda pendiente.
+y "Abrir en terminal" lanza la CLI del propio host. Probado con pruebas y en
+vivo (arriba).
 
 **La pagina del host** lo ofrece (`HostBridgeSection`): de quien es y su version,
 si corre y quien lo mantiene, si esta ventana esta enlazada y como llegan los
@@ -1927,12 +1945,10 @@ la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
 LAN).
 
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-guardar su identidad en un
-almacen de archivo en hosts sin llavero persistente (hoy vive en el llavero del
-kernel de esa cuenta, que un reinicio puede borrar); las herramientas de esta app
-para los agentes de ese bridge (`desktop/attach` con el `/mcp` del motor); el
-recorrido en vivo del traspaso con un agente real; y el trabajo headless en el
-host.
+su identidad tras un reinicio (hoy es una llave `user` del llavero del kernel
+de esa cuenta, que un reinicio borra; guardarla en un archivo no puede romper
+"nunca en texto plano", y es decision del maintainer); y el trabajo headless en
+el host.
 
 ## 6. Que funciona y que no en un contexto remoto
 

@@ -693,6 +693,11 @@ pub enum Reply {
         browser_url: String,
         /// The token both take.
         token: String,
+        /// The token for agents this machine's bridge runs — MCP only, never a
+        /// hook or a URL — which the client hands that bridge
+        /// (`desktop/attach`). Absent from an engine older than protocol 15.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bridge_token: Option<String>,
         /// The `$BROWSER` shim on this machine, if it is there.
         browser_shim: Option<String>,
         /// Claude Code's launch config on this machine, naming `mcp_url`.
@@ -764,10 +769,16 @@ pub enum Event {
     /// An agent in one of this connection's terminals called the client's MCP
     /// server: answer with [`ClientMessage::McpAnswer`] and the same ticket.
     /// The request waits for it on this machine.
+    ///
+    /// An agent that this machine's own bridge runs for a conversation has no
+    /// terminal: it carries `bridge_cwd` — the conversation's folder, as its
+    /// `x-uxnan-cwd` header named it (percent-encoded) — and `session` is 0.
     Mcp {
         ticket: u64,
         session: u32,
         body: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bridge_cwd: Option<String>,
     },
     /// Something in one of this connection's terminals asked to open a URL
     /// (the `$BROWSER` shim). The URL is as it was given — a `localhost` one

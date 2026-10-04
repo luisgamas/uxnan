@@ -1938,5 +1938,223 @@ mod tests {
                 "no port opened by default: {status}"
             );
         }
+
+        /// A terminal's agent session continued as a chat on the host's own
+        /// bridge — the hand-off — with that bridge's agent using this app's
+        /// tools through the host engine. A real Claude Code on the host:
+        ///
+        /// 1. in a folder of this test's own, Claude remembers a word under a
+        ///    session id of ours, as a terminal would leave it;
+        /// 2. the host's bridge (kept running by the engine) is given this
+        ///    app's tools — the engine's `/mcp` and its bridge token — and a
+        ///    chat continues that session (`agentSessionId`);
+        /// 3. the chat is asked for the word and to call `uxnan_status`, which
+        ///    is answered here, by a stand-in of this app's MCP server.
+        ///
+        /// Both answers in the reply prove the session continued and the call
+        /// went host bridge → engine → here. Cleans up the thread, the project,
+        /// its folder and the session Claude kept for it; leaves the bridge
+        /// stopped. Armed by `UXNAN_SSH_TEST_BRIDGE=1` and `UXNAN_SSH_TEST_WIRE=1`.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS, UXNAN_SSH_TEST_BRIDGE=1 and UXNAN_SSH_TEST_WIRE=1; runs the host's Claude Code"]
+        async fn a_terminal_session_continues_as_a_chat_on_the_hosts_bridge_with_this_apps_tools() {
+            use uxnan_host_protocol::{BridgeCall, BridgeState};
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            for flag in ["UXNAN_SSH_TEST_BRIDGE", "UXNAN_SSH_TEST_WIRE"] {
+                if std::env::var(flag).as_deref() != Ok("1") {
+                    panic!("set {flag}=1: this runs the bridge and Claude Code on that host");
+                }
+            }
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let home = home.trim_end_matches('/').to_string();
+            let folder = format!("{home}/.uxnan/host/test-handoff-{}", std::process::id());
+            let session = uuid::Uuid::new_v4().to_string();
+            // Where Claude keeps a folder's sessions: its path with `/` and `.` as `-`.
+            let claude_dir = format!(
+                "{home}/.claude/projects/{}",
+                folder.replace(['/', '.'], "-")
+            );
+            let cleanup_files = format!("rm -rf '{folder}' '{claude_dir}'");
+
+            // 1. The terminal's run.
+            let ran = conn
+                .exec(&format!(
+                    "mkdir -p '{folder}' && cd '{folder}' && bash -lc \"claude -p --session-id {session} 'Remember the word PINEAPPLE-7 for later. Reply only OK.'\""
+                ))
+                .await;
+            assert!(ran.is_ok(), "claude ran on the host: {ran:?}");
+
+            // 2. The host's bridge, running, with this app's tools.
+            let _: BridgeState = engine
+                .bridge(BridgeCall::Supervise { on: true })
+                .await
+                .unwrap();
+            let record = crate::ssh::bridge::discovery_path(&home);
+            let mut discovery = None;
+            for _ in 0..80 {
+                if let Ok(Some(d)) = crate::ssh::bridge::discover(&engine, &record).await {
+                    discovery = Some(d);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            let discovery = discovery.expect("the engine started the bridge");
+            // The stand-in for this app's MCP server: what the engine relays
+            // from the bridge's agent is answered here.
+            let relayed = Arc::new(StdMutex::new(Vec::<Option<String>>::new()));
+            {
+                let weak = Arc::downgrade(&engine);
+                let relayed = Arc::clone(&relayed);
+                engine.set_on_mcp(Box::new(move |ticket, _session, body, bridge_cwd| {
+                    relayed.lock().unwrap().push(bridge_cwd.clone());
+                    let weak = weak.clone();
+                    tokio::spawn(async move {
+                        let (status, answer) = fake_mcp(&body);
+                        if let Some(engine) = weak.upgrade() {
+                            engine.answer_mcp(ticket, status, answer).await;
+                        }
+                    });
+                }));
+            }
+            let tools = engine.agent_tools().await.expect("the engine's tools");
+            let stream = crate::ssh::bridge::dial(&conn, &discovery).await.unwrap();
+            let (events, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
+            let link = crate::bridgeclient::connection::Connection::open_over(
+                stream,
+                &discovery,
+                "desktop-0123456789ae",
+                None,
+                events,
+            )
+            .await
+            .unwrap();
+            let call = |method: &'static str, params: serde_json::Value| {
+                let link = Arc::clone(&link);
+                async move {
+                    link.call(method, params, std::time::Duration::from_secs(60))
+                        .await
+                        .map_err(|e| format!("{method}: {e:?}"))
+                }
+            };
+
+            let outcome = async {
+                call(
+                    "desktop/attach",
+                    serde_json::json!({ "mcpUrl": tools.mcp_url, "token": tools.bridge_token.clone().unwrap() }),
+                )
+                .await?;
+                let project = call("project/add", serde_json::json!({ "cwd": folder, "name": "handoff-test" })).await?;
+                let project_id = project["id"].as_str().unwrap().to_string();
+                let thread = call(
+                    "thread/start",
+                    serde_json::json!({
+                        "projectId": project_id,
+                        "agentId": "claude-code",
+                        "cwd": folder,
+                        "agentSessionId": session,
+                        "title": "handoff test",
+                    }),
+                )
+                .await?;
+                let thread_id = thread["id"].as_str().unwrap().to_string();
+                call("thread/setAccessMode", serde_json::json!({ "threadId": thread_id, "mode": "fullAccess" })).await?;
+                let sent = call(
+                    "turn/send",
+                    serde_json::json!({
+                        "threadId": thread_id,
+                        "text": "Two things, in one short reply: which word did I ask you to remember, and what does the uxnan_status tool return? Call that tool.",
+                    }),
+                )
+                .await?;
+                let turn_id = sent["turnId"].as_str().unwrap().to_string();
+                // 3. Its end, and what it said.
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(240);
+                loop {
+                    let next = tokio::time::timeout_at(deadline, events_rx.recv()).await;
+                    let Ok(Some(crate::bridgeclient::connection::Event::Notification { message, .. })) = next else {
+                        return Err("the turn did not end in time".to_string());
+                    };
+                    let method = message["method"].as_str().unwrap_or("");
+                    let ended = matches!(method, "stream/turn/completed" | "stream/turn/error" | "stream/turn/aborted");
+                    if ended && message["params"]["turnId"] == serde_json::json!(turn_id) {
+                        break;
+                    }
+                }
+                let turns = call("turn/list", serde_json::json!({ "threadId": thread_id, "fromEnd": true })).await?;
+                let _ = call("thread/delete", serde_json::json!({ "threadId": thread_id })).await;
+                let _ = call("project/remove", serde_json::json!({ "projectId": project_id })).await;
+                Ok::<_, String>(turns.to_string())
+            }
+            .await;
+            let _ = link
+                .call(
+                    "desktop/detach",
+                    serde_json::Value::Null,
+                    std::time::Duration::from_secs(10),
+                )
+                .await;
+            link.close();
+            let _: Result<BridgeState, _> =
+                engine.bridge(BridgeCall::Supervise { on: false }).await;
+            let _ = conn.exec(&cleanup_files).await;
+
+            let reply = outcome.unwrap();
+            println!(
+                "live: {alias} hand-off reply: {}",
+                &reply[..reply.len().min(1500)]
+            );
+            assert!(
+                reply.contains("PINEAPPLE-7"),
+                "the session continued: {reply}"
+            );
+            assert!(
+                reply.contains("MANGO-42"),
+                "the tool was answered here: {reply}"
+            );
+            let relayed = relayed.lock().unwrap().clone();
+            assert!(!relayed.is_empty(), "the engine relayed the agent's calls");
+            assert!(
+                relayed.iter().all(Option::is_some),
+                "as the bridge's agent: {relayed:?}"
+            );
+        }
+
+        /// A minimal MCP server over the streamable-HTTP JSON shape: one tool,
+        /// `uxnan_status`, that answers `MANGO-42`.
+        fn fake_mcp(body: &str) -> (u16, String) {
+            let request: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            let Some(id) = request.get("id").cloned() else {
+                return (202, String::new());
+            };
+            let result = match request["method"].as_str().unwrap_or("") {
+                "initialize" => serde_json::json!({
+                    "protocolVersion": request["params"]["protocolVersion"].as_str().unwrap_or("2025-03-26"),
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "uxnan", "version": "0" },
+                }),
+                "tools/list" => serde_json::json!({ "tools": [{
+                    "name": "uxnan_status",
+                    "description": "What Uxnan reports about itself.",
+                    "inputSchema": { "type": "object", "properties": {} },
+                }]}),
+                "tools/call" => {
+                    serde_json::json!({ "content": [{ "type": "text", "text": "MANGO-42" }] })
+                }
+                _ => serde_json::json!({}),
+            };
+            (
+                200,
+                serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": result }).to_string(),
+            )
+        }
     }
 }

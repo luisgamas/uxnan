@@ -128,6 +128,9 @@ pub struct Daemon {
     agent_commands: Mutex<Vec<String>>,
     /// This machine's own bridge, kept running while asked (`bridge`).
     bridge: crate::bridge::Supervisor,
+    /// Every attached client, by viewer id: where a call from this machine's
+    /// bridge — which belongs to no terminal — is sent.
+    connections: Mutex<HashMap<u64, Viewer>>,
 }
 
 impl Daemon {
@@ -149,6 +152,7 @@ impl Daemon {
             next_ticket: AtomicU64::new(1),
             agent_commands: Mutex::new(Vec::new()),
             bridge: crate::bridge::Supervisor::default(),
+            connections: Mutex::new(HashMap::new()),
         }
     }
 
@@ -464,11 +468,25 @@ impl Daemon {
     }
 
     async fn relay_mcp(&self, incoming: Incoming) -> Answer {
-        let Some((session, shared)) = self.session_of(&incoming) else {
-            return Answer::empty(404);
-        };
-        let Some((viewer_id, viewer)) = Self::a_viewer_of(&shared) else {
-            return Answer::empty(503);
+        // An agent of this machine's bridge belongs to no terminal: any
+        // attached client answers for it, naming the conversation's folder.
+        let (session, bridge_cwd, (viewer_id, viewer)) = if incoming.from_bridge {
+            let Some(client) = self.any_client() else {
+                return Answer::empty(503);
+            };
+            (
+                0,
+                Some(incoming.header("x-uxnan-cwd").unwrap_or_default()),
+                client,
+            )
+        } else {
+            let Some((session, shared)) = self.session_of(&incoming) else {
+                return Answer::empty(404);
+            };
+            let Some(client) = Self::a_viewer_of(&shared) else {
+                return Answer::empty(503);
+            };
+            (session, None, client)
         };
         let ticket = self.next_ticket.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -480,6 +498,7 @@ impl Daemon {
             ticket,
             session,
             body: incoming.body,
+            bridge_cwd,
         })));
         let answered = tokio::time::timeout(MCP_WAIT, rx).await;
         self.mcp_waiting.lock().unwrap().remove(&ticket);
@@ -489,6 +508,12 @@ impl Daemon {
             Ok(Err(_)) => Answer::empty(502),
             Err(_) => Answer::empty(504),
         }
+    }
+
+    /// One attached client, if any is.
+    fn any_client(&self) -> Option<(u64, Viewer)> {
+        let connections = self.connections.lock().unwrap();
+        connections.iter().next().map(|(id, v)| (*id, v.clone()))
     }
 
     /// The app's answer to an MCP call it was sent.
@@ -993,6 +1018,11 @@ where
 
     if accepted {
         daemon.clients.fetch_add(1, Ordering::SeqCst);
+        daemon
+            .connections
+            .lock()
+            .unwrap()
+            .insert(viewer_id, viewer.clone());
         // This connection's folder watch, if it asked for one. Dropped with
         // the connection, which stops its thread.
         let mut watch: Option<uxnan_workspace_engine::watch::Watch> = None;
@@ -1204,6 +1234,7 @@ where
         }
         drop(watch);
         daemon.forget_mcp_of(viewer_id);
+        daemon.connections.lock().unwrap().remove(&viewer_id);
         daemon.detach_everywhere(viewer_id);
         daemon.clients.fetch_sub(1, Ordering::SeqCst);
         daemon.touch();

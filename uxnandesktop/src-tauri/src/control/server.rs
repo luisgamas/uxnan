@@ -61,8 +61,14 @@ pub enum Caller {
     /// An agent the Uxnan bridge runs for one of its conversations, authorized
     /// by the bridge-agent token the desktop gave the bridge (`desktop/attach`).
     /// `cwd` is the conversation's folder — what scopes it — when the request
-    /// said so; it has no terminal, so `current` names nothing.
-    Bridge { cwd: Option<String> },
+    /// said so; it has no terminal, so `current` names nothing. `target` is
+    /// the machine that folder is on: `None` for this machine's bridge, a
+    /// host's `ssh:<id>` for that host's own bridge (`02g` §5.18) — a host's
+    /// folder must never be read as the same path here.
+    Bridge {
+        cwd: Option<String>,
+        target: Option<String>,
+    },
 }
 
 /// Shared context handed to the axum handlers.
@@ -105,6 +111,7 @@ impl<R: tauri::Runtime> ServerCtx<R> {
         if token_eq(&presented, &self.bridge_token) {
             return Some(Caller::Bridge {
                 cwd: header_str(headers, proto_headers::CWD).and_then(|v| percent_decode(&v)),
+                target: None,
             });
         }
         None
@@ -131,7 +138,7 @@ fn presented_token(headers: &HeaderMap) -> Option<String> {
 /// so a folder with non-ASCII characters survives as a header). `None` for a
 /// malformed escape or bytes that are not UTF-8 — a folder it cannot read
 /// scopes nothing.
-fn percent_decode(value: &str) -> Option<String> {
+pub(crate) fn percent_decode(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

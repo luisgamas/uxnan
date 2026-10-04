@@ -215,7 +215,7 @@ jobs:
         env:
           UXNAN_SSH_TEST_ALIAS: uxnan-win-self
         run: |
-          cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml --lib ssh::terminals::tests::live -- --ignored --nocapture --skip the_hosts_own --skip given_up_on --skip a_change_on_the_host --skip a_push_from_the_host --skip a_hosts_own_bridge --skip a_hosts_bridge_is_installed
+          cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml --lib ssh::terminals::tests::live -- --ignored --nocapture --skip the_hosts_own --skip given_up_on --skip a_change_on_the_host --skip a_push_from_the_host --skip a_hosts_own_bridge --skip a_hosts_bridge_is_installed --skip a_terminal_session_continues
       - name: What the engine logged, if it failed
         if: failure() && steps.touched.outputs.run == 'true'
         shell: pwsh
