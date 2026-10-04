@@ -1,11 +1,13 @@
-# The desktop app and the two small crates that share its control protocol: the
-# protocol itself (`crates/control-protocol`, no Tauri, no async — the contract)
-# and the console client (`crates/uxnan-cli`). One lockfile, one toolchain, one
+# The desktop app and the small crates that share its control protocol: the
+# protocol itself (`crates/control-protocol`, no Tauri, no async — the contract),
+# the client that finds and calls the running app (`crates/control-client`) and
+# the console client (`crates/uxnan-cli`). One lockfile, one toolchain, one
 # `cargo test --workspace`. The members take the app's version from here so a
 # release bumps all three in the one place the release tooling already edits.
 [workspace]
 members = [
     "crates/control-protocol",
+    "crates/control-client",
     "crates/uxnan-cli",
     "crates/workspace-engine",
     "crates/host-protocol",
@@ -51,6 +53,10 @@ tauri-build = { version = "2", features = [] }
 # The control protocol (catalog, envelopes, discovery file, selectors) shared with
 # `uxnan-cli`, so the app and its console client cannot disagree on a name.
 uxnan-control-protocol = { path = "crates/control-protocol" }
+# Finding the running app from outside it (the discovery file) — the client
+# `uxnan-cli` speaks with, used by the automation runner to hand a host's run
+# to the window that holds the connection.
+uxnan-control-client = { path = "crates/control-client" }
 # `devtools`: keep web DevTools available in release builds too, so the integrated
 # developer browser can debug the pages agents serve.
 # `macos-private-api` exists solely for the desktop pet window: a transparent

@@ -728,6 +728,97 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_HEADLESS=<an agent installed there>; runs it once in a scratch folder of that host's home"]
+        async fn a_headless_run_and_a_gate_happen_on_the_host() {
+            use uxnan_host_protocol::FsCall;
+            let (Ok(alias), Ok(agent)) = (
+                std::env::var("UXNAN_SSH_TEST_ALIAS"),
+                std::env::var("UXNAN_SSH_TEST_HEADLESS"),
+            ) else {
+                panic!("set UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_HEADLESS=<agent id>");
+            };
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let root: String = engine
+                .fs(FsCall::CreateDir {
+                    dir: home.clone(),
+                    path: format!(".uxnan-live-headless-{}", std::process::id()),
+                })
+                .await
+                .expect("a scratch folder");
+            let marker: String = engine
+                .fs(FsCall::CreateFile {
+                    dir: root.clone(),
+                    path: "ready.flag".into(),
+                })
+                .await
+                .unwrap();
+            assert!(marker.ends_with("ready.flag"));
+
+            // The gate runs there, in that folder, in that machine's shell.
+            let gate = engine
+                .precondition("test -f ready.flag && uname -s", 20, &root)
+                .await
+                .expect("the gate answers");
+            assert!(gate.passed(), "{gate:?}");
+            assert!(gate.stdout.contains("Linux"), "{gate:?}");
+
+            // The agent runs there too: the host's own CLI, in that folder.
+            let ran = engine
+                .agent_run(
+                    &agent,
+                    "",
+                    "Reply with exactly the word KIWI-77 and nothing else.",
+                    &root,
+                    Some(180_000),
+                    false,
+                    &crate::agentcli::no_session_args(&agent),
+                    Some("live-headless"),
+                    0,
+                )
+                .await
+                .expect("the host ran its agent");
+            assert_eq!(ran.exit_code, Some(0), "{ran:?}");
+            assert!(ran.stdout.contains("KIWI-77"), "{ran:?}");
+
+            // An agent that is not there says so in the words the commit
+            // draft falls back on.
+            let missing = engine
+                .agent_run(
+                    "definitely-not-an-agent",
+                    "",
+                    "hi",
+                    &root,
+                    Some(10_000),
+                    false,
+                    &[],
+                    None,
+                    0,
+                )
+                .await
+                .expect_err("not installed there");
+            let crate::error::AppError::Agent(message) = &missing else {
+                panic!("{missing:?}");
+            };
+            assert!(crate::agentrun::is_not_installed(message), "{message}");
+
+            let () = engine
+                .fs(FsCall::Delete { path: root.clone() })
+                .await
+                .expect("the scratch folder removed");
+            println!(
+                "live: {alias} ran {agent} and a gate in {root}: {:?}",
+                ran.stdout.trim()
+            );
+        }
+
+        #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS and git on that host; writes a scratch repository in its home"]
         async fn a_projects_git_is_served_by_the_hosts_engine() {
             use crate::git::{CommitInfo, RepoStatus, Review};

@@ -220,20 +220,25 @@ fn build_vars(
 ///
 /// `prev_vars` carries the previous run's `prev.<id>.output` values, so a
 /// recurring automation can continue yesterday's work.
-/// `budget` is the **global** agent budget this run must fit inside — the one
-/// every process shares (`crate::budget`), not a count this run keeps to
+/// `limits.policy` is the **global** agent budget this run must fit inside —
+/// the one every process on that machine shares (`crate::budget`; a host's,
+/// for a run on a host — `Place::ledger_dir`), not a count this run keeps to
 /// itself. A step is dispatched only once it holds a slot, and holds it until
 /// it finishes; when there is no room the loop waits and asks again, so two
 /// automations running at once cannot between them start twice the cap.
+/// `place` is the machine whose processes run the steps.
 pub async fn execute(
     store: &AutomationStore,
     automation: &Automation,
     run: &mut AutomationRun,
     prev_vars: &HashMap<String, String>,
     cwd: &str,
-    budget: crate::budget::Policy,
-    ceiling_mb: u64,
+    place: &super::place::Place,
+    limits: super::runner::Limits,
 ) {
+    let ledger = place.ledger_dir(budget_dir());
+    let budget = place.admission(limits.policy);
+    let ceiling_mb = limits.memory_ceiling_mb;
     let by_id: HashMap<&str, &Step> = automation
         .steps
         .iter()
@@ -253,7 +258,7 @@ pub async fn execute(
                 break;
             };
             let Ok(slot) = crate::budget::try_acquire(
-                &budget_dir(),
+                &ledger,
                 budget,
                 &format!("automation {} step {}", run.id, id),
             ) else {
@@ -289,22 +294,22 @@ pub async fn execute(
                 .map_or(1, |s| s.attempts + 1);
             let job = format!("{}:{}:{}", run.id, id, attempt);
             let memory_ceiling_mb = ceiling_mb;
+            let place = place.clone();
             inflight.spawn(async move {
                 // The slot lives exactly as long as the step it admitted.
                 let _slot = slot;
-                let outcome = match crate::agentrun::run_headless(
-                    &agent,
-                    &model,
-                    &prompt,
-                    &dir,
-                    timeout_ms,
-                    autonomous,
-                    // A step runs its model as configured, effort included.
-                    &[],
-                    Some(&job),
-                    memory_ceiling_mb,
-                )
-                .await
+                let outcome = match place
+                    .run_step(super::place::StepRun {
+                        agent: &agent,
+                        model: &model,
+                        prompt: &prompt,
+                        cwd: &dir,
+                        timeout_ms,
+                        autonomous,
+                        job: &job,
+                        memory_limit_mb: memory_ceiling_mb,
+                    })
+                    .await
                 {
                     Ok(res) if res.exit_code == Some(0) => Outcome::Success {
                         capture: Capture {
@@ -338,7 +343,7 @@ pub async fn execute(
                             message,
                         }
                     }
-                    Err(AppError::Cancelled) => Outcome::Cancelled,
+                    Err(uxnan_workspace_engine::Error::Cancelled) => Outcome::Cancelled,
                     Err(e) => Outcome::Failure {
                         stderr: String::new(),
                         exit_code: None,
@@ -363,12 +368,8 @@ pub async fn execute(
             // Ready work that could not get a slot: somebody else's step holds
             // it. Wait for room rather than spinning on the ledger — and give
             // up on this run if the wait itself runs out.
-            match crate::budget::acquire(
-                &budget_dir(),
-                budget,
-                &format!("automation {} waiting", run.id),
-            )
-            .await
+            match crate::budget::acquire(&ledger, budget, &format!("automation {} waiting", run.id))
+                .await
             {
                 // Taken and immediately released: the point was to wait until
                 // there was room, and the dispatch above takes the real slot.
@@ -437,57 +438,16 @@ pub fn previous_run_vars(store: &AutomationStore, automation_id: &str) -> HashMa
     vars
 }
 
-/// Run the precondition command in `cwd`, capturing everything so a skipped run
-/// can explain itself. Uses the shell so a user can write a normal one-liner.
+/// Run the precondition command in `cwd` on this machine
+/// (`uxnan_workspace_engine::precondition`).
 pub async fn run_precondition(
     command: &str,
     timeout_seconds: u32,
     cwd: &str,
 ) -> Result<super::PreconditionResult, AppError> {
-    use std::process::Stdio;
-
-    let started = Instant::now();
-    let (program, args): (&str, Vec<&str>) = if cfg!(windows) {
-        ("cmd", vec!["/C", command])
-    } else {
-        ("sh", vec!["-c", command])
-    };
-    let mut cmd = crate::winproc::command(program);
-    cmd.args(&args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    if !cwd.trim().is_empty() {
-        cmd.current_dir(cwd);
-    }
-
-    let child = cmd
-        .spawn()
-        .map_err(|e| AppError::Invalid(format!("failed to run the precondition: {e}")))?;
-
-    let timeout = Duration::from_secs(u64::from(timeout_seconds));
-    match tokio::time::timeout(timeout, child.wait_with_output()).await {
-        Ok(res) => {
-            let output = res.map_err(|e| AppError::Invalid(e.to_string()))?;
-            Ok(super::PreconditionResult {
-                command: command.to_string(),
-                exit_code: output.status.code(),
-                timed_out: false,
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                duration_ms: started.elapsed().as_millis() as u64,
-            })
-        }
-        Err(_) => Ok(super::PreconditionResult {
-            command: command.to_string(),
-            exit_code: None,
-            timed_out: true,
-            stdout: String::new(),
-            stderr: String::new(),
-            duration_ms: started.elapsed().as_millis() as u64,
-        }),
-    }
+    uxnan_workspace_engine::precondition::run(command, timeout_seconds, cwd)
+        .await
+        .map_err(AppError::from)
 }
 
 #[cfg(test)]
@@ -519,6 +479,7 @@ mod tests {
             enabled: true,
             tags: vec![],
             working_dir: "C:/work".into(),
+            target: Default::default(),
             worktree_per_run: false,
             base_branch: None,
             schedule: Schedule::DailyAt { hour: 3, minute: 0 },
@@ -740,17 +701,5 @@ mod tests {
         let vars = build_vars(&run, &prev, "C:/work");
         let r = template::resolve("continue from {{prev.s1.output}}", &vars);
         assert_eq!(r.text, "continue from YESTERDAY");
-    }
-
-    #[tokio::test]
-    async fn precondition_reports_a_non_zero_exit() {
-        // A real subprocess: the gate must distinguish "go" from "don't".
-        let ok = run_precondition("exit 0", 10, "").await.unwrap();
-        assert!(ok.passed());
-
-        let no = run_precondition("exit 3", 10, "").await.unwrap();
-        assert!(!no.passed());
-        assert_eq!(no.exit_code, Some(3));
-        assert!(!no.timed_out);
     }
 }

@@ -121,8 +121,12 @@ export function groupAutomations(
         break;
       }
       case "folder": {
+        // The folder **on its machine**: one path names a different folder on
+        // every machine, so a host's never shares a group with this one's.
         const label = folderLabel(a.workingDir) || opts.unassignedKey;
-        push(a.workingDir || opts.unassignedKey, label, a);
+        const target = a.target ?? "local";
+        const key = a.workingDir ? `${target}\u0000${a.workingDir}` : opts.unassignedKey;
+        push(key, label, a);
         break;
       }
       case "status": {

@@ -16,6 +16,10 @@ pub enum Error {
     Json(serde_json::Error),
     /// git refused or failed, in its own words.
     Git(String),
+    /// An agent CLI could not be run, or failed, in words a person can act on.
+    Agent(String),
+    /// The run was cancelled by whoever started it.
+    Cancelled,
 }
 
 impl fmt::Display for Error {
@@ -27,6 +31,8 @@ impl fmt::Display for Error {
             Error::Invalid(m) => write!(f, "{m}"),
             Error::Json(e) => write!(f, "{e}"),
             Error::Git(m) => write!(f, "git error: {m}"),
+            Error::Agent(m) => write!(f, "agent error: {m}"),
+            Error::Cancelled => write!(f, "cancelled"),
         }
     }
 }

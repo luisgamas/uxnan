@@ -177,7 +177,7 @@ describe('isNonShipping', () => {
       'uxnandesktop/src-tauri/Cargo.toml',
       // Rust keeps its unit tests inline under `#[cfg(test)]`, so a file with
       // tests in it is still a source file. Erring toward releasing is correct.
-      'uxnandesktop/src-tauri/src/agentcli.rs',
+      'uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs',
       // `bridge/package.json` lists `scripts` in its `files`, so these are
       // published to npm. A blanket `scripts/` rule would drop real shipped
       // content — which is why the desktop's exception is per-component.

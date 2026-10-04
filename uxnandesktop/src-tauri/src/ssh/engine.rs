@@ -737,6 +737,8 @@ impl HostEngine {
                 uxnan_host_protocol::ErrorCode::Git => AppError::Git(message),
                 uxnan_host_protocol::ErrorCode::Io => AppError::Io(std::io::Error::other(message)),
                 uxnan_host_protocol::ErrorCode::SpawnFailed => AppError::Pty(message),
+                uxnan_host_protocol::ErrorCode::Agent => AppError::Agent(message),
+                uxnan_host_protocol::ErrorCode::Cancelled => AppError::Cancelled,
             }),
             Ok(Err(_)) => Err(AppError::NotConnected("the host engine".to_string())),
             Err(_) => {
@@ -980,6 +982,80 @@ impl HostEngine {
         match self.request(Call::Cleanup(call), None).await? {
             Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
             other => Err(unexpected("a cleanup answer", &other)),
+        }
+    }
+
+    /// Run an agent CLI headless on the host (`agentrun`, there): the step of
+    /// an orchestration, an automation, a commit draft on a host project. The
+    /// call lasts as long as the run, plus a margin; without a timeout of its
+    /// own it may take hours, as a step can here.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn agent_run(
+        &self,
+        agent: &str,
+        model: &str,
+        prompt: &str,
+        cwd: &str,
+        timeout_ms: Option<u64>,
+        autonomous: bool,
+        extra: &[String],
+        job: Option<&str>,
+        memory_limit_mb: u64,
+    ) -> Result<uxnan_workspace_engine::agentrun::HeadlessResult, AppError> {
+        self.needs(16, "run an agent headless")?;
+        let deadline = Duration::from_millis(timeout_ms.unwrap_or(12 * 60 * 60 * 1000))
+            + Duration::from_secs(60);
+        let call = Call::AgentRun {
+            agent: agent.to_string(),
+            model: model.to_string(),
+            prompt: prompt.to_string(),
+            cwd: cwd.to_string(),
+            timeout_ms,
+            autonomous,
+            extra: extra.to_vec(),
+            job: job.map(str::to_string),
+            memory_limit_mb,
+        };
+        match self.request_within(call, None, deadline).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a run's result", &other)),
+        }
+    }
+
+    /// Run an automation's gate on the host, in `cwd`, in that machine's shell.
+    pub async fn precondition(
+        &self,
+        command: &str,
+        timeout_seconds: u32,
+        cwd: &str,
+    ) -> Result<uxnan_workspace_engine::precondition::PreconditionResult, AppError> {
+        self.needs(16, "run an automation's gate")?;
+        let deadline = Duration::from_secs(u64::from(timeout_seconds)) + Duration::from_secs(60);
+        let call = Call::Precondition {
+            command: command.to_string(),
+            timeout_seconds,
+            cwd: cwd.to_string(),
+        };
+        match self.request_within(call, None, deadline).await? {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a gate's result", &other)),
+        }
+    }
+
+    /// End a headless run on the host by its name; whether one was running.
+    pub async fn agent_cancel(&self, job: &str) -> Result<bool, AppError> {
+        self.needs(16, "cancel a run")?;
+        match self
+            .request(
+                Call::AgentCancel {
+                    job: job.to_string(),
+                },
+                None,
+            )
+            .await?
+        {
+            Reply::Value { value } => Ok(value.as_bool().unwrap_or(false)),
+            other => Err(unexpected("a cancel answer", &other)),
         }
     }
 

@@ -13,16 +13,12 @@ path = "src/main.rs"
 
 [dependencies]
 uxnan-control-protocol = { path = "../control-protocol" }
+uxnan-control-client = { path = "../control-client" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # Argument parsing. `derive` for the declarative command tree; no color/suggest
 # features — the output contract is plain text on stdout, errors on stderr.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
-# Only to confirm that the process the discovery file names is still the one
-# that wrote it (pid + start time). The same crate the app reads its own start
-# time with, so both sides look at the same clock; `system` is its smallest
-# feature set.
-sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 # Decodes a browser page screenshot (`browser screenshot --out`) from the
 # base64 the protocol carries it in. Already in the workspace through the app;
 # pure Rust, MIT/Apache-2.0.

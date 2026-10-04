@@ -58,8 +58,10 @@ class ConversationTitles {
     /** What the session's terminal shows — the only source every agent has. */
     transcript: string;
     cwd: string;
+    /** The machine the session runs on (absent: this one). */
+    target?: string;
   }): Promise<void> {
-    const { tabId, agentId, transcript, cwd } = input;
+    const { tabId, agentId, transcript, cwd, target } = input;
     if (!tabId || !agentId || !cwd) return;
     if (!transcript.trim()) return;
     // Never overlap an in-flight attempt, never re-name a named session, and
@@ -71,7 +73,7 @@ class ConversationTitles {
     this.attempts.set(tabId, 'pending');
     this.tries.set(tabId, (this.tries.get(tabId) ?? 0) + 1);
     try {
-      const title = await generateConversationTitle(agentId, transcript, cwd);
+      const title = await generateConversationTitle(agentId, transcript, cwd, target);
       if (title.trim()) this.titles[tabId] = title.trim();
     } catch {
       // No credit, CLI missing, timeout — the session keeps its old label, and

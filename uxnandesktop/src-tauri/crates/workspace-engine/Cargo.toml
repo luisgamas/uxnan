@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 # Reading and writing project files, and searching them (`fs`): the same crates
 # and versions the app used for it.
-tokio = { version = "1", features = ["fs", "rt", "io-util", "process", "time", "macros"] }
+tokio = { version = "1", features = ["fs", "rt", "io-util", "process", "time", "macros", "sync"] }
 ignore = "0.4"
 globset = "0.4"
 regex = "1"

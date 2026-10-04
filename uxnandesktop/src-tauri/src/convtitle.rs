@@ -141,34 +141,71 @@ pub fn sanitize_title(raw: &str) -> Option<String> {
     Some(title)
 }
 
-/// Name a conversation from its opening exchange, using [`agent_id`]'s own CLI.
+/// Name a conversation from its opening exchange, using [`agent_id`]'s own CLI
+/// on this machine.
 ///
 /// Best-effort by contract: a missing CLI, no credit or a timeout returns an
 /// error the caller is expected to ignore, leaving the session's existing label
 /// alone. Naming must never disturb a session that is otherwise working.
 pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<String, AppError> {
-    if transcript.trim().is_empty() {
-        return Err(AppError::Invalid("nothing to name yet".to_string()));
-    }
-    if agentcli::resolve(agent_id).is_none() {
+    if !transcript.trim().is_empty() && agentcli::resolve(agent_id).is_none() {
         return Err(AppError::Agent(format!(
             "agent '{agent_id}' is not installed"
         )));
     }
+    let cwd = cwd.to_string();
+    generate_with(agent_id, transcript, |run| async move {
+        agentrun::run_headless(
+            &run.agent,
+            &run.model,
+            &run.prompt,
+            &cwd,
+            Some(run.timeout_ms),
+            // A title is read-only work: never let it act on the workspace.
+            false,
+            &run.extra,
+            None,
+            0,
+        )
+        .await
+        .map_err(AppError::from)
+    })
+    .await
+}
 
-    let prompt = build_title_prompt(transcript);
-    let result = agentrun::run_headless(
-        agent_id,
-        title_model(agent_id),
-        &prompt,
-        cwd,
-        Some(TITLE_TIMEOUT.as_millis() as u64),
-        // A title is read-only work: never let it act on the workspace.
-        false,
-        &title_run_args(agent_id),
-        None,
-        0,
-    )
+/// The one-shot run a title takes, for whichever machine runs it: the
+/// session's own agent, on its cheapest model, leaving no session behind.
+pub struct TitleRun {
+    pub agent: String,
+    pub model: String,
+    pub prompt: String,
+    pub timeout_ms: u64,
+    pub extra: Vec<String>,
+}
+
+/// Name a conversation with `run` doing the run — this machine's runner
+/// ([`generate`]), or a host's engine for a session that lives there, where its
+/// agent is (`HostEngine::agent_run`).
+pub async fn generate_with<F, Fut>(
+    agent_id: &str,
+    transcript: &str,
+    run: F,
+) -> Result<String, AppError>
+where
+    F: FnOnce(TitleRun) -> Fut,
+    Fut: std::future::Future<Output = Result<agentrun::HeadlessResult, AppError>>,
+{
+    if transcript.trim().is_empty() {
+        return Err(AppError::Invalid("nothing to name yet".to_string()));
+    }
+
+    let result = run(TitleRun {
+        agent: agent_id.to_string(),
+        model: title_model(agent_id).to_string(),
+        prompt: build_title_prompt(transcript),
+        timeout_ms: TITLE_TIMEOUT.as_millis() as u64,
+        extra: title_run_args(agent_id),
+    })
     .await
     .inspect_err(|e| fail(agent_id, &format!("could not run the CLI: {e}")))?;
 
@@ -393,5 +430,31 @@ agent: the token expired",
         let c = args.iter().position(|a| a == "-c").unwrap();
         assert_eq!(args[c + 1], "model_reasoning_effort=low");
         assert!(c < args.len() - 1);
+    }
+
+    #[tokio::test]
+    async fn a_title_comes_from_whichever_machine_runs_it() {
+        let mut asked = None;
+        let title = generate_with("codex", "user: fix the login bug", |run| {
+            asked = Some((run.agent.clone(), run.model.clone(), run.extra.clone()));
+            async {
+                Ok(agentrun::HeadlessResult {
+                    stdout: "\"Fix the login bug\"\n".into(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                    stdout_bytes: 20,
+                    stderr_bytes: 0,
+                    truncated: false,
+                    peak_memory_mb: 0,
+                })
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(title, "Fix the login bug");
+        let (agent, model, extra) = asked.unwrap();
+        assert_eq!(agent, "codex");
+        assert_eq!(model, title_model("codex"));
+        assert_eq!(extra, title_run_args("codex"));
     }
 }

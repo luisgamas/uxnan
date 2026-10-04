@@ -310,6 +310,7 @@ mod tests {
             enabled: true,
             tags: vec!["triage".into()],
             working_dir: "C:/work".into(),
+            target: Default::default(),
             worktree_per_run: false,
             base_branch: None,
             schedule: Schedule::DailyAt { hour: 3, minute: 0 },

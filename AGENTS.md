@@ -479,7 +479,7 @@ Three audiences, three homes — keep them separate so none of them rots:
 
   | Agent | Bridge (feeds the phone) | Desktop (feeds AI commit / PR body) |
   |---|---|---|
-  | Claude Code | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` |
+  | Claude Code | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` |
 
   Edit **both halves in the same change set** (one alone leaves the other app a
   version behind), same ids, labels and order — newest/most capable first.

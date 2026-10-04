@@ -185,6 +185,9 @@ pub struct AppState {
     /// Where the keys of host bridges' sealed secrets are kept (`hostkeys`):
     /// the OS keychain — memory in tests, which never touch the real one.
     pub host_keys: Arc<dyn crate::hostkeys::KeyStore>,
+    /// Headless runs in flight on a host, by the caller's name for them: the
+    /// host a cancel must reach.
+    pub host_jobs: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// Receipts of the control surface's `create` entries, by idempotency key
     /// (`control::receipts`): a retried call gets its first answer back.
     pub control_receipts: crate::control::receipts::Receipts,
@@ -243,6 +246,7 @@ impl AppState {
             host_bridges: crate::bridgeclient::hosts::HostBridges::new(
                 crate::bridgeclient::client_id_for(&data_dir),
             ),
+            host_jobs: Arc::default(),
             host_keys: if cfg!(test) {
                 Arc::new(crate::hostkeys::MemoryKeys::default())
             } else {

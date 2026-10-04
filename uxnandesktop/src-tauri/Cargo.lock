@@ -6949,6 +6949,15 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "uxnan-control-client",
+ "uxnan-control-protocol",
+]
+
+[[package]]
+name = "uxnan-control-client"
+version = "0.0.75"
+dependencies = [
+ "serde_json",
  "sysinfo",
  "uxnan-control-protocol",
 ]
@@ -7011,6 +7020,7 @@ dependencies = [
  "toml_edit 0.22.27",
  "trash",
  "uuid",
+ "uxnan-control-client",
  "uxnan-control-protocol",
  "uxnan-host-protocol",
  "uxnan-workspace-engine",

@@ -5177,11 +5177,11 @@ pub async fn git_pull(
 /// when nothing is staged, or when the agent fails / times out. Returns the
 /// message (subject on the first line, optional body after a blank line).
 ///
-/// On a host the diff is read **there** and the agent runs **here**: the CLI
-/// and its credentials are this machine's, and requiring one on every host
-/// would put the feature behind an install nobody asked for. The agent then
-/// stands in the user's home, since the project is not on this machine — the
-/// whole diff is in the prompt (`aicommit::from_diff`).
+/// On a host the diff is read **there**, and the agent runs there too, in the
+/// worktree (`HostEngine::agent_run`) — the same run it gets locally, with the
+/// host's own CLI and sign-in. When the configured agent is not installed on
+/// that host the draft is made **here** instead (`aicommit::for_host`), so the
+/// feature never waits on an install on every host.
 #[tauri::command]
 pub async fn git_generate_commit_message(
     app: AppHandle,
@@ -5201,15 +5201,38 @@ pub async fn git_generate_commit_message(
                 )));
             }
             let diff: String = engine
-                .git(GitCall::StagedDiff { path })
+                .git(GitCall::StagedDiff { path: path.clone() })
                 .await
                 .map_err(CommandError::from)?;
             let home = crate::agent_hooks::home_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| ".".to_string());
-            crate::aicommit::from_diff(&diff, &cfg, &home)
-                .await
-                .map_err(CommandError::from)
+            crate::aicommit::for_host(&diff, &cfg, &home, |run| async move {
+                match engine
+                    .agent_run(
+                        &run.agent,
+                        &run.model,
+                        &run.prompt,
+                        &path,
+                        Some(run.timeout_ms),
+                        false,
+                        &run.extra,
+                        None,
+                        0,
+                    )
+                    .await
+                {
+                    Ok(result) => Ok(Some(result)),
+                    Err(AppError::Agent(message))
+                        if crate::agentrun::is_not_installed(&message) =>
+                    {
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                }
+            })
+            .await
+            .map_err(CommandError::from)
         }
     }
 }
@@ -5228,13 +5251,39 @@ pub async fn git_generate_commit_message(
 /// session that is otherwise working.
 #[tauri::command]
 pub async fn generate_conversation_title(
+    app: AppHandle,
+    state: State<'_, AppState>,
     agent_id: String,
     transcript: String,
     cwd: String,
+    target: Option<String>,
 ) -> Result<String, CommandError> {
-    crate::convtitle::generate(&agent_id, &transcript, &cwd)
-        .await
-        .map_err(CommandError::from)
+    // A host's session is named by that host's agent, in its folder — the CLI
+    // the session runs is that machine's, and its folder is not one here.
+    match machine_for(&app, &state, target.as_deref(), None).await? {
+        Machine::Here => crate::convtitle::generate(&agent_id, &transcript, &cwd)
+            .await
+            .map_err(CommandError::from),
+        Machine::Host(engine) => {
+            crate::convtitle::generate_with(&agent_id, &transcript, |run| async move {
+                engine
+                    .agent_run(
+                        &run.agent,
+                        &run.model,
+                        &run.prompt,
+                        &cwd,
+                        Some(run.timeout_ms),
+                        false,
+                        &run.extra,
+                        None,
+                        0,
+                    )
+                    .await
+            })
+            .await
+            .map_err(CommandError::from)
+        }
+    }
 }
 
 /// Which headlessly-drivable agents ([`crate::agentcli::SUPPORTED`]) are
@@ -5269,6 +5318,7 @@ pub async fn ai_commit_models(
 /// a spawn failure / timeout / unsupported agent — a non-zero exit comes back in
 /// `exitCode` so the engine can gate on it.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn agent_run_headless(
     agent: String,
     model: String,
@@ -5281,7 +5331,48 @@ pub async fn agent_run_headless(
     // (`agent_cancel_job`). The orchestration engine names every step it
     // dispatches; a caller that passes none simply cannot cancel.
     job_id: Option<String>,
+    // The machine `cwd` is on: a host's project runs there, by that host's
+    // engine — never here at the same path, which names another folder.
+    target: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<crate::agentrun::HeadlessResult, CommandError> {
+    if let Some(host) = target
+        .as_deref()
+        .map(TargetId::parse)
+        .transpose()
+        .map_err(CommandError::from)?
+        .and_then(|t| t.ssh_host_id().map(str::to_string))
+    {
+        let Some(engine) = connected_engine(&app, &state, &host).await else {
+            return Err(CommandError::from(AppError::NotConnected(host)));
+        };
+        if let Some(job) = &job_id {
+            state
+                .host_jobs
+                .lock()
+                .unwrap()
+                .insert(job.clone(), host.clone());
+        }
+        let limits = crate::automations::runner::limits();
+        let ran = engine
+            .agent_run(
+                &agent,
+                &model,
+                &prompt,
+                &cwd,
+                timeout_ms,
+                autonomous.unwrap_or(false),
+                &[],
+                job_id.as_deref(),
+                limits.memory_ceiling_mb,
+            )
+            .await;
+        if let Some(job) = &job_id {
+            state.host_jobs.lock().unwrap().remove(job);
+        }
+        return ran.map_err(CommandError::from);
+    }
     // The app's steps count against the same budget every other process
     // shares, or "four at a time" would mean four *here* and four in each
     // automation running beside it. The slot is held for exactly as long as
@@ -5317,7 +5408,22 @@ pub async fn agent_run_headless(
 /// run by that name was in flight; a cancel that arrives after the run
 /// finished is a race, not an error.
 #[tauri::command]
-pub async fn agent_cancel_job(job_id: String) -> Result<bool, CommandError> {
+pub async fn agent_cancel_job(
+    job_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, CommandError> {
+    // A run on a host is ended there, by the engine that started it.
+    let host = state.host_jobs.lock().unwrap().get(&job_id).cloned();
+    if let Some(host) = host {
+        return match connected_engine(&app, &state, &host).await {
+            Some(engine) => engine
+                .agent_cancel(&job_id)
+                .await
+                .map_err(CommandError::from),
+            None => Ok(false),
+        };
+    }
     Ok(crate::agentrun::cancel(&job_id))
 }
 

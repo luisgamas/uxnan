@@ -12,6 +12,8 @@
 //! the desktop, the daemon — wires the sinks to its own transport.
 
 pub mod agent_hooks;
+pub mod agentcli;
+pub mod agentrun;
 pub mod agentstop;
 pub mod browse;
 pub mod codex_trust;
@@ -21,11 +23,13 @@ pub mod git;
 pub mod gitfast;
 pub mod mcp_launch;
 pub mod ports;
+pub mod precondition;
 pub mod procscan;
 pub mod pty;
 pub mod screen;
 pub mod transcript;
 pub mod watch;
+pub mod which;
 pub mod winproc;
 pub mod worktreeclean;
 pub mod worktreeloc;

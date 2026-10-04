@@ -2,6 +2,7 @@
   // One automation, in full: what it is, whether the OS will actually fire it,
   // and everything it has done. The run history is polled while this view is
   // open, so a run started here advances in front of you.
+  import { folderOnMachine } from "$lib/automations/agents";
   import { formatWeekdayDateClock } from "$lib/clock";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
@@ -70,7 +71,9 @@
     {#if automation.description}
       <p class={text.meta}>{automation.description}</p>
     {/if}
-    <p class={cn("font-mono", text.meta)}>{automation.workingDir}</p>
+    <p class={cn("font-mono", text.meta)}>
+      {folderOnMachine(automation.workingDir, automation.target)}
+    </p>
     {#if automation.tags.length > 0}
       <div class="flex flex-wrap gap-1.5">
         {#each automation.tags as tag (tag)}

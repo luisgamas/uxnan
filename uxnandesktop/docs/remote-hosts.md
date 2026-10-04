@@ -279,10 +279,11 @@ Select it in the left panel and:
 | **Terminals** | Open on the host, in the project's folder, in your **login** shell there (so the `PATH` a version manager writes into your profile is there too). Splits and further terminals stay there too. On a Linux, macOS or Windows host they live in the **host engine** (below) and outlive a dropped connection and an app restart; elsewhere they are a channel on the connection and end with it. |
 | **Files** | **Works — including saving and searching**, on a host where the **host engine** runs (below). The engine serves the project's files with the same code the app runs on its own disk, so the tree lists them (git-ignored files dimmed, as here), opens and previews them (images and PDFs up to 25 MiB), saves them (atomically, keeping the file's permissions), and **creates, renames, duplicates and deletes** them — on that machine, and fenced like every other change: refused outright if the host or its connection has moved on, since the same absolute path usually exists on both machines. **Deleting there is permanent**: a host has no trash, so the dialog promises what will actually happen instead of offering to "move to trash". **Searching** by file name and by content walks the project *there*, following the same `.gitignore` rules as here, whether or not it is a repository — the results come back, the files never do. A host where the engine cannot run has no project files, and the panel says so; its terminals still work. The menu items only this machine can carry out (reveal in the file manager, open with a local editor, add as a local project) are not offered for a host's entry. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up. |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by the host engine running git *there*. If the host cannot answer (no engine, no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
-| **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run by the host engine with git *on the host*, the same git code the app runs here. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. **Push and pull use your forwarded agent**: with `ForwardAgent` on, the engine follows the agent of your latest connection, so a push over SSH signs with the keys you hold here. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** reads the staged diff on the host and runs your agent here, where its CLI and sign-in are. |
+| **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run by the host engine with git *on the host*, the same git code the app runs here. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. **Push and pull use your forwarded agent**: with `ForwardAgent` on, the engine follows the agent of your latest connection, so a push over SSH signs with the keys you hold here. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** is written **on the host**, by the agent you picked in Settings → AI commit as that machine has it installed, standing in the worktree; when the host lacks that agent, it is written here from the staged diff read there. |
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
 | **Worktrees** | **Works.** A project on a host lists its worktrees, creates new ones (a new or existing branch, a base, an optional folder of your own) and removes them with the same optional branch cleanup — all done by the host engine with the same placement rules as here. They land under the host's own `~/uxnan/worktrees`; the global custom root in Settings is a folder on *this* machine, so on a host only a project's own root applies. Creating and removing are refused while the host is disconnected. |
 | **Chat** | **Works when the host runs its own bridge.** If the account on the host runs `uxnan-bridge`, the desktop links to it through the host engine — no port is opened on either machine — and the project offers chats like a local one: they run **on that bridge**, with the host's agents and sign-ins, keep going there when this window closes, and are listed apart from this machine's. A host without one is not offered a chat; its page installs it (see *A host's bridge* below). "Continue as chat" on a host terminal continues its agent's session on that bridge too. |
+| **Headless work** | **Runs on the host**, by its engine, with the same code that runs it here and the host's own agent CLIs and sign-ins: an orchestration's **headless steps** (and the tasks a coordinator agent adds), a conversation's **generated name**, and **automations** — see *Automations on a host* below. Nothing headless about a host's project ever runs on this machine's folder of the same path. |
 | **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
 | **Automatic refresh** | **Yes, on a host with the engine (Linux, macOS, Windows).** The host engine watches the project folder **there** and says what changed, so the file tree, the open tabs and Changes follow an agent working in that folder or a `git` command in a terminal there — a commit or a stage included — with nothing asked of the host and nothing polled. Changes waits for a burst (a build, a checkout) to settle and reads the host once. Without the engine (a host it cannot run on), only what uxnan itself does refreshes by itself — discarding a change or a hunk, pulling — and the rest refreshes when you open a panel, when you act, and on the refresh button: polling the host every 3 seconds at about two seconds a command is not something to do to someone's machine. |
@@ -513,6 +514,25 @@ a host has no command at all, for the same reason. The agents uxnan launches do
 person's shell's to ask about (see
 [the control surface](./control-api.md) → *Hosts*).
 
+### Automations on a host
+
+An automation can work in a folder on a host: pick the **Machine** in its editor
+(shown once you have a host), then the folder — the browse button lists that
+host's folders while it is connected. An agent working in a host's project can
+also propose one there (`automation/propose`). A run on a host does everything
+there, through its engine: the folder check, the **precondition** (in that
+machine's shell), the **per-run worktree** (under the host's own
+`~/uxnan/worktrees`) and every **step**, with the agents installed there — the
+editor offers those, not this machine's. Its history is kept here, with the
+host's name next to the folder.
+
+**Uxnan has to be open and connected to the host when it runs.** The schedule
+still lives in this computer's OS scheduler, and the run it starts has no SSH
+connection of its own, so it hands the run to the open app, which holds the
+connection. With the app closed, or the host not connected, the run is recorded
+as unavailable, with the reason. "Run now" runs it straight away through the
+same connection.
+
 ## Not planned
 
 - **Containers and devcontainers** as a feature of their own. An environment you
@@ -525,8 +545,9 @@ person's shell's to ask about (see
 
 ## What is coming
 
-In order: handing a host agent's session over to a chat (the host's own
-bridge), and reaching a host through the system's own `ssh`.
+Reaching a host through the system's own `ssh` — for the configurations the
+built-in client cannot reproduce (GSSAPI/Kerberos, FIDO2 security keys, a
+`ProxyCommand` of your own).
 
 Deliberately *not* coming: any mode that skips host-key verification.
 

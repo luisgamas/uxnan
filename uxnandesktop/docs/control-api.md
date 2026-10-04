@@ -557,7 +557,14 @@ A few things a caller from outside should know:
 
 The console client. A separate binary (`src-tauri/crates/uxnan-cli`), built
 with the app's workspace, that depends on the protocol crate and nothing of
-Tauri. Named `uxnan-cli` on purpose, so it is never mistaken for the app.
+Tauri. Named `uxnan-cli` on purpose, so it is never mistaken for the app. How
+it finds the running app and calls it — the discovery file, the private-file
+and live-process checks, one HTTP `POST` — is its own small crate,
+`uxnan-control-client` (`src-tauri/crates/control-client`), which the app's
+automation runner uses too: a scheduled run of an automation on a host is
+handed to the open app on a route of its own (`/automations/v1/handoff`,
+control token only), which is **not** a catalog entry and starts nothing but a
+run the person already scheduled (`docs/automations.md` → *On a host*).
 
 ```
 uxnan-cli status

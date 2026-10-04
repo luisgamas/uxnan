@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,083 Rust tests (716 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 37 in `uxnan-host` (27 against the daemon itself) + 45
-integration), of which 52 are ignored probes that need something real to talk to
-(44 live SSH probes — 41 against a real `sshd` and 3 against a **Linux host in a
-container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,838 frontend Vitest tests across two
+`docs/chat.md`). 1,094 Rust tests (679 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (29 against the daemon itself) + 45
+integration), of which 53 are ignored probes that need something real to talk to
+(46 live SSH probes — 3 of them against a **Linux host in a
+container**, `npm run test:ssh:linux` — and 7 supervised live
+GitHub tests) + 1,849 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -522,7 +522,7 @@ machinery or measurement.
       and plan 023 forbids calling a limit hard until enforcement *and*
       descendant containment are proven on each platform, so this belongs with
       the platform matrix (005). Until then the UI and the docs must keep
-      saying advisory. `FOR-DEV:` marker in `src-tauri/src/agentrun.rs`
+      saying advisory. `FOR-DEV:` marker in `src-tauri/crates/workspace-engine/src/agentrun.rs`
       (`watch_memory`).
 - [ ] **Ungoverned recurring work, declared:** the 1 s agent-detection tick and
       the OSC title layer are deliberately outside the policy in v1 — pacing
@@ -561,9 +561,10 @@ Real gaps, small and scoped. Each has a `FOR-DEV:` marker at its site.
   unattended run should raise an OS notification. The runner has no Tauri app handle,
   so it needs its own per-OS path (`notify.rs` is webview-side). Until then a failure
   is visible in the app but nowhere else.
-- ☐ **Garbage-collect per-run worktrees** (`automations/runner.rs`) —
+- ☐ **Garbage-collect per-run worktrees** (`automations/place.rs`) —
   `worktree_per_run` leaves each run's worktree in place on purpose, because you want
-  to inspect what an unattended run did. Nothing removes them yet, so they accumulate;
+  to inspect what an unattended run did — next to the store here, under the host's
+  managed worktree root on a host. Nothing removes them yet, so they accumulate;
   pruning a run record should offer to remove its worktree, and the UI should show how
   much disk they hold.
 
@@ -1147,24 +1148,15 @@ already written for the day phase 2 below lands — nothing to relax then.
          the session; the log says so). `ssh/pty.rs` **stays**, decided
          2026-10-03: it is the terminal for a host the engine cannot run on
          (no build, `noexec` home) — a fallback, never a parallel path.
-      3. **What an agent on a host still lacks.** Its state is precise (the
-         engine wires the reporters there and forwards each report — `02g`
-         §5.16) and the engine can close it (`StopAgent`, the same `agentstop`
-         run there), but: handing its session to a chat needs a chat for that
-         host — its sessions are on the host, out of this machine's bridge's
-         sight (`terminalSessions.svelte.ts` → `isRemote`); that is the host's
-         own bridge, plan phase F8. (Its tools — the control surface's MCP
-         server and the integrated browser — reach it through the engine.)
-      4. **A host's own bridge (F8) — what is still owed.** Built and proven
-         live on a real Linux host: the link (`02g` §5.18), install and
-         supervision by the engine, secrets that survive a reboot (sealed with a
-         key this app keeps in the OS keychain, `02g` §3), the host page, the relay (`relay/admitHost`),
-         pairing, chats for host projects, the terminal → chat hand-off with a
-         real Claude Code (`a_terminal_session_continues_as_a_chat_on_the_hosts_bridge_with_this_apps_tools`),
-         and this app's tools for that bridge's agents through the engine. Owed:
-         (a) headless work on the host on the host
-         (orchestration, automations, the AI commit draft) asked of that
-         bridge.
+      3. **A host's automations while this app is closed.** A host's
+         automation runs through the window that holds the connection: the
+         OS-scheduled runner hands the run over (`automations/handoff.rs`),
+         and with the app closed or the host not connected the run is
+         recorded as unavailable, saying why (`02f` → *On a host*). Running it
+         with this machine off needs something **on the host** that keeps
+         time — its engine scheduling the run, or the host's own bridge —
+         which is a decision for the maintainer, not a fix. `FOR-DEV:` marker
+         in `automations/handoff.rs`.
 
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
       any of them is a stop-and-rethink, not a workaround.
@@ -1233,12 +1225,26 @@ do there, git (`02g` §5.13); **a dropped session announcing
 itself** instead of waiting to be asked (`02g` §5.10f); **a channel budget** that
 learns each host's own limit instead of assuming one (`02g` §5.10g); **image
 diffs and the AI commit draft** — the last two panel pieces, with the image bytes
-travelling as bytes and the agent running here on a diff read there (`02g`
+travelling as bytes and the draft written by the host's own agent in the
+worktree, or here on the diff read there when the host lacks it (`02g`
 §5.10h); a keepalive so a quiet host is not reaped
 and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
 startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
 `architecture/02g-remote-hosts.md` §5.11.
+
+**Landed — plan phase F8 (a host's own bridge, and headless work there).** A
+host's own bridge, installed and kept running by its engine, with secrets that
+survive a reboot (sealed under a key this app keeps in the OS keychain), its
+page, the relay (`relay/admitHost`), pairing a phone, chats for host projects,
+the terminal → chat hand-off with a real Claude Code, and this app's tools for
+that bridge's agents (`02g` §5.18). **Headless work runs on the host by its
+engine** (protocol 16 — `AgentRun`, `AgentCancel`, `Precondition`): an
+orchestration's headless steps and coordinator tasks, the AI commit draft, a
+conversation's generated name, and automations — their gate, their per-run
+worktree and every step — with the same `agentrun` and `precondition` code that
+runs them here (`02g` §5.19). Proven live on a real Linux host with its own
+Claude Code (`a_headless_run_and_a_gate_happen_on_the_host`).
 
 **Landed — phase 4 (ports).** A host's ports are known two ways, on purpose:
 what a terminal **announces** is read from the output on its way to the screen
@@ -1752,7 +1758,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,083 Rust + 1,838 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,094 Rust + 1,849 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

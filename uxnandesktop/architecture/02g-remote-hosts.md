@@ -1281,15 +1281,15 @@ de `git show` con sus bytes intactos; el del working tree, por SFTP. Verificado
 contra el contenedor con bytes que **no** son UTF-8 validos, comparando byte a
 byte.
 
-**Borrador de commit con IA.** El diff se lee **alli** y el agente corre
-**aqui**: el CLI y su sesion son de esta maquina, y exigir un agente instalado en
-cada host pondria la funcion detras de una instalacion que nadie pidio.
-`aicommit::from_diff` separa "de donde sale el diff" de "quien lo resume". El
-agente arranca en el home del usuario, porque el proyecto no existe en esta
-maquina y el diff entero va en el prompt — el directorio es solo donde el proceso
-se planta. Un CLI que exija confiar en una carpeta antes de hacer nada fallara
-ahi en vez de colgarse (la ejecucion esta acotada por `GENERATE_TIMEOUT`) y el
-boton lo dice.
+**Borrador de commit con IA.** El diff se lee **alli** y el borrador lo escribe
+**el agente del host**, de pie en el worktree (`HostEngine::agent_run`, §5.19):
+el agente elegido en Ajustes → AI commit tal como esa maquina lo tiene, con su
+sesion, igual que corre aqui en un proyecto local. Si el host no tiene ese
+agente —el motor lo dice con las palabras de `agentrun::is_not_installed`— el
+borrador se escribe **aqui** sobre el diff leido alli, de pie en el home del
+usuario (el diff entero va en el prompt), para que la funcion nunca espere una
+instalacion en cada host. `aicommit::for_host` separa "quien lo escribe" del
+resto; la ejecucion esta acotada por `GENERATE_TIMEOUT` en ambos casos.
 
 ### Lo que hacemos nosotros no necesita watcher
 
@@ -1797,10 +1797,9 @@ motor e imprimio la pestana con la que se le respondio.
 
 **Pendiente** (`FOR-DEV.md` → *Remote hosts*): la primera release que compile y
 empaquete los binarios del host; Windows con PowerShell como `DefaultShell` y ARM64
-sin probar en vivo;
-pasar la sesion de un agente del host a un chat (necesita el bridge del host,
-F8; el motor ya cierra el agente). Las filas del host en Ajustes → Hooks y los
-ficheros, git y busqueda servidos por el motor ya estan hechos (§5.10–§5.10i).
+sin probar en vivo. Pasar la sesion de un agente del host a un chat (§5.18), las
+filas del host en Ajustes → Hooks, los ficheros, git y busqueda servidos por el
+motor (§5.10–§5.10i) y el trabajo headless (§5.19) ya estan hechos.
 
 ## 5.17 La pagina del host, el doctor y el modo sin conexion — IMPLEMENTADO (F7)
 
@@ -1849,13 +1848,13 @@ medida costaria justo ese `exec`—; queda anotado en `FOR-DEV.md`. Agrupar los
 proyectos por host en la barra lateral queda para un posible rediseño del panel
 izquierdo, a decidir por el mantenedor.
 
-## 5.18 El bridge del host — ENLAZADO (F8, primera parte)
+## 5.18 El bridge del host — IMPLEMENTADO (F8)
 
-**Un dueño por capacidad.** Las conversaciones, el trabajo headless y el
-telefono son del bridge; en un host, del **bridge del host**: el mismo
-`uxnan-bridge`, instalado en esa cuenta. El desktop le habla igual que al suyo,
-por el canal de control local (`02a` §5.8.15), y no hay un segundo runner en el
-motor.
+**Un dueño por capacidad.** Las conversaciones y el telefono son del bridge;
+en un host, del **bridge del host**: el mismo `uxnan-bridge`, instalado en esa
+cuenta. El desktop le habla igual que al suyo, por el canal de control local
+(`02a` §5.8.15). El trabajo headless **no** es del bridge ni aqui ni alli: es
+del motor de trabajo, y en un host lo hace su motor (§5.19).
 
 **Como se llega, sin abrir ningun puerto** (`ssh/bridge.rs`):
 
@@ -1970,8 +1969,54 @@ la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
 (`BridgeDialog` con su `target`; `bridge_pairing_qr` rechaza un QR sin relay ni
 LAN).
 
-**Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-y el trabajo headless en el host.
+## 5.19 El trabajo headless en el host — IMPLEMENTADO (F8, por el motor)
+
+**Lo hace el motor del host, no su bridge** — una desviacion deliberada del plan,
+que se lo pedia al bridge del host. La razon es la regla "un motor, dos
+lugares": aqui, el trabajo headless (pasos de orquestacion, automatizaciones,
+borrador de commit, nombre de una conversacion) nunca fue del bridge, sino de
+`agentrun`, el runner de una sola pasada. Pedirselo al bridge del host habria
+sido un segundo runner con otro comportamiento; el motor del host enlaza el
+mismo codigo. Ademas sirve a los siete CLIs y no exige un bridge instalado en el
+host — solo el motor, que ya esta ahi para las terminales.
+
+`agentrun`, `agentcli` y `which` se mudaron al crate `uxnan-workspace-engine`
+(la app los re-exporta), junto con `precondition`, la puerta de una
+automatizacion. **Protocolo 16** del motor:
+
+- `AgentRun { agent, model, prompt, cwd, timeoutMs, autonomous, extra, job,
+  memoryLimitMb }` → el `HeadlessResult` de `agentrun::run_headless`, ejecutado
+  alli con el `PATH` de una shell de login (el motor lo fija al arrancar, como
+  ve una terminal suya). `ErrorCode::Agent` y `ErrorCode::Cancelled` traen sus
+  propias palabras.
+- `AgentCancel { job }` → si habia una ejecucion con ese nombre; termina su
+  arbol de procesos (`agentrun::cancel`).
+- `Precondition { command, timeoutSeconds, cwd }` → el `PreconditionResult` de
+  una linea de shell en esa carpeta, en la shell de esa maquina.
+
+Quien lo usa, siempre con la maquina **de la carpeta**, nunca la ruta sola:
+
+- **Orquestacion:** un paso headless cuyo worktree es de un proyecto del host
+  (`StepTarget.machine`, o el proyecto de la ruta) corre alli por
+  `agent_run_headless` con `target`; cancelarlo llega al motor (`host_jobs`).
+  `task/create` de un coordinador lleva la maquina del worktree que resolvio.
+  Un paso de un host no ocupa plazas del presupuesto de esta maquina.
+- **Automatizaciones:** `Automation.target` (`02f` → *En un host*). La misma
+  secuencia del runner (`runner::run`) con el trabajo en `Place::Host`; el
+  runner, sin conexion SSH propia, entrega la corrida a la app abierta
+  (`automations/handoff.rs`), que tiene la conexion.
+- **Borrador de commit** (§5.10h) y **nombre de una conversacion**
+  (`convtitle::generate_with`): los escribe el agente del host.
+
+**Probado** contra el daemon real (`an_automation_gate_runs_in_its_folder_on_the_host`,
+`a_headless_run_on_the_host_answers_from_its_folder_and_can_be_cancelled`) y en
+vivo contra un Linux real con su propio Claude Code
+(`a_headless_run_and_a_gate_happen_on_the_host`).
+
+**Limite honesto:** una automatizacion de un host corre mientras la app esta
+abierta y conectada a el. Correrla con esta maquina apagada pide algo **en el
+host** que lleve la hora — su motor programando la corrida, o su bridge — y es
+una decision del mantenedor (`FOR-DEV.md` → *Remote hosts*, el motor, punto 3).
 
 ## 6. Que funciona y que no en un contexto remoto
 
@@ -1986,7 +2031,8 @@ y el trabajo headless en el host.
 | Terminal | **Funciona**: en Linux, macOS y Windows vive en el motor del host y sobrevive a cortes y reinicios de la app (§5.16); en un host donde el motor no puede correr (sin build, `home` con `noexec`), canal sobre la sesion (§5.7) |
 | Ficheros | **Funciona** por el motor (§5.10): listar con ignorados marcados, abrir, **guardar** (atomico, conservando el modo, con fencing) y **previsualizar** imagenes y PDF. Sin motor: no hay ficheros de proyecto, y se dice |
 | Rama y estado git de la fila | **Funciona** por el motor (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
-| Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
+| Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes y el borrador lo escribe el agente del host en el worktree, o el de aqui si el host no lo tiene (§5.10h). |
+| Trabajo headless (orquestacion, automatizaciones, nombre de una conversacion) | **Funciona** por el motor (§5.19), con los CLIs del host. Una automatizacion de un host necesita la app abierta y conectada |
 | Buscar (nombre y contenido) | **Funciona** por el motor, con el mismo recorrido que aqui (§5.10e), sea o no un repositorio. |
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por el motor y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona** por el motor: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull (con el agente que reenvia la conexion), ejecutados en el host. Se refresca con el vigilante del motor. §5.10c |
@@ -2003,7 +2049,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH resuelta en cada conexion (§4), la ruta por bastiones y `ProxyCommand` (§4.1), registro y edicion, conexion y claves (con rotacion guiada, §5.1), autenticacion completa con segundo factor (§5.2), inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
-| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Faltan pasar su sesion a un chat (bridge del host) y Windows |
+| 2 | Estado preciso (reporters remotos) | **Hecha con el motor** (Linux, macOS): sin tunel inverso, por el canal del motor (§5.16). Su sesion pasa a un chat del bridge del host (§5.18). Falta Windows |
 | 3 | Archivos, git y worktrees remotos | **Hecha**, servida por el motor del host desde F4 del plan 037: ficheros (§5.10, leer, **guardar** y **previsualizar**), worktrees (§5.10i: listar, crear, quitar), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | **En curso** — terminales que sobreviven a la conexion y al reinicio de la app, hechas en el motor del host (§5.16); sus binarios van en cada instalador (Linux, macOS y Windows); faltan los recursos remotos |

@@ -5,6 +5,7 @@
   // the same set reads very differently depending on whether you are asking
   // "which agent does this", "what kind of task is it", "how often does it run",
   // "where does it run" or "is it healthy".
+  import { folderOnMachine } from "$lib/automations/agents";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { field, icon, iconButton, panel, row, text } from "$lib/design";
@@ -192,7 +193,7 @@
                     {a.steps.length === 1
                       ? i18n.t("automations.oneStep")
                       : i18n.t("automations.nSteps", { n: a.steps.length })}
-                    · {a.workingDir}
+                    · {folderOnMachine(a.workingDir, a.target)}
                   </span>
                 </span>
               </button>

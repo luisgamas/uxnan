@@ -169,17 +169,19 @@ pub async fn task_create<R: tauri::Runtime>(
     let title = field(params, "title")?;
     let prompt = field(params, "prompt")?;
     super::terminal::check_prompt(Some("worker"), Some(prompt))?;
-    // A headless task runs somewhere: the caller's own worktree unless told.
-    let worktree = match params.get("worktree").and_then(|v| v.as_str()) {
-        Some(sel) => Some(Resolver::new(app, caller).worktree(sel).await?.1.path),
+    // A headless task runs somewhere: the caller's own worktree unless told —
+    // and on the machine that worktree is on, which the window cannot tell
+    // from the path (one path names a different folder on every machine).
+    let place = match params.get("worktree").and_then(|v| v.as_str()) {
+        Some(sel) => Some(Resolver::new(app, caller).worktree(sel).await?),
         None => match own_terminal(caller) {
-            Some(_) => Resolver::new(app, caller)
-                .worktree("current")
-                .await
-                .ok()
-                .map(|(_, e)| e.path),
+            Some(_) => Resolver::new(app, caller).worktree("current").await.ok(),
             None => None,
         },
+    };
+    let (worktree, machine) = match place {
+        Some((project, entry)) => (Some(entry.path), Some(project.target)),
+        None => (None, None),
     };
     let answer = window(
         app,
@@ -192,6 +194,7 @@ pub async fn task_create<R: tauri::Runtime>(
             "kind": params.get("kind"),
             "agent": params.get("agent"),
             "worktree": worktree,
+            "machine": machine,
             "retry": params.get("retry"),
         }),
     )

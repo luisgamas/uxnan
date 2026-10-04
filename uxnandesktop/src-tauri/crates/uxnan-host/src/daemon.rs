@@ -638,9 +638,16 @@ impl Daemon {
             | Call::Ports
             | Call::Browse { .. }
             | Call::Cleanup(_)
-            | Call::Bridge(_) => Outcome::Error {
+            | Call::Bridge(_)
+            | Call::AgentRun { .. }
+            | Call::Precondition { .. } => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
+            },
+            Call::AgentCancel { job } => Outcome::Ok {
+                reply: Reply::Value {
+                    value: serde_json::Value::Bool(uxnan_workspace_engine::agentrun::cancel(&job)),
+                },
             },
             Call::WatchAgents { commands } => {
                 *self.agent_commands.lock().unwrap() = commands;
@@ -729,6 +736,15 @@ pub fn detach_from_session() {
 
 /// Be the daemon until there is nothing left to do.
 pub async fn serve(idle: Duration) -> std::io::Result<()> {
+    // A headless run finds its agent CLI on the PATH a login shell here has
+    // (`~/.local/bin`, npm's global bin, a version manager's), not on the bare
+    // PATH an SSH command starts with — the same PATH a terminal here sees.
+    // A test's own search path stands in for it (`UXNAN_HOST_SEARCH_PATH`).
+    if let Ok(Ok(path)) =
+        tokio::task::spawn_blocking(|| std::env::join_paths(crate::agents::search_dirs())).await
+    {
+        std::env::set_var("PATH", path);
+    }
     paths::ensure_private_dir(&paths::home())?;
     paths::ensure_private_dir(&paths::run_dir())?;
     let listener = bind().await?;
@@ -1077,6 +1093,29 @@ where
                                 let busy = daemon.terminal_folders();
                                 tokio::spawn(async move {
                                     let outcome = crate::cleanup::serve(call, busy).await;
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::AgentRun { agent, model, prompt, cwd, timeout_ms, autonomous, extra, job, memory_limit_mb } }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let ran = uxnan_workspace_engine::agentrun::run_headless(
+                                        &agent, &model, &prompt, &cwd, timeout_ms, autonomous,
+                                        &extra, job.as_deref(), memory_limit_mb,
+                                    )
+                                    .await
+                                    .and_then(|result| serde_json::to_value(result).map_err(uxnan_workspace_engine::Error::Json));
+                                    let outcome = crate::files::outcome(ran);
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Precondition { command, timeout_seconds, cwd } }) => {
+                                let answer = viewer.clone();
+                                tokio::spawn(async move {
+                                    let ran = uxnan_workspace_engine::precondition::run(&command, timeout_seconds, &cwd)
+                                        .await
+                                        .and_then(|result| serde_json::to_value(result).map_err(uxnan_workspace_engine::Error::Json));
+                                    let outcome = crate::files::outcome(ran);
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
                             }

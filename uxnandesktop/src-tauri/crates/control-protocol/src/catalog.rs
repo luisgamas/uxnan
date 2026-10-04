@@ -327,6 +327,7 @@ fn automation_view(full: bool) -> Value {
         "enabled": field("boolean", "Whether its schedule is active. A disabled automation can still be run by hand."),
         "tags": list_of(field("string", "A label."), "Free-form labels the list groups by."),
         "workingDir": field("string", "The folder a run executes in."),
+        "target": field("string", "The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it."),
         "worktreePerRun": field("boolean", "Whether every run gets its own worktree, so unattended work never touches the tree the person is using."),
         "schedule": field("object", "Its schedule: `{ kind: \"every\", n, unit, startsAt }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`."),
         "steps": list_of(result(step), "Its steps, in order."),
@@ -966,11 +967,12 @@ pub fn catalog() -> Vec<Entry> {
             method: "automation/propose",
             tool: "automation_propose",
             group: Group::Ui,
-            summary: "Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.",
+            summary: "Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach — on a host, when your project is there, and the run then happens on that host while Uxnan is connected to it; each step names an agent installed on the machine the folder is on (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.",
             params: object(
                 json!({
                     "name": { "type": "string", "description": "What to call it. At most 200 characters." },
                     "workingDir": { "type": "string", "description": "Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project." },
+                    "target": { "type": "string", "description": "The machine `workingDir` is on: `local` or a host's `ssh:<id>` (`host/list`). Only the control token names one; a launch token's is its own project's machine. Default `local`." },
                     "steps": {
                         "type": "array",
                         "description": "The steps, in order. At most 20.",
@@ -978,7 +980,7 @@ pub fn catalog() -> Vec<Entry> {
                             json!({
                                 "id": { "type": "string", "description": "Optional short id (`s1`, `s2`, …) — what `dependsOn` and `{{steps.<id>.output}}` name. Defaults to its position." },
                                 "title": { "type": "string", "description": "A short title for the step." },
-                                "agent": { "type": "string", "description": "The agent CLI to run it (`claude`, `codex`, …). It must be installed here." },
+                                "agent": { "type": "string", "description": "The agent CLI to run it (`claude`, `codex`, …). It must be installed on the machine the folder is on." },
                                 "model": { "type": "string", "description": "A model to pin; omit for the CLI's default." },
                                 "prompt": { "type": "string", "description": "What the step asks the agent to do. At most 64 KiB." },
                                 "dependsOn": { "type": "array", "items": { "type": "string" }, "description": "Step ids that must finish first; omit for a step that starts with the run." },
@@ -1292,7 +1294,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "automation/run",
             tool: "automation_run",
             group: Group::Create,
-            summary: "Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run.",
+            summary: "Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run. One that works on a host (`target`) runs there, through that host's engine, and needs the host connected — otherwise the run is recorded as unavailable, saying why.",
             params: object(
                 json!({
                     "automation": { "type": "string", "description": "The automation id from `automation/list`." },
@@ -1531,7 +1533,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "task/create",
             tool: "task_create",
             group: Group::Orchestrate,
-            summary: "Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.",
+            summary: "Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output — on the machine its worktree is on, so a host project's task runs on that host with that host's agent. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.",
             params: object(
                 json!({
                     "run": { "type": "string", "description": "The run id." },

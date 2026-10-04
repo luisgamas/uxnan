@@ -1953,3 +1953,113 @@ async fn an_agent_of_the_hosts_own_bridge_reaches_the_app_but_never_a_hook() {
     assert_eq!(status, 200);
     assert!(body.contains("tools"), "{body}");
 }
+
+/// A stand-in agent CLI on a search path of the test's own: `grok` is looked
+/// for under `HOME` (a temporary one) and then on that path, so no real CLI on
+/// this machine can ever be the one that runs.
+fn fake_agent_dir() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("grok");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nfor a in \"$@\"; do if [ -f \"$a\" ] && /usr/bin/grep -q SLOW \"$a\"; then /bin/sleep 30; fi; done\necho FAKE-ANSWER\npwd\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    dir
+}
+
+#[tokio::test]
+async fn a_headless_run_on_the_host_answers_from_its_folder_and_can_be_cancelled() {
+    let agents = fake_agent_dir();
+    let daemon = Daemon::start_searching(600, &agents.path().display().to_string());
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let folder = daemon.user_home();
+    let cwd = folder.display().to_string();
+    let run = move |prompt: &str, job: &str| Call::AgentRun {
+        agent: "grok".into(),
+        model: String::new(),
+        prompt: prompt.into(),
+        cwd: cwd.clone(),
+        timeout_ms: Some(20_000),
+        autonomous: false,
+        extra: vec![],
+        job: Some(job.into()),
+        memory_limit_mb: 0,
+    };
+
+    // A run: the CLI's answer, from the folder it was given, with its exit code.
+    let Outcome::Ok {
+        reply: Reply::Value { value },
+    } = client.call(run("say hi", "j-1")).await
+    else {
+        panic!("the run answers");
+    };
+    let stdout = value["stdout"].as_str().unwrap();
+    assert!(stdout.contains("FAKE-ANSWER"), "{value}");
+    let here = std::fs::canonicalize(&folder).unwrap();
+    assert!(
+        stdout.contains(&here.display().to_string())
+            || stdout.contains(&folder.display().to_string()),
+        "ran in its folder: {value}"
+    );
+    assert_eq!(value["exitCode"], 0);
+
+    // A slow one, cancelled by name from a second connection.
+    let (mut other, _) = Client::hello(&daemon.socket()).await;
+    let slow = tokio::spawn(async move { client.call(run("SLOW please", "j-2")).await });
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    let cancelled = other.call(Call::AgentCancel { job: "j-2".into() }).await;
+    assert!(
+        matches!(&cancelled, Outcome::Ok { reply: Reply::Value { value } } if value == &serde_json::json!(true)),
+        "{cancelled:?}"
+    );
+    let ended = tokio::time::timeout(Duration::from_secs(10), slow)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(
+            ended,
+            Outcome::Error {
+                code: uxnan_host_protocol::ErrorCode::Cancelled,
+                ..
+            }
+        ),
+        "{ended:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_automation_gate_runs_in_its_folder_on_the_host() {
+    let daemon = Daemon::start_searching(600, "/usr/bin:/bin");
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+    let folder = daemon.user_home();
+    std::fs::write(folder.join("ready.flag"), "").unwrap();
+    let gate = |command: &str| Call::Precondition {
+        command: command.into(),
+        timeout_seconds: 10,
+        cwd: folder.display().to_string(),
+    };
+
+    // A gate that passes because of what is in its folder — so it ran there.
+    let Outcome::Ok {
+        reply: Reply::Value { value },
+    } = client.call(gate("test -f ready.flag && echo GO")).await
+    else {
+        panic!("the gate answers");
+    };
+    assert_eq!(value["exitCode"], 0, "{value}");
+    assert_eq!(value["timedOut"], false);
+    assert!(value["stdout"].as_str().unwrap().contains("GO"), "{value}");
+
+    // One that says no is an answer, not an error.
+    let Outcome::Ok {
+        reply: Reply::Value { value },
+    } = client.call(gate("exit 3")).await
+    else {
+        panic!("a failing gate still answers");
+    };
+    assert_eq!(value["exitCode"], 3, "{value}");
+}

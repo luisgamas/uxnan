@@ -24,7 +24,23 @@ describe('conversationTitles', () => {
     generateConversationTitle.mockResolvedValue('Fix JWT expiry on login');
     await conversationTitles.ensure(base);
     expect(conversationTitles.get('tab-1')).toBe('Fix JWT expiry on login');
-    expect(generateConversationTitle).toHaveBeenCalledWith('claude', base.transcript, '/repo');
+    expect(generateConversationTitle).toHaveBeenCalledWith(
+      'claude',
+      base.transcript,
+      '/repo',
+      undefined,
+    );
+  });
+
+  it("names a host's session on that host", async () => {
+    generateConversationTitle.mockResolvedValue('Tune the nightly import');
+    await conversationTitles.ensure({ ...base, cwd: '/srv/app', target: 'ssh:h1' });
+    expect(generateConversationTitle).toHaveBeenCalledWith(
+      'claude',
+      base.transcript,
+      '/srv/app',
+      'ssh:h1',
+    );
   });
 
   it('names a session once, even across repeated reports', async () => {

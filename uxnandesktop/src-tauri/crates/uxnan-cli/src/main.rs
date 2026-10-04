@@ -7,7 +7,7 @@
 //! stderr, `--json` for a stable machine-readable result, and an exit status
 //! that says what kind of thing went wrong.
 
-mod client;
+use uxnan_control_client as client;
 mod guide;
 mod render;
 

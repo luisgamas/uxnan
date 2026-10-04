@@ -46,7 +46,11 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 14: worktree upkeep in its managed roots — `Cleanup`.
 /// - 15: this machine's own Uxnan bridge — `Bridge` (find it, install it into
 ///   the account, keep it running).
-pub const PROTOCOL: u32 = 15;
+/// - 16: headless agent runs — `AgentRun` (an agent CLI in print mode, run by
+///   the workspace engine's `agentrun` exactly as the app runs one) and
+///   `AgentCancel`; `ErrorCode::Agent` and `ErrorCode::Cancelled`; and an
+///   automation's gate — `Precondition` (a shell one-liner in a folder).
+pub const PROTOCOL: u32 = 16;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -316,6 +320,39 @@ pub enum Call {
     /// This machine's own Uxnan bridge, answered as [`Reply::Value`] with a
     /// [`BridgeState`] (an install answers its [`BridgeInstalled`]).
     Bridge(BridgeCall),
+    /// Run an agent CLI headless (print mode) on this machine, as the
+    /// workspace engine's `agentrun::run_headless` runs one — a step of an
+    /// orchestration, an automation, a commit draft. Answered when it ends,
+    /// as [`Reply::Value`] with its `HeadlessResult`.
+    #[serde(rename_all = "camelCase")]
+    AgentRun {
+        agent: String,
+        model: String,
+        prompt: String,
+        cwd: String,
+        timeout_ms: Option<u64>,
+        autonomous: bool,
+        #[serde(default)]
+        extra: Vec<String>,
+        /// The caller's name for the run, so [`Call::AgentCancel`] can end it.
+        job: Option<String>,
+        #[serde(default)]
+        memory_limit_mb: u64,
+    },
+    /// End the named headless run and its whole process tree; answered with
+    /// whether one by that name was running.
+    AgentCancel {
+        job: String,
+    },
+    /// Run an automation's gate — a shell one-liner in `cwd`, in this
+    /// machine's shell — and answer its `PreconditionResult` as a
+    /// `Reply::Value` (the workspace engine's `precondition::run`).
+    #[serde(rename_all = "camelCase")]
+    Precondition {
+        command: String,
+        timeout_seconds: u32,
+        cwd: String,
+    },
     /// The last turn's prompt and reply from the transcript an agent's report
     /// named — read here, where the file is, and only if it is a transcript of
     /// that agent's own.
@@ -651,6 +688,10 @@ pub enum ErrorCode {
     /// The host's filesystem refused (no such file, no permission); the
     /// message is the operating system's.
     Io,
+    /// An agent CLI could not be run, or failed.
+    Agent,
+    /// The run was cancelled by whoever started it.
+    Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

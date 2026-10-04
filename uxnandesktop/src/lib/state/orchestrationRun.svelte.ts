@@ -25,6 +25,8 @@ import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { orchestration } from "./orchestration.svelte";
 import { app } from "./app.svelte";
+import { projects } from "./projects.svelte";
+import { LOCAL_TARGET } from "$lib/target";
 import { resourceMode } from "./resourceMode.svelte";
 import { resources } from "./resources.svelte";
 import {
@@ -325,6 +327,8 @@ class OrchestrationRunStore {
       kind?: "interactive" | "headless";
       agent?: string;
       worktree?: string;
+      /** The machine `worktree` is on, as the backend resolved it. */
+      machine?: string;
       retry?: boolean;
     },
   ): RunStep | undefined {
@@ -338,8 +342,8 @@ class OrchestrationRunStore {
       kind,
       target:
         kind === "headless"
-          ? { agent: spec.agent ?? "", workspace: spec.worktree ?? "" }
-          : { workspace: spec.worktree ?? "" },
+          ? { agent: spec.agent ?? "", workspace: spec.worktree ?? "", machine: spec.machine }
+          : { workspace: spec.worktree ?? "", machine: spec.machine },
       onFailure: spec.retry ? "retry" : "stop",
     });
     if (!stepId) return undefined;
@@ -974,6 +978,9 @@ class OrchestrationRunStore {
     const agent = step.target.agent ?? "";
     const model = step.target.model ?? "";
     const cwd = step.target.workspace ?? "";
+    // On the machine the folder is on: a host's project runs there, by its
+    // engine — never here at the same path (`02g` §5.18).
+    const machine = step.target.machine ?? (cwd ? projects.targetForPath(cwd) : LOCAL_TARGET);
     step.status = "running";
     step.attempts += 1;
     step.dispatchId = dispatchIdFor(step);
@@ -985,7 +992,7 @@ class OrchestrationRunStore {
     // Name the run after the dispatch that started it, so a cancel ends this
     // attempt and can never reach the retry that follows it.
     const job = headlessJobId(runId, stepId, step.dispatchId);
-    void agentRunHeadless(agent, model, text, cwd, undefined, job)
+    void agentRunHeadless(agent, model, text, cwd, undefined, job, machine)
       .then((res) => this.onHeadlessDone(runId, stepId, res, null))
       .catch((err: unknown) => {
         // The global budget had no room: the step never started, so it goes

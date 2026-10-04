@@ -321,6 +321,10 @@ pub async fn start<R: tauri::Runtime>(
             post(route_mcp::<R>).get(route_mcp_get),
         )
         .route(uxnan_control_protocol::RPC_PATH, post(route_rpc::<R>))
+        .route(
+            crate::automations::handoff::PATH,
+            post(route_automation_handoff::<R>),
+        )
         .route("/health", get(|| async { "ok" }))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(ctx);
@@ -435,6 +439,31 @@ async fn route_rpc<R: tauri::Runtime>(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     };
     super::rpc::handle(&ctx.app, caller, body).await
+}
+
+/// `POST /automations/v1/handoff`: the automation runner handing over a run
+/// on a host (`automations::handoff`). Only the control token — the one in the
+/// discovery file, readable by this user alone — and never a terminal's or a
+/// bridge agent's: this starts a run the user scheduled, not anything an agent
+/// asks for.
+async fn route_automation_handoff<R: tauri::Runtime>(
+    AxumState(ctx): AxumState<ServerCtx<R>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !loopback_caller(&headers) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    if !matches!(ctx.caller(&headers).await, Some(Caller::Control)) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    let Ok(ask) = serde_json::from_slice::<crate::automations::handoff::Handoff>(&body) else {
+        return (StatusCode::BAD_REQUEST, "not a hand-off").into_response();
+    };
+    match crate::automations::handoff::start(&ctx.app, &ask.automation, ask.trigger).await {
+        Ok(()) => (StatusCode::ACCEPTED, "accepted").into_response(),
+        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
+    }
 }
 
 #[cfg(test)]

@@ -196,7 +196,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   // (`…[1m]`, `…-fast`), no invitation-only models. See docs/agents.md.
   //
   // TWIN LIST — KEEP IN SYNC. The desktop app ships its own hand-kept copy of
-  // this table in `uxnandesktop/src-tauri/src/agentcli.rs` (`CLAUDE_MODELS`,
+  // this table in `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` (`CLAUDE_MODELS`,
   // used by AI commit messages / PR bodies). Claude Code has no enumerate
   // command, so both are maintained by hand: every new Claude model must be
   // added to BOTH lists, with the same ids, labels and order.

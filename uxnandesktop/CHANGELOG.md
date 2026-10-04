@@ -140,7 +140,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   its title dims while the host is away. A host project's card in the sidebar
   shows the same dot, with the link's latency in its tooltip.
 
+- **Headless work on a host runs on that host.** An orchestration's headless
+  steps — and the tasks a coordinator agent adds with `task/create` — whose
+  worktree belongs to a host's project run there, by its engine, with the
+  host's own agent CLIs and sign-ins: the same runner, the same capture, named
+  and cancellable the same way. The host engine speaks protocol 16 for it
+  (`AgentRun`, `AgentCancel`, `Precondition`), and the runner it uses is the
+  one this app uses, now in the workspace engine.
+- **Automations on a host.** The editor has a **Machine** once you have a host:
+  pick one and the folder browser lists that host's folders, and the steps
+  offer the agents installed there. A run does everything on the host — the
+  folder check, the precondition in that machine's shell, the per-run worktree
+  under its own `~/uxnan/worktrees`, every step — and its history is kept here
+  with the host's name beside the folder. A scheduled run is handed by the
+  runner to the open app, which holds the connection; with the app closed or the
+  host not connected the run is recorded as unavailable, saying why. An agent
+  working in a host's project can propose one there (`automation/propose`;
+  `automation/list` and `automation/show` report the `target`).
+
 ### Changed
+
+- **The AI commit draft for a host's project is written on the host**, by the
+  agent picked in Settings → AI commit as that machine has it, standing in the
+  worktree. When the host lacks that agent, it is written here from the staged
+  diff read there, as before.
+- **A conversation on a host is named by that host's agent.** The generated
+  name for a session in a host's terminal is asked of the agent there, in its
+  folder; it used to start this machine's CLI in a folder that is not here.
 - **A host that drops leaves what you were looking at.** The file tree,
   Changes and History keep what they had read, under a line saying the host is
   offline and how long ago it was read, and read it again when the host is
@@ -205,6 +231,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A headless step on a host's project no longer runs in this machine's
+  folder of the same path.** Orchestration and automations took a host's path
+  as a folder here; when one existed with the same name, the step ran on the
+  wrong machine.
 - **A chat's agent is scoped to the right machine's project.** An agent of this
   computer's bridge whose folder had the same path as a project on a host could
   be scoped to the host's project; the scope now always reads a folder on the

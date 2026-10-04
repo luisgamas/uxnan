@@ -1,0 +1,17 @@
+[package]
+name = "uxnan-control-client"
+description = "How a process on this machine finds the running Uxnan Desktop and talks to it — shared by uxnan-cli and the app's own automation runner."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+uxnan-control-protocol = { path = "../control-protocol" }
+serde_json = { version = "1", features = ["preserve_order"] }
+# Only to confirm that the process the discovery file names is still the one
+# that wrote it (pid + start time). The same crate the app reads its own start
+# time with, so both sides look at the same clock; `system` is its smallest
+# feature set.
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }

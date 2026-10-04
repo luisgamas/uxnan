@@ -586,7 +586,7 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   **no técnica**: el usuario elige un **agente** (solo se pueden seleccionar los
   instalados de la lista curada `AI_COMMIT_AGENTS` — un **subconjunto** del conjunto headless, porque un agente ademas tiene que responder una lista de modelos) y un **modelo**;
   no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
-  que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
+  que el bridge (`src-tauri/crates/workspace-engine/src/agentcli.rs`: `node <entry.js>` para instalaciones
   npm, binario nativo si existe — así el lanzamiento no interactivo funciona en
   Windows sin shell) y lo ejecuta de forma **no interactiva** a través de
   `agentrun::run_headless` — el mismo runner de una sola pasada que usan el motor
@@ -603,7 +603,9 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   siempre con una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
   **buscable, con scroll y agrupado por proveedor** (`ModelPicker.svelte`, el
   unico selector de modelos de la app, el mismo del chat) porque algunos agentes
-  listan cientos de modelos.
+  listan cientos de modelos. En un proyecto de un **host** el borrador lo escribe
+  el agente de ese host, en el worktree, por su motor (`02g` §5.10h, §5.19); si
+  el host no tiene el agente elegido, se escribe aqui sobre el diff leido alli.
   Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
   (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
   (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo

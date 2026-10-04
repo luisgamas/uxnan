@@ -29,12 +29,14 @@ pub fn outcome(result: Result<serde_json::Value, Error>) -> Outcome {
                 Error::NotFound(_) => ErrorCode::NotFound,
                 Error::Git(_) => ErrorCode::Git,
                 Error::Io(_) => ErrorCode::Io,
+                Error::Agent(_) => ErrorCode::Agent,
+                Error::Cancelled => ErrorCode::Cancelled,
                 _ => ErrorCode::Invalid,
             },
             message: match e {
-                // git's own words, without the engine's prefix: the app shows
-                // them as it shows a local git error.
-                Error::Git(m) => m,
+                // git's and an agent's own words, without the engine's
+                // prefix: the app adds its own, as for a local error.
+                Error::Git(m) | Error::Agent(m) => m,
                 other => other.to_string(),
             },
         },

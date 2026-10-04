@@ -86,6 +86,22 @@ never behave differently.
 Exit codes: `0` the run finished (or was skipped for a legitimate reason), `1` a
 step failed, `2` the automation could not be run at all.
 
+**On a host.** An automation whose folder is on a host (`"target": "ssh:<id>"`)
+runs the same sequence — validate, overlap, folder, precondition, per-run
+worktree, steps, history — with the work done **there** by the host's engine:
+the precondition in that machine's shell, the worktree under its own
+`~/uxnan/worktrees`, every step with its agent CLIs. This process has no SSH
+connection, and standing one up would mean a second session with prompts nobody
+is there to answer, so it **hands the run to the open app**, which holds the
+connection: it finds it through the same discovery file `uxnan-cli` uses and
+calls a route of its own on the app's local server (`automations/v1/handoff`,
+control token only, not part of the published catalog). The app then runs it in
+process — `runner::run` on `Place::Host` — and "Run now" goes there directly.
+With the app closed or the host not connected, the run is recorded as
+`skippedUnavailable` with the reason. A host's steps count against that host's
+own slots, by concurrency only: this machine's free memory says nothing about
+another's.
+
 **What a step cost.** Every ten seconds a running step's whole process tree is
 measured; the peak lands in the run record (`peakMemoryMb`), so an execution
 nobody watched can still say what it cost. A per-agent ceiling exists and is
@@ -121,7 +137,7 @@ short output as if that was all the agent wrote.
 ```
 <app-data>/automations/
   automations.json                  # definitions — written ONLY by the app
-  runs/<automationId>/<runId>.json  # one run per file — written ONLY by its runner
+  runs/<automationId>/<runId>.json  # one run per file — written ONLY by the process running it
   logs/<runId>.log
 ```
 
@@ -129,8 +145,9 @@ short output as if that was all the agent wrote.
 `~/Library/Application Support/dev.luisgamas.uxnandesktop` on macOS, and
 `$XDG_DATA_HOME/dev.luisgamas.uxnandesktop` on Linux.
 
-Every file has a **single writer**, so the app and a live runner never race and
-no locking is needed. Because the runner rewrites its own record as steps
+Every file has a **single writer** — a run's record is written by whichever
+process runs it, the runner here or the app for a run on a host — so the app
+and a live runner never race and no locking is needed. Because the runner rewrites its own record as steps
 advance, the app can show live progress just by watching the directory.
 
 ## Defining one
@@ -158,6 +175,7 @@ session that made it, so the last step is always a person's.
       "name": "Nightly triage",
       "tags": ["triage"],
       "workingDir": "C:/work/my-repo",
+      "target": "local",               // or "ssh:<hostId>": the machine the folder is on
       "schedule": { "kind": "every", "n": 30, "unit": "minutes", "startsAt": 0 },
       "policy": {
         "precondition": { "command": "git log --since=1.day --oneline | head -1", "timeoutSeconds": 20 },

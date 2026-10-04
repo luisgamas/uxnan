@@ -23,12 +23,16 @@
 //! approval belongs in the interactive console.
 //!
 //! Layout of the module: [`schedule`] describes recurrence, [`template`] carries
-//! outputs between steps, `store` owns the on-disk layout, `graph` executes, and
-//! `runner` is the `--automation-run` entry point.
+//! outputs between steps, `store` owns the on-disk layout, `graph` executes,
+//! `place` is the machine the work happens on (this one or a host's engine),
+//! `runner` is the `--automation-run` entry point, and `handoff` carries a
+//! host's run from the runner to the app that holds the connection.
 
 pub mod commands;
 pub mod graph;
+pub mod handoff;
 pub mod oscheduler;
+pub mod place;
 pub mod runner;
 pub mod schedule;
 pub mod store;
@@ -206,6 +210,11 @@ pub struct Automation {
     /// The folder the run executes in. Any folder, repo or not; deliberately
     /// **not** tied to whatever project is selected in the sidebar.
     pub working_dir: String,
+    /// The machine `working_dir` is on: this one, or a registered host
+    /// (`ssh:<id>`), whose engine then does the work (`place`). A host's
+    /// folder is never read as a path of this machine.
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     /// When `working_dir` is a git repo, give every run its own worktree so
     /// unattended work never touches the tree you are using.
     #[serde(default)]
@@ -270,24 +279,9 @@ pub enum StepStatus {
     Skipped,
 }
 
-/// The captured result of running the precondition command.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreconditionResult {
-    pub command: String,
-    pub exit_code: Option<i32>,
-    pub timed_out: bool,
-    pub stdout: String,
-    pub stderr: String,
-    pub duration_ms: u64,
-}
-
-impl PreconditionResult {
-    /// Only a clean exit 0 lets the run proceed.
-    pub fn passed(&self) -> bool {
-        !self.timed_out && self.exit_code == Some(0)
-    }
-}
+/// The captured result of running the precondition command — the workspace
+/// engine's, so a host's engine reports a gate it ran in the same shape.
+pub use uxnan_workspace_engine::precondition::PreconditionResult;
 
 /// What one step did during a run — kept verbose on purpose, because this is
 /// the only account of an execution nobody watched.
@@ -359,6 +353,10 @@ pub struct AutomationRun {
     pub trigger: RunTrigger,
     pub status: RunStatus,
     pub working_dir: String,
+    /// The machine the run worked on — a host's paths (`working_dir`,
+    /// `worktree_path`) are that host's.
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     /// The per-run worktree, when `worktree_per_run` created one.
     #[serde(default)]
     pub worktree_path: Option<String>,
@@ -383,6 +381,7 @@ impl AutomationRun {
             trigger,
             status: RunStatus::Running,
             working_dir: automation.working_dir.clone(),
+            target: automation.target.clone(),
             worktree_path: None,
             started_at: now_ms(),
             finished_at: None,
@@ -573,6 +572,7 @@ mod tests {
             enabled: true,
             tags: vec![],
             working_dir: "C:/work/repo".into(),
+            target: Default::default(),
             worktree_per_run: false,
             base_branch: None,
             schedule: Schedule::DailyAt { hour: 3, minute: 0 },

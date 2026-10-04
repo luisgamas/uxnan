@@ -897,6 +897,7 @@ List the saved automations (unattended, recurring agent runs): id, name, whether
   - `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
   - `tags` (array of string) — Free-form labels the list groups by.
   - `workingDir` (string) — The folder a run executes in.
+  - `target` (string) — The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it.
   - `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
   - `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
   - `steps` (array of object) — Its steps, in order.
@@ -939,6 +940,7 @@ Describe one saved automation in full: what `automation/list` gives plus each st
 - `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
 - `tags` (array of string) — Free-form labels the list groups by.
 - `workingDir` (string) — The folder a run executes in.
+- `target` (string) — The machine that folder is on: `local`, or a host's `ssh:<id>` — whose engine then does the work, while Uxnan is connected to it.
 - `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
 - `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
 - `steps` (array of object) — Its steps, in order.
@@ -1344,7 +1346,7 @@ Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the p
 
 ### `automation/propose`
 
-Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
+Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach — on a host, when your project is there, and the run then happens on that host while Uxnan is connected to it; each step names an agent installed on the machine the folder is on (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `automation_propose`
@@ -1356,6 +1358,7 @@ Draft a saved automation **for the person to decide on**: Uxnan opens its automa
 |---|---|---|---|
 | `name` | string | yes | What to call it. At most 200 characters. |
 | `workingDir` | string | yes | Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project. |
+| `target` | string | no | The machine `workingDir` is on: `local` or a host's `ssh:<id>` (`host/list`). Only the control token names one; a launch token's is its own project's machine. Default `local`. |
 | `steps` | array of object | yes | The steps, in order. At most 20. |
 | `description` | string | no | A sentence saying what it is for. |
 | `tags` | array of string | no | Free-form labels the list groups by. |
@@ -2118,7 +2121,7 @@ Start (or re-run) a saved orchestration run by id: every step is reset and the e
 
 ### `automation/run`
 
-Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run.
+Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run. One that works on a host (`target`) runs there, through that host's engine, and needs the host connected — otherwise the run is recorded as unavailable, saying why.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `automation_run`
@@ -2579,7 +2582,7 @@ Finish a run you drive: record its outcome and summary and end it. Workers still
 
 ### `task/create`
 
-Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.
+Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output — on the machine its worktree is on, so a host project's task runs on that host with that host's agent. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.
 
 - **Group:** `orchestrate` · mutates (receipted, audited)
 - **MCP:** `task_create`

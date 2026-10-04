@@ -514,7 +514,7 @@
       ],
       "evidence": {
         "L1": "src-tauri/src/budget.rs #[cfg(test)] exercised through src-tauri/tests/agent_budget.rs (the rules), src-tauri/src/automations/runner.rs #[cfg(test)] (what a mirrored budget means, clamped to the engine's bounds), src-tauri/src/model.rs #[cfg(test)] (the mirror round-trips and is optional), src/lib/state/resourceMode.svelte.test.ts (the mirror is written and reconciled), src/lib/resources/policy.test.ts (the presets)",
-        "L3": "src-tauri/tests/agent_budget.rs — real competing **processes**: the cap holds between them, a killed holder's slot is reclaimed, a waiter takes the slot the moment it frees, each refusal names what was in the way. src-tauri/tests/agent_memory.rs — a real allocating process tree is measured through its children. src-tauri/src/agentrun.rs #[cfg(test)] — a real tree is killed to the grandchild, a cancelled run reports itself cancelled, and a child that outprints the capture cap still finishes.",
+        "L3": "src-tauri/tests/agent_budget.rs — real competing **processes**: the cap holds between them, a killed holder's slot is reclaimed, a waiter takes the slot the moment it frees, each refusal names what was in the way. src-tauri/tests/agent_memory.rs — a real allocating process tree is measured through its children. src-tauri/crates/workspace-engine/src/agentrun.rs #[cfg(test)] — a real tree is killed to the grandchild, a cancelled run reports itself cancelled, and a child that outprints the capture cap still finishes.",
         "L5": "Driven by hand on macOS (2026-09-22): two headless runner processes with a one-agent budget serialized their steps (no overlap), and a step's peak tree memory landed in the run record."
       },
       "platforms": {

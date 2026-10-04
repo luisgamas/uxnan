@@ -1375,24 +1375,27 @@ export function gitPull(
 
 /** Draft a commit message for the worktree's staged changes using the configured
  *  AI agent (Settings → AI commit). Rejects when disabled/unconfigured, nothing
- *  is staged, or the agent fails/times out. The agent always runs on this
- *  machine; on a host only the diff is read there. */
+ *  is staged, or the agent fails/times out. On a host the agent runs there, in
+ *  the worktree; this machine drafts it only when the host lacks the agent. */
 export function generateCommitMessage(path: string, target?: TargetId | null): Promise<string> {
   return invoke<string>('git_generate_commit_message', { path, target: target ?? null });
 }
 
 /** Name an agent conversation from its opening exchange, using that session's own
- *  CLI on its cheapest model. Best-effort: callers ignore a rejection and keep
- *  whatever label the session already had. */
+ *  CLI on its cheapest model — on the machine the session runs on (a host's
+ *  session is named by that host's agent). Best-effort: callers ignore a
+ *  rejection and keep whatever label the session already had. */
 export function generateConversationTitle(
   agentId: string,
   transcript: string,
   cwd: string,
+  target?: string | null,
 ): Promise<string> {
   return invoke<string>('generate_conversation_title', {
     agentId,
     transcript,
     cwd,
+    target: target && target !== 'local' ? target : null,
   });
 }
 
@@ -1427,6 +1430,8 @@ export function agentRunHeadless(
   cwd: string,
   timeoutMs?: number,
   jobId?: string,
+  /** The machine `cwd` is on; a host's `ssh:<id>` runs it there. */
+  target?: string,
 ): Promise<HeadlessResult> {
   return invoke<HeadlessResult>('agent_run_headless', {
     agent,
@@ -1435,6 +1440,7 @@ export function agentRunHeadless(
     cwd,
     timeoutMs: timeoutMs ?? null,
     jobId: jobId ?? null,
+    target: target && target !== 'local' ? target : null,
   });
 }
 

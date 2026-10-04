@@ -1,4 +1,6 @@
-//! Finding the app and talking to it.
+//! Finding the running app and talking to it — what `uxnan-cli` does from any
+//! shell, and what the app's own automation runner does when it hands a run on
+//! a host to the window that holds the connection (`automations::handoff`).
 //!
 //! Two ways in, tried in order. Inside a terminal the app spawned, the
 //! environment already says where the server is and carries the per-launch
@@ -102,8 +104,9 @@ fn origin_of(url: &str) -> Option<String> {
     Some(format!("http://{authority}"))
 }
 
-/// The discovery file the app wrote for the user's own shell.
-fn from_discovery_file() -> Result<Endpoint, ClientError> {
+/// The discovery file the app wrote for the user's own shell — the only way
+/// in for a process the app did not spawn.
+pub fn from_discovery_file() -> Result<Endpoint, ClientError> {
     let dir = data_dir().ok_or_else(|| {
         ClientError::new(
             ErrorCode::Unavailable,
@@ -210,16 +213,7 @@ pub fn call(
     let request = Request::new(1, method, params);
     let body = serde_json::to_vec(&request)
         .map_err(|e| ClientError::new(ErrorCode::Internal, e.to_string()))?;
-    let mut headers = format!(
-        "POST {RPC_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nContent-Length: {}\r\nConnection: close\r\n",
-        endpoint.token,
-        body.len()
-    );
-    if let Some(id) = &endpoint.agent_id {
-        headers.push_str(&format!("X-Uxnan-Agent-Id: {id}\r\n"));
-    }
-    headers.push_str("\r\n");
-    let (status, reply) = http_post(&endpoint.origin, headers.as_bytes(), &body, timeout)?;
+    let (status, reply) = post(endpoint, RPC_PATH, &body, timeout)?;
     if status == 401 || status == 403 {
         return Err(ClientError::new(
             ErrorCode::ScopeDenied,
@@ -247,6 +241,27 @@ pub fn call(
         return Err(error.into());
     }
     Ok(response.result.unwrap_or(Value::Null))
+}
+
+/// `POST` a JSON `body` to `path` on the app's server, presenting the
+/// endpoint's token (and its terminal id, when it has one). Returns the status
+/// code and the body.
+pub fn post(
+    endpoint: &Endpoint,
+    path: &str,
+    body: &[u8],
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), ClientError> {
+    let mut headers = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        endpoint.token,
+        body.len()
+    );
+    if let Some(id) = &endpoint.agent_id {
+        headers.push_str(&format!("X-Uxnan-Agent-Id: {id}\r\n"));
+    }
+    headers.push_str("\r\n");
+    http_post(&endpoint.origin, headers.as_bytes(), body, timeout)
 }
 
 /// A `POST` over one short-lived TCP connection. Returns the status code and
