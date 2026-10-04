@@ -140,3 +140,55 @@ describe('HostDetailsDialog — the host’s terminals', () => {
     await until(() => backend.callsTo('ssh_host_sessions').length >= 2, { label: 'the reload' });
   });
 });
+
+describe('HostDetailsDialog — what carries the connection', () => {
+  it('says the system ssh carries a session, and why, in the person’s words', async () => {
+    hosts.connected = ['h1'];
+    sessions.replace([
+      {
+        hostId: 'h1',
+        generation: 4,
+        label: 'build-box',
+        systemSsh: { code: 'securityKey', file: '~/.ssh/id_ed25519_sk' },
+      },
+    ]);
+    const { screen } = open({
+      ssh_host_doctor: () => SIGNED_IN,
+      ssh_host_sessions: () => [],
+      ssh_host_carrier: () => ({ carrier: 'auto', system: null }),
+    });
+
+    expect(
+      await screen.findByText(
+        'Connected through the system ssh, because its key ~/.ssh/id_ed25519_sk is a FIDO2 security key.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says what would carry it before connecting, and explains automatic', async () => {
+    const { screen } = open({
+      ssh_host_doctor: () => BEFORE_SIGN_IN,
+      ssh_host_carrier: () => ({ carrier: 'auto', system: null }),
+    });
+
+    expect(await screen.findByText('Connects with the built-in client.')).toBeInTheDocument();
+    expect(screen.getByText(/Automatic uses the system ssh only when/)).toBeInTheDocument();
+  });
+
+  it('pins the carrier the person picks', async () => {
+    const { screen, user, backend } = open({
+      ssh_host_doctor: () => BEFORE_SIGN_IN,
+      ssh_host_carrier: () => ({ carrier: 'auto', system: null }),
+      ssh_host_set_carrier: (args) => ({ ...HOST, carrier: args.carrier }),
+    });
+
+    await screen.findByText('Connects with the built-in client.');
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByText('System ssh'));
+    await until(() => backend.called('ssh_host_set_carrier'), { label: 'the carrier call' });
+    expect(backend.lastCallTo('ssh_host_set_carrier')?.args).toEqual({
+      hostId: 'h1',
+      carrier: 'system',
+    });
+  });
+});

@@ -131,14 +131,10 @@ impl RemoteFiles {
 pub async fn open(conn: &Connection) -> Result<RemoteFiles, AppError> {
     // The file session holds its channel for as long as it is cached, so like a
     // terminal it is refused rather than queued when the host is full.
-    let (channel, lease) = conn.open_channel("a file channel", false).await?;
-    channel
-        .request_subsystem(true, "sftp")
-        .await
-        .map_err(|e| AppError::Invalid(format!("this host does not offer SFTP: {e}")))?;
+    let (inner, lease) = conn.sftp_stream().await?;
     let alive = Arc::new(AtomicBool::new(true));
     let stream = WatchedStream {
-        inner: channel.into_stream(),
+        inner,
         alive: Arc::clone(&alive),
     };
     let session = SftpSession::new(stream)

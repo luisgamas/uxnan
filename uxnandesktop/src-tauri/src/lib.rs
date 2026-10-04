@@ -606,6 +606,8 @@ pub fn run() {
             commands::ssh_host_cancel,
             commands::ssh_host_replace_key,
             commands::ssh_host_update,
+            commands::ssh_host_set_carrier,
+            commands::ssh_host_carrier,
             commands::ssh_host_disconnect,
             commands::ssh_hosts_connected,
             commands::ssh_hosts_resumable,

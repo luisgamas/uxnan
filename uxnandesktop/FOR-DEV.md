@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,094 Rust tests (679 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
+`docs/chat.md`). 1,102 Rust tests (687 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (29 against the daemon itself) + 45
-integration), of which 53 are ignored probes that need something real to talk to
-(46 live SSH probes — 3 of them against a **Linux host in a
+integration), of which 55 are ignored probes that need something real to talk to
+(48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 1,849 frontend Vitest tests across two
+GitHub tests) + 1,853 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1246,6 +1246,13 @@ worktree and every step — with the same `agentrun` and `precondition` code tha
 runs them here (`02g` §5.19). Proven live on a real Linux host with its own
 Claude Code (`a_headless_run_and_a_gate_happen_on_the_host`).
 
+**Landed — plan phase F9 (the system `ssh` as a carrier).** A host whose
+configuration needs what only OpenSSH can do (Kerberos, a FIDO2 key, a
+smartcard, host-based authentication, `ProxyUseFdpass`, a `KnownHostsCommand`) —
+or one pinned to it on its page — is carried by this machine's own `ssh`: one
+shared login on macOS/Linux, a login per channel on Windows, never a prompt, every
+channel the app uses (`02g` §5.20). Proven live on a real Linux host both ways.
+
 **Landed — phase 4 (ports).** A host's ports are known two ways, on purpose:
 what a terminal **announces** is read from the output on its way to the screen
 (free, nothing installed, any shell — and escape sequences are stripped first,
@@ -1758,7 +1765,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,094 Rust + 1,849 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,102 Rust + 1,853 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

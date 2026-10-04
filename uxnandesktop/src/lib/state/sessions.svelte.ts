@@ -17,6 +17,8 @@ export interface LiveSession {
   label: string;
   /** The link's latency as the host engine's heartbeat last measured it. */
   latencyMs?: number | null;
+  /** Why the system `ssh` carries it, when it does (`SystemSshNeed`). */
+  systemSsh?: { code: string; file?: string | null } | null;
 }
 
 class SessionRegistry {
@@ -47,6 +49,12 @@ class SessionRegistry {
   /** The link's latency in milliseconds, when it has been measured. */
   latencyOf(hostId: string): number | null {
     return this.live[hostId]?.latencyMs ?? null;
+  }
+
+  /** Why the system `ssh` carries a connected host; `null` for the built-in
+   *  client or a host that is not connected. */
+  systemOf(hostId: string): { code: string; file?: string | null } | null {
+    return this.live[hostId]?.systemSsh ?? null;
   }
 
   /** The host's name if it is connected; the id is the honest fallback. */

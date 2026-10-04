@@ -389,12 +389,7 @@ impl HostEngine {
         let command = run_line(shell, path, "attach").ok_or_else(|| {
             AppError::Invalid("could not tell which shell that host runs".to_string())
         })?;
-        let (channel, lease) = conn.open_channel("the host engine", false).await?;
-        channel
-            .exec(true, command)
-            .await
-            .map_err(|e| AppError::Invalid(format!("could not start the host engine: {e}")))?;
-        let stream = channel.into_stream();
+        let (stream, lease) = conn.exec_stream("the host engine", &command).await?;
         let (mut reader, mut writer) = tokio::io::split(stream);
 
         tokio::time::timeout(READY_TIMEOUT, skip_to_ready(&mut reader))

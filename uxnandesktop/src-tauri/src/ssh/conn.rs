@@ -213,9 +213,90 @@ impl Drop for ChannelLease {
     }
 }
 
+/// What carries a connection: the built-in client, or the system's `ssh`
+/// (`system.rs`, for configurations only OpenSSH itself can reproduce).
+enum Carrier {
+    Builtin(client::Handle<Client>),
+    System(super::system::SystemSsh),
+}
+
+/// A byte stream over a connection — one channel's, whichever carrier holds it.
+pub trait HostIo: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> HostIo for T {}
+pub type HostStream = Box<dyn HostIo>;
+
+/// Why the host would not open a TCP stream to a destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpRefusal {
+    pub kind: TcpRefusalKind,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TcpRefusalKind {
+    /// That machine's `sshd` refuses to forward at all (`AllowTcpForwarding no`).
+    Prohibited,
+    /// The host tried and nothing answered there.
+    ConnectFailed,
+    Other,
+}
+
+impl TcpRefusal {
+    fn from_russh(error: &russh::Error) -> Self {
+        let kind = match error {
+            russh::Error::ChannelOpenFailure(
+                russh::ChannelOpenFailure::AdministrativelyProhibited,
+            ) => TcpRefusalKind::Prohibited,
+            russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::ConnectFailed) => {
+                TcpRefusalKind::ConnectFailed
+            }
+            _ => TcpRefusalKind::Other,
+        };
+        Self {
+            kind,
+            detail: error.to_string(),
+        }
+    }
+}
+
+/// A TCP stream the host opened to a destination (`direct-tcpip`, or the
+/// system client's `-W`).
+pub enum TcpChannel {
+    Builtin(russh::Channel<client::Msg>),
+    System(Box<super::system::ProcessStream>),
+}
+
+impl TcpChannel {
+    /// Whether the far end closed it within `grace` — how "nothing answered
+    /// there" arrives, since a host accepts the channel before it connects.
+    pub async fn closed_within(&mut self, grace: Duration) -> Option<TcpRefusal> {
+        match self {
+            TcpChannel::Builtin(channel) => {
+                let died = matches!(
+                    tokio::time::timeout(grace, channel.wait()).await,
+                    Ok(Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close) | None)
+                );
+                let _ = channel.eof().await;
+                died.then(|| TcpRefusal {
+                    kind: TcpRefusalKind::ConnectFailed,
+                    detail: "the host closed the stream at once".to_string(),
+                })
+            }
+            TcpChannel::System(stream) => stream.closed_within(grace).await,
+        }
+    }
+
+    pub fn into_stream(self) -> HostStream {
+        match self {
+            TcpChannel::Builtin(channel) => Box::new(channel.into_stream()),
+            TcpChannel::System(stream) => stream,
+        }
+    }
+}
+
 /// A live, host-key-verified transport to one host.
 pub struct Connection {
-    handle: client::Handle<Client>,
+    carrier: Carrier,
     endpoint: Endpoint,
     generation: u64,
     /// Channels in use, and what this host turned out to allow.
@@ -280,13 +361,145 @@ impl Connection {
         (self.budget.open(), self.budget.observed_limit())
     }
 
-    pub fn handle(&self) -> &client::Handle<Client> {
-        &self.handle
+    /// A connection carried by the system `ssh`, already logged in.
+    pub fn over_system(ssh: super::system::SystemSsh, endpoint: Endpoint) -> Self {
+        Connection {
+            carrier: Carrier::System(ssh),
+            endpoint,
+            generation: next_generation(),
+            budget: Arc::new(ChannelBudget::default()),
+            via: Vec::new(),
+            proxy: None,
+            forwards_agent: false,
+            learned: None,
+        }
     }
 
-    /// Mutable access, needed by the authentication exchange.
+    /// Why the system `ssh` carries this connection, when it does.
+    pub fn system_need(&self) -> Option<&super::system::SystemNeed> {
+        match &self.carrier {
+            Carrier::System(ssh) => ssh.need(),
+            Carrier::Builtin(_) => None,
+        }
+    }
+
+    /// The built-in client's handle, when it carries this connection — for
+    /// what only it does: a plain terminal channel, the bastions of a route.
+    pub fn builtin(&self) -> Option<&client::Handle<Client>> {
+        match &self.carrier {
+            Carrier::Builtin(handle) => Some(handle),
+            Carrier::System(_) => None,
+        }
+    }
+
+    /// Mutable access, needed by the authentication exchange — which only ever
+    /// runs on a connection the built-in client's handshake just made; the
+    /// system `ssh` logs in by itself.
     pub fn handle_mut(&mut self) -> &mut client::Handle<Client> {
-        &mut self.handle
+        match &mut self.carrier {
+            Carrier::Builtin(handle) => handle,
+            Carrier::System(_) => unreachable!("authentication runs on the built-in client only"),
+        }
+    }
+
+    /// Whether the transport has ended.
+    pub fn is_closed(&self) -> bool {
+        match &self.carrier {
+            Carrier::Builtin(handle) => handle.is_closed(),
+            Carrier::System(ssh) => ssh.is_closed(),
+        }
+    }
+
+    /// End the connection, telling the host why.
+    pub async fn hang_up(&self, reason: &str) {
+        match &self.carrier {
+            Carrier::Builtin(handle) => {
+                let _ = handle
+                    .disconnect(russh::Disconnect::ByApplication, reason, "")
+                    .await;
+            }
+            Carrier::System(ssh) => ssh.hang_up().await,
+        }
+    }
+
+    /// A slot in the channel budget for a channel the system `ssh` opens. Its
+    /// sessions are the host's sessions too (`MaxSessions` counts them), so
+    /// they are counted the same way — refused straight away at a known limit.
+    fn system_lease(&self, purpose: &str) -> Result<ChannelLease, AppError> {
+        if !self.budget.has_room() {
+            return Err(self.at_capacity(purpose));
+        }
+        self.budget.open.fetch_add(1, Ordering::Relaxed);
+        Ok(ChannelLease {
+            budget: Arc::clone(&self.budget),
+        })
+    }
+
+    /// A command's stdin and stdout as one stream, on its own channel — what
+    /// the host engine speaks over. Held for as long as it lives, so refused
+    /// rather than queued at the host's limit.
+    pub async fn exec_stream(
+        &self,
+        purpose: &str,
+        command: &str,
+    ) -> Result<(HostStream, ChannelLease), AppError> {
+        match &self.carrier {
+            Carrier::Builtin(_) => {
+                let (channel, lease) = self.open_channel(purpose, false).await?;
+                channel
+                    .exec(true, command)
+                    .await
+                    .map_err(|e| AppError::Invalid(format!("could not start {purpose}: {e}")))?;
+                Ok((Box::new(channel.into_stream()), lease))
+            }
+            Carrier::System(ssh) => {
+                let lease = self.system_lease(purpose)?;
+                Ok((Box::new(ssh.exec_stream(command).await?), lease))
+            }
+        }
+    }
+
+    /// The host's SFTP server, on its own channel.
+    pub async fn sftp_stream(&self) -> Result<(HostStream, ChannelLease), AppError> {
+        match &self.carrier {
+            Carrier::Builtin(_) => {
+                let (channel, lease) = self.open_channel("a file channel", false).await?;
+                channel.request_subsystem(true, "sftp").await.map_err(|e| {
+                    AppError::Invalid(format!("this host does not offer SFTP: {e}"))
+                })?;
+                Ok((Box::new(channel.into_stream()), lease))
+            }
+            Carrier::System(ssh) => {
+                let lease = self.system_lease("a file channel")?;
+                Ok((Box::new(ssh.sftp_stream().await?), lease))
+            }
+        }
+    }
+
+    /// A TCP stream to `host:port`, opened by the host. `origin_port` is the
+    /// local port it serves, for the host's logs (`0` when none does).
+    pub async fn tcp(
+        &self,
+        host: &str,
+        port: u16,
+        origin_port: u16,
+    ) -> Result<TcpChannel, TcpRefusal> {
+        match &self.carrier {
+            Carrier::Builtin(handle) => handle
+                .channel_open_direct_tcpip(
+                    host.to_string(),
+                    u32::from(port),
+                    "127.0.0.1",
+                    u32::from(origin_port),
+                )
+                .await
+                .map(TcpChannel::Builtin)
+                .map_err(|e| TcpRefusal::from_russh(&e)),
+            Carrier::System(ssh) => ssh
+                .tcp_stream(host, port)
+                .await
+                .map(|stream| TcpChannel::System(Box::new(stream))),
+        }
     }
 
     /// Open a channel on this connection, counted against what the host allows.
@@ -306,6 +519,12 @@ impl Connection {
         purpose: &str,
         wait: bool,
     ) -> Result<(russh::Channel<client::Msg>, ChannelLease), AppError> {
+        let Carrier::Builtin(handle) = &self.carrier else {
+            return Err(AppError::Invalid(format!(
+                "{purpose} needs the built-in SSH client, and this host is reached through the \
+                 system ssh — its terminals run in the host engine"
+            )));
+        };
         let deadline = tokio::time::Instant::now() + CHANNEL_WAIT;
         loop {
             if self.budget.has_room() {
@@ -313,7 +532,7 @@ impl Connection {
                 let lease = ChannelLease {
                     budget: Arc::clone(&self.budget),
                 };
-                match self.handle.channel_open_session().await {
+                match handle.channel_open_session().await {
                     Ok(channel) => {
                         if self.forwards_agent {
                             // A refusal is the host's policy (`AllowAgentForwarding
@@ -416,6 +635,10 @@ impl Connection {
     /// a cap the future simply never completes, and the caller waits forever for
     /// a command that will never end.
     pub async fn exec(&self, command: &str) -> Result<CommandOutput, AppError> {
+        if let Carrier::System(ssh) = &self.carrier {
+            let _lease = self.system_lease("this command")?;
+            return ssh.exec(command).await;
+        }
         tokio::time::timeout(EXEC_TIMEOUT, self.exec_unbounded(command))
             .await
             .unwrap_or_else(|_| {
@@ -439,6 +662,10 @@ impl Connection {
     /// `[Convert]::ToBase64String`) and a shell redirect whose encoding differs
     /// per shell. This needs nothing installed and no syntax at all.
     pub async fn exec_bytes(&self, command: &str) -> Result<Vec<u8>, AppError> {
+        if let Carrier::System(ssh) = &self.carrier {
+            let _lease = self.system_lease("this command")?;
+            return ssh.exec_bytes(command).await;
+        }
         let (mut channel, _lease) = self.open_channel("this command", true).await?;
         channel
             .exec(true, command)
@@ -811,7 +1038,7 @@ where
     };
 
     Ok(Handshake::Ready(Box::new(Connection {
-        handle,
+        carrier: Carrier::Builtin(handle),
         endpoint,
         generation: next_generation(),
         budget: Arc::new(ChannelBudget::default()),
@@ -999,10 +1226,11 @@ mod tests {
             tokio::time::sleep(idle).await;
 
             assert!(
-                !conn.handle().is_closed(),
+                !conn.is_closed(),
                 "the connection was reaped while idle; the keepalive is not doing its job"
             );
-            conn.handle()
+            conn.builtin()
+                .unwrap()
                 .channel_open_session()
                 .await
                 .expect("an idle connection still opens channels");

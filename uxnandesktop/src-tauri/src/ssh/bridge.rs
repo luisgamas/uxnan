@@ -16,12 +16,9 @@
 //!   requires, so the channel's authorization is unchanged — loopback, no
 //!   `Origin`, the bearer token — and nothing on this machine listens for it.
 
-use russh::client::Msg;
-use russh::ChannelStream;
-
 use crate::bridgeclient::discovery::{self, Discovery};
 use crate::error::AppError;
-use crate::ssh::conn::Connection;
+use crate::ssh::conn::{Connection, HostStream};
 use crate::ssh::engine::HostEngine;
 
 /// Where the bridge of the account at `home` writes its discovery record —
@@ -63,15 +60,16 @@ pub async fn discover(engine: &HostEngine, path: &str) -> Result<Option<Discover
 }
 
 /// A byte stream to the host bridge's control port, carried by `conn`.
-pub async fn dial(
-    conn: &Connection,
-    discovery: &Discovery,
-) -> Result<ChannelStream<Msg>, AppError> {
+pub async fn dial(conn: &Connection, discovery: &Discovery) -> Result<HostStream, AppError> {
     let channel = conn
-        .handle()
-        .channel_open_direct_tcpip("127.0.0.1", discovery.port as u32, "127.0.0.1", 0)
+        .tcp("127.0.0.1", discovery.port, 0)
         .await
-        .map_err(|e| AppError::Invalid(format!("could not reach the bridge on that host: {e}")))?;
+        .map_err(|e| {
+            AppError::Invalid(format!(
+                "could not reach the bridge on that host: {}",
+                e.detail
+            ))
+        })?;
     Ok(channel.into_stream())
 }
 

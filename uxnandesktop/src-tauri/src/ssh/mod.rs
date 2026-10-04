@@ -37,6 +37,7 @@ pub mod registry;
 pub mod secrets;
 pub mod sftp;
 pub mod shellkind;
+pub mod system;
 pub mod terminals;
 // The live suite that runs this whole stack against a Linux host in a container
 // (`docker/ssh-test-host/`). Test-only: it exists to cover the POSIX branches

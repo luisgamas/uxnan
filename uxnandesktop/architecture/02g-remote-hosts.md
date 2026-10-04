@@ -140,10 +140,10 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
   Windows no implementa `ControlMaster`, asi que lanzar `ssh.exe` por operacion
   significaria un handshake completo por comando. Prohibido. Medido: ocho
   canales concurrentes cuestan 1.5 veces lo que uno (§5.3).
-- **`ssh` del sistema como plan B declarado por host** — para los casos que un
-  cliente en proceso no cubre (GSSAPI, ciertos `ProxyCommand`), anunciando que
-  capacidades se pierden en ese modo. **Pendiente**: hoy solo existe el cliente
-  en proceso; el plan B esta decidido y no implementado.
+- **`ssh` del sistema como segundo portador, por host** — para lo que el
+  cliente en proceso no reproduce (Kerberos, llaves FIDO2, tarjetas, …): una
+  conexion compartida de OpenSSH lleva los mismos canales. **IMPLEMENTADO**,
+  §5.20.
 - **Verificacion de host obligatoria**, sin modo para saltarla (§5.1).
 
 ### Sub-secciones
@@ -158,6 +158,7 @@ caduca a los 3 minutos) y continua sobre esa misma conexion.
 | §5.4 | registro de hosts y lapidas | implementado |
 | §5.5 | sesiones vivas y su superficie de comandos | implementado |
 | §5.6 | inventario del host | implementado |
+| §5.20 | el `ssh` del sistema como portador | implementado |
 | §5.7 | terminal remota, keepalive y caidas | implementado |
 | §5.8 | explorar carpetas, por el motor | `browse` en el motor |
 | §5.9 | un proyecto que vive en el host | implementado |
@@ -2017,6 +2018,59 @@ vivo contra un Linux real con su propio Claude Code
 abierta y conectada a el. Correrla con esta maquina apagada pide algo **en el
 host** que lleve la hora — su motor programando la corrida, o su bridge — y es
 una decision del mantenedor (`FOR-DEV.md` → *Remote hosts*, el motor, punto 3).
+
+## 5.20 El `ssh` del sistema como portador — IMPLEMENTADO (F9)
+
+**Para que.** El cliente en proceso (russh) reproduce llaves, agentes,
+contrasenas, segundo factor, bastiones y `ProxyCommand`, y le cuenta cada paso a
+la interfaz. Hay configuraciones que no puede reproducir: Kerberos
+(`GSSAPIAuthentication`), llaves FIDO2 (`sk-*` o un `SecurityKeyProvider`),
+tarjetas (`PKCS11Provider`), autenticacion por host, un `ProxyUseFdpass`, un
+`KnownHostsCommand`. Para esas, el OpenSSH de la maquina se conecta solo, como
+`ssh <host>` en una terminal, y lleva los mismos canales (`ssh/system.rs`).
+
+**Un solo portador por conexion, no un segundo camino.** `Connection` tiene un
+`Carrier` (`Builtin` | `System`) y todo lo de arriba pide canales neutrales:
+`exec`/`exec_bytes`, `exec_stream` (el motor), `sftp_stream`, `tcp` (puertos
+reenviados, el bridge del host, el tunel a un bastion), `is_closed` y
+`hang_up`. Lo unico que solo existe en el integrado es la terminal de canal
+plano (`ssh/pty.rs`): en el portador del sistema las terminales son del motor.
+
+**Como se lleva cada canal.** Donde la plataforma comparte conexiones (macOS,
+Linux) un maestro `ssh -M -S <socket> -N` inicia sesion una vez y cada canal es
+un cliente suyo: `-T <comando>`, `-s sftp` (asi el motor se sube igual: no se
+pierde nada), `-W host:puerto`. El socket vive en `~/.uxnan/ssh-mux[-dev]/`
+(0700; una carpeta por build), y al primer uso se limpian los sockets muertos y
+se cierra el maestro huerfano de una ejecucion que no colgo. Medido contra un
+Linux real: iniciar sesion 0.8-1.3 s, un comando compartido 0.17 s. **Windows**
+no tiene `ControlMaster`, asi que alli cada canal es su propio `ssh` y su propio
+inicio de sesion (~1 s por comando, medido sin compartir); colgar termina los
+procesos de cada canal abierto. La pagina del host lo dice.
+
+**Nunca una pregunta que no puede mostrar.** Todo corre con `BatchMode=yes`: un
+host que pide contrasena, frase de paso o decidir una llave nueva falla con la
+frase de OpenSSH (`systemSshFailed`, con `detail`) en vez de colgarse. Lo que no
+pregunta —un ticket de Kerberos, el toque de una llave, un agente— funciona. Las
+llaves de host son de OpenSSH: lee los mismos `known_hosts`. Un fallo de red se
+clasifica como el integrado (`Unreachable`), asi que la escalera de reconexion
+lo trata igual. El reenvio del agente sigue la configuracion: el maestro y cada
+canal leen el mismo `ForwardAgent` (medido: por la conexion compartida solo
+llega si ambos lo piden, y lo piden porque leen la misma configuracion).
+
+**Quien lo elige.** `SshHost.carrier` (`auto` | `builtin` | `system`, en la
+pagina del host, `ssh_host_set_carrier`). `auto` usa el integrado salvo que la
+ruta —cualquier salto— pida algo de la lista de arriba (`system::needs_system`,
+leido de `ssh -G`; una llave `sk-` se reconoce por su `.pub` y solo si existe).
+El motivo viaja como codigo (`SystemNeed.code`) para que la interfaz lo diga en
+el idioma de la persona; un host que necesita a la persona (una llave de
+seguridad) no se reconecta solo al arrancar. `host/list`/`host/show` dicen
+`carrier` y `systemSsh`.
+
+**Probado** en vivo contra un Linux real, compartiendo y sin compartir sesion
+(`the_system_ssh_carries_every_channel_the_app_uses`,
+`…_without_sharing_a_login`): comandos, un flujo TCP a su `sshd` y uno rechazado
+con su motivo, SFTP, el motor instalado por el, una terminal dentro del motor y
+colgar. El carril de Windows de CI corre los mismos contra su `sshd`.
 
 ## 6. Que funciona y que no en un contexto remoto
 

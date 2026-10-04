@@ -445,6 +445,11 @@ class HostsStore {
         case "proxyFailed":
           this.error = i18n.t("hosts.errProxy", { host: label, detail: report.detail ?? "" });
           break;
+        case "systemSshFailed":
+          // OpenSSH's own sentence: it checked the key and signed in by
+          // itself, so what it said is what happened.
+          this.error = i18n.t("hosts.errSystemSsh", { host: label, detail: report.detail ?? "" });
+          break;
       }
       // A host that let us in (or asked for something) may have flipped its
       // "needs a prompt" flag, which the backend persists.

@@ -158,6 +158,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   working in a host's project can propose one there (`automation/propose`;
   `automation/list` and `automation/show` report the `target`).
 
+- **Hosts your own `ssh` reaches.** A host whose SSH configuration asks for
+  something only OpenSSH itself can do — Kerberos, a FIDO2 security key, a
+  smartcard, host-based authentication, a `ProxyUseFdpass` proxy or a
+  `KnownHostsCommand` — is connected through this machine's own `ssh`, with your
+  config, `known_hosts` and agent, and everything works over it: terminals in
+  the host engine, files, git, search, ports and the host's bridge. On macOS and
+  Linux it logs in once and every channel shares that login; Windows' OpenSSH
+  cannot share one, so there each channel signs in on its own. It never prompts:
+  a host that wants a password, or a key not in `known_hosts`, stops with
+  OpenSSH's own sentence. A host's page has **Connection → Connect with**
+  (*Automatic*, *Built-in client*, *System ssh*) and says which carries it and
+  why; `host/list` and `host/show` report `carrier` and `systemSsh`, and
+  `host/connect` can answer `systemSshFailed`.
+
 ### Changed
 
 - **The AI commit draft for a host's project is written on the host**, by the

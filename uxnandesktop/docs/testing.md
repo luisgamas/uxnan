@@ -78,8 +78,8 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,094 backend tests**
-in total — 679 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,102 backend tests**
+in total — 687 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
 in `uxnan-control-client`, 10 in `uxnan-cli`, 294 in `uxnan-workspace-engine` (its git, libgit2 fast path, worktree placement and cleanup, and the headless runner and an automation's gate among them), 5 in `uxnan-host-protocol`, 39 in
 `uxnan-host` (29 against the real daemon over its socket — a headless agent run answering from its folder and cancelled by name, and an automation's gate run in its folder, among them — among them the bridge it keeps running and its agents reaching the app's tools but never a hook, started again when it dies and let go when asked, a project's
 files listed, saved and searched on the host, its git read, staged and
@@ -94,8 +94,8 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,041 of which run everywhere; the other 53 are ignored probes that need something real to talk to
-(46 live SSH probes — 43 against a real `sshd` (one of them runs an agent installed on the host, headless, and an automation's gate there: `a_headless_run_and_a_gate_happen_on_the_host`, armed by `UXNAN_SSH_TEST_HEADLESS=<agent>`), one of which idles for five
+`tests/` — 1,047 of which run everywhere; the other 55 are ignored probes that need something real to talk to
+(48 live SSH probes — 45 against a real `sshd` (one of them runs an agent installed on the host, headless, and an automation's gate there: `a_headless_run_and_a_gate_happen_on_the_host`, armed by `UXNAN_SSH_TEST_HEADLESS=<agent>`; two reach it through the system `ssh` instead, sharing one login and not — `the_system_ssh_carries_every_channel_the_app_uses` and `…_without_sharing_a_login`), one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
 describe, including that host as its own bastion — and two more (in
@@ -213,7 +213,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 633 passing unit tests of the app crate (679 with the ignored probes) — plus 18 in
+The 639 passing unit tests of the app crate (687 with the ignored probes) — plus 18 in
 `uxnan-control-protocol`, 4 in `uxnan-control-client` and 10 in `uxnan-cli`, the
 three workspace crates behind the control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -321,7 +321,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,849 tests** across both
+ships in every build and is never shown). **1,853 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

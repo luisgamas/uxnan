@@ -114,7 +114,7 @@ async fn view<R: tauri::Runtime>(app: &AppHandle<R>, host: &SshHost) -> Value {
         .read()
         .await
         .get(&host.id)
-        .filter(|conn| !conn.handle().is_closed())
+        .filter(|conn| !conn.is_closed())
         .cloned();
     let shell = state
         .ssh_shells
@@ -131,8 +131,12 @@ async fn view<R: tauri::Runtime>(app: &AppHandle<R>, host: &SshHost) -> Value {
         "source": serde_json::to_value(host.source).unwrap_or(Value::Null),
         "needsPrompt": host.needs_prompt,
         "connected": session.is_some(),
+        "carrier": serde_json::to_value(host.carrier).unwrap_or(Value::Null),
     });
     if let Some(conn) = session {
+        if let Some(need) = conn.system_need() {
+            out["systemSsh"] = json!(need.code);
+        }
         let (open, limit) = conn.channels();
         out["generation"] = json!(conn.generation());
         out["channels"] = json!({ "open": open, "limit": limit });

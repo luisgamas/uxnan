@@ -402,6 +402,7 @@ mod tests {
                 proxy_jump: None,
                 source: SshHostSource::SshConfig,
                 needs_prompt: false,
+                carrier: Default::default(),
             };
             let route = route_for(&host).await.unwrap();
             match Dial::new(route)
@@ -727,6 +728,142 @@ mod tests {
             println!("live: {alias} engine served a project's files in {root}");
         }
 
+        /// The same host, reached the other way: the system `ssh` logs in
+        /// (its own configuration, its own agent) and every channel the app
+        /// uses rides it — commands, SFTP, the engine and a terminal in it, a
+        /// TCP stream — and hanging up ends the engine's link like a drop.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the system ssh reaches without a prompt, whose sshd listens on 22"]
+        async fn the_system_ssh_carries_every_channel_the_app_uses() {
+            carried_by_the_system_ssh(!cfg!(windows)).await;
+        }
+
+        /// The same, the way Windows' OpenSSH does it everywhere: no shared
+        /// connection, so every channel is its own `ssh` and its own login.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS naming a host the system ssh reaches without a prompt, whose sshd listens on 22"]
+        async fn the_system_ssh_carries_every_channel_without_sharing_a_login() {
+            carried_by_the_system_ssh(false).await;
+        }
+
+        async fn carried_by_the_system_ssh(shared: bool) {
+            use crate::model::SshCarrier;
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            let host = SshHost {
+                id: "live-system".into(),
+                label: alias.clone(),
+                config_host: Some(alias.clone()),
+                hostname: String::new(),
+                port: 22,
+                user: String::new(),
+                identity_files: vec![],
+                identity_agent: None,
+                identities_only: false,
+                forward_agent: false,
+                proxy_command: None,
+                proxy_jump: None,
+                source: SshHostSource::SshConfig,
+                needs_prompt: false,
+                carrier: SshCarrier::System,
+            };
+            let route = route_for(&host).await.unwrap();
+            let need = crate::ssh::system::carrier_for(&host, &route).expect("pinned to it");
+            let endpoint = route.target().endpoint();
+            let started = std::time::Instant::now();
+            let carrier = match crate::ssh::system::dial_as(
+                shared,
+                crate::ssh::system::destination_for(&host).unwrap(),
+                &endpoint,
+                need,
+            )
+            .await
+            .unwrap()
+            {
+                crate::ssh::system::Dialled::Ready(carrier) => carrier,
+                crate::ssh::system::Dialled::Unreachable { detail, .. }
+                | crate::ssh::system::Dialled::Refused { detail } => {
+                    panic!("the system ssh did not log in: {detail}")
+                }
+            };
+            println!(
+                "live: {alias} system ssh (shared login: {shared}) logged in in {:?}",
+                started.elapsed()
+            );
+            let conn = Arc::new(crate::ssh::conn::Connection::over_system(carrier, endpoint));
+            assert!(conn.system_need().is_some());
+
+            // A command, in the shell that host starts.
+            let shell = crate::ssh::shellkind::classify(&conn).await;
+            let said = conn.exec("echo carried").await.unwrap();
+            assert_eq!(said.stdout.trim(), "carried", "{said:?}");
+            assert_eq!(said.exit_code, Some(0));
+            let started = std::time::Instant::now();
+            conn.exec("echo again").await.unwrap();
+            println!("live: a command took {:?}", started.elapsed());
+
+            // A TCP stream the host opens: its own sshd's banner.
+            let mut stream = conn.tcp("127.0.0.1", 22, 0).await.unwrap().into_stream();
+            let mut banner = [0u8; 8];
+            tokio::io::AsyncReadExt::read_exact(&mut stream, &mut banner)
+                .await
+                .unwrap();
+            assert_eq!(&banner, b"SSH-2.0-");
+            drop(stream);
+            // And one to nothing: refused, and said so.
+            let mut nothing = conn.tcp("127.0.0.1", 1, 0).await.unwrap();
+            let refused = nothing
+                .closed_within(std::time::Duration::from_secs(5))
+                .await
+                .expect("nothing listens on port 1");
+            assert_eq!(
+                refused.kind,
+                crate::ssh::conn::TcpRefusalKind::ConnectFailed,
+                "{refused:?}"
+            );
+
+            // A plain terminal channel is the built-in client's alone.
+            assert!(conn.open_channel("a remote terminal", false).await.is_err());
+
+            // SFTP, the engine installed over it, and a terminal in the engine.
+            let engine = engine(&conn).await;
+            let terminals = EngineTerminals::default();
+            let (seen, output) = collector();
+            terminals
+                .create(
+                    "live-system",
+                    &engine,
+                    EngineTerminalSpec {
+                        id: "tab-system".into(),
+                        sid: Some(format!("system-{}", std::process::id())),
+                        cwd: None,
+                        env: vec![],
+                        cols: 90,
+                        rows: 25,
+                    },
+                    output,
+                    || {},
+                )
+                .await
+                .unwrap();
+            answer_cursor_query(&terminals, &engine, "tab-system", &seen).await;
+            terminals
+                .write(Some(&engine), "tab-system", print_line(shell, "SYSTEM", 7))
+                .await
+                .unwrap();
+            until(&seen, "SYSTEM_7").await;
+            terminals.close(Some(&engine), "tab-system").await.unwrap();
+
+            // Hanging up ends the connection, and the engine notices.
+            conn.hang_up("test over").await;
+            assert!(conn.is_closed());
+            tokio::time::timeout(std::time::Duration::from_secs(20), engine.lost())
+                .await
+                .expect("the engine notices its connection ended");
+            println!("live: {alias} system ssh carried commands, a TCP stream, SFTP, the engine and a terminal");
+        }
+
         #[tokio::test]
         #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_HEADLESS=<an agent installed there>; runs it once in a scratch folder of that host's home"]
         async fn a_headless_run_and_a_gate_happen_on_the_host() {
@@ -965,6 +1102,7 @@ mod tests {
                 proxy_jump: None,
                 source: SshHostSource::SshConfig,
                 needs_prompt: false,
+                carrier: Default::default(),
             };
             let mut route = route_for(&host).await.unwrap();
             let target = route.hops.last_mut().unwrap();
@@ -1377,10 +1515,7 @@ mod tests {
 
             // The link goes. What the app does when it notices: detach, keep.
             let epoch = first.epoch().to_string();
-            conn.handle()
-                .disconnect(russh::Disconnect::ByApplication, "test drop", "")
-                .await
-                .unwrap();
+            conn.hang_up("test drop").await;
             drop(conn);
             tokio::time::timeout(std::time::Duration::from_secs(20), first.lost())
                 .await

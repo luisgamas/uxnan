@@ -1371,15 +1371,8 @@ async fn engine_for<R: tauri::Runtime>(
             // keepalive to reach the same verdict.
             let state = app.state::<AppState>();
             if let Some(conn) = session_for(&state, &host).await {
-                if conn.generation() == watched.generation() && !conn.handle().is_closed() {
-                    let _ = conn
-                        .handle()
-                        .disconnect(
-                            russh::Disconnect::ByApplication,
-                            "the link stopped answering",
-                            "",
-                        )
-                        .await;
+                if conn.generation() == watched.generation() && !conn.is_closed() {
+                    conn.hang_up("the link stopped answering").await;
                 }
             }
         });
@@ -1457,7 +1450,7 @@ pub async fn ssh_host_doctor(
     doctor.shell = shell.map(|s| s.as_str().to_string());
     let Some(conn) = session_for(&state, &host_id)
         .await
-        .filter(|c| !c.handle().is_closed())
+        .filter(|c| !c.is_closed())
     else {
         return Ok(doctor);
     };
@@ -2105,7 +2098,7 @@ async fn take_pending_key(
 pub struct SshConnectReport {
     /// `connected` | `hostUnknown` | `hostChanged` | `hostRevoked` |
     /// `needsPassword` | `needsPassphrase` | `needsAnswers` | `failed` |
-    /// `noUsableMethod` | `unreachable` | `proxyFailed`.
+    /// `noUsableMethod` | `unreachable` | `proxyFailed` | `systemSshFailed`.
     pub status: String,
     /// For `unreachable`: which kind of not-reachable it was (`timeout` |
     /// `unknownAddress` | `refused` | `handshake`). They lead to different
@@ -2226,7 +2219,7 @@ pub async fn ssh_host_connect<R: tauri::Runtime>(
         let sessions = state.ssh_sessions.read().await;
         sessions
             .get(&host_id)
-            .map(|conn| (!conn.handle().is_closed()).then(|| conn.generation()))
+            .map(|conn| (!conn.is_closed()).then(|| conn.generation()))
     };
     match existing {
         Some(Some(generation)) => {
@@ -2279,7 +2272,7 @@ pub async fn ssh_host_answer<R: tauri::Runtime>(
         .answer(answers, &|hop| secrets_for_hop(&secrets, hop))
         .await
         .map_err(CommandError::from)?;
-    settle_dial(app, &state, &host_id, dial, step).await
+    settle_dial(app, &state, &host_id, Some(dial), step).await
 }
 
 /// Give up on a connection paused on a second factor (the person closed the
@@ -2313,6 +2306,55 @@ pub async fn ssh_host_update(
     drop(data);
     state.ssh_unlocked.write().await.remove(&host_id);
     Ok(updated)
+}
+
+/// Choose what carries a host's connection (`02g` §5.20): its configuration
+/// decides (`auto`), or always the built-in client, or always the system `ssh`.
+/// Takes effect at the next connect — a live session keeps the carrier it has.
+#[tauri::command]
+pub async fn ssh_host_set_carrier(
+    state: State<'_, AppState>,
+    host_id: String,
+    carrier: crate::model::SshCarrier,
+) -> Result<SshHost, CommandError> {
+    let mut data = state.data.write().await;
+    let host = data
+        .settings
+        .ssh_hosts
+        .iter_mut()
+        .find(|h| h.id == host_id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("ssh host {host_id}"))))?;
+    host.carrier = carrier;
+    let updated = host.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// What would carry a host if it connected now, and why — for its page, so
+/// the choice can be explained before anyone presses Connect.
+#[tauri::command]
+pub async fn ssh_host_carrier(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<SshCarrierView, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let route = ssh::dial::route_for(&host)
+        .await
+        .map_err(CommandError::from)?;
+    Ok(SshCarrierView {
+        carrier: host.carrier,
+        system: ssh::system::carrier_for(&host, &route),
+    })
+}
+
+/// What [`ssh_host_carrier`] answers.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshCarrierView {
+    /// The host's setting.
+    pub carrier: crate::model::SshCarrier,
+    /// Why the system `ssh` would carry it; `None` is the built-in client.
+    pub system: Option<ssh::system::SystemNeed>,
 }
 
 async fn remember_secret(state: &AppState, secret: SshSecret) {
@@ -2373,13 +2415,66 @@ async fn connect_fresh<R: tauri::Runtime>(
     // A connection left paused on an earlier attempt is superseded by this one.
     state.ssh_dials.lock().await.remove(&host_id);
 
+    if let Some(need) = ssh::system::carrier_for(&host, &route) {
+        return connect_system(app, &state, &host, &route, need).await;
+    }
+
     let secrets = secrets_snapshot(&state, &route).await;
     let mut dial = ssh::dial::Dial::new(route);
     let step = dial
         .run(&|hop| secrets_for_hop(&secrets, hop))
         .await
         .map_err(CommandError::from)?;
-    settle_dial(app, &state, &host_id, dial, step).await
+    settle_dial(app, &state, &host_id, Some(dial), step).await
+}
+
+/// Reach `host` through the system `ssh` (`ssh/system.rs`): OpenSSH logs in
+/// by itself, with the person's own configuration, and the outcome is settled
+/// like any dial's.
+async fn connect_system<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: &AppState,
+    host: &SshHost,
+    route: &ssh::dial::Route,
+    need: ssh::system::SystemNeed,
+) -> Result<SshConnectReport, CommandError> {
+    use ssh::dial::{HopRef, Ready, Step, Stop};
+    let target = route.target();
+    let hop = HopRef {
+        label: target.label.clone(),
+        key: target.key.clone(),
+        is_target: true,
+    };
+    let endpoint = target.endpoint();
+    let destination = ssh::system::destination_for(host).map_err(CommandError::from)?;
+    crate::diagnostics::log(
+        crate::diagnostics::Level::Info,
+        "ssh",
+        &format!(
+            "{} is reached through the system ssh: {}",
+            host.label,
+            need.sentence()
+        ),
+    );
+    let step = match ssh::system::dial(destination, &endpoint, need)
+        .await
+        .map_err(CommandError::from)?
+    {
+        ssh::system::Dialled::Ready(carrier) => Step::Ready(Box::new(Ready {
+            connection: ssh::conn::Connection::over_system(carrier, endpoint),
+            method: "the system ssh".to_string(),
+            needed_secrets: false,
+            answered_challenges: false,
+            learned: Vec::new(),
+        })),
+        ssh::system::Dialled::Unreachable { why, detail } => {
+            Step::Stopped(Stop::Unreachable { hop, why, detail })
+        }
+        ssh::system::Dialled::Refused { detail } => {
+            Step::Stopped(Stop::SystemRefused { hop, detail })
+        }
+    };
+    settle_dial(app, state, &host.id, None, step).await
 }
 
 /// Keep an imported host's record in step with what its configuration says now.
@@ -2405,7 +2500,7 @@ async fn settle_dial<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: &AppState,
     host_id: &str,
-    dial: ssh::dial::Dial,
+    dial: Option<ssh::dial::Dial>,
     step: ssh::dial::Step,
 ) -> Result<SshConnectReport, CommandError> {
     use ssh::dial::{Step, Stop};
@@ -2469,11 +2564,14 @@ async fn settle_dial<R: tauri::Runtime>(
             let mut report = SshConnectReport::about("needsAnswers", &hop);
             report.challenge = Some(challenge);
             set_needs_prompt(state, &host_id, true).await?;
-            state
-                .ssh_dials
-                .lock()
-                .await
-                .insert(host_id, (dial, std::time::Instant::now()));
+            // Only the built-in client asks questions, so only its dial pauses.
+            if let Some(dial) = dial {
+                state
+                    .ssh_dials
+                    .lock()
+                    .await
+                    .insert(host_id, (dial, std::time::Instant::now()));
+            }
             Ok(report)
         }
         Step::Stopped(stop) => {
@@ -2486,6 +2584,11 @@ async fn settle_dial<R: tauri::Runtime>(
                 }
                 Stop::ProxyFailed { hop, detail } => {
                     let mut r = SshConnectReport::about("proxyFailed", &hop);
+                    r.detail = Some(detail);
+                    r
+                }
+                Stop::SystemRefused { hop, detail } => {
+                    let mut r = SshConnectReport::about("systemSshFailed", &hop);
                     r.detail = Some(detail);
                     r
                 }
@@ -2601,7 +2704,7 @@ fn watch_session<R: tauri::Runtime>(
     session: std::sync::Arc<ssh::conn::Connection>,
 ) {
     tauri::async_runtime::spawn(async move {
-        while !session.handle().is_closed() {
+        while !session.is_closed() {
             tokio::time::sleep(SESSION_WATCH_INTERVAL).await;
         }
         // Nothing else holds this connection open; let it go before the state is
@@ -2780,7 +2883,12 @@ async fn is_resumable(state: &AppState, host_id: &str) -> bool {
 /// Whether reaching `host` can go through without a key decision on any hop.
 async fn route_is_silent(host: &SshHost) -> bool {
     match ssh::dial::route_for(host).await {
-        Ok(route) => route.hops.iter().all(ssh::dial::Hop::key_is_settled),
+        // The system `ssh` never prompts (it runs in batch mode); what it may
+        // need is the person at a security key, which startup must not wait on.
+        Ok(route) => match ssh::system::carrier_for(host, &route) {
+            Some(need) => !need.needs_presence,
+            None => route.hops.iter().all(ssh::dial::Hop::key_is_settled),
+        },
         Err(_) => false,
     }
 }
@@ -2953,7 +3061,7 @@ async fn sftp_for(
     // A connection whose transport has ended cannot carry another channel, and
     // saying so is the difference between the panel waiting for its host and the
     // panel showing the user a sentence about a channel they never asked for.
-    if conn.handle().is_closed() {
+    if conn.is_closed() {
         return Err(CommandError::from(AppError::NotConnected(
             host_id.to_string(),
         )));
@@ -3090,14 +3198,7 @@ pub async fn ssh_host_disconnect(
     // file session, a forward) keeps an SSH connection alive, and a
     // "disconnected" host that is still connected underneath is a lie.
     if let Some(conn) = &session {
-        let _ = conn
-            .handle()
-            .disconnect(
-                russh::Disconnect::ByApplication,
-                "disconnected in Uxnan",
-                "",
-            )
-            .await;
+        conn.hang_up("disconnected in Uxnan").await;
     }
     Ok(session.is_some())
 }
@@ -3116,6 +3217,8 @@ pub struct SshHostSession {
     pub generation: u64,
     /// The link's latency as the host engine's heartbeat last measured it.
     pub latency_ms: Option<u64>,
+    /// Why the system `ssh` carries this session, when it does (`02g` §5.20).
+    pub system_ssh: Option<ssh::system::SystemNeed>,
 }
 
 /// The hosts that can be brought back **without asking the user anything**.
@@ -3154,16 +3257,22 @@ pub async fn ssh_hosts_resumable(state: State<'_, AppState>) -> Result<Vec<Strin
 pub async fn ssh_hosts_connected(
     state: State<'_, AppState>,
 ) -> Result<Vec<SshHostSession>, CommandError> {
-    let live: Vec<(String, u64)> = state
+    let live: Vec<(String, u64, Option<ssh::system::SystemNeed>)> = state
         .ssh_sessions
         .read()
         .await
         .iter()
-        .filter(|(_, conn)| !conn.handle().is_closed())
-        .map(|(host_id, conn)| (host_id.clone(), conn.generation()))
+        .filter(|(_, conn)| !conn.is_closed())
+        .map(|(host_id, conn)| {
+            (
+                host_id.clone(),
+                conn.generation(),
+                conn.system_need().cloned(),
+            )
+        })
         .collect();
     let mut sessions = Vec::with_capacity(live.len());
-    for (host_id, generation) in live {
+    for (host_id, generation, system_ssh) in live {
         let latency_ms = match state.ssh_engines.live(&host_id).await {
             Some(engine) => engine.latency_ms(),
             None => None,
@@ -3172,6 +3281,7 @@ pub async fn ssh_hosts_connected(
             host_id,
             generation,
             latency_ms,
+            system_ssh,
         });
     }
     Ok(sessions)
@@ -6379,6 +6489,7 @@ mod tests {
             proxy_jump: None,
             source: Default::default(),
             needs_prompt: false,
+            carrier: Default::default(),
         }
     }
 

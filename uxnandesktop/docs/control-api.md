@@ -108,8 +108,13 @@ starts, the channels in use against the limit the host turned out to enforce,
 and — on a host running the host engine — that engine's version and platform
 and the link's round trip (`latencyMs`), read from the engine already running:
 a read never starts one. `host/show` adds `engineSessions`, every terminal that
-engine holds, `tab: null` for one no tab of the window shows. `host/connect` opens a session on one that has none — the same path startup
-takes for the hosts that need nothing.
+engine holds, `tab: null` for one no tab of the window shows. Both say what
+carries the connection: `carrier` is the setting (`auto`, `builtin`, `system`)
+and `systemSsh` — while connected through the machine's own `ssh` — why
+(`kerberos`, `securityKey`, `chosen`, …; `docs/remote-hosts.md` → *When your own
+`ssh` connects instead*). `host/connect` opens a session on one that has none —
+the same path startup takes for the hosts that need nothing — and answers
+`systemSshFailed`, with OpenSSH's own `detail`, when that `ssh` stopped.
 
 Two things it deliberately does not do:
 

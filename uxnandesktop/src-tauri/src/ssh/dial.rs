@@ -64,7 +64,7 @@ impl Hop {
         Self::new(label.to_string(), resolved)
     }
 
-    fn endpoint(&self) -> Endpoint {
+    pub fn endpoint(&self) -> Endpoint {
         Endpoint::new(self.resolved.hostname.clone(), self.resolved.port)
     }
 
@@ -330,6 +330,13 @@ pub enum Stop {
         hop: HopRef,
         detail: String,
     },
+    /// The system `ssh` reached the host and stopped (`system.rs`): a key it
+    /// does not know, a login it refused, a prompt it may not show. `detail`
+    /// is its own sentence.
+    SystemRefused {
+        hop: HopRef,
+        detail: String,
+    },
 }
 
 /// A host key waiting for the person's decision, with everything needed to
@@ -550,13 +557,7 @@ impl Dial {
             // *by the bastion* to this hop's address — which is why a name only
             // the bastion can resolve works.
             match previous
-                .handle()
-                .channel_open_direct_tcpip(
-                    hop.resolved.hostname.clone(),
-                    u32::from(hop.resolved.port),
-                    "127.0.0.1",
-                    0,
-                )
+                .tcp(&hop.resolved.hostname, hop.resolved.port, 0)
                 .await
             {
                 Ok(channel) => {
@@ -565,10 +566,11 @@ impl Dial {
                 Err(e) => {
                     return Ok(Err(Stop::Unreachable {
                         detail: format!(
-                            "{} could not open a tunnel to {}:{} — {e}",
+                            "{} could not open a tunnel to {}:{} — {}",
                             self.route.hops[self.index - 1].label,
                             hop.resolved.hostname,
-                            hop.resolved.port
+                            hop.resolved.port,
+                            e.detail
                         ),
                         hop: hop_ref,
                         why: Unreachable::Refused,
@@ -899,6 +901,7 @@ mod tests {
                 proxy_jump: None,
                 source: SshHostSource::SshConfig,
                 needs_prompt: false,
+                carrier: Default::default(),
             }
         }
 

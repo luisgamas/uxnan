@@ -160,8 +160,10 @@ pub fn add_host(
         if !(hand_written && from_import) {
             let id = existing.id.clone();
             let needs_prompt = existing.needs_prompt;
+            let carrier = existing.carrier;
             *existing = host_from(draft, id);
             existing.needs_prompt = needs_prompt;
+            existing.carrier = carrier;
         }
         return AddOutcome {
             host: hosts[index].clone(),
@@ -203,6 +205,9 @@ pub fn update_host(hosts: &mut [SshHost], id: &str, draft: HostDraft) -> Option<
         let mut updated = host_from(draft, existing.id.clone());
         updated.source = SshHostSource::Manual;
         updated.config_host = None;
+        // The carrier is set on the host's page, not in this form: an edit
+        // keeps it.
+        updated.carrier = existing.carrier;
         *existing = updated;
     }
     existing.needs_prompt = false;
@@ -246,6 +251,7 @@ fn host_from(draft: HostDraft, id: String) -> SshHost {
         proxy_jump: draft.proxy_jump,
         source: draft.source,
         needs_prompt: false,
+        carrier: Default::default(),
     }
 }
 

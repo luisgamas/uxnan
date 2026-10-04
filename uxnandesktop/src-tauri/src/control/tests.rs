@@ -1274,6 +1274,7 @@ fn host(id: &str, label: &str) -> crate::model::SshHost {
         proxy_jump: None,
         source: crate::model::SshHostSource::Manual,
         needs_prompt: false,
+        carrier: Default::default(),
     }
 }
 

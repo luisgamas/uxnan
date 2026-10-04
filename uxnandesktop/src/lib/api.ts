@@ -43,6 +43,8 @@ import type {
   SshConnectReport,
   SshHostInventory,
   SshHost,
+  SshCarrier,
+  SshCarrierView,
   SshHostAdded,
   SshHostDraft,
   SshSecret,
@@ -700,6 +702,17 @@ export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
 
 /** List the folders inside `path` on a connected host. An empty `path` starts at
  *  that machine's home — only it knows where that is. */
+/** Pin what carries a host's connection (`auto` lets its configuration
+ *  decide). Takes effect at the next connect. */
+export function sshHostSetCarrier(hostId: string, carrier: SshCarrier): Promise<SshHost> {
+  return invoke<SshHost>('ssh_host_set_carrier', { hostId, carrier });
+}
+
+/** What would carry a host if it connected now, and why. */
+export function sshHostCarrier(hostId: string): Promise<SshCarrierView> {
+  return invoke<SshCarrierView>('ssh_host_carrier', { hostId });
+}
+
 export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
   return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
 }

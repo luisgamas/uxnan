@@ -218,6 +218,22 @@ describe('a host that could not be reached', () => {
 
     expect(hosts.error).toMatch(/did not answer within 15s/);
   });
+
+  it('shows what the system ssh said when it would not connect', async () => {
+    // OpenSSH checked the key and signed in by itself; its sentence is the
+    // whole story, so it is shown rather than a guess at what went wrong.
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'systemSshFailed',
+        detail: 'Host key verification failed.',
+        attempted: [],
+      }),
+    });
+    await hosts.load();
+    await hosts.connect('silent');
+
+    expect(hosts.error).toMatch(/the system ssh could not connect — Host key verification failed\./);
+  });
 });
 
 describe('hosts.connect — what a host (or its bastion) asks for', () => {

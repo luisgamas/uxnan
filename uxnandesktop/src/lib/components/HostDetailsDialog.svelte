@@ -16,16 +16,31 @@
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { hostAgents } from "$lib/agentAvailability";
   import { AGENT_CATALOG } from "$lib/agentCatalog";
-  import { sshHostDoctor, sshHostSessionEnd, sshHostSessions } from "$lib/api";
+  import Combobox from "$lib/components/Combobox.svelte";
+  import {
+    sshHostCarrier,
+    sshHostDoctor,
+    sshHostSessionEnd,
+    sshHostSessions,
+    sshHostSetCarrier,
+  } from "$lib/api";
+  import { currentOS } from "$lib/platform";
   import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
   import { sessions } from "$lib/state/sessions.svelte";
   import { expectation } from "$lib/target";
   import { relativeTime } from "$lib/relativeTime";
   import { toastError } from "$lib/toast";
-  import type { HostDoctor, HostSession, SshHost } from "$lib/types";
+  import type {
+    HostDoctor,
+    HostSession,
+    SshCarrier,
+    SshCarrierView,
+    SshHost,
+    SystemSshNeed,
+  } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { field, text } from "$lib/design";
 
   let {
     open = $bindable(false),
@@ -169,6 +184,66 @@
     return out;
   });
 
+  // --- What carries the connection ------------------------------------------------
+
+  let carrierView = $state<SshCarrierView | null>(null);
+  let carrierChanged = $state(false);
+  const live = $derived(sessions.systemOf(host.id));
+
+  const carrierGroups = $derived([
+    {
+      items: (["auto", "builtin", "system"] as const).map((value) => ({
+        value,
+        label: i18n.t(`hostPage.carrier.${value}`),
+      })),
+    },
+  ]);
+
+  function reasonOf(need: { code: string; file?: string | null }): string {
+    return i18n.t(`hostPage.systemNeed.${need.code as SystemSshNeed["code"]}`, {
+      file: need.file ?? "",
+    });
+  }
+
+  /** What carries it now, when connected; what will, when not. */
+  const carrierLine = $derived.by(() => {
+    if (connected) {
+      return live
+        ? i18n.t("hostPage.carrierSystemNow", { reason: reasonOf(live) })
+        : i18n.t("hostPage.carrierBuiltinNow");
+    }
+    const view = carrierView;
+    if (!view) return "";
+    return view.system
+      ? i18n.t("hostPage.carrierSystemNext", { reason: reasonOf(view.system) })
+      : i18n.t("hostPage.carrierBuiltinNext");
+  });
+
+  /** Whether the system ssh carries it, or would — when it does on Windows,
+   *  every channel is its own login, which the page says. */
+  const viaSystem = $derived(connected ? live !== null : Boolean(carrierView?.system));
+
+  async function loadCarrier() {
+    try {
+      carrierView = await sshHostCarrier(host.id);
+    } catch {
+      carrierView = null;
+    }
+  }
+
+  async function setCarrier(value: string) {
+    const carrier = value as SshCarrier;
+    if ((host.carrier ?? "auto") === carrier) return;
+    try {
+      const updated = await sshHostSetCarrier(host.id, carrier);
+      hosts.hosts = hosts.hosts.map((h) => (h.id === updated.id ? updated : h));
+      carrierChanged = connected;
+      await loadCarrier();
+    } catch (e) {
+      toastError(e);
+    }
+  }
+
   // --- The host's terminals -----------------------------------------------------
 
   let held = $state<HostSession[] | null>(null);
@@ -214,6 +289,7 @@
     untrack(() => {
       void check();
       void loadSessions();
+      void loadCarrier();
     });
   });
 </script>
@@ -251,6 +327,31 @@
               </li>
             {/each}
           </ul>
+        {/if}
+      </section>
+
+      <section class="flex flex-col gap-1.5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class={text.section}>{i18n.t("hostPage.carrierTitle")}</h3>
+          <Combobox
+            value={host.carrier ?? "auto"}
+            groups={carrierGroups}
+            triggerClass={field.selectStandard}
+            searchPlaceholder={i18n.t("common.search")}
+            onChange={(v) => void setCarrier(v)}
+          />
+        </div>
+        {#if carrierLine}
+          <p class={text.meta}>{carrierLine}</p>
+        {/if}
+        {#if carrierChanged}
+          <p class={text.meta}>{i18n.t("hostPage.carrierChanged")}</p>
+        {/if}
+        {#if viaSystem && currentOS() === "windows"}
+          <p class={text.meta}>{i18n.t("hostPage.carrierUnshared")}</p>
+        {/if}
+        {#if (host.carrier ?? "auto") === "auto" && !viaSystem}
+          <p class={text.meta}>{i18n.t("hostPage.carrierAutoHint")}</p>
         {/if}
       </section>
 

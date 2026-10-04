@@ -151,6 +151,36 @@ success`) is carried through both steps instead of reporting the key as refused.
 A single hidden "Password:" prompt is answered with the password you already
 gave.
 
+## When your own `ssh` connects instead
+
+Some configurations only OpenSSH itself can follow: **Kerberos**
+(`GSSAPIAuthentication yes`), a **FIDO2 security key** (an `sk-` key, or a
+`SecurityKeyProvider`), a **smartcard** (`PKCS11Provider`), host-based
+authentication, a `ProxyUseFdpass` proxy, host keys from a `KnownHostsCommand`.
+For a host whose configuration asks for one of those, the app has **your
+machine's own `ssh`** do the connecting — exactly as `ssh <host>` would in a
+terminal, with your config, your `known_hosts` and your agent — and carries
+everything over it: terminals (in the host engine), files, git, search, ports,
+the host's bridge. Nothing is lost; even the engine is uploaded the same way, over
+`ssh`'s own SFTP.
+
+- **One login.** On macOS and Linux it logs in once and every channel shares that
+  login (OpenSSH connection sharing), so a security key is touched once per
+  connection. **Windows'** OpenSSH cannot share a login, so there every terminal,
+  file session and command signs in on its own — about a second each — and the
+  host's page says so.
+- **It never asks.** It runs without prompts, so a host that wants a password or a
+  passphrase, or a host key that is not in your `known_hosts` yet, stops with
+  OpenSSH's own sentence instead of a prompt nobody sees. Connect once with `ssh`
+  in a terminal to settle the key, or use the built-in client for a host that
+  needs a password. A host that needs a touch of a security key is not
+  reconnected at startup on its own: it waits for you to press Connect.
+- **You can choose.** A host's page (Settings → Hosts → *Details*) has
+  **Connection → Connect with**: *Automatic* (the built-in client, unless the
+  configuration needs your `ssh`), *Built-in client* or *System ssh*. It says
+  which one carries the host now, and why. A change takes effect at the next
+  connect.
+
 ## Host keys — the rules the app connects under
 
 The confirmation is in the app (Settings → Hosts asks you before trusting a key
@@ -545,9 +575,8 @@ same connection.
 
 ## What is coming
 
-Reaching a host through the system's own `ssh` — for the configurations the
-built-in client cannot reproduce (GSSAPI/Kerberos, FIDO2 security keys, a
-`ProxyCommand` of your own).
+Nothing else is planned for how a host is reached: the built-in client and your
+own `ssh` (above) cover what OpenSSH configurations ask for.
 
 Deliberately *not* coming: any mode that skips host-key verification.
 

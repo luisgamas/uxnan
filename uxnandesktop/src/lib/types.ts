@@ -791,6 +791,34 @@ export interface SshHost {
   /** Set after a connection that needed a passphrase or password, so startup can
    *  reconnect the silent hosts and leave the rest until the user is present. */
   needsPrompt?: boolean;
+  /** What carries the connection (mirror of Rust `SshCarrier`): the
+   *  configuration decides, or it is pinned to one. Absent = `auto`. */
+  carrier?: SshCarrier;
+}
+
+export type SshCarrier = "auto" | "builtin" | "system";
+
+/** Why the system `ssh` carries a host (mirror of Rust `ssh::system::SystemNeed`):
+ *  what in its configuration only OpenSSH itself can do, or the person's choice. */
+export interface SystemSshNeed {
+  code:
+    | "kerberos"
+    | "smartcard"
+    | "securityKeyProvider"
+    | "hostbased"
+    | "fdpass"
+    | "knownHostsCommand"
+    | "securityKey"
+    | "chosen";
+  /** The key file, for `securityKey`. */
+  file?: string | null;
+}
+
+/** What would carry a host if it connected now (Rust `SshCarrierView`). */
+export interface SshCarrierView {
+  carrier: SshCarrier;
+  /** Why the system `ssh` would; `null` is the built-in client. */
+  system: SystemSshNeed | null;
 }
 
 /** What the form (or an imported alias) sends. Never an id — those are minted
@@ -875,6 +903,8 @@ export interface SshHostSession {
   generation: number;
   /** The link's latency as the host engine's heartbeat last measured it. */
   latencyMs?: number | null;
+  /** Why the system `ssh` carries this session, when it does. */
+  systemSsh?: SystemSshNeed | null;
 }
 
 /** A host's connection, step by step (mirror of Rust `ssh::doctor::HostDoctor`):
@@ -964,7 +994,8 @@ export interface SshConnectReport {
     | "failed"
     | "noUsableMethod"
     | "unreachable"
-    | "proxyFailed";
+    | "proxyFailed"
+    | "systemSshFailed";
   /** For `unreachable`: which kind it was. They lead to different actions — a
    *  machine that is asleep is worth another try, a name that does not resolve
    *  is not — and one failure string made them indistinguishable. */

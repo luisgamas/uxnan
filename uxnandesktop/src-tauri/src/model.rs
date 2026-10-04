@@ -197,6 +197,25 @@ pub struct SshHost {
     /// four hosts means four prompts.
     #[serde(default)]
     pub needs_prompt: bool,
+    /// What carries the connection: chosen by the configuration (`Auto`), or
+    /// pinned by the person to the built-in client or the system `ssh`
+    /// (`ssh/system.rs`, `02g` §5.20).
+    #[serde(default)]
+    pub carrier: SshCarrier,
+}
+
+/// What carries a host's connection.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SshCarrier {
+    /// The built-in client, unless the configuration asks for something only
+    /// OpenSSH itself can do (`ssh::system::needs_system`).
+    #[default]
+    Auto,
+    /// Always the built-in client.
+    Builtin,
+    /// Always the system `ssh`.
+    System,
 }
 
 /// Where an [`SshHost`] record came from.

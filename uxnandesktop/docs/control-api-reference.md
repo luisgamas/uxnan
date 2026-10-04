@@ -379,6 +379,8 @@ List the remote machines Uxnan is registered against, with the state of their li
   - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
   - `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
   - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+  - `carrier` (string) — What carries its connection, as the person set it: `auto` (the built-in client, unless its SSH configuration asks for something only OpenSSH itself can do), `builtin` or `system` (the machine's own `ssh`).
+  - `systemSsh` (string, optional) — While connected through the system `ssh`: why — `kerberos`, `smartcard`, `securityKeyProvider`, `securityKey`, `hostbased`, `fdpass`, `knownHostsCommand`, or `chosen` (the person picked it). Absent on the built-in client. Through it the host works the same, but a password or passphrase cannot be typed in Uxnan: OpenSSH runs without a prompt.
   - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
   - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
   - `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
@@ -426,6 +428,8 @@ Describe one host: the record `host/list` gives (with its engine and latency), p
 - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
 - `needsPrompt` (boolean) — Whether the last connection needed a passphrase, a password or a second factor. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`/`needsAnswers`: only the person can finish it.
 - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+- `carrier` (string) — What carries its connection, as the person set it: `auto` (the built-in client, unless its SSH configuration asks for something only OpenSSH itself can do), `builtin` or `system` (the machine's own `ssh`).
+- `systemSsh` (string, optional) — While connected through the system `ssh`: why — `kerberos`, `smartcard`, `securityKeyProvider`, `securityKey`, `hostbased`, `fdpass`, `knownHostsCommand`, or `chosen` (the person picked it). Absent on the built-in client. Through it the host works the same, but a password or passphrase cannot be typed in Uxnan: OpenSSH runs without a prompt.
 - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
 - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
 - `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
@@ -1844,11 +1848,11 @@ Open a session on a registered host that has none — the same path startup take
 - `host` (object) — What the attempt came to.
   - `id` (string) — The host id.
   - `connected` (boolean) — Whether there is a live session now. True also when one was already open.
-  - `status` (string) — `connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `failed` or `noUsableMethod`.
+  - `status` (string) — `connected`; `needsPassword`, `needsPassphrase` or `needsAnswers` (a second factor — a person must finish it in Settings → Hosts; any of these may be about a bastion on the way rather than the host itself); `hostUnknown`, `hostChanged` or `hostRevoked` (a host key — the host's or a bastion's — must be confirmed by a person; nothing was trusted); `unreachable`, `proxyFailed` (the ProxyCommand in the SSH configuration could not run), `systemSshFailed` (the host is reached through the machine's own `ssh`, which stopped — `detail` is what it said, e.g. a host key it does not know or a login it refused), `failed` or `noUsableMethod`.
   - `generation` (integer, optional) — The connection incarnation, when connected.
   - `shell` (string, optional) — The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected.
   - `reason` (string, optional) — For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not.
-  - `detail` (string, optional) — A sentence naming the host and what happened, for `unreachable`.
+  - `detail` (string, optional) — A sentence naming the host and what happened, for `unreachable`, `proxyFailed` and `systemSshFailed`.
 
 **Request**
 

@@ -77,6 +77,16 @@ pub struct ResolvedHost {
     /// `GlobalKnownHostsFile`: read, never written.
     pub global_known_hosts_files: Vec<String>,
     pub strict_host_key_checking: StrictHostKeys,
+    /// What only the system `ssh` can do (`system::needs_system`): Kerberos,
+    /// a smartcard, a security-key middleware, host-based authentication, a
+    /// proxy that passes a socket, host keys from a command.
+    pub gssapi_authentication: bool,
+    pub pkcs11_provider: Option<String>,
+    /// A `SecurityKeyProvider` other than OpenSSH's built-in one.
+    pub security_key_provider: Option<String>,
+    pub hostbased_authentication: bool,
+    pub proxy_use_fdpass: bool,
+    pub known_hosts_command: Option<String>,
 }
 
 /// `StrictHostKeyChecking`, as far as this app honours it.
@@ -292,7 +302,7 @@ pub struct TypedHost<'a> {
     pub forward_agent: bool,
 }
 
-fn typed_args(typed: &TypedHost<'_>) -> Result<Vec<String>, AppError> {
+pub(crate) fn typed_args(typed: &TypedHost<'_>) -> Result<Vec<String>, AppError> {
     let hostname = typed.hostname.trim();
     let user = typed.user.trim();
     if !is_safe_word(hostname) {
@@ -467,6 +477,17 @@ pub fn parse_resolved(stdout: &str) -> ResolvedHost {
                 out.global_known_hosts_files = value.split_whitespace().map(String::from).collect()
             }
             "stricthostkeychecking" => out.strict_host_key_checking = StrictHostKeys::parse(value),
+            "gssapiauthentication" => out.gssapi_authentication = is_yes(value),
+            "pkcs11provider" => out.pkcs11_provider = unset_if_none(value),
+            // `internal` is OpenSSH's own FIDO support — a key file, which the
+            // identity check reads; anything else is a middleware library.
+            "securitykeyprovider" => {
+                out.security_key_provider =
+                    (!value.eq_ignore_ascii_case("internal")).then(|| value.to_string())
+            }
+            "hostbasedauthentication" => out.hostbased_authentication = is_yes(value),
+            "proxyusefdpass" => out.proxy_use_fdpass = is_yes(value),
+            "knownhostscommand" => out.known_hosts_command = unset_if_none(value),
             _ => {}
         }
     }
@@ -570,6 +591,38 @@ mod tests {
     #[test]
     fn a_missing_config_is_empty_not_an_error() {
         assert!(enumerate(Path::new("C:/definitely/not/here/config")).is_empty());
+    }
+
+    #[test]
+    fn reads_what_only_the_system_ssh_can_do() {
+        // As `ssh -G` prints them for a plain host: nothing asks for it.
+        let plain = parse_resolved(
+            "gssapiauthentication no\nsecuritykeyprovider internal\nhostbasedauthentication no\nproxyusefdpass no\n",
+        );
+        assert!(!plain.gssapi_authentication);
+        assert_eq!(plain.security_key_provider, None);
+        assert!(!plain.hostbased_authentication);
+        assert!(!plain.proxy_use_fdpass);
+        assert_eq!(plain.pkcs11_provider, None);
+        // And for one that does.
+        let asks = parse_resolved(
+            "gssapiauthentication yes\nsecuritykeyprovider /usr/lib/libsk.so\npkcs11provider /usr/lib/opensc-pkcs11.so\nhostbasedauthentication yes\nproxyusefdpass yes\nknownhostscommand /usr/bin/hosts %H\n",
+        );
+        assert!(asks.gssapi_authentication);
+        assert_eq!(
+            asks.security_key_provider.as_deref(),
+            Some("/usr/lib/libsk.so")
+        );
+        assert_eq!(
+            asks.pkcs11_provider.as_deref(),
+            Some("/usr/lib/opensc-pkcs11.so")
+        );
+        assert!(asks.hostbased_authentication);
+        assert!(asks.proxy_use_fdpass);
+        assert_eq!(
+            asks.known_hosts_command.as_deref(),
+            Some("/usr/bin/hosts %H")
+        );
     }
 
     #[test]
