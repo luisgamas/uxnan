@@ -367,9 +367,13 @@ jobs:
         env:
           APPIMAGE_SCREENSHOT: ${{ github.workspace }}/appimage-window.png
         run: |
-          dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -q 'usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml' \
+          # Listed once, then searched: `dpkg -c | grep -q` lets grep exit at
+          # its first match, tar dies writing to the closed pipe, and under
+          # pipefail the check fails although the file is there.
+          contents=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb)
+          grep -q 'usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml' <<<"$contents" \
             || { echo "::error::the .deb carries no AppStream metadata"; exit 1; }
-          engines=$(dpkg -c uxnandesktop/src-tauri/target/release/bundle/deb/*.deb | grep -cE 'host-engine/[^/]*/uxnan-host(\.exe)?$' || true)
+          engines=$(grep -cE 'host-engine/[^/]*/uxnan-host(\.exe)?$' <<<"$contents" || true)
           [ "$engines" = 6 ] || { echo "::error::the .deb carries $engines host engines, not 6"; exit 1; }
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
       - name: Keep the window it showed
