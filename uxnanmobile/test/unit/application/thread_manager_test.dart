@@ -1354,10 +1354,12 @@ void main() {
     );
     expect((await manager.activityStream.first).containsKey('th1'), isFalse);
     expect(
-        (await manager.awaitingInputStream.first).containsKey('th1'), isFalse);
+      (await manager.awaitingInputStream.first).containsKey('th1'),
+      isFalse,
+    );
   });
 
-  test('another PC\'s live set leaves this PC\'s threads alone', () async {
+  test("another PC's live set leaves this PC's threads alone", () async {
     await seedThread();
     await manager.applyReplicaThreads(
       deviceId: 'pc-1',
