@@ -400,9 +400,13 @@ The same page has a **Bridge on this host** section — the host's own
   ends — no lingering, no administrator, the same on Linux, macOS and Windows.
   **Stop** lets it go; it stays installed.
 - **How phones reach it.** By default **through your relay** — the bridge
-  connects out to it, so nothing listens on the host. **Set up relay** deploys
-  your relay for that bridge (the same dialog as Settings → Bridge & mobile; one
-  relay serves all your machines). **Open on this host's network** turns on its
+  connects out to it, so nothing listens on the host. **Use my relay** puts it on
+  the relay this computer already has, with no token typed: this computer's
+  bridge, which deployed it and remembers the token, adds the host's key, and the
+  host's bridge connects to it. Without a remembered token (or with a bridge here
+  too old to do it), **Set up relay** deploys your relay for that bridge instead
+  (the same dialog as Settings → Bridge & mobile; one relay serves all your
+  machines). **Open on this host's network** turns on its
   LAN listener (port 19850) for phones on the same network or your tailnet — the
   one switch that publishes a port there, off by default. **Pair a phone** shows
   its pairing QR; a host with neither the relay nor the LAN has no way for a

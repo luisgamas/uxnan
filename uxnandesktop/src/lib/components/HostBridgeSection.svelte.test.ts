@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { mountWithProviders, until } from '../../test/render';
 import { sessions } from '$lib/state/sessions.svelte';
+import { bridges } from '$lib/bridge/client.svelte';
+import { relay, relayFor } from '$lib/bridge/relay.svelte';
 import type { HostBridgeState } from '$lib/types';
 import HostBridgeSection from './HostBridgeSection.svelte';
 
@@ -97,5 +99,36 @@ describe('HostBridgeSection', () => {
       expect: { targetId: 'ssh:h1', generation: 3 },
     });
     expect(await screen.findByText(/On: the bridge listens on build-box's network/)).toBeInTheDocument();
+  });
+});
+
+describe('HostBridgeSection — the relay', () => {
+  it('puts the host on this machine\'s relay without a token: admitted here, used there', async () => {
+    sessions.replace([{ hostId: 'h1', generation: 3, label: 'build-box' }]);
+    bridges.for('ssh:h1').applyStatus({ state: 'connected', bridgeVersion: '0.0.47', instanceId: 'i', managed: false });
+    const off = { state: 'off', bundledVersion: '0.0.3', tokenRemembered: false, connectedPhones: 0 } as const;
+    relay.status = {
+      ...off,
+      endpoint: { url: 'wss://uxnan-relay.me.workers.dev', routingId: 'r', enabled: true },
+      provider: 'cloudflare',
+      state: 'connected',
+      tokenRemembered: true,
+      hostKey: 'aa'.repeat(32),
+    };
+    relayFor('ssh:h1').status = { ...off, endpoint: null, hostKey: 'bb'.repeat(32) };
+    const { screen, user, backend } = mountWithProviders(HostBridgeSection, {
+      props: { host: HOST, connected: true },
+      commands: { host_bridge_status: () => KEPT, bridge_call: () => null },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Use my relay' }));
+    await until(() => backend.callsTo('bridge_call').length >= 2, { label: 'both calls' });
+    const calls = backend.callsTo('bridge_call').map((c) => c.args);
+    expect(calls[0]).toEqual({ method: 'relay/admitHost', params: { hostKey: 'bb'.repeat(32) } });
+    expect(calls[1]).toEqual({
+      method: 'relay/use',
+      params: { url: 'wss://uxnan-relay.me.workers.dev' },
+      target: 'ssh:h1',
+    });
   });
 });

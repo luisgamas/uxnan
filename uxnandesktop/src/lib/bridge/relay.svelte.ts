@@ -129,6 +129,12 @@ export class RelayStore {
     return this.#call('relay/setup', { provider: 'cloudflare', accountId, apiToken, remember });
   }
 
+  /** Let another of the user's machines (a host's own bridge, by its identity
+   *  key) host on this relay, with the remembered token (`relay/admitHost`). */
+  admitHost(hostKey: string): Promise<RelayStatus | null> {
+    return this.#call('relay/admitHost', { hostKey });
+  }
+
   /** Use a relay the user deployed by hand. */
   use(url: string): Promise<RelayStatus | null> {
     return this.#call('relay/use', { url });

@@ -106,8 +106,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **A host's bridge on its page.** Settings → Hosts → Details shows the host's
   own bridge — yours or Uxnan's, its version, whether it runs and who keeps it
   running, whether this window is linked to it, and how phones reach it — with
-  Install, Start and keep running, and Stop; *Set up relay* deploys your relay
-  for it with the same dialog as here; *Open on this host's network* is the
+  Install, Start and keep running, and Stop; *Use my relay* puts it on the
+  relay this computer already has, with no token typed (this computer's bridge
+  admits its key, `relay/admitHost`), and *Set up relay* deploys one for it
+  with the same dialog as here; *Open on this host's network* is the
   one switch that publishes a port there, off by default; and *Pair a phone*
   opens the pairing window for that bridge.
 - **"Continue as chat" works for a terminal on a host.** The agent session a

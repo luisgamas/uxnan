@@ -1918,14 +1918,16 @@ recorrido en vivo con un agente real en un host queda pendiente.
 **La pagina del host** lo ofrece (`HostBridgeSection`): de quien es y su version,
 si corre y quien lo mantiene, si esta ventana esta enlazada y como llegan los
 telefonos; Instalar, Iniciar y mantener, Detener; *Configurar relay* (el mismo
-`RelaySetupDialog`, sobre la replica de relay de ese host, `relayFor`); *Abrir en
+`RelaySetupDialog`, sobre la replica de relay de ese host, `relayFor`) o, si el
+relay de esta maquina existe con su token recordado, *Usar mi relay*: el bridge
+local admite la llave del host (`relay/admitHost`, solo canal local) y el del
+host hace `relay/use` con esa URL, sin teclear nada; *Abrir en
 la red de este host* (`SetLan`, apagado por defecto); y *Emparejar un telefono*
 (`BridgeDialog` con su `target`; `bridge_pairing_qr` rechaza un QR sin relay ni
 LAN).
 
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-unir el bridge del host al relay sin volver a teclear el token (que el bridge
-local, dueño del relay, admita la llave del host); guardar su identidad en un
+guardar su identidad en un
 almacen de archivo en hosts sin llavero persistente (hoy vive en el llavero del
 kernel de esa cuenta, que un reinicio puede borrar); las herramientas de esta app
 para los agentes de ese bridge (`desktop/attach` con el `/mcp` del motor); el

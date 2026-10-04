@@ -14,7 +14,9 @@
   import BridgeDialog from "$lib/components/BridgeDialog.svelte";
   import { hostBridgeInstall, hostBridgeSetLan, hostBridgeStatus, hostBridgeSupervise } from "$lib/api";
   import { bridges } from "$lib/bridge/client.svelte";
-  import { relayFor } from "$lib/bridge/relay.svelte";
+  import { relay as localRelay, relayFor } from "$lib/bridge/relay.svelte";
+  import { isUnknownMethodError } from "$lib/bridge/client.svelte";
+  import { toast } from "$lib/toast";
   import { sessions } from "$lib/state/sessions.svelte";
   import { expectation, type TargetId } from "$lib/target";
   import { toastError } from "$lib/toast";
@@ -33,6 +35,38 @@
   let busy = $state<"install" | "start" | "stop" | "lan" | null>(null);
   let installTail = $state<string[]>([]);
   let relayOpen = $state(false);
+  let joining = $state(false);
+
+  /** This machine's relay can take the host without a token being typed:
+   *  set up here and its token remembered. */
+  const canShareRelay = $derived(
+    !!localRelay.status?.endpoint && localRelay.status.tokenRemembered === true,
+  );
+
+  /** Put the host's bridge on this machine's relay: this bridge admits its key
+   *  (`relay/admitHost`, with the remembered token), then the host's bridge
+   *  uses the relay's address. A local bridge too old to admit, or a token
+   *  that is not remembered, falls back to setting the relay up for the host. */
+  async function shareRelay() {
+    const url = localRelay.status?.endpoint?.url;
+    const hostKey = relay.status?.hostKey;
+    if (!url || !hostKey) return;
+    joining = true;
+    try {
+      await localRelay.admitHost(hostKey);
+      await relay.use(url);
+      toast.success(i18n.t("hostBridge.relayShared", { host: host.label }));
+    } catch (e) {
+      if (isUnknownMethodError(e)) {
+        toast(i18n.t("hostBridge.relayShareUnsupported"));
+        relayOpen = true;
+      } else {
+        toastError(e);
+      }
+    } finally {
+      joining = false;
+    }
+  }
   let pairOpen = $state(false);
 
   export async function refresh(): Promise<void> {
@@ -117,7 +151,13 @@
     const label = i18n.t("hostBridge.relay");
     const status = relay.status;
     if (!linked) return { label, tone: "off", detail: i18n.t("hostBridge.relayNeedsLink") };
-    if (!status?.endpoint) return { label, tone: "off", detail: i18n.t("hostBridge.relayNone") };
+    if (!status?.endpoint) {
+      return {
+        label,
+        tone: "off",
+        detail: canShareRelay ? i18n.t("hostBridge.relayNotShared") : i18n.t("hostBridge.relayNone"),
+      };
+    }
     if (!status.endpoint.enabled) return { label, tone: "off", detail: i18n.t("hostBridge.relayOff") };
     return status.state === "connected"
       ? { label, tone: "ok", detail: i18n.t("hostBridge.relayOn") }
@@ -183,9 +223,18 @@
         </Button>
       {/if}
       {#if linked && !relay.status?.endpoint}
-        <Button size="sm" variant="outline" onclick={() => (relayOpen = true)}>
-          {i18n.t("hostBridge.relaySetup")}
-        </Button>
+        {#if canShareRelay}
+          <Button size="sm" variant="outline" disabled={joining} onclick={() => void shareRelay()}>
+            {#if joining}
+              <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+            {/if}
+            {i18n.t("hostBridge.relayShare")}
+          </Button>
+        {:else}
+          <Button size="sm" variant="outline" onclick={() => (relayOpen = true)}>
+            {i18n.t("hostBridge.relaySetup")}
+          </Button>
+        {/if}
       {/if}
     </div>
     {#if busy === "install"}
