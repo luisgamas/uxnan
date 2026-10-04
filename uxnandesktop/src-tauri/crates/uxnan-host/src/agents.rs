@@ -208,7 +208,13 @@ fn login_path() -> Option<String> {
     None
 }
 
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
+    // Tests name exactly where to look, like `UXNAN_HOST_HOME` for where to
+    // live: a daemon under test must never find — and run — the machine's
+    // real programs, such as the bridge installed for the person.
+    if let Some(only) = std::env::var_os("UXNAN_HOST_SEARCH_PATH") {
+        return std::env::split_paths(&only).collect();
+    }
     let home = agent_hooks::home_dir().unwrap_or_default();
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut add = |dir: PathBuf| {
@@ -256,7 +262,7 @@ fn on_path(dirs: &[PathBuf], name: &str) -> bool {
 
 /// `name` in `dir` as this platform runs it: the file itself on Unix; on
 /// Windows with one of the extensions a command is found by (`PATHEXT`).
-fn found_in(dir: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn found_in(dir: &Path, name: &str) -> Option<PathBuf> {
     if cfg!(windows) {
         let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
         exts.split(';')

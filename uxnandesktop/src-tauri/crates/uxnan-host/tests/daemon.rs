@@ -42,6 +42,24 @@ impl Daemon {
         Self::spawn(Path::new(BIN), home, idle_secs, flags)
     }
 
+    /// Looking for programs only in `search` (`UXNAN_HOST_SEARCH_PATH`).
+    fn start_searching(idle_secs: u64, search: &str) -> Self {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("user")).unwrap();
+        let child = Command::new(BIN)
+            .arg("serve")
+            .env("UXNAN_HOST_HOME", home.path())
+            .env("HOME", home.path().join("user"))
+            .env("UXNAN_HOST_IDLE_SECS", idle_secs.to_string())
+            .env("UXNAN_HOST_SEARCH_PATH", search)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        Self { child, home }
+    }
+
     /// Started from `exe`, in a home prepared beforehand.
     fn spawn(exe: &Path, home: tempfile::TempDir, idle_secs: u64, flags: &[&str]) -> Self {
         let child = Command::new(exe)
@@ -1729,4 +1747,113 @@ async fn a_hosts_old_worktrees_are_found_and_removed_there_but_never_one_in_use(
         held.exists(),
         "a folder a terminal stands in is never taken"
     );
+}
+
+/// A stand-in for an installed bridge: it takes the bridge's lock as the real
+/// one does, and holds it until it is asked to stop.
+fn fake_managed_bridge(user_home: &Path) {
+    let root = user_home.join(".uxnan/bridge/lib/node_modules/uxnan-bridge");
+    std::fs::create_dir_all(root.join("dist/src")).unwrap();
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"name":"uxnan-bridge","version":"0.0.99"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("dist/src/cli.js"),
+        r#"const fs = require('fs'), path = require('path'), os = require('os');
+const dir = path.join(os.homedir(), '.uxnan');
+fs.mkdirSync(dir, { recursive: true });
+const lock = path.join(dir, 'bridge.lock');
+fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+process.on('SIGTERM', () => { try { fs.unlinkSync(lock); } catch {} process.exit(0); });
+setInterval(() => {}, 1000);
+"#,
+    )
+    .unwrap();
+}
+
+async fn bridge_state(client: &mut Client) -> serde_json::Value {
+    use uxnan_host_protocol::BridgeCall;
+    match client.call(Call::Bridge(BridgeCall::Status)).await {
+        Outcome::Ok {
+            reply: Reply::Value { value },
+        } => value,
+        other => panic!("the status answers: {other:?}"),
+    }
+}
+
+async fn until_state(
+    client: &mut Client,
+    what: &str,
+    ok: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    for _ in 0..80 {
+        let state = bridge_state(client).await;
+        if ok(&state) {
+            return state;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("never saw {what}: {}", bridge_state(client).await);
+}
+
+#[tokio::test]
+async fn the_daemon_keeps_the_hosts_bridge_running_and_lets_it_go_when_asked() {
+    use uxnan_host_protocol::BridgeCall;
+    // Only the folder Node is in: the bridge the person installed on this
+    // machine, if any, is never found — let alone started — by a test.
+    let Some(node_dir) = std::env::var_os("PATH")
+        .and_then(|p| std::env::split_paths(&p).find(|d| d.join("node").is_file()))
+    else {
+        eprintln!("skipped: no node on PATH");
+        return;
+    };
+    let isolated = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(node_dir.join("node"), isolated.path().join("node")).unwrap();
+    let daemon = Daemon::start_searching(600, &isolated.path().display().to_string());
+    fake_managed_bridge(&daemon.user_home());
+    let (mut client, _) = Client::hello(&daemon.socket()).await;
+
+    // Found where Uxnan installs it, and not running yet.
+    let state = bridge_state(&mut client).await;
+    assert_eq!(state["install"]["kind"], "managed", "{state}");
+    assert_eq!(state["install"]["version"], "0.0.99", "{state}");
+    assert!(state["running"].is_null(), "{state}");
+    assert_eq!(state["supervise"], false);
+
+    // Asked to keep it running: started, and known to be ours.
+    let on = client
+        .call(Call::Bridge(BridgeCall::Supervise { on: true }))
+        .await;
+    assert!(matches!(on, Outcome::Ok { .. }), "{on:?}");
+    let state = until_state(&mut client, "the bridge running", |s| {
+        s["running"].is_u64() && s["supervised"] == true
+    })
+    .await;
+    let first = state["running"].as_u64().unwrap();
+    let wish = std::fs::read_to_string(daemon.home.path().join("bridge.json")).unwrap();
+    assert!(wish.contains("true"), "{wish}");
+
+    // It dies: started again.
+    // SAFETY: a signal to the stand-in this test set up.
+    unsafe {
+        libc::kill(first as libc::pid_t, libc::SIGKILL);
+    }
+    until_state(&mut client, "a new bridge", |s| {
+        s["running"].as_u64().is_some_and(|p| p != first) && s["supervised"] == true
+    })
+    .await;
+
+    // Let go: stopped, and the wish remembered as off.
+    let off = client
+        .call(Call::Bridge(BridgeCall::Supervise { on: false }))
+        .await;
+    assert!(matches!(off, Outcome::Ok { .. }), "{off:?}");
+    until_state(&mut client, "the bridge stopped", |s| {
+        s["running"].is_null()
+    })
+    .await;
+    let wish = std::fs::read_to_string(daemon.home.path().join("bridge.json")).unwrap();
+    assert!(wish.contains("false"), "{wish}");
 }

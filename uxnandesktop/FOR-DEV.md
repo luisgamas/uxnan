@@ -30,10 +30,10 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,070 Rust tests (710 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
-in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 30 in `uxnan-host` (25 against the daemon itself) + 45
-integration), of which 50 are ignored probes that need something real to talk to
-(42 live SSH probes — 39 against a real `sshd` and 3 against a **Linux host in a
+`docs/chat.md`). 1,076 Rust tests (711 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 248
+in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 35 in `uxnan-host` (26 against the daemon itself) + 45
+integration), of which 51 are ignored probes that need something real to talk to
+(43 live SSH probes — 40 against a real `sshd` and 3 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,831 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -1170,11 +1170,12 @@ already written for the day phase 2 below lands — nothing to relax then.
          (`isRemote`): group `held()` by target, report to each tab's
          bridge, answer `handoffRequested` on each host store, and
          `openInTerminal` with the target and its agents;
-         (b) **installing the bridge on a host** through the desktop — decide
-         with the maintainer: an npm prefix in that account (a system Node's
-         global prefix is root's), npm installed beside it so `bridge/update`
-         can update itself, and how it keeps running with no one logged in
-         (`systemd --user` needs lingering on Linux); (c) this app's tools for
+         (b) **the host page's bridge section** — the engine already finds,
+         installs and keeps the bridge running (protocol 15, `02g` §5.18;
+         `host_bridge_status|install|supervise`), proven live; left is the
+         UI that offers it (the maintainer reviews it first), and its LAN
+         opt-in (Settings per host: open the LAN listener, for the same
+         network or a tailnet — off by default); (c) this app's tools for
          that bridge's agents — `desktop/attach` there must name the host
          engine's own `/mcp`, not this machine's; (d) pairing the phone with it
          (`bridge/generatePairingQr` through the link) and reaching it — its
@@ -1767,7 +1768,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,070 Rust + 1,831 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,076 Rust + 1,831 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

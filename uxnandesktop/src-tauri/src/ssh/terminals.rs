@@ -1846,5 +1846,97 @@ mod tests {
             assert!(status.is_object(), "bridge/status answered: {status}");
             println!("live: {alias}'s own bridge {version} answered through the engine: {status}");
         }
+
+        /// The host's own bridge, end to end the way the host page does it:
+        /// installed into the account by the engine, kept running by it, and
+        /// reached by the app's link — with no port opened (the install
+        /// starts it with its LAN listener off). Leaves the install in place
+        /// and the bridge stopped.
+        ///
+        /// Installs for real into the account's `~/.uxnan/bridge`, so it is
+        /// armed only by `UXNAN_SSH_TEST_BRIDGE=1`, never by accident.
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_ALIAS and UXNAN_SSH_TEST_BRIDGE=1; installs the bridge into that account"]
+        async fn a_hosts_bridge_is_installed_and_kept_running_by_its_engine() {
+            use uxnan_host_protocol::{BridgeCall, BridgeInstalled, BridgeState};
+            let Ok(alias) = std::env::var("UXNAN_SSH_TEST_ALIAS") else {
+                panic!("set UXNAN_SSH_TEST_ALIAS=<alias from ~/.ssh/config>");
+            };
+            if std::env::var("UXNAN_SSH_TEST_BRIDGE").as_deref() != Ok("1") {
+                panic!("set UXNAN_SSH_TEST_BRIDGE=1: this installs a bridge on that host");
+            }
+            let conn = connect(&alias).await;
+            let engine = engine(&conn).await;
+            let before: BridgeState = engine.bridge(BridgeCall::Status).await.unwrap();
+            assert!(before.node.is_some(), "the host has Node: {before:?}");
+
+            let installed: BridgeInstalled = engine.bridge(BridgeCall::Install).await.unwrap();
+            assert!(installed.ok, "the install worked: {installed:?}");
+            let on: BridgeState = engine
+                .bridge(BridgeCall::Supervise { on: true })
+                .await
+                .unwrap();
+            assert!(on.supervise);
+            let mut running = None;
+            for _ in 0..80 {
+                let now: BridgeState = engine.bridge(BridgeCall::Status).await.unwrap();
+                if now.running.is_some() && now.supervised {
+                    running = Some(now);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            let running = running.expect("the engine started the bridge");
+
+            let home = crate::ssh::sftp::open(&conn)
+                .await
+                .unwrap()
+                .home()
+                .await
+                .unwrap();
+            let app = tauri::test::mock_app();
+            let bridges =
+                crate::bridgeclient::hosts::HostBridges::new("desktop-0123456789ad".into());
+            crate::bridgeclient::hosts::link(
+                app.handle().clone(),
+                Arc::clone(&bridges),
+                "live".into(),
+                Arc::clone(&conn),
+                Arc::clone(&engine),
+                home,
+            );
+            let mut status = None;
+            for _ in 0..80 {
+                if let Ok(s) = bridges
+                    .call(
+                        "live",
+                        "bridge/status",
+                        serde_json::json!({}),
+                        std::time::Duration::from_secs(10),
+                    )
+                    .await
+                {
+                    status = Some(s);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            let off: BridgeState = engine
+                .bridge(BridgeCall::Supervise { on: false })
+                .await
+                .unwrap();
+            assert!(!off.supervise);
+            let status = status.expect("the app's link reached the bridge the engine runs");
+            println!(
+                "live: {alias} bridge {} ({:?} install) ran as pid {:?}, answering {status}",
+                installed.version.as_deref().unwrap_or("?"),
+                running.install.as_ref().map(|i| i.kind.clone()),
+                running.running
+            );
+            assert_eq!(
+                status["lanEnabled"], false,
+                "no port opened by default: {status}"
+            );
+        }
     }
 }

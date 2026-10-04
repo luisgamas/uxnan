@@ -695,6 +695,17 @@ impl HostEngine {
     }
 
     async fn request(&self, call: Call, sink_for_open: Option<Sink>) -> Result<Reply, AppError> {
+        self.request_within(call, sink_for_open, CALL_TIMEOUT).await
+    }
+
+    /// [`Self::request`] with its own deadline — for the few calls that are
+    /// slow by nature (an npm install on the host).
+    async fn request_within(
+        &self,
+        call: Call,
+        sink_for_open: Option<Sink>,
+        deadline: Duration,
+    ) -> Result<Reply, AppError> {
         if !self.is_alive() {
             return Err(AppError::NotConnected("the host engine".to_string()));
         }
@@ -711,7 +722,7 @@ impl HostEngine {
             .send(Frame::control(&ClientMessage::Request { id, call }))
             .await
             .map_err(|_| AppError::NotConnected("the host engine".to_string()))?;
-        match tokio::time::timeout(CALL_TIMEOUT, rx).await {
+        match tokio::time::timeout(deadline, rx).await {
             Ok(Ok(Outcome::Ok { reply })) => Ok(reply),
             Ok(Ok(Outcome::Error { code, message })) => Err(match code {
                 uxnan_host_protocol::ErrorCode::NotFound => AppError::NotFound(message),
@@ -962,6 +973,26 @@ impl HostEngine {
         match self.request(Call::Cleanup(call), None).await? {
             Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
             other => Err(unexpected("a cleanup answer", &other)),
+        }
+    }
+
+    /// The host's own bridge (`02g` §5.18): where it stands, installing it,
+    /// and whether the engine keeps it running. An install may take minutes.
+    pub async fn bridge<T: serde::de::DeserializeOwned>(
+        &self,
+        call: uxnan_host_protocol::BridgeCall,
+    ) -> Result<T, AppError> {
+        self.needs(15, "look after a bridge")?;
+        let deadline = match call {
+            uxnan_host_protocol::BridgeCall::Install => Duration::from_secs(660),
+            _ => Duration::from_secs(60),
+        };
+        match self
+            .request_within(Call::Bridge(call), None, deadline)
+            .await?
+        {
+            Reply::Value { value } => serde_json::from_value(value).map_err(AppError::Serde),
+            other => Err(unexpected("a bridge answer", &other)),
         }
     }
 

@@ -126,6 +126,8 @@ pub struct Daemon {
     /// The agent CLIs a client asked to be told about (`WatchAgents`); empty
     /// means nobody asked, and the process table is left alone.
     agent_commands: Mutex<Vec<String>>,
+    /// This machine's own bridge, kept running while asked (`bridge`).
+    bridge: crate::bridge::Supervisor,
 }
 
 impl Daemon {
@@ -146,6 +148,7 @@ impl Daemon {
             mcp_waiting: Mutex::new(HashMap::new()),
             next_ticket: AtomicU64::new(1),
             agent_commands: Mutex::new(Vec::new()),
+            bridge: crate::bridge::Supervisor::default(),
         }
     }
 
@@ -609,7 +612,8 @@ impl Daemon {
             | Call::Git(_)
             | Call::Ports
             | Call::Browse { .. }
-            | Call::Cleanup(_) => Outcome::Error {
+            | Call::Cleanup(_)
+            | Call::Bridge(_) => Outcome::Error {
                 code: ErrorCode::Invalid,
                 message: "handled by the connection".to_string(),
             },
@@ -653,7 +657,10 @@ impl Daemon {
             }
             keep
         });
+        // Keeping the bridge running is a reason to live: it is what serves
+        // the phone and the chats while nobody is connected.
         let busy = self.clients.load(Ordering::SeqCst) > 0
+            || self.bridge.busy()
             || sessions.values().any(|s| s.alive.load(Ordering::SeqCst));
         drop(sessions);
         if busy {
@@ -714,6 +721,9 @@ pub async fn serve(idle: Duration) -> std::io::Result<()> {
     });
     let daemon = Arc::new(Daemon::new());
     tokio::spawn(crate::cleanup::sweep_leftovers());
+    // The bridge it was keeping before it last exited (or the machine
+    // rebooted and a client brought it back).
+    daemon.bridge.resume();
     log::line(&format!(
         "daemon {} started (protocol {PROTOCOL}, epoch {})",
         env!("CARGO_PKG_VERSION"),
@@ -1037,6 +1047,14 @@ where
                                 let busy = daemon.terminal_folders();
                                 tokio::spawn(async move {
                                     let outcome = crate::cleanup::serve(call, busy).await;
+                                    answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
+                                });
+                            }
+                            Ok(ClientMessage::Request { id, call: Call::Bridge(call) }) => {
+                                let answer = viewer.clone();
+                                let bridge = daemon.bridge.clone();
+                                tokio::spawn(async move {
+                                    let outcome = crate::bridge::serve(&bridge, call).await;
                                     answer.send(Frame::control(&ServerMessage::Response { id, outcome }));
                                 });
                             }

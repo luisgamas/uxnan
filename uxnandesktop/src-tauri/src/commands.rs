@@ -1427,6 +1427,83 @@ pub struct HostSession {
     pub tab: Option<String>,
 }
 
+/// The host's own bridge as its engine sees it: Node and npm there, what is
+/// installed (the user's own or Uxnan's), whether it runs and who keeps it
+/// running (`02g` §5.18).
+#[tauri::command]
+pub async fn host_bridge_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<uxnan_host_protocol::BridgeState, CommandError> {
+    let Some(engine) = connected_engine(&app, &state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    engine
+        .bridge(uxnan_host_protocol::BridgeCall::Status)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Install (or update) the bridge into the host account's own folder, then
+/// have the engine keep it running and look for it at once. Fenced: it
+/// changes that machine.
+#[tauri::command]
+pub async fn host_bridge_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    expect: Option<TargetExpectation>,
+) -> Result<uxnan_host_protocol::BridgeInstalled, CommandError> {
+    let engine = host_engine_fenced(&app, &state, &host_id, expect.as_ref()).await?;
+    let installed: uxnan_host_protocol::BridgeInstalled = engine
+        .bridge(uxnan_host_protocol::BridgeCall::Install)
+        .await
+        .map_err(CommandError::from)?;
+    if installed.ok {
+        let _: uxnan_host_protocol::BridgeState = engine
+            .bridge(uxnan_host_protocol::BridgeCall::Supervise { on: true })
+            .await
+            .map_err(CommandError::from)?;
+        state.host_bridges.retry(&host_id).await;
+    }
+    Ok(installed)
+}
+
+/// Whether the host's engine keeps its bridge running. Fenced.
+#[tauri::command]
+pub async fn host_bridge_supervise(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    on: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<uxnan_host_protocol::BridgeState, CommandError> {
+    let engine = host_engine_fenced(&app, &state, &host_id, expect.as_ref()).await?;
+    let standing = engine
+        .bridge(uxnan_host_protocol::BridgeCall::Supervise { on })
+        .await
+        .map_err(CommandError::from)?;
+    state.host_bridges.retry(&host_id).await;
+    Ok(standing)
+}
+
+/// A connected host's engine, for a call that changes that machine: refused
+/// unless the caller's expectation still names this connection.
+async fn host_engine_fenced(
+    app: &AppHandle,
+    state: &AppState,
+    host_id: &str,
+    expect: Option<&TargetExpectation>,
+) -> Result<std::sync::Arc<ssh::engine::HostEngine>, CommandError> {
+    match machine_for(app, state, Some(&format!("ssh:{host_id}")), Some(expect)).await? {
+        Machine::Host(engine) => Ok(engine),
+        Machine::Here => Err(CommandError::from(AppError::Invalid(format!(
+            "{host_id} is not a host"
+        )))),
+    }
+}
+
 /// The terminals a connected host's engine holds, newest first — including
 /// ones no tab of this window shows.
 #[tauri::command]

@@ -19,7 +19,7 @@ serde_json = "1"
 # The endpoint's token, from the operating system's random source on every
 # platform (`/dev/urandom` exists only on Unix). Already in the tree.
 getrandom = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "io-std", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "io-std", "sync", "time", "macros", "process"] }
 
 [target.'cfg(unix)'.dependencies]
 # `setsid`, `umask` and ignoring SIGHUP when the daemon detaches from the SSH

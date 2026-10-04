@@ -92,6 +92,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   separate replica of each host bridge's conversations — its own unsent
   messages and seen marks, and chat tabs that name the machine — so nothing of
   one machine's chats mixes into another's.
+- **The host engine installs and keeps a host's bridge.** It finds a bridge
+  the account already has — one you installed yourself is the one used — or
+  installs one into `~/.uxnan/bridge` with that machine's own npm (no
+  administrator), and keeps it running without an OS service, restarting it
+  when it ends; it updates itself there like anywhere else. A bridge it
+  installs opens no port: its LAN listener starts off, and the phone is meant
+  to reach it through your relay. The host page does not offer it yet.
 - **Chats for a project on a host.** While a host's own bridge is connected,
   its projects offer chats like local ones — from the tab strip, the row menu,
   the launcher and the sidebar — and they run on that bridge, with that

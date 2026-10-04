@@ -17,6 +17,7 @@
 mod agent_socket;
 mod agents;
 mod attach;
+mod bridge;
 mod cleanup;
 mod daemon;
 mod endpoint;

@@ -1875,8 +1875,39 @@ maquina (`bridges.for`, `chatFor`), el panel de un chat provee la de su maquina
 conectado** (`bridges.offersChat`); si se cae, la pestana lo dice
 (`ChatHostGate`).
 
+**Instalarlo y mantenerlo vivo es del motor del host** (protocolo 15,
+`Call::Bridge`: `Status`, `Install`, `Supervise { on }`; `uxnan-host` →
+`bridge.rs`; comandos `host_bridge_status|install|supervise`, estos dos cercados):
+
+- **Encontrarlo.** Un bridge que el usuario instalo el mismo —en el `PATH` de su
+  shell de login (`own`)— es el que se usa: fue su eleccion. Si no, el de
+  `~/.uxnan/bridge` (`managed`). Uno que ya corre (su propio servicio, una
+  terminal) se respeta: el motor nunca arranca un segundo.
+- **Instalarlo** en la cuenta: `npm install --global --prefix ~/.uxnan/bridge
+  uxnan-bridge@latest` con el npm de su Node —sin administrador, nada fuera de la
+  cuenta—. Esa disposicion la reconoce `bridge/update`, que usa el npm junto al
+  Node que lo corre, asi que despues se actualiza solo (`canApply: true`, medido).
+  Si la cuenta aun no tiene `~/.uxnan/daemon-config.json`, se escribe con
+  `lanEnabled: false` y `mdnsEnabled: false`: **ningun puerto abierto por
+  defecto**; uno que ya existe es del usuario y no se toca.
+- **Mantenerlo vivo** (decision del maintainer: el motor, no un servicio del SO).
+  El motor ya sobrevive a la sesion SSH, asi que arranca `node cli.js start
+  --service` —sin `INVOCATION_ID`, para que su actualizacion no se crea una unidad
+  de systemd— y lo vuelve a arrancar si termina, con espera creciente (2 s a 60 s)
+  mientras termine rapido; tambien tras su propia actualizacion, que instala la
+  version nueva y sale. Sin linger, sin administrador, igual en Linux, macOS y
+  Windows. El deseo vive en `~/.uxnan/host/bridge.json` y lo retoma el siguiente
+  daemon; mientras se vigila el bridge el daemon no se apaga por inactividad. Su
+  salida va a `~/.uxnan/host/bridge.log`.
+
+**Probado:** contra el daemon real con un bridge simulado (arranca, se reinicia al
+morir, se suelta al pedirlo) y en vivo en un host Linux real, armado por
+`UXNAN_SSH_TEST_BRIDGE=1` (`a_hosts_bridge_is_installed_and_kept_running_by_its_engine`):
+instalado, vigilado, alcanzado por el enlace con `lanEnabled: false`, y detenido.
+
 **Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
-pasar la sesion de una terminal del host a un chat; instalar el bridge en el host desde
+la interfaz de todo esto en la pagina del host; pasar la sesion de una terminal
+del host a un chat; instalar el bridge en el host desde
 el desktop (prefijo npm en esa cuenta, npm al lado para que `bridge/update` se
 actualice solo, y como sigue corriendo sin sesion abierta); las herramientas de
 esta app para los agentes de ese bridge (`desktop/attach` con el `/mcp` del

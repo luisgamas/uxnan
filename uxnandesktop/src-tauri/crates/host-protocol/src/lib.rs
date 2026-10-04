@@ -44,7 +44,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// - 12: what this machine listens on — `Ports` → `Reply::Value`.
 /// - 13: its folders, for the project picker — `Browse` → `Reply::Value`.
 /// - 14: worktree upkeep in its managed roots — `Cleanup`.
-pub const PROTOCOL: u32 = 14;
+/// - 15: this machine's own Uxnan bridge — `Bridge` (find it, install it into
+///   the account, keep it running).
+pub const PROTOCOL: u32 = 15;
 /// The oldest version this build still speaks.
 pub const PROTOCOL_MIN: u32 = 1;
 
@@ -311,6 +313,9 @@ pub enum Call {
     /// Worktree upkeep in this machine's managed roots (`worktreeclean`),
     /// answered as [`Reply::Value`].
     Cleanup(CleanupCall),
+    /// This machine's own Uxnan bridge, answered as [`Reply::Value`] with a
+    /// [`BridgeState`] (an install answers its [`BridgeInstalled`]).
+    Bridge(BridgeCall),
     /// The last turn's prompt and reply from the transcript an agent's report
     /// named — read here, where the file is, and only if it is a transcript of
     /// that agent's own.
@@ -366,6 +371,64 @@ pub enum CleanupCall {
         projects: Vec<String>,
         paths: Vec<String>,
     },
+}
+
+/// What [`Call::Bridge`] asks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum BridgeCall {
+    /// Where the bridge stands on this machine.
+    Status,
+    /// Install (or update) the bridge into this account's own folder with the
+    /// npm beside its Node — no administrator needed.
+    Install,
+    /// Whether this daemon keeps the bridge running (`on`) or leaves it be.
+    /// Remembered across the daemon's restarts.
+    Supervise { on: bool },
+}
+
+/// A bridge installed on this machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeInstall {
+    /// `managed`: in the account's `~/.uxnan/bridge`, put there by Uxnan.
+    /// `own`: one the user installed themselves, found on their login `PATH`.
+    pub kind: String,
+    pub version: String,
+    /// The entry point a `node` runs.
+    pub cli: String,
+}
+
+/// The bridge on this machine, as [`BridgeCall::Status`] answers it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeState {
+    /// `node --version` on the login `PATH`; `None` without Node.
+    pub node: Option<String>,
+    /// `npm --version` beside it; `None` without npm.
+    pub npm: Option<String>,
+    /// What is installed — the user's own first, since that is the one they
+    /// chose; `None` when nothing is.
+    pub install: Option<BridgeInstall>,
+    /// The pid of the bridge running for this account, whoever started it.
+    pub running: Option<u32>,
+    /// Whether this daemon is the one that started it, and restarts it.
+    pub supervised: bool,
+    /// Whether this daemon has been asked to keep it running.
+    pub supervise: bool,
+    /// Why the last start, or the last install, did not work.
+    pub last_error: Option<String>,
+}
+
+/// How an install ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeInstalled {
+    pub ok: bool,
+    /// The version now installed, when it worked.
+    pub version: Option<String>,
+    /// The last lines npm printed — what a failure is read from.
+    pub tail: Vec<String>,
 }
 
 /// What [`Call::Git`] asks. Every `path` is a worktree on the host.
