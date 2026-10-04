@@ -61,6 +61,7 @@ import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import { chatStatusesAt } from "$lib/bridge/chat.svelte";
+import { bridges } from "$lib/bridge/client.svelte";
 import {
   resolveCommandCwd,
   substituteTokens,
@@ -1548,14 +1549,16 @@ class ProjectsStore {
   /** Open a chat (a conversation the Uxnan bridge drives) in `path`'s
    *  workspace, and switch to it. With `threadId` it shows that thread —
    *  including one started on the phone; without, the new-chat setup with
-   *  `agentId` preselected. Local workspaces only: the bridge runs on this
-   *  machine, so a host's folder is not one it can work in. */
+   *  `agentId` preselected. A host's folder is chatted with on **that host's
+   *  own bridge** (`02g` §5.18), so it is refused while that host has none
+   *  connected — this machine's bridge cannot work in another machine's
+   *  folder. */
   openChatAt(pathOrKey: string, opts: { threadId?: string; agentId?: string } = {}): void {
     const { path, target } = this.locate(pathOrKey);
-    if (target !== LOCAL_TARGET) return;
+    if (!bridges.offersChat(target)) return;
     this.activeWorktreePath = path;
     this.stampActive(path);
-    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), ...opts });
+    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), target, ...opts });
   }
 
   // --- Quick commands ------------------------------------------------------

@@ -18,11 +18,11 @@
   import { i18n } from "$lib/i18n";
   import AgentRow from "./AgentRow.svelte";
   import ChatRow from "./ChatRow.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatIfAny } from "$lib/bridge/chat.svelte";
+  import { bridges } from "$lib/bridge/client.svelte";
   import { sidebarChats } from "$lib/bridge/chatList";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { keyTarget } from "$lib/pathid";
-  import { isLocalTarget } from "$lib/target";
   import AgentAvatar from "./AgentAvatar.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
@@ -49,12 +49,17 @@
         .filter((id): id is string => !!id),
     ),
   );
-  // Chats run on the local bridge: listed for folders on this machine only.
+  // Chats run on a bridge: this machine's, or for a folder on a host that
+  // host's own while it is connected (`02g` §5.18) — each listed from the
+  // replica of the machine it is on.
+  const replica = $derived(
+    bridges.offersChat(keyTarget(wsKey)) ? chatIfAny(keyTarget(wsKey)) : undefined,
+  );
   const chats = $derived(
-    isLocalTarget(keyTarget(wsKey))
-      ? sidebarChats(chat.threadsFor(path), {
+    replica
+      ? sidebarChats(replica.threadsFor(path), {
           open: openThreads,
-          activityOf: (id) => chat.activity.of(id),
+          activityOf: (id) => replica.activity.of(id),
         })
       : [],
   );
@@ -94,7 +99,7 @@
   }
 
   function openChat(threadId: string) {
-    projects.openChatAt(path, { threadId });
+    projects.openChatAt(wsKey, { threadId });
   }
 </script>
 
@@ -149,7 +154,7 @@
             </TooltipSimple>
           {/each}
           {#each chats.slice(0, Math.max(0, visibleCount - tabs.length)) as t (t.id)}
-            <TooltipSimple title={`${t.title} · ${i18n.t(`monitor.${chat.activity.of(t.id)}`)}`}>
+            <TooltipSimple title={`${t.title} · ${i18n.t(`monitor.${replica?.activity.of(t.id) ?? "idle"}`)}`}>
               {#snippet children(tp)}
                 <Button
                   {...tp}
@@ -159,7 +164,7 @@
                   aria-label={t.title}
                   onclick={() => openChat(t.id)}
                 >
-                  <AgentAvatar logo={bridgeAgentLogo(t.agentId)} status={chat.activity.of(t.id)} stale={false} />
+                  <AgentAvatar logo={bridgeAgentLogo(t.agentId)} status={replica?.activity.of(t.id) ?? "idle"} stale={false} />
                 </Button>
               {/snippet}
             </TooltipSimple>

@@ -6,6 +6,8 @@
   import { chatFor, provideChat } from "$lib/bridge/chat.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
   import ChatBridgeGate from "./ChatBridgeGate.svelte";
+  import ChatHostGate from "./ChatHostGate.svelte";
+  import { sshHostId } from "$lib/target";
   import ChatStart from "./ChatStart.svelte";
   import ChatConversation from "./ChatConversation.svelte";
   import { pane } from "$lib/design";
@@ -26,7 +28,9 @@
 </script>
 
 <div class={pane.root}>
-  {#if !bridge.connected}
+  {#if !bridge.connected && sshHostId(bridge.target)}
+    <ChatHostGate {bridge} />
+  {:else if !bridge.connected}
     <ChatBridgeGate />
   {:else if !tab.threadId}
     <ChatStart {tab} {active} />

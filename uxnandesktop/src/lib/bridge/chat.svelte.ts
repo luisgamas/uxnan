@@ -723,6 +723,12 @@ export function chatFor(target: TargetId | null | undefined): ChatStore {
   return hostChats.get(target) ?? chat;
 }
 
+/** The replica of the machine `target` names, if it has one — this machine's
+ *  always does. Never creates one, so it is safe in a derived value. */
+export function chatIfAny(target: TargetId | null | undefined): ChatStore | undefined {
+  return !target || isLocalTarget(target) ? chat : hostChats.get(target);
+}
+
 /** What the conversations in `path` on the machine `target` names are doing.
  *  Never creates a replica (it is read from derived values): a host whose
  *  bridge has not been heard from has none, and so no conversations. */

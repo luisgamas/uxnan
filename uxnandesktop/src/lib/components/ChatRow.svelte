@@ -16,7 +16,7 @@
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { i18n } from "$lib/i18n";
   import { clock, relTime } from "$lib/time.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatOfThread } from "$lib/bridge/chat.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { modelName } from "$lib/models";
   import AgentLogo from "./AgentLogo.svelte";
@@ -32,11 +32,13 @@
     onopen: () => void;
   } = $props();
 
-  const status = $derived(chat.activity.of(thread.id));
+  // The replica that holds it — this machine's, or a host's own bridge.
+  const replica = $derived(chatOfThread(thread.id));
+  const status = $derived(replica.activity.of(thread.id));
   const time = $derived(relTime(thread.updatedAt, clock.now));
   const secondary = $derived.by(() => {
     if (status !== "idle") return i18n.t(`monitor.${status}`);
-    const agent = chat.agent(thread.agentId)?.displayName ?? thread.agentId ?? "";
+    const agent = replica.agent(thread.agentId)?.displayName ?? thread.agentId ?? "";
     const model = thread.model ? modelName({ id: thread.model, displayName: thread.model }) : "";
     return [i18n.t("agentView.chat"), model || agent].filter(Boolean).join(" · ");
   });

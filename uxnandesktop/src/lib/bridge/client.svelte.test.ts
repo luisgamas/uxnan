@@ -143,3 +143,21 @@ describe('BridgeRegistry — the bridges of hosts', () => {
     expect(seen).toEqual(['ssh:h1', 'ssh:h2']);
   });
 });
+
+describe('BridgeRegistry.offersChat', () => {
+  it('offers a chat here always, and on a host only while its own bridge is connected', () => {
+    installFakeBackend({});
+    const bridges = new BridgeRegistry(new BridgeClientStore());
+    expect(bridges.offersChat('local')).toBe(true);
+    expect(bridges.offersChat(undefined)).toBe(true);
+    // A host nobody has heard from: no store is made to answer.
+    expect(bridges.offersChat('ssh:h9')).toBe(false);
+    expect(bridges.hosts()).toEqual([]);
+    const h1 = bridges.for('ssh:h1');
+    expect(bridges.offersChat('ssh:h1')).toBe(false);
+    h1.applyStatus({ state: 'connected', bridgeVersion: '0.0.46', instanceId: 'i', managed: false });
+    expect(bridges.offersChat('ssh:h1')).toBe(true);
+    h1.applyStatus({ state: 'off' });
+    expect(bridges.offersChat('ssh:h1')).toBe(false);
+  });
+});

@@ -91,8 +91,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and looks again every 30 seconds while there is none. The window keeps a
   separate replica of each host bridge's conversations — its own unsent
   messages and seen marks, and chat tabs that name the machine — so nothing of
-  one machine's chats mixes into another's. The chat does not offer a host's
-  projects yet; this is what it will use.
+  one machine's chats mixes into another's.
+- **Chats for a project on a host.** While a host's own bridge is connected,
+  its projects offer chats like local ones — from the tab strip, the row menu,
+  the launcher and the sidebar — and they run on that bridge, with that
+  machine's agents. A host chat tab whose bridge goes away says whose it is
+  and looks again on Retry.
 - **You can see which machine a terminal is on.** A terminal tab on a host
   carries a small badge with the host's name and a dot for how it stands, and
   its title dims while the host is away. A host project's card in the sidebar

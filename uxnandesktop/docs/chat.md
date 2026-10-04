@@ -187,8 +187,11 @@ other off in a reconnect loop (the windows flicker and the chat freezes).
 
 ## Opening a chat
 
-Chats are offered for folders on **this** machine (the bridge runs here, so a
-folder on an SSH host is not one it can work in):
+Chats are offered for folders on **this** machine, and for a folder on an SSH
+host while **that host's own bridge** is connected — the account there runs
+`uxnan-bridge`, and the conversation runs on it, with that machine's agents and
+sign-ins (`docs/remote-hosts.md`). A host without one is not offered a chat;
+a host chat tab whose bridge goes away says so, and comes back with it:
 
 - the tab strip's **+** → *Chat* → **New chat**, plus the folder's three newest
   conversations (one started on the phone included);

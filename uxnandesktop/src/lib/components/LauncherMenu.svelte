@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { keyTarget } from "$lib/pathid";
+  import { keyTarget, parseWorkspaceKey } from "$lib/pathid";
   // The project's "+" — one place to start anything, in any of the project's
   // worktrees. Each worktree is a group (heading = its branch/folder) listing the
   // things you can open there: a terminal (default + each profile) and each
@@ -25,7 +25,8 @@
   import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
   import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
   import { LOCAL_TARGET } from "$lib/target";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chatIfAny } from "$lib/bridge/chat.svelte";
+  import { bridges } from "$lib/bridge/client.svelte";
 
   let {
     repo,
@@ -54,13 +55,16 @@
   const agents = $derived(app.launchableAgentsOn(keyTarget(target?.path ?? repo.path)));
   const profiles = $derived(app.terminalProfiles);
   const browserEnabled = $derived(app.settings.browser?.enabled ?? true);
-  // A chat is a conversation the local bridge drives, so it is offered for a
-  // folder on this machine only. The newest ones in this folder are listed too
-  // — a conversation started on the phone included.
-  const chatLocal = $derived(!!target && keyTarget(target.path) === LOCAL_TARGET);
+  // A chat is a conversation a bridge drives — this machine's, or for a folder
+  // on a host that host's own, while it is connected. The newest ones in this
+  // folder are listed too — a conversation started on the phone included.
+  const chatMachine = $derived(target ? keyTarget(target.path) : LOCAL_TARGET);
+  const chatLocal = $derived(!!target && bridges.offersChat(chatMachine));
   const recentChats = $derived(
     target && chatLocal
-      ? chat.threadsFor(target.path).filter((t) => t.status !== "archived").slice(0, 3)
+      ? (chatIfAny(chatMachine)?.threadsFor(parseWorkspaceKey(target.path).path) ?? [])
+          .filter((t) => t.status !== "archived")
+          .slice(0, 3)
       : [],
   );
 

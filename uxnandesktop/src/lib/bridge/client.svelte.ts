@@ -194,6 +194,15 @@ export class BridgeRegistry {
     return store;
   }
 
+  /** Whether a chat can be offered for a folder on `target`: always on this
+   *  machine (its pane says what the bridge needs), and on a host while its
+   *  own bridge is connected — a host with none has nowhere to run one. Never
+   *  creates a store, so it is safe in a derived value. */
+  offersChat(target: TargetId | null | undefined): boolean {
+    const host = sshHostId(target);
+    return host === null || this.#hosts.get(host)?.connected === true;
+  }
+
   /** The host stores known so far. */
   hosts(): BridgeClientStore[] {
     return [...this.#hosts.values()];

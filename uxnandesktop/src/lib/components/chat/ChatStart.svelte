@@ -14,6 +14,8 @@
   // §5.8.19). One open in a terminal says so, and picking it asks that terminal
   // to let it go first.
   import { untrack } from "svelte";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId } from "$lib/target";
   import type { Thread } from "$shared/models/thread";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as ContextMenu from "$lib/components/ui/context-menu";
@@ -45,6 +47,8 @@
   // The replica — and the bridge — of the machine this chat is on.
   const chat = useChat();
   const bridge = chat.client;
+  /** The host whose own bridge holds this chat, if it is not this machine's. */
+  const onHost = sshHostId(bridge.target);
 
   const agents = $derived(chat.agents);
   let agentId = $state<string | undefined>(undefined);
@@ -285,7 +289,11 @@
       <h2 class={chatTokens.hero}>
         {i18n.t("chat.startTitle", { folder })}
       </h2>
-      <p class={cn(text.meta, "max-w-md")}>{i18n.t("chat.startHint")}</p>
+      <p class={cn(text.meta, "max-w-md")}>
+        {onHost
+          ? i18n.t("chat.startHintHost", { host: hosts.labelOf(onHost) })
+          : i18n.t("chat.startHint")}
+      </p>
     </div>
 
     <div class="flex flex-col gap-1.5">

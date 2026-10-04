@@ -1869,8 +1869,14 @@ ese host. Eventos: `bridge:host-status` y `bridge:host-notification`, con su
 de la prueba, con ella como `HOME` y el LAN apagado, y borrado al final):
 `bridge/status` contesto por el canal directo y por el enlace de la app.
 
-**Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4): el
-chat de un proyecto del host en la interfaz; instalar el bridge en el host desde
+**El chat de un proyecto del host** (desktop): una tienda y una replica por
+maquina (`bridges.for`, `chatFor`), el panel de un chat provee la de su maquina
+(`provideChat`), y un proyecto del host ofrece chat **mientras su bridge esta
+conectado** (`bridges.offersChat`); si se cae, la pestana lo dice
+(`ChatHostGate`).
+
+**Pendiente** (`FOR-DEV.md` → *What an agent on a host still lacks*, punto 4):
+pasar la sesion de una terminal del host a un chat; instalar el bridge en el host desde
 el desktop (prefijo npm en esa cuenta, npm al lado para que `bridge/update` se
 actualice solo, y como sigue corriendo sin sesion abierta); las herramientas de
 esta app para los agentes de ese bridge (`desktop/attach` con el `/mcp` del
