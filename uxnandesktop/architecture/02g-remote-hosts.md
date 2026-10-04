@@ -1889,7 +1889,10 @@ conectado** (`bridges.offersChat`); si se cae, la pestana lo dice
   Node que lo corre, asi que despues se actualiza solo (`canApply: true`, medido).
   Si la cuenta aun no tiene `~/.uxnan/daemon-config.json`, se escribe con
   `lanEnabled: false` y `mdnsEnabled: false`: **ningun puerto abierto por
-  defecto**; uno que ya existe es del usuario y no se toca.
+  defecto**; uno que ya existe es del usuario y no se toca. Con el LAN apagado el
+  endpoint HTTP del bridge sigue en `127.0.0.1` (bridge `[Unreleased]`), asi que
+  las aprobaciones de Claude Code funcionan sin publicar nada; un bridge anterior
+  a ese cambio pierde solo esas aprobaciones.
 - **Mantenerlo vivo** (decision del maintainer: el motor, no un servicio del SO).
   El motor ya sobrevive a la sesion SSH, asi que arranca `node cli.js start
   --service` —sin `INVOCATION_ID`, para que su actualizacion no se crea una unidad

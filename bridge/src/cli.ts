@@ -190,13 +190,17 @@ async function cmdStart(): Promise<void> {
     recordChildProcesses: true,
   });
 
-  if (bridge.context.config.lanEnabled) {
-    try {
-      const { port } = await bridge.startLan();
-      process.stdout.write(`LAN server listening on port ${port}.\n`);
-    } catch (err) {
-      process.stderr.write(`Failed to start LAN server: ${errText(err)}\n`);
-    }
+  // Always: with the LAN off it listens on 127.0.0.1 only, for the agents'
+  // approval hook, and is published nowhere.
+  try {
+    const { port } = await bridge.startLan();
+    process.stdout.write(
+      bridge.context.config.lanEnabled
+        ? `LAN server listening on port ${port}.\n`
+        : `Local endpoint on 127.0.0.1:${port} (the LAN is off).\n`,
+    );
+  } catch (err) {
+    process.stderr.write(`Failed to start the bridge's HTTP endpoint: ${errText(err)}\n`);
   }
 
   if (bridge.context.config.localControlEnabled) {

@@ -174,7 +174,14 @@ export interface Bridge {
    * from then on (set up, rotated, switched off — `relay/*`). Idempotent.
    */
   startRelay(): Promise<void>;
-  /** Start the direct-LAN WebSocket server; resolves with the bound port. */
+  /**
+   * Start the bridge's HTTP endpoint — the phones' direct WebSocket, manual-code
+   * pairing and agents' approval hook — and resolve with the bound port. With
+   * `lanEnabled` it listens on every interface and is published (mDNS, the QR's
+   * hosts); without, it listens on `127.0.0.1` only, on a port of the OS's
+   * choosing, so the agents' approvals still work and nothing is exposed.
+   * Idempotent.
+   */
   startLan(): Promise<{ port: number }>;
   /**
    * Start the loopback-only local control channel (architecture/02a §5.8.15)
@@ -471,11 +478,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
   // "Request approval" on Claude Code is a `PreToolUse` hook that round-trips
-  // each tool to this bridge's local HTTP endpoint, so it is offered whenever
-  // that endpoint exists (the LAN server). The hook URL is lazy (the port is
+  // each tool to this bridge's local HTTP endpoint. That endpoint exists with
+  // or without the LAN — loopback-only when the LAN is off (`startLan`) — so
+  // approvals do not cost a published port. The hook URL is lazy (the port is
   // known only after `startLan`); the token guards the endpoint and the script
   // is written under `~/.uxnan/hooks/`.
-  const claudeApprovals = config.lanEnabled;
+  const claudeApprovals = true;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
   const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
   if (claudeApprovals) {
@@ -803,8 +811,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     },
     startLan: async () => {
       if (lanHandle) return { port: lanHandle.port };
+      const published = config.lanEnabled;
       lanHandle = await startLanServer({
-        port: config.lanPort,
+        // Off the LAN: this machine's loopback only, on whatever port is free
+        // — a fixed one would just be one more thing to collide.
+        ...(published ? { port: config.lanPort } : { port: 0, host: '127.0.0.1' }),
         onConnection: (io, remoteAddress) => {
           void handleSecureConnection({
             io,
@@ -865,6 +876,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         },
       });
       hookState.port = lanHandle.port;
+      if (!published) {
+        logger.info(`local endpoint on 127.0.0.1:${lanHandle.port} (the LAN is off)`);
+        return { port: lanHandle.port };
+      }
       logger.info(`LAN server listening on port ${lanHandle.port}`);
       // Advertise on the LAN via mDNS so the phone can discover the bridge for
       // manual-code pairing (best-effort; degrades silently if it can't bind).

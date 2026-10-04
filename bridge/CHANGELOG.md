@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **Turning the LAN off no longer turns off Claude Code's "request approval".**
+  With `lanEnabled: false` the bridge's HTTP endpoint still runs, on
+  `127.0.0.1` only and on a port the OS picks, for the agents' approval hook —
+  and it is published nowhere (no QR hosts, no mDNS). It is how Uxnan Desktop
+  starts a bridge it installs on a remote host, which opens no port by
+  default.
+
 ## [0.0.46-alpha.20261003] - 20261003
 ### Fixed
 
