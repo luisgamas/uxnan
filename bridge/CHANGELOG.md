@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.48-alpha.20261006] - 20261006
 ### Fixed
 
 - **Two Codex chats at once no longer swap their answers.** One Codex
