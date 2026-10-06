@@ -382,6 +382,17 @@ and mounted as CodeMirror's top panel (`lib/editorFind.svelte.ts`); CodeMirror
 still runs the search and draws the match highlights.
 
 ## Principles
+- **Group state variants stay keyed by the group's class.** Use `group-hover:`
+  / `group-focus-within:` for an unnamed `group`, and the named variants
+  `app.css` defines for a named one (`group-hover-message:`,
+  `group-focus-within-header:`, `group-hover-lane:`, `group-hover-thumb:`,
+  `group-focus-menu-item:`) — never Tailwind's stock `group-hover/<name>:`,
+  which is not generated here. Tailwind compiles its stock form to
+  `:is(:where(.group):hover *)`, and WebKit cannot key style invalidation on a
+  class inside `:where()`: every hover or focus change walked and re-matched the
+  whole page below it (~120 ms per focus on a large workspace, twice per tab
+  switch). A new named group gets its variant in `app.css` next to the others;
+  `src/lib/groupVariants.test.ts` fails on the stock form.
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays
   `text-muted-foreground` and un-bold. Reserve `text-foreground` / `font-medium`
   for primary or interactive content.

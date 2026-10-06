@@ -13,6 +13,9 @@
 //
 // - **`balanced` IS the pre-mode behavior.** Its values are the constants the
 //   consumers used before the mode existed, so the default changes nothing.
+//   A capability added after the mode states its own balanced default and why
+//   (`hiddenTerminalRenderers`: keeping a few hidden terminals' GPU renderers
+//   is what makes switching to them instant; Efficient keeps the old release).
 // - **Validation never leaves residue.** An unknown profile, an unknown
 //   override key, a wrong-typed or out-of-range value — each normalizes away
 //   (profile → balanced, override → inherit) instead of surviving to bite a
@@ -82,6 +85,14 @@ export interface ResourceCapabilities {
   workspaceAutoSleep: WorkspaceAutoSleepLevel;
   /** How long a workspace must be inactive before auto-sleep considers it. */
   autoSleepIdleMinutes: number;
+  /** How many **hidden** terminals keep their GPU (WebGL) renderer, the most
+   *  recently shown first. Bringing a terminal back with its renderer kept is a
+   *  repaint; without it, the renderer is rebuilt from nothing (a new GPU
+   *  context, its shaders and glyph textures), which took 0.4–0.8 s per pane in
+   *  a debug build and is what made switching to a terminal tab stall. Each
+   *  kept renderer holds GPU memory, so Efficient keeps none (every hidden
+   *  terminal gives its context back, the behavior before this capability). */
+  hiddenTerminalRenderers: number;
 }
 
 /** The capability keys a user may override per-capability (Settings →
@@ -112,6 +123,10 @@ export const LIMITS = {
   orchestrationMaxAgentMemoryMb: { min: 0, max: 65_536 },
   resourceHistorySeconds: { min: 60, max: 600 },
   autoSleepIdleMinutes: { min: 5, max: 480 },
+  /** A webview caps its live WebGL contexts (WebView2/Chromium at 16, and the
+   *  visible panes need theirs too), so hidden terminals never hold more than
+   *  half of that. */
+  hiddenTerminalRenderers: { min: 0, max: 8 },
   /** Effective GitHub poll floor (s) — "more frequent" must never mean
    *  hammering the API. `0` (manual only) is always respected. */
   githubPollFloorSeconds: 30,
@@ -136,6 +151,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     petFlavour: false,
     workspaceAutoSleep: "suggest",
     autoSleepIdleMinutes: 30,
+    hiddenTerminalRenderers: 0,
   },
   balanced: {
     gitSweepIntervalMs: 15_000,
@@ -150,6 +166,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     petFlavour: true,
     workspaceAutoSleep: "off",
     autoSleepIdleMinutes: 30,
+    hiddenTerminalRenderers: 4,
   },
   performance: {
     gitSweepIntervalMs: 10_000,
@@ -166,6 +183,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     petFlavour: true,
     workspaceAutoSleep: "off",
     autoSleepIdleMinutes: 30,
+    hiddenTerminalRenderers: 6,
   },
 };
 

@@ -68,7 +68,7 @@
 
   /** One line of the effects view. */
   interface EffectLine {
-    key: OverridableKey | "reconcile" | "github" | "usage";
+    key: OverridableKey | "reconcile" | "github" | "usage" | "hiddenTerminalRenderers";
     label: string;
     value: string;
     overridden: boolean;
@@ -183,6 +183,15 @@
       value: autoSleepValue(caps.workspaceAutoSleep, caps.autoSleepIdleMinutes),
       overridden:
         overridden.has("workspaceAutoSleep") || overridden.has("autoSleepIdleMinutes"),
+    },
+    {
+      key: "hiddenTerminalRenderers",
+      label: i18n.t("resourceMode.effect.terminalRenderers"),
+      value:
+        caps.hiddenTerminalRenderers > 0
+          ? i18n.t("resourceMode.effect.terminalRenderersKept", { n: caps.hiddenTerminalRenderers })
+          : i18n.t("resourceMode.effect.terminalRenderersNone"),
+      overridden: false,
     },
   ]);
 

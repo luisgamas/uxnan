@@ -741,6 +741,9 @@ export const es: Record<MessageKey, string> = {
   "resourceMode.effect.autoSleepSuggest": "sugerir tras {minutes} min inactivo",
   "resourceMode.effect.autoSleepAuto": "dormir tras {minutes} min inactivo",
   "resourceMode.effect.autoSleepFlagOff": "(el interruptor de abajo está apagado)",
+  "resourceMode.effect.terminalRenderers": "Terminales ocultas listas",
+  "resourceMode.effect.terminalRenderersKept": "las {n} más recientes (se muestran al instante)",
+  "resourceMode.effect.terminalRenderersNone": "ninguna (se redibujan desde cero al mostrarse)",
   "resourceMode.autoSleepFlag": "Auto-dormir workspaces",
   "resourceMode.autoSleepFlagDesc":
     "Experimental. Permite que Uxnan sugiera —o, en el nivel automático, realice— dormir workspaces inactivos. Dormir detiene los procesos de ese workspace (el scrollback y las sesiones de agente se conservan y se reanudan al despertar). Un workspace con un agente trabajando solo recibe una sugerencia: nunca se duerme sin tu confirmación.",

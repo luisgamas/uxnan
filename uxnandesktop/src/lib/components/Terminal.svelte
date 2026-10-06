@@ -23,6 +23,10 @@
     adoptInstance,
     releaseInstance,
     disposeInstance,
+    disposeRenderer,
+    releaseRenderer,
+    rendererHidden,
+    rendererShown,
     requestPtyResize,
     respawnPty,
     spawnPty,
@@ -33,6 +37,7 @@
 
   import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { control, focus } from "$lib/design";
   import { cn } from "$lib/utils";
 
@@ -93,11 +98,11 @@
   let repaintRaf: number | null = null;
   // Tracks display:none → shown transitions so a revealed pane repaints even when
   // its grid size is unchanged (a hidden canvas can keep its pre-hide pixels).
+  // Kept by the ResizeObserver (a display:none pane reports a 0×0 box), so the
+  // output path can ask "am I on screen?" without measuring the DOM.
   let wasVisible = false;
-  // Debounced release of a hidden pane's GPU context (see `releaseRenderer`): a
-  // hidden terminal drops its scarce WebGL context so many background terminals
-  // never exhaust WebView2's live-context budget. Debounced so a rapid tab flick
-  // doesn't thrash attach/release.
+  // Debounced hand-off of a hidden pane's renderer to the retention budget
+  // (`rendererHidden`), so a rapid tab flick doesn't churn it.
   let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 
   // --- Copy / paste --------------------------------------------------------
@@ -152,7 +157,12 @@
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rs = (term as any)?._core?._renderService;
     if (!rs || !rs._isPaused) return false; // not paused → fast path, nothing to do
-    if (!hasVisibleGeometry()) return false; // genuinely hidden → keep it paused
+    // Genuinely hidden → keep it paused. This runs after EVERY output chunk of
+    // every terminal, hidden ones included (their render service is paused), so
+    // it reads the visibility the ResizeObserver keeps instead of measuring:
+    // a `getBoundingClientRect` here forced a synchronous layout per chunk while
+    // an agent streamed in a background tab.
+    if (!wasVisible) return false;
     rs._isPaused = false;
     try {
       rs._pausedResizeTask?.flush?.();
@@ -256,7 +266,8 @@
   // all workspaces, attaching WebGL to hidden panes too piles contexts up until the
   // browser starts evicting them — new terminals then get an immediately-lost
   // context (a blank pane) and the loss/recover cycle thrashes the compositor. So
-  // WebGL is bound to the visible pane and released on hide (`releaseRenderer`).
+  // WebGL is attached only to a visible pane, and a hidden pane keeps it only
+  // within the resource mode's budget (`rendererHidden` in `$lib/terminal/instances`).
   // The addon handle lives on the INSTANCE (it survives a drag remount along with
   // its canvas — a GPU context is not lost by re-parenting the DOM).
   //
@@ -273,7 +284,7 @@
         const now = Date.now();
         const rapid = now - owner.webglLossAt < 2000;
         owner.webglLossAt = now;
-        disposeRenderer(webgl);
+        disposeRenderer(owner, webgl);
         if (rapid) {
           // Over the context budget: we stay on the DOM fallback until the next
           // reveal. That is a real drop in paint throughput, so say so.
@@ -320,55 +331,6 @@
     ).catch(() => {
       // Diagnostics is best-effort; never let logging break a terminal.
     });
-  }
-
-  // Dispose the accelerated addon defensively. xterm's WebGL disposer reaches into
-  // the terminal core (to swap back to the DOM renderer), which throws if the core
-  // is mid-teardown (unmount / HMR races); an uncaught throw there would leave xterm
-  // with no renderer at all — a blank pane. Swallow it and clear the handle.
-  function disposeRenderer(target: WebglAddon | undefined = inst?.renderer) {
-    if (inst && inst.renderer === target) inst.renderer = undefined;
-    try {
-      target?.dispose();
-    } catch {
-      // Already disposed or core torn down — nothing else to clean up.
-    }
-  }
-
-  // Release a hidden (or closing) pane's GPU context. `dispose()` alone reverts
-  // xterm to the DOM renderer but on Windows/ANGLE does NOT reclaim the WebGL
-  // context promptly — it waits for GC, so mounted-but-hidden terminals keep
-  // counting against WebView2's live-context budget until new terminals can't get a
-  // context (a blank pane). So after disposing we explicitly lose the context and
-  // zero the canvas, freeing the slot now. xterm keeps streaming into the buffer via
-  // the DOM fallback while hidden, so no output is lost; the next reveal reattaches.
-  function releaseRenderer() {
-    if (!inst?.renderer) return;
-    // Capture the WebGL canvas BEFORE dispose detaches it. Queried on the
-    // instance's wrapper (not `el`): the wrapper is where xterm's DOM lives, and
-    // it may already be re-parented away from this mount's `el`.
-    const canvases = Array.from(inst.wrapper.querySelectorAll("canvas"));
-    disposeRenderer(inst.renderer);
-    if (releaseTimer) {
-      clearTimeout(releaseTimer);
-      releaseTimer = undefined;
-    }
-    for (const canvas of canvases) {
-      let gl: WebGL2RenderingContext | null = null;
-      try {
-        gl = canvas.getContext("webgl2");
-      } catch {
-        gl = null;
-      }
-      if (!gl) continue; // a non-WebGL (DOM/2D) canvas — nothing to release
-      try {
-        gl.getExtension("WEBGL_lose_context")?.loseContext();
-      } catch {
-        // Context already lost — the slot is freed regardless.
-      }
-      canvas.width = 0;
-      canvas.height = 0;
-    }
   }
 
   // Fit the xterm grid to the pane, sync the PTY grid through the race-free
@@ -437,7 +399,7 @@
   // dispose the instance when its tab is gone from every workspace.
   function abortMount() {
     if (inst && inst.adopter === mountToken) {
-      releaseRenderer();
+      releaseRenderer(inst);
       releaseInstance(id, mountToken);
     }
     if (terminals.workspaceOfTab(id) === undefined) disposeInstance(id);
@@ -728,15 +690,22 @@
     // workspace/tab is what tells a pane it went hidden or was revealed.
     resizeObserver = new ResizeObserver(() => {
       const visible = hasVisibleGeometry();
+      const revealed = visible && !wasVisible;
+      const hidden = !visible && wasVisible;
+      // Recorded first: `forceRenderResume` (below, and after every output
+      // chunk) reads it instead of measuring.
+      wasVisible = visible;
       if (visible) {
-        // Cancel a pending release: the pane came back before we freed its context.
+        // Back before the hand-off: the renderer was never offered up.
         if (releaseTimer) {
           clearTimeout(releaseTimer);
           releaseTimer = undefined;
         }
-        if (!wasVisible) {
-          // Revealed — reattach a GPU context (fresh render model) and repaint
-          // through any stale pixels the hidden canvas kept.
+        if (revealed) {
+          // Revealed. A kept renderer only needs a repaint through the stale
+          // pixels the hidden canvas kept; one that was given back is attached
+          // fresh (`attachRenderer` is a no-op while one is held).
+          if (inst) rendererShown(inst);
           attachRenderer();
           revealRepaint();
         } else if (!inst?.renderer) {
@@ -747,18 +716,18 @@
         }
         // A visible pane must never stay stuck on xterm's paused render gate.
         forceRenderResume();
-      } else if (wasVisible) {
-        // Hidden — free the GPU context shortly (debounced so rapid tab flicking
-        // doesn't thrash attach/release). xterm keeps streaming into its buffer via
-        // the DOM fallback while hidden, so nothing is lost; the reveal above
-        // reattaches WebGL and repaints.
+      } else if (hidden) {
+        // Hidden — offer the renderer to the retention budget shortly (debounced
+        // so rapid tab flicking doesn't churn it). Within the budget it is kept,
+        // so coming back is a repaint; beyond it the longest-hidden renderer is
+        // given back. xterm keeps parsing into its buffer either way, so nothing
+        // is lost.
         if (releaseTimer) clearTimeout(releaseTimer);
         releaseTimer = setTimeout(() => {
           releaseTimer = undefined;
-          releaseRenderer();
+          if (inst) rendererHidden(inst, resourceMode.policy.capabilities.hiddenTerminalRenderers);
         }, 400);
       }
-      wasVisible = visible;
       fitToPane();
     });
     resizeObserver.observe(el);
@@ -852,7 +821,7 @@
       terminalKeyboard.clear(id);
       // Free the GPU context explicitly now (not at GC time) so opening/closing
       // and moving terminals never drifts toward WebView2's live-context budget.
-      releaseRenderer();
+      releaseRenderer(inst);
       releaseInstance(id, mountToken);
       if (terminals.workspaceOfTab(id) === undefined) {
         // The tab is gone from every workspace — a real close, not a re-parent.

@@ -228,7 +228,7 @@
     isGit && !isExpanded && (projectAgents.length > 0 || worktreeCount > 1),
   );
 
-  const hoverReveal = "opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 focus-visible:opacity-100";
+  const hoverReveal = "opacity-0 group-hover-header:opacity-100 group-focus-within-header:opacity-100 focus-visible:opacity-100";
 
   function onHeaderActivate() {
     // Swallow the click that a just-finished drag would otherwise fire.

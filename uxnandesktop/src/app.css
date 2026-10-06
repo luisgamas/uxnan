@@ -14,6 +14,60 @@
    hover-reveal controls never get stuck visible on touch. */
 @custom-variant can-hover (@media (hover: hover));
 
+/* Group state variants, keyed by the group's own class.
+ *
+ * Tailwind's stock `group-hover:` / `group-focus-within:` compile to
+ * `:is(:where(.group):hover *)`. WebKit (the macOS and Linux webview) cannot
+ * key invalidation on a class hidden inside `:where()`, so it treats EVERY
+ * element whose hover or focus-within changes as a possible group: each focus,
+ * blur and pointer move across a pane walked and re-matched every node below
+ * it — ~120 ms per focus change on a 120k-node workspace, paid twice on every
+ * tab switch (the old field's blur, the new one's focus). With the class
+ * outside `:where()` only real groups trigger it.
+ *
+ * Named groups get their own variant (`group-hover-message:`, …): the stock
+ * `group-hover/<name>:` form is no longer generated once these are defined,
+ * and `src/lib/groupVariants.test.ts` keeps it from coming back. */
+@custom-variant group-hover {
+  @media (hover: hover) {
+    &:is(.group:hover *) {
+      @slot;
+    }
+  }
+}
+@custom-variant group-focus-within (&:is(.group:focus-within *));
+@custom-variant group-hover-header {
+  @media (hover: hover) {
+    &:is(.group\/header:hover *) {
+      @slot;
+    }
+  }
+}
+@custom-variant group-focus-within-header (&:is(.group\/header:focus-within *));
+@custom-variant group-hover-message {
+  @media (hover: hover) {
+    &:is(.group\/message:hover *) {
+      @slot;
+    }
+  }
+}
+@custom-variant group-focus-within-message (&:is(.group\/message:focus-within *));
+@custom-variant group-hover-lane {
+  @media (hover: hover) {
+    &:is(.group\/lane:hover *) {
+      @slot;
+    }
+  }
+}
+@custom-variant group-hover-thumb {
+  @media (hover: hover) {
+    &:is(.group\/thumb:hover *) {
+      @slot;
+    }
+  }
+}
+@custom-variant group-focus-menu-item (&:is(.group\/dropdown-menu-item:focus *));
+
 /* Chromium paints the native clock affordance from `color-scheme`, not from
    the input's foreground color. Keep it synchronized with the app theme. */
 input[type="time"] {

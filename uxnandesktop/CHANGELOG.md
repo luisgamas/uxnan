@@ -4,6 +4,26 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Switching tabs no longer stalls.** Moving focus between a chat's composer
+  and a terminal (which every tab switch does) cost about 120 ms on each side
+  in a busy workspace, and moving the pointer between regions paid the same.
+  The cause was how the hover- and focus-revealed controls were styled: the
+  webview re-checked every element of the page on each change. Those styles
+  are now keyed to the elements that use them, and a focus change costs under
+  a millisecond. Measured on a workspace with six long chats and three
+  terminals: showing a terminal went from ~300 ms to 30–60 ms, showing a long
+  chat from ~400 ms to ~100–130 ms.
+- **Switching back to a terminal is a repaint.** A hidden terminal keeps its
+  GPU renderer instead of giving it back, up to a budget set by the resource
+  mode — 4 in Balanced, 6 in Performance, none in Efficient (the old behavior).
+  Settings → Resources shows it as *Hidden terminals kept ready*.
+- **Terminal output no longer measures the page.** Every chunk any terminal
+  printed — hidden ones included — read the pane's geometry, forcing a layout
+  while an agent streamed in a background tab; it now reads the visibility the
+  pane already tracks.
+
 
 ## [0.0.76] - 20261004
 ### Added

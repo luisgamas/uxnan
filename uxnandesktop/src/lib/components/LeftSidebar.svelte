@@ -393,7 +393,7 @@
                         class={cn(
                           shell.laneAction,
                           focus.ring,
-                          "text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground focus-visible:opacity-100 group-hover/lane:opacity-100",
+                          "text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground focus-visible:opacity-100 group-hover-lane:opacity-100",
                           text.indicator,
                         )}
                         onclick={() => {

@@ -553,7 +553,7 @@
             <img src={image.previewUrl} alt={image.name} class="size-full object-cover" />
             <button
               type="button"
-              class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-xs transition-opacity group-hover/thumb:opacity-100 focus-visible:opacity-100"
+              class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-xs transition-opacity group-hover-thumb:opacity-100 focus-visible:opacity-100"
               aria-label={i18n.t("chat.removeImage", { name: image.name })}
               onclick={() => (images = images.filter((i) => i.id !== image.id))}
             >
