@@ -329,11 +329,13 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   produced it — prose, and between it the steps it takes. Consecutive steps
   (commands, edits, tool calls, subagents) form one **work group**: a compact
   row per step (icon, verb, detail; while it runs its verb carries a soft
-  sweep of light and the Comet Trail sits where the state goes, red when it
+  sweep of light and the working spinner sits where the state goes, red when it
   failed), each one opening to its output or diff. A *Working for 12s* line —
-  the same Comet Trail and sweep — sits under the turn. The Comet Trail is the
-  app's one "working" mark, in the same hue as in the sidebar and on the
-  project cards (`ChatWorkingGlyph`, `stateHue.working`). When the agent
+  the same spinner and sweep — sits under the turn. The spinner is the app's
+  one "working" mark, in the same hue as in the sidebar and on the project
+  cards (`ChatWorkingGlyph`, `stateHue.working`). Both move on the compositor
+  alone (`transform`), so a running agent costs the app no repaint per frame
+  (`ShimmerText.svelte`, `ui/spinner`). When the agent
   compacts its context, one quiet *Context compacted* line between hairlines
   marks the spot; its tooltip (and screen-reader label) says why and by how
   much — the same words as on the phone, the token counts through the one

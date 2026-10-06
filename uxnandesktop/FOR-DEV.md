@@ -35,7 +35,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (2
 integration), of which 55 are ignored probes that need something real to talk to
 (48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 1,868 frontend Vitest tests across two
+GitHub tests) + 1,871 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1765,7 +1765,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,102 Rust + 1,868 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,102 Rust + 1,871 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

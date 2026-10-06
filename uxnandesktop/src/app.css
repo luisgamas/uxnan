@@ -395,38 +395,6 @@ input[type="time"] {
   }
 }
 
-/* Live text — what is happening right now (the agent working, a step running):
-   a soft band of light sweeps across the words, in the text's own colour
-   brightened toward the foreground. Text-fill only, so the colour, selection
-   and contrast underneath are the text's own; off under reduced motion. */
-@keyframes text-shimmer {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-@utility text-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    currentColor 0%,
-    currentColor 38%,
-    color-mix(in oklab, currentColor 35%, var(--foreground)) 50%,
-    currentColor 62%,
-    currentColor 100%
-  );
-  background-size: 250% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer 2.2s linear infinite;
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-    -webkit-text-fill-color: currentColor;
-  }
-}
-
 /* A chat reply being written: each settled Markdown chunk fades in once as it
    appears (opacity only — nothing moves). Only while the turn streams, so
    opening an old conversation never replays it. */

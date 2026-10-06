@@ -25,6 +25,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   GPU renderer instead of giving it back, up to a budget set by the resource
   mode — 4 in Balanced, 6 in Performance, none in Efficient (the old behavior).
   Settings → Resources shows it as *Hidden terminals kept ready*.
+- **A running agent no longer keeps the app repainting.** The live
+  *Working…* line and a running step's verb swept a band of light by
+  animating a background gradient, which repainted the text on every frame;
+  the band is now a window moved by `transform` over a brighter copy of the
+  words, which the compositor draws alone (`ShimmerText`). The Comet Trail
+  (nine separately animated dots) gives way to one turning spinner in the
+  working colour, the same glyph the app's dialogs use while they wait —
+  sidebar, tabs, project cards and the chat alike. With an agent working
+  and its chat on screen the app's web process went from ~8 % busy to
+  ~1–3 %, the same as with nothing moving.
 - **Terminal output no longer measures the page.** Every chunk any terminal
   printed — hidden ones included — read the pane's geometry, forcing a layout
   while an agent streamed in a background tab; it now reads the visibility the

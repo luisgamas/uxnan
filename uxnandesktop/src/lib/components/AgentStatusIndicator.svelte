@@ -1,6 +1,6 @@
 <script lang="ts">
   // An agent's effective state (spec 02d §1.2) as one compact glyph:
-  //   working  → the Comet Trail matrix (emerald)  — it is moving right now
+  //   working  → a spinner (emerald)               — it is moving right now
   //   waiting  → a question bubble (orange)        — it needs *you*
   //   blocked  → a pause circle (amber)            — it needs another system
   //   done     → a check (sky)                     — the turn finished
@@ -20,7 +20,7 @@
   import { icon, stateHue } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import CometTrail from "./CometTrail.svelte";
+  import { Spinner } from "$lib/components/ui/spinner";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { Icon } from "$lib/components/ui/icon";
   import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
@@ -34,7 +34,7 @@
   }: { status: DisplayStatus; stale?: boolean; class?: string } = $props();
 
   /** State hue (`stateHue`, shared with the chat). Applied to the wrapper so
-   *  `currentColor` reaches the comet too. */
+   *  `currentColor` reaches the spinner too. */
   const COLOR: Record<DisplayStatus, string> = stateHue;
   const label = $derived(i18n.t(`monitor.${status}`));
 </script>
@@ -51,7 +51,9 @@
       )}
     >
       {#if status === "working"}
-        <CometTrail size={14} />
+        <!-- One layer turning on the compositor: the cheapest "moving right now"
+             the webview can draw, one per working agent. -->
+        <Spinner class="size-3.5" aria-hidden="true" role="presentation" />
       {:else if status === "waiting"}
         <Icon icon={MessageCircleQuestionMarkIcon} class={icon.decorative} />
       {:else if status === "blocked"}

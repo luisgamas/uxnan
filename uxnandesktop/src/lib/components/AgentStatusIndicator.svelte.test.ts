@@ -47,12 +47,15 @@ describe("AgentStatusIndicator", () => {
     }
   });
 
-  it("draws the Comet Trail for working, not an icon", () => {
+  it("draws one turning spinner for working", () => {
     const { screen } = mountWithProviders(AgentStatusIndicator, { props: { status: "working" } });
 
-    // The comet is CSS dots, so there is no <svg> glyph at all here.
-    expect(screen.container.querySelector("svg")).toBeNull();
-    expect(screen.container.querySelector("span")).not.toBeNull();
+    // One glyph turned by a transform — the compositor's job — painted with
+    // real geometry in the state's colour.
+    const glyphs = screen.container.querySelectorAll("svg");
+    expect(glyphs.length).toBe(1);
+    expect(glyphs[0]!.getAttribute("class")).toContain("animate-spin");
+    expect(shapesIn(screen.container).length).toBeGreaterThan(0);
   });
 
   it("keeps idle a plain dot", () => {

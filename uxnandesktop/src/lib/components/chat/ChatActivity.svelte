@@ -30,6 +30,7 @@
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
   import ChatWorkingGlyph from "./ChatWorkingGlyph.svelte";
+  import ShimmerText from "../ShimmerText.svelte";
 
   let {
     block,
@@ -120,15 +121,12 @@
       icon={view.glyph}
       class={cn(icon.decorative, "shrink-0", failed ? "text-destructive" : "opacity-70")}
     />
-    <span
-      class={cn(
-        "shrink-0 font-medium",
-        failed ? "text-destructive" : "text-foreground/80",
-        running && "text-shimmer",
-      )}
+    <ShimmerText
+      active={running}
+      class={cn("shrink-0 font-medium", failed ? "text-destructive" : "text-foreground/80")}
     >
       {view.verb}
-    </span>
+    </ShimmerText>
     {#if view.detail}
       <span class={cn("min-w-0 flex-1 truncate", view.mono && "font-mono text-[11px]")}>{view.detail}</span>
     {:else}

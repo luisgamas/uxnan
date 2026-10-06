@@ -49,6 +49,7 @@
   import { cn } from "$lib/utils";
   import { chat, focus, icon, row, text } from "$lib/design";
   import ChatWorkingGlyph from "./ChatWorkingGlyph.svelte";
+  import ShimmerText from "../ShimmerText.svelte";
 
   let {
     turn,
@@ -208,7 +209,7 @@
         {@render timeline(items, true)}
         <div class={cn(text.meta, "flex items-center gap-2 px-2 py-1")}>
           <ChatWorkingGlyph />
-          <span class="text-shimmer tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</span>
+          <ShimmerText class="tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</ShimmerText>
         </div>
       {:else if continued}
         {@render thinking()}

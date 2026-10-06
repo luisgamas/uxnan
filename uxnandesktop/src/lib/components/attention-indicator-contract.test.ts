@@ -78,7 +78,9 @@ describe("attention indicators", () => {
     const indicator = source("AgentStatusIndicator.svelte");
     expect(indicator).toContain("icon.decorative");
     expect(indicator).not.toContain("icon.status");
-    expect(indicator).toContain("<CometTrail size={14} />");
+    // Working is one spinner turning on the compositor — the cheapest moving
+    // mark the webview can draw, one per working agent.
+    expect(indicator).toContain('<Spinner class="size-3.5"');
   });
 
   it("sizes the needs-you pill like a badge, not like a control", () => {
