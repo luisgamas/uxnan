@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/router/route_arrival.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_palette_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
@@ -204,6 +205,27 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     widget.submitController?.addListener(_onExternalSubmit);
   }
 
+  /// Cancels the wait for the screen to arrive (see `didChangeDependencies`).
+  VoidCallback? _cancelArrival;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The keyboard opens as soon as the conversation is open — users almost
+    // always start typing — but only once the screen has arrived. Focusing
+    // while the route still slid in opened the keyboard mid-transition, and
+    // every frame of its rise re-laid the whole conversation out.
+    _cancelArrival ??= afterRouteEntrance(context, _focusOnOpen);
+  }
+
+  void _focusOnOpen() {
+    if (!mounted || _focusNode.hasFocus) return;
+    // What `autofocus` does: only when nothing on the screen took focus
+    // meanwhile (a control the user tapped while it arrived keeps it).
+    if (FocusScope.of(context).focusedChild != null) return;
+    _focusNode.requestFocus();
+  }
+
   @override
   void didUpdateWidget(ComposerBar oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -229,6 +251,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 
   @override
   void dispose() {
+    _cancelArrival?.call();
     _searchDebounce?.cancel();
     widget.submitController?.removeListener(_onExternalSubmit);
     // Best-effort: stop any active dictation when the composer goes away.
@@ -712,14 +735,12 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                                   child: TextField(
                                     controller: _controller,
                                     focusNode: _focusNode,
-                                    // Autofocus so the keyboard opens as soon
-                                    // as the conversation is opened — users
-                                    // almost always want to start typing right
-                                    // away. The tap-outside-to-unfocus
-                                    // behavior (FocusScope.unfocus in
-                                    // ConversationScreen) still works: tapping
-                                    // the timeline dismisses the keyboard.
-                                    autofocus: true,
+                                    // Focused once the screen has arrived
+                                    // (see `didChangeDependencies`), not
+                                    // during its entrance. Tapping the
+                                    // timeline still dismisses the keyboard
+                                    // (FocusScope.unfocus in
+                                    // ConversationScreen).
                                     // Always editable so a message can be
                                     // drafted while offline; only *sending* is
                                     // gated by [enabled].

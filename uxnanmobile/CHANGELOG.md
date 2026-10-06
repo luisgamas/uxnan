@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Opening a long conversation no longer stalls.** The open conversation
+  re-read and decoded every message it had ever stored each time a message
+  was saved — in any conversation, a reply streaming in another chat
+  included — and each sync on opening read the whole history twice more.
+  It now watches only the messages it shows, and a sync reads only the turns
+  it received: a 600-message conversation went from 6–11 ms to under 1 ms per
+  update on a desktop CPU, and the cost no longer grows with the
+  conversation. Sending, queueing and settling a message read only that
+  message's turn.
+- **The keyboard opens once the conversation has arrived.** It used to rise
+  while the screen was still sliding in, re-laying the conversation out on
+  every frame of both animations; it now waits for the screen to finish
+  arriving. Resuming the agent's session, reading the conversation's access
+  mode, the folder's git status and checking the folder still exists wait
+  for that moment too, so their answers no longer rebuild the screen
+  mid-entrance.
+
 
 ## [0.0.40-alpha.20261004+20261007] - 20261004
 ### Fixed

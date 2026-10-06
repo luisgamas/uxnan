@@ -2644,12 +2644,16 @@ class DriftMessageRepository implements IMessageRepository {
   }
 
   @override
-  Stream<List<Message>> watchMessages(String threadId) {
-    return (_db.select(_db.messagesTable)
-          ..where((m) => m.threadId.equals(threadId))
-          ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+  Stream<List<Message>> watchMessages(String threadId, {int? limit}) {
+    // `limit`: the newest N only, read from the end and handed back
+    // oldest-first — the open conversation watches just the window it renders.
+    final query = _db.select(_db.messagesTable)
+      ..where((m) => m.threadId.equals(threadId))
+      ..orderBy([(m) => OrderingTerm.desc(m.orderIndex)]);
+    if (limit != null) query.limit(limit);
+    return query
         .watch()
-        .map((rows) => rows.map(_rowToMessage).toList());
+        .map((rows) => rows.reversed.map(_rowToMessage).toList());
   }
 
   Message _rowToMessage(MessageRow row) => Message(

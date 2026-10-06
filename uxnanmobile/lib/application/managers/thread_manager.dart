@@ -627,7 +627,13 @@ class ThreadManager {
         queued ? MessageDeliveryState.queued : MessageDeliveryState.sent;
     unawaited(_ensureThreadKnown(threadId));
     return _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
+      // The echo still waiting on its send has no turn yet; a copy already
+      // stamped carries this turn's id.
+      final messages = await _messageRepository.getMessagesForTurns(
+        threadId,
+        {turnId},
+        includeUnstamped: true,
+      );
       if (clientTurnId != null) {
         for (final message in messages) {
           if (message.id != clientTurnId) continue;
@@ -1046,16 +1052,31 @@ class ThreadManager {
     _remoteOldestOffset = 0; // reset remote paging state for the new thread
     _loadingOlder = false;
     _timeline.add(TurnTimelineSnapshot(threadId: threadId));
-    await _messagesSub?.cancel();
-    _messagesSub =
-        _messageRepository.watchMessages(threadId).listen((messages) {
-      _activePersisted = messages;
-      _rebuildActiveTimeline();
-    });
+    unawaited(_watchActive(threadId));
     // The bridge is the source of truth: pull its record so an answer that
     // completed while the app was away (and was never persisted locally) shows
     // up. Reconciled by the deterministic assistant id, so it never duplicates.
     unawaited(_resyncThread(threadId));
+  }
+
+  /// (Re)subscribes the open conversation to the newest window of its stored
+  /// messages: [_renderLimit], plus one that says whether more is stored. The
+  /// store re-runs a watched query on every write to the messages table — any
+  /// thread's — and each row decodes its contents, so watching a whole long
+  /// thread re-decoded all of it on every message saved anywhere. Completes
+  /// once the window has been read.
+  Future<void> _watchActive(String threadId) async {
+    await _messagesSub?.cancel();
+    final read = Completer<void>();
+    _messagesSub = _messageRepository
+        .watchMessages(threadId, limit: _renderLimit + 1)
+        .listen((messages) {
+      if (threadId != _activeThreadId) return;
+      _activePersisted = messages;
+      _rebuildActiveTimeline();
+      if (!read.isCompleted) read.complete();
+    });
+    return read.future;
   }
 
   /// Re-pulls the active thread's newest turns from the bridge — call when the
@@ -1082,7 +1103,7 @@ class ThreadManager {
     // 1) Reveal already-fetched older messages by widening the window first.
     if (_renderLimit < _activePersisted.length) {
       _renderLimit += _historyPageSize;
-      _rebuildActiveTimeline();
+      await _watchActive(threadId);
       return;
     }
     // 2) Local store exhausted — pull the previous page of turns, if any.
@@ -1104,7 +1125,7 @@ class ThreadManager {
       _remoteOldestOffset = start;
       // Widen the window so the just-fetched older messages are visible.
       _renderLimit += _historyPageSize;
-      _rebuildActiveTimeline();
+      await _watchActive(threadId);
     } finally {
       _loadingOlder = false;
     }
@@ -1155,8 +1176,8 @@ class ThreadManager {
     // turn created while the request is in flight is not among them, whatever
     // either clock says.
     final heldBefore = {
-      for (final message in await _messageRepository.getMessages(threadId))
-        if (message.turnId.isNotEmpty) message.turnId,
+      for (final turnId in await _messageRepository.turnIdsOf(threadId))
+        if (turnId.isNotEmpty) turnId,
     };
     final page = await _fetchTurns(
       threadId,
@@ -1334,7 +1355,10 @@ class ThreadManager {
     List<String> queuedTurnIds,
     List<Object?> turns,
   ) async {
-    final messages = await _messageRepository.getMessages(threadId);
+    final messages = await _messageRepository.getMessages(
+      threadId,
+      states: const {MessageDeliveryState.queued},
+    );
     final stillQueued = queuedTurnIds.toSet();
     final statusByTurn = <String, String>{
       for (final turn in turns)
@@ -1372,7 +1396,19 @@ class ThreadManager {
     bool olderPage = false,
     Set<String>? heldBefore,
   }) async {
-    final existing = await _messageRepository.getMessages(threadId);
+    // What this page reconciles against: its own turns' messages and the local
+    // echoes not yet stamped with a turn — never the whole thread, which a
+    // long conversation made a multi-megabyte decode on every open.
+    final pageTurnIds = <String>{
+      for (final rawTurn in turns)
+        if (rawTurn is Map && rawTurn['id'] is String) rawTurn['id'] as String,
+    };
+    final existing = await _messageRepository.getMessagesForTurns(
+      threadId,
+      pageTurnIds,
+      includeUnstamped: true,
+    );
+    final bounds = await _messageRepository.orderBounds(threadId);
     final byId = {for (final m in existing) m.id: m};
     final userByTurn = <String, Message>{
       for (final message in existing)
@@ -1585,15 +1621,15 @@ class ThreadManager {
     // oldest→newest order.
     if (pending.isNotEmpty) {
       final base = olderPage
-          ? _minOrder(existing) - pending.length
-          : _maxOrder(existing) + 1;
+          ? (bounds?.min ?? 0) - pending.length
+          : (bounds?.max ?? -1) + 1;
       for (var i = 0; i < pending.length; i += 1) {
         toSave.add(pending[i].copyWith(orderIndex: base + i));
       }
     }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
     if (heldBefore != null) {
-      await _pruneStaleTurns(threadId, existing, turns, heldBefore);
+      await _pruneStaleTurns(threadId, existing, pageTurnIds, heldBefore);
     }
     // Restore the context meter from the latest turn's stored usage, unless a
     // live turn already set a fresher value for this thread. Only the newest
@@ -1628,13 +1664,9 @@ class ThreadManager {
   Future<void> _pruneStaleTurns(
     String threadId,
     List<Message> existing,
-    List<Object?> turns,
+    Set<String> pageTurnIds,
     Set<String> heldBefore,
   ) async {
-    final pageTurnIds = <String>{
-      for (final rawTurn in turns)
-        if (rawTurn is Map && rawTurn['id'] is String) rawTurn['id'] as String,
-    };
     if (pageTurnIds.isEmpty) return;
     // The page's own oldest message marks where its authority begins.
     int? windowStart;
@@ -1647,7 +1679,12 @@ class ThreadManager {
     if (windowStart == null) return;
     final liveTurnId = _live[threadId]?.turnId;
     final queued = queueOf(threadId).turnIds.toSet();
-    for (final message in existing) {
+    // Only what sits inside the page's window can be judged by it.
+    final candidates = await _messageRepository.getMessagesFrom(
+      threadId,
+      fromOrderIndex: windowStart,
+    );
+    for (final message in candidates) {
       if (message.turnId.isEmpty ||
           !heldBefore.contains(message.turnId) ||
           pageTurnIds.contains(message.turnId) ||
@@ -1777,7 +1814,11 @@ class ThreadManager {
     required MessageDeliveryState state,
   }) {
     return _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
+      final messages = await _messageRepository.getMessagesForTurns(
+        threadId,
+        {if (turnId != null) turnId},
+        includeUnstamped: true,
+      );
       final stored = messages.where((m) => m.id == messageId).firstOrNull;
       if (stored == null) return;
       if (stored.deliveryState == MessageDeliveryState.sending) {
@@ -1803,7 +1844,8 @@ class ThreadManager {
   Future<bool> withdrawQueuedTurn(String threadId, String turnId) async {
     if (!await cancelQueuedTurn(threadId, turnId)) return false;
     await _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
+      final messages =
+          await _messageRepository.getMessagesForTurns(threadId, {turnId});
       for (final message in messages) {
         if (message.turnId == turnId && message.role == MessageRole.user) {
           await _messageRepository.deleteMessage(message.id);
@@ -1982,8 +2024,11 @@ class ThreadManager {
   ) {
     final waiting = stillQueued.toSet();
     return _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
-      var end = _maxOrder(messages);
+      final messages = await _messageRepository.getMessages(
+        threadId,
+        states: const {MessageDeliveryState.queued},
+      );
+      var end = (await _messageRepository.orderBounds(threadId))?.max ?? -1;
       for (final message in messages) {
         if (message.deliveryState != MessageDeliveryState.queued) continue;
         if (message.turnId.isEmpty || waiting.contains(message.turnId)) {
@@ -2015,7 +2060,8 @@ class ThreadManager {
   }) {
     if (turnId.isEmpty) return Future<void>.value();
     return _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
+      final messages =
+          await _messageRepository.getMessagesForTurns(threadId, {turnId});
       for (final message in messages) {
         if (message.turnId != turnId || message.role != MessageRole.user) {
           continue;
@@ -2033,7 +2079,11 @@ class ThreadManager {
         await _messageRepository.saveMessage(
           message.copyWith(
             deliveryState: state,
-            orderIndex: movedToEnd ? _maxOrder(messages) + 1 : null,
+            orderIndex: movedToEnd
+                ? ((await _messageRepository.orderBounds(threadId))?.max ??
+                        -1) +
+                    1
+                : null,
           ),
         );
         return;
@@ -2050,7 +2100,8 @@ class ThreadManager {
     String continuedIn,
   ) {
     return _serializeWrite(() async {
-      final messages = await _messageRepository.getMessages(threadId);
+      final messages =
+          await _messageRepository.getMessagesForTurns(threadId, {turnId});
       final stale = [
         for (final message in messages)
           if (message.turnId == turnId && message.continuedIn != continuedIn)
@@ -2718,15 +2769,11 @@ class ThreadManager {
 
   Future<int> _orderIndexFor(String threadId) async {
     if (threadId == _activeThreadId) return _maxOrder(_activePersisted) + 1;
-    final existing = await _messageRepository.getMessages(threadId);
-    return _maxOrder(existing) + 1;
+    return ((await _messageRepository.orderBounds(threadId))?.max ?? -1) + 1;
   }
 
   static int _maxOrder(List<Message> messages) =>
       messages.isEmpty ? -1 : messages.map((m) => m.orderIndex).reduce(max);
-
-  static int _minOrder(List<Message> messages) =>
-      messages.isEmpty ? 0 : messages.map((m) => m.orderIndex).reduce(min);
 
   static List<Message> _upsert(List<Message> messages, Message message) {
     final next = [

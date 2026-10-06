@@ -12,14 +12,16 @@ Message _msg(
   required int order,
   List<MessageContent> contents = const [TextContent('hi')],
   String threadId = 'th1',
+  String turnId = 't1',
+  MessageDeliveryState state = MessageDeliveryState.delivered,
 }) =>
     Message(
       id: id,
       threadId: threadId,
-      turnId: 't1',
+      turnId: turnId,
       role: MessageRole.assistant,
       contents: contents,
-      deliveryState: MessageDeliveryState.delivered,
+      deliveryState: state,
       orderIndex: order,
       createdAt: DateTime.fromMillisecondsSinceEpoch(1000 + order),
     );
@@ -166,6 +168,73 @@ void main() {
           );
 
       expect((await repo.getMessages('th1')).single.role, MessageRole.system);
+    });
+    test('reads only the turns, states and range it is asked for', () async {
+      await repo.saveMessages([
+        for (var i = 1; i <= 10; i++) _msg('m$i', order: i, turnId: 'turn$i'),
+        _msg('echo', order: 11, turnId: ''),
+        _msg(
+          'q',
+          order: 12,
+          turnId: 'turn12',
+          state: MessageDeliveryState.queued,
+        ),
+        _msg('other', order: 1, threadId: 'th2', turnId: 'turn1'),
+      ]);
+
+      expect(await repo.turnIdsOf('th1'), {
+        for (var i = 1; i <= 10; i++) 'turn$i',
+        '',
+        'turn12',
+      });
+      expect(
+        (await repo.getMessagesForTurns('th1', {'turn3', 'turn9'}))
+            .map((m) => m.id),
+        ['m3', 'm9'],
+      );
+      expect(
+        (await repo.getMessagesForTurns(
+          'th1',
+          {'turn9'},
+          includeUnstamped: true,
+        ))
+            .map((m) => m.id),
+        ['m9', 'echo'],
+      );
+      expect(await repo.getMessagesForTurns('th1', const {}), isEmpty);
+      expect(
+        (await repo.getMessagesFrom('th1', fromOrderIndex: 10))
+            .map((m) => m.id),
+        ['m10', 'echo', 'q'],
+      );
+      expect(await repo.orderBounds('th1'), (min: 1, max: 12));
+      expect(await repo.orderBounds('nothing'), isNull);
+      expect(
+        (await repo.getMessages(
+          'th1',
+          states: const {MessageDeliveryState.queued},
+        ))
+            .map((m) => m.id),
+        ['q'],
+      );
+    });
+
+    test('watches only the newest window, oldest first, as it changes',
+        () async {
+      await repo.saveMessages([
+        for (var i = 1; i <= 10; i++) _msg('m$i', order: i, turnId: 'turn$i'),
+      ]);
+      final emissions = <List<String>>[];
+      final sub = repo
+          .watchMessages('th1', limit: 3)
+          .listen((list) => emissions.add([for (final m in list) m.id]));
+      await pumpEventQueue();
+      await repo.saveMessage(_msg('m11', order: 11, turnId: 'turn11'));
+      await pumpEventQueue();
+      await sub.cancel();
+
+      expect(emissions.first, ['m8', 'm9', 'm10']);
+      expect(emissions.last, ['m9', 'm10', 'm11']);
     });
   });
 }

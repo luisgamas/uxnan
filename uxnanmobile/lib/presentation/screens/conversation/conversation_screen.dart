@@ -29,6 +29,7 @@ import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/router/route_arrival.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
@@ -176,18 +177,26 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _foreground = ref.read(foregroundThreadProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(threadManagerProvider).selectThread(widget.threadId);
-      // Opening a conversation resumes it on the bridge (reactivates its agent
-      // session); best-effort and skips archived threads.
-      unawaited(ref.read(threadManagerProvider).resumeThread(widget.threadId));
-      // Seed the access mode from the bridge (source of truth) so the picker
-      // reflects the persisted per-thread choice, not just this session's
-      // local.
-      unawaited(_seedAccessMode());
       // Mark this conversation as the foreground one so its turn-end
       // notifications are suppressed while it's on screen.
       _foreground?.enter(widget.threadId);
     });
   }
+
+  /// What waits for the screen to finish arriving (see [afterRouteEntrance]):
+  /// the timeline is read at once, but requests whose answers only rebuild
+  /// the chrome do not compete with the entrance.
+  final List<VoidCallback> _arrivals = [];
+
+  void _afterArrival(VoidCallback action) {
+    _arrivals.add(
+      afterRouteEntrance(context, () {
+        if (mounted) action();
+      }),
+    );
+  }
+
+  bool _arrivalArmed = false;
 
   ModalRoute<void>? _route;
 
@@ -198,6 +207,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!_arrivalArmed) {
+      _arrivalArmed = true;
+      _afterArrival(() {
+        // Opening a conversation resumes it on the bridge (reactivates its
+        // agent session); best-effort and skips archived threads.
+        unawaited(
+          ref.read(threadManagerProvider).resumeThread(widget.threadId),
+        );
+        // Seed the access mode from the bridge (source of truth) so the picker
+        // reflects the persisted per-thread choice, not just this session's
+        // local.
+        unawaited(_seedAccessMode());
+      });
+    }
     final route = ModalRoute.of(context);
     if (route != _route) {
       if (_route != null) paneRouteObserver.unsubscribe(this);
@@ -269,9 +292,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void _refreshGitFor(String? cwd) {
     if (cwd == null || cwd.isEmpty || cwd == _gitCwd) return;
     _gitCwd = cwd;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(gitActionManagerProvider).refreshStatus(cwd);
-    });
+    _afterArrival(() => ref.read(gitActionManagerProvider).refreshStatus(cwd));
   }
 
   /// Probes whether [cwd] still exists (once per cwd) and disables the composer
@@ -280,8 +301,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void _checkCwd(String? cwd) {
     if (cwd == null || cwd.isEmpty || cwd == _checkedCwd) return;
     _checkedCwd = cwd;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
+    _afterArrival(() async {
       final exists = await ref.read(threadManagerProvider).workspaceExists(cwd);
       if (mounted && _checkedCwd == cwd) setState(() => _cwdMissing = !exists);
     });
@@ -289,6 +309,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   void dispose() {
+    for (final cancel in _arrivals) {
+      cancel();
+    }
     paneRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     // Clear the foreground marker on the next event-loop tick, NOT inline:
