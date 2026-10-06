@@ -19,7 +19,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **The keyboard opens once the conversation has arrived.** It used to rise
   while the screen was still sliding in, re-laying the conversation out on
   every frame of both animations; it now waits for the screen to finish
-  arriving. Resuming the agent's session, reading the conversation's access
+  arriving, and a reader at the newest message stays there as the keyboard
+  rises (it used to cover the end of the conversation). Resuming the agent's session, reading the conversation's access
   mode, the folder's git status and checking the folder still exists wait
   for that moment too, so their answers no longer rebuild the screen
   mid-entrance.

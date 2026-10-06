@@ -266,6 +266,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     });
   }
 
+  /// The window's metrics changed — almost always the keyboard rising or
+  /// falling, which shrinks or grows the timeline's viewport. A reader at the
+  /// newest message stays there: without this the keyboard covered the end of
+  /// the conversation it opened over.
+  @override
+  void didChangeMetrics() {
+    if (_autoFollow.shouldFollow) _scheduleFollowLatest();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Suppress this thread's notifications only while in the foreground; when
