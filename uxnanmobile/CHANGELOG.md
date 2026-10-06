@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.41-alpha.20261006+20261008] - 20261006
 ### Changed
 
 - **A conversation opens in a fraction of the time on the phone.** Measured on
