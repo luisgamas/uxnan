@@ -14,7 +14,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   are now keyed to the elements that use them, and a focus change costs under
   a millisecond. Measured on a workspace with six long chats and three
   terminals: showing a terminal went from ~300 ms to 30–60 ms, showing a long
-  chat from ~400 ms to ~100–130 ms.
+  chat from ~400 ms to 40–60 ms.
+- **A long chat renders its newest turns.** The timeline starts with the newest
+  six turns and brings older ones in as you scroll up or press *Load earlier
+  messages*, without moving what you are reading; a chat tab in the background
+  goes back to its newest turns. Hidden chats had been nearly all of the page:
+  the same workspace went from ~119 000 elements to ~38 000, and the app's web
+  process from ~1.8 GB to under 1 GB.
 - **Switching back to a terminal is a repaint.** A hidden terminal keeps its
   GPU renderer instead of giving it back, up to a budget set by the resource
   mode — 4 in Balanced, 6 in Performance, none in Efficient (the old behavior).

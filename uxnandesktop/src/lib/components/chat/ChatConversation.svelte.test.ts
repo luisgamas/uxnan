@@ -58,7 +58,41 @@ afterEach(() => {
   chat.agents = [];
 });
 
+function doneTurn(seq: number): Turn {
+  const id = `t${seq}`;
+  return {
+    id,
+    threadId: THREAD,
+    seq,
+    status: "completed",
+    createdAt: seq,
+    messages: [
+      { id: `${id}-u`, turnId: id, role: "user", content: `question ${seq}`, createdAt: seq },
+      { id: `${id}-a`, turnId: id, role: "assistant", content: `answer ${seq}`, createdAt: seq },
+    ],
+  } as Turn;
+}
+
 describe("ChatConversation", () => {
+  // A long conversation renders its newest turns; older ones come in when the
+  // reader asks, from what is already loaded before the bridge is asked again.
+  it("renders the newest turns and brings older ones in on request", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const { screen, user } = mount(chatTab(), calls);
+    chat.conversation(THREAD).adoptPage({
+      turns: Array.from({ length: 20 }, (_, i) => doneTurn(i + 1)),
+      total: 20,
+    } as never);
+    await until(() => screen.queryByText("question 20") !== null);
+    expect(screen.queryByText("question 15")).not.toBeNull();
+    expect(screen.queryByText("question 14")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    await until(() => screen.queryByText("question 9") !== null);
+    expect(screen.queryByText("question 8")).toBeNull();
+    expect(calls.some((c) => c.method === "turn/list" && c.params && (c.params as { before?: unknown }).before !== undefined)).toBe(false);
+  });
+
   // While a terminal holds the conversation's session it is the writer: the
   // composer waits and the banner offers to take the session back here.
   it("says the session is open in a terminal, waits, and takes it back when asked", async () => {
