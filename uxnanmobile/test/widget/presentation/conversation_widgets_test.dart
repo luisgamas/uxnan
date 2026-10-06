@@ -173,7 +173,16 @@ void main() {
       find.byType(MarkdownBody),
     );
     expect(markdown.data, '**Working**');
-    expect(markdown.selectable, isTrue);
+    // Selectable through one selection area over plain paragraphs — never a
+    // text editor per paragraph.
+    expect(markdown.selectable, isFalse);
+    expect(
+      find.ancestor(
+        of: find.byType(MarkdownBody),
+        matching: find.byType(SelectionArea),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Working'), findsOneWidget);
     expect(find.text('**Working**'), findsNothing);
   });
@@ -251,10 +260,10 @@ void main() {
     // widget is an unbreakable box in the paragraph's Wrap, which put the
     // path on a line of its own and started the next line with the comma.
     final paragraphs = tester
-        .widgetList<SelectableText>(
+        .widgetList<Text>(
           find.descendant(
             of: find.byType(MarkdownBody),
-            matching: find.byType(SelectableText),
+            matching: find.byType(Text),
           ),
         )
         .toList();

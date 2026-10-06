@@ -176,6 +176,13 @@ class ThreadManager {
   /// One page of timeline history (messages rendered per local window step).
   static const int _historyPageSize = 40;
 
+  /// How many of the newest messages a conversation renders when it opens —
+  /// about six turns, more than a screenful. The timeline is anchored at the
+  /// top, so opening at its end lays out every rendered message, one after the
+  /// other, in the first frame: forty took ~110 ms on a mid-range phone. Older
+  /// ones come in a page at a time as the reader asks ([loadMoreHistory]).
+  static const int _openingWindow = 12;
+
   /// One page of remote history (turns fetched per `turn/list` call). Matches
   /// the bridge's default turn limit so a page maps to one bridge slice.
   static const int _turnPageSize = 20;
@@ -185,7 +192,7 @@ class ThreadManager {
   /// rendered window so a long history doesn't build thousands of widgets at
   /// once, and grows by a page when the user scrolls to the top
   /// ([loadMoreHistory]).
-  int _renderLimit = _historyPageSize;
+  int _renderLimit = _openingWindow;
 
   /// Turn-index offset of the oldest turn fetched so far for the active thread.
   /// `0` once the whole thread has been pulled (or on an older bridge that
@@ -1048,7 +1055,7 @@ class ThreadManager {
     unawaited(_ensureThreadKnown(threadId));
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
-    _renderLimit = _historyPageSize; // reset the window for the new thread
+    _renderLimit = _openingWindow; // reset the window for the new thread
     _remoteOldestOffset = 0; // reset remote paging state for the new thread
     _loadingOlder = false;
     _timeline.add(TurnTimelineSnapshot(threadId: threadId));

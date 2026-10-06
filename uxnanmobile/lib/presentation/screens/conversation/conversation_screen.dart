@@ -198,6 +198,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   bool _arrivalArmed = false;
 
+  /// The newest message's local position when the conversation first showed
+  /// content: what was already there is simply there, and only a message that
+  /// arrives after it (one sent, a reply) fades into place. Fading the history
+  /// in on every open put each visible message in its own offscreen layer for
+  /// every frame of the entrance — the slow first frames of opening a chat.
+  int? _newestOnOpen;
+
   ModalRoute<void>? _route;
 
   /// Whether this conversation's thread was deleted while another screen
@@ -539,6 +546,74 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           curve: Curves.easeOutCubic,
         );
       }
+    }
+  }
+
+  /// Loads the previous page of the conversation and keeps the reader where
+  /// they were. Older messages go in ABOVE what is on screen, and the scroll
+  /// offset alone does not move, so the view used to jump to the top of the new
+  /// page; instead the message at the top of the screen is put back exactly
+  /// where it was.
+  Future<void> _loadEarlier() async {
+    final anchor = _topVisibleUserMessage();
+    _autoFollow.beginUserScroll();
+    await ref.read(threadManagerProvider).loadMoreHistory();
+    if (!mounted || anchor == null) return;
+    double? placed;
+    for (var frame = 0; frame < 8; frame++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !_scroll.hasClients) return;
+      final reveal = _revealOffset(anchor.id);
+      final max = _scroll.position.maxScrollExtent;
+      if (reveal == null) {
+        // Pushed below the built range by the page that went in above it:
+        // jump near it by its position in the timeline so it gets laid out.
+        final messages =
+            ref.read(threadTimelineProvider(widget.threadId)).value?.messages;
+        final index = messages?.indexWhere((m) => m.id == anchor.id) ?? -1;
+        if (messages == null || index < 0) return;
+        final fraction =
+            messages.length <= 1 ? 0.0 : index / (messages.length - 1);
+        _scroll.jumpTo((fraction * max).clamp(0.0, max));
+        continue;
+      }
+      final target = (reveal - anchor.offset).clamp(0.0, max);
+      if (placed != null && (target - placed).abs() < 1) return;
+      _scroll.jumpTo(target);
+      placed = target;
+    }
+  }
+
+  /// The topmost user message on screen and how far below the top of the
+  /// viewport it sits — what [_loadEarlier] puts back.
+  ({String id, double offset})? _topVisibleUserMessage() {
+    if (!_scroll.hasClients) return null;
+    ({String id, double offset})? best;
+    for (final entry in _userMessageKeys.entries) {
+      final reveal = _revealOffset(entry.key);
+      final render = entry.value.currentContext?.findRenderObject();
+      if (reveal == null || render is! RenderBox) continue;
+      final offset = reveal - _scroll.offset;
+      // Still (partly) on screen, and higher up than the best so far.
+      if (offset + render.size.height < 0) continue;
+      if (best == null || offset < best.offset) {
+        best = (id: entry.key, offset: offset);
+      }
+    }
+    return best;
+  }
+
+  /// The scroll offset at which the built bubble for [id] would sit at the very
+  /// top of the viewport, or null when it isn't laid out.
+  double? _revealOffset(String id) {
+    final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
+    if (render is! RenderBox || !render.hasSize) return null;
+    try {
+      return RenderAbstractViewport.of(render)
+          .getOffsetToReveal(render, 0)
+          .offset;
+    } on Object {
+      return null;
     }
   }
 
@@ -1019,7 +1094,24 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   Widget _buildWithin(BuildContext context, BoxConstraints constraints) {
     final l10n = AppLocalizations.of(context);
-    final timelineAsync = ref.watch(threadTimelineProvider(widget.threadId));
+    // What the screen around the timeline needs from it — whether it has
+    // loaded, is empty, has more above, and the last turn's edits — and no
+    // more. A streamed reply re-emits the timeline many times a second; the
+    // list and the rail below watch it whole in their own `Consumer`s, so a
+    // delta rebuilds them, not the whole screen (measured: the screen rebuilt
+    // in half the frames of a streamed reply, ~6.5 ms each on a mid-range
+    // phone).
+    final timeline = ref.watch(
+      threadTimelineProvider(widget.threadId).select((async) {
+        final snapshot = async.value;
+        return (
+          loaded: snapshot != null,
+          empty: snapshot?.messages.isEmpty ?? true,
+          hasMore: snapshot?.hasMore ?? false,
+          edits: _lastTurnEdits(snapshot),
+        );
+      }),
+    );
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     // This thread lives on a specific PC; live actions (send, git) only work
     // when we actually hold that PC's channel — never a different connected PC.
@@ -1070,19 +1162,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 .watch(agentCommandsProvider((agentId: agentId, cwd: cwd)))
                 .value ??
             const <AgentCommand>[];
-    final snapshot = timelineAsync.value;
-    // User messages the agent took while it was still answering, so their
-    // bubble can say so.
-    final steeredTurnIds = snapshot?.steeredTurnIds ?? const <String>{};
     // If the timeline already has content at first build (no later emission to
     // drive the listener below), restore the saved scroll position now. Guarded
     // + idempotent via [_restoredScroll].
-    if (!_restoredScroll && snapshot != null && snapshot.messages.isNotEmpty) {
+    if (!_restoredScroll && timeline.loaded && !timeline.empty) {
       _restoreScroll();
     }
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
-    final lastEdits = _lastTurnEdits(snapshot);
+    final lastEdits = timeline.edits;
     // Where the agent's plan stands (its most pressing limit window), beside
     // the context meter: read whether or not the profile is open.
     final planProvider = usageProviderForAgent(thread?.agentId);
@@ -1094,13 +1182,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 .firstOrNull,
             DateTime.now(),
           );
-    // Scroll-rail anchors: one tick per user message (the minimap on the right
-    // edge), derived + memoized in [railAnchorsProvider] off the timeline.
-    // Prune stale bubble keys so the map tracks the current anchors.
-    final railAnchors = ref.watch(railAnchorsProvider(widget.threadId));
-    _userMessageKeys.removeWhere(
-      (id, _) => !railAnchors.tickForId.containsKey(id),
-    );
     final contentInset = _horizontalInset(constraints.maxWidth);
     final running = connectedHere && activity == ThreadActivity.running;
 
@@ -1213,9 +1294,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   SliverToBoxAdapter(child: SizedBox(height: topInset)),
                   // "Load earlier" header when the rendered window does not yet
                   // cover the whole local history.
-                  if (snapshot != null &&
-                      snapshot.messages.isNotEmpty &&
-                      snapshot.hasMore)
+                  if (timeline.loaded && !timeline.empty && timeline.hasMore)
                     SliverToBoxAdapter(
                       child: Center(
                         child: Padding(
@@ -1223,62 +1302,89 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             vertical: UxnanSpacing.sm,
                           ),
                           child: TextButton.icon(
-                            onPressed: () => ref
-                                .read(threadManagerProvider)
-                                .loadMoreHistory(),
+                            onPressed: () => unawaited(_loadEarlier()),
                             icon: const UxIcon(UxIcons.history, size: 18),
                             label: Text(l10n.conversationLoadEarlier),
                           ),
                         ),
                       ),
                     ),
-                  if (snapshot == null)
+                  if (!timeline.loaded)
                     const SliverFillRemaining(
                       child: Center(child: PolygonLoader(size: 48)),
                     )
-                  else if (snapshot.messages.isEmpty)
+                  else if (timeline.empty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
                       child: _EmptyState(),
                     )
                   else
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        contentInset,
-                        UxnanSpacing.sm,
-                        contentInset,
-                        UxnanSpacing.lg,
-                      ),
-                      sliver: SliverList.builder(
-                        itemCount: snapshot.messages.length,
-                        itemBuilder: (context, index) {
-                          final message = snapshot.messages[index];
-                          // User bubbles carry a stable GlobalKey so the scroll
-                          // rail can jump precisely to them; other roles keep a
-                          // lightweight ValueKey.
-                          final key = message.role == MessageRole.user
-                              ? _userMessageKeys.putIfAbsent(
-                                  message.id,
-                                  GlobalKey.new,
-                                )
-                              : ValueKey(message.id);
-                          // Messages fade and lift into place instead of
-                          // appearing at full opacity the instant they are
-                          // stored. The transition runs once per widget and
-                          // then becomes a pass-through, so scrolling a long
-                          // thread is unaffected.
-                          return NeEnterTransition(
-                            child: MessageBubble(
-                              key: key,
-                              message: message,
-                              steered: message.role == MessageRole.user &&
-                                  steeredTurnIds.contains(message.turnId),
-                              onTapLink: (href) =>
-                                  unawaited(_openMessageLink(href, cwd)),
-                            ),
-                          );
-                        },
-                      ),
+                    // The one part of the screen that rebuilds with each
+                    // streamed delta.
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final snapshot = ref
+                            .watch(threadTimelineProvider(widget.threadId))
+                            .value;
+                        if (snapshot == null) {
+                          return const SliverToBoxAdapter();
+                        }
+                        _newestOnOpen ??= snapshot.messages.isEmpty
+                            ? null
+                            : snapshot.messages.last.orderIndex;
+                        final newestOnOpen = _newestOnOpen;
+                        // User messages the agent took while it was still
+                        // answering, so their bubble can say so.
+                        final steeredTurnIds = snapshot.steeredTurnIds;
+                        // Keep the bubble keys to the user messages shown.
+                        final shownUsers = {
+                          for (final m in snapshot.messages)
+                            if (m.role == MessageRole.user) m.id,
+                        };
+                        _userMessageKeys.removeWhere(
+                          (id, _) => !shownUsers.contains(id),
+                        );
+                        return SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            contentInset,
+                            UxnanSpacing.sm,
+                            contentInset,
+                            UxnanSpacing.lg,
+                          ),
+                          sliver: SliverList.builder(
+                            itemCount: snapshot.messages.length,
+                            itemBuilder: (context, index) {
+                              final message = snapshot.messages[index];
+                              // User bubbles carry a stable GlobalKey so
+                              // the scroll rail can jump precisely to them;
+                              // other roles keep a lightweight ValueKey.
+                              final key = message.role == MessageRole.user
+                                  ? _userMessageKeys.putIfAbsent(
+                                      message.id,
+                                      GlobalKey.new,
+                                    )
+                                  : ValueKey(message.id);
+                              // A message that arrives while the
+                              // conversation is open fades and lifts into
+                              // place; one that was already stored is just
+                              // there (see [_newestOnOpen]).
+                              final arrived = newestOnOpen != null &&
+                                  message.orderIndex > newestOnOpen;
+                              final bubble = MessageBubble(
+                                key: key,
+                                message: message,
+                                steered: message.role == MessageRole.user &&
+                                    steeredTurnIds.contains(message.turnId),
+                                onTapLink: (href) =>
+                                    unawaited(_openMessageLink(href, cwd)),
+                              );
+                              return arrived
+                                  ? NeEnterTransition(child: bubble)
+                                  : bubble;
+                            },
+                          ),
+                        );
+                      },
                     ),
                   // Reserve room for the floating composer + its banners so
                   // the last message rests above the pill, not behind it.
@@ -1295,29 +1401,37 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           // top bar and composer, below both so it never covers them — only its
           // thin edge strip is interactive; the rest passes touches through to
           // the timeline, so it never interferes with normal scrolling.
-          if (railAnchors.items.length >= 2)
-            Positioned(
-              top: topInset + UxnanSpacing.sm,
-              left: 0,
-              right: 0,
-              bottom: _bottomChromeHeight + UxnanSpacing.xxl,
-              child: MessageScrollRail(
-                items: railAnchors.items,
-                currentIndex: _currentRailTick,
-                // Hidden at the bottom of the conversation; slides in from the
-                // right edge when the user scrolls up — the same signal that
-                // reveals the jump-to-latest button and hides the composer
-                // ribbon, so the scroll-up chrome moves as one.
-                visible: _showJumpToBottom,
-                onSelected: (tick) {
-                  if (tick >= 0 && tick < railAnchors.messageIndices.length) {
-                    unawaited(
-                      _scrollToUserMessage(railAnchors.messageIndices[tick]),
-                    );
-                  }
-                },
-              ),
-            ),
+          // The rail's anchors follow the timeline (a streamed reply changes
+          // the last preview), so they are watched here, not by the screen.
+          Consumer(
+            builder: (context, ref, _) {
+              final railAnchors =
+                  ref.watch(railAnchorsProvider(widget.threadId));
+              if (railAnchors.items.length < 2) return const SizedBox.shrink();
+              return Positioned(
+                top: topInset + UxnanSpacing.sm,
+                left: 0,
+                right: 0,
+                bottom: _bottomChromeHeight + UxnanSpacing.xxl,
+                child: MessageScrollRail(
+                  items: railAnchors.items,
+                  currentIndex: _currentRailTick,
+                  // Hidden at the bottom of the conversation; slides in from
+                  // the right edge when the user scrolls up — the same signal
+                  // that reveals the jump-to-latest button and hides the
+                  // composer ribbon, so the scroll-up chrome moves as one.
+                  visible: _showJumpToBottom,
+                  onSelected: (tick) {
+                    if (tick >= 0 && tick < railAnchors.messageIndices.length) {
+                      unawaited(
+                        _scrollToUserMessage(railAnchors.messageIndices[tick]),
+                      );
+                    }
+                  },
+                ),
+              );
+            },
+          ),
           // The floating shortcut slot above the composer chrome, centered on
           // its own layer over the content. Exactly ONE thing occupies it at a
           // time, in this order:

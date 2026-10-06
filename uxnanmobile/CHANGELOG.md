@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 ### Changed
 
+- **A conversation opens in a fraction of the time on the phone.** Measured on
+  a mid-range phone, its slowest opening frame went from 165–190 ms to 35–45
+  ms, and stuttering frames per opening from about ten to two or three:
+  - it opens on its newest dozen messages (older ones come in a page at a
+    time as you scroll back) — the timeline lays out every rendered message in
+    the first frame, and it used to render forty;
+  - a reply's text is one selection area instead of a full text editor per
+    paragraph (selection and copy work the same, across paragraphs too);
+  - the history already there when it opens is simply shown — only messages
+    that arrive while it is open fade into place.
+- **A streamed reply rebuilds only the timeline.** The whole screen used to
+  rebuild with each burst of text; now the list and the scroll rail follow
+  the reply while the rest stays put (build time per frame 11 → 8 ms at the
+  90th percentile while streaming).
+- **"Show earlier messages" keeps your place.** The page of older messages
+  goes in above what you are reading instead of the view jumping to it.
 - **Opening a long conversation no longer stalls.** The open conversation
   re-read and decoded every message it had ever stored each time a message
   was saved — in any conversation, a reply streaming in another chat

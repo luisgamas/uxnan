@@ -1555,9 +1555,13 @@ class _TextBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MarkdownBody(
+    final body = MarkdownBody(
       data: content.text.isEmpty ? '…' : content.text,
-      selectable: selectable,
+      // Never per-paragraph: a selectable MarkdownBody makes every paragraph,
+      // list item and heading its own `SelectableText` — a full text editor
+      // each. Opening a conversation built over a hundred of them in one frame
+      // (measured ~80 ms on a mid-range phone). One selection area over plain
+      // paragraphs selects the same text, across paragraphs too.
       styleSheet: uxnanMarkdownStyleSheet(context),
       inlineSyntaxes: onTapLink == null
           ? null
@@ -1566,6 +1570,7 @@ class _TextBlock extends StatelessWidget {
         if (href != null && href.isNotEmpty) onTapLink?.call(href);
       },
     );
+    return selectable ? SelectionArea(child: body) : body;
   }
 }
 
