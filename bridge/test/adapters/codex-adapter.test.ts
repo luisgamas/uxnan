@@ -551,7 +551,8 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'thread/tokenUsage/updated',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         turnId: 'codex-turn-1',
         tokenUsage: {
           total: { totalTokens: 12, inputTokens: 10, cachedInputTokens: 4, outputTokens: 2 },
@@ -669,10 +670,13 @@ test('CodexAdapter ignores a notification for a thread it has no turn on', async
   const { adapter, server } = setup();
   const { events, done } = collect(adapter);
   void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
-  await waitForTurnStarted((p) => new Promise((resolve) => {
-    const check = () => (events.some(p) ? resolve(events) : setTimeout(check, 1));
-    check();
-  }));
+  await waitForTurnStarted(
+    (p) =>
+      new Promise((resolve) => {
+        const check = () => (events.some(p) ? resolve(events) : setTimeout(check, 1));
+        check();
+      }),
+  );
   server.feed([
     JSON.stringify({
       jsonrpc: '2.0',
@@ -686,7 +690,10 @@ test('CodexAdapter ignores a notification for a thread it has no turn on', async
     }),
   ]);
   const all = await done;
-  assert.equal(all.some((e) => e.type === 'delta'), false);
+  assert.equal(
+    all.some((e) => e.type === 'delta'),
+    false,
+  );
 });
 
 test('CodexAdapter preserves commentary and final assistant items with boundaries', async () => {
@@ -704,7 +711,8 @@ test('CodexAdapter preserves commentary and final assistant items with boundarie
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         item: {
           id: 'msg-1',
           type: 'agentMessage',
@@ -721,7 +729,8 @@ test('CodexAdapter preserves commentary and final assistant items with boundarie
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         item: {
           id: 'msg-2',
           type: 'agentMessage',
@@ -796,7 +805,8 @@ test('CodexAdapter maps a commandExecution item to a command_execution block', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         item: {
           type: 'commandExecution',
           command: 'ls',
@@ -862,7 +872,8 @@ test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         item: {
           type: 'fileChange',
           changes: [
@@ -1048,7 +1059,8 @@ test('CodexAdapter keeps a turn going through a dropped stream Codex retries', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'error',
-      params: { threadId: CODEX_THREAD,
+      params: {
+        threadId: CODEX_THREAD,
         error: {
           message: 'Reconnecting... 2/5',
           additionalDetails: 'stream disconnected before completion',
@@ -1085,7 +1097,11 @@ test('CodexAdapter reads the message of an error it will not retry', async () =>
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'error',
-      params: { threadId: CODEX_THREAD, error: { message: 'usage limit reached' }, willRetry: false },
+      params: {
+        threadId: CODEX_THREAD,
+        error: { message: 'usage limit reached' },
+        willRetry: false,
+      },
     }),
   ]);
   const events = await errored;
@@ -1247,7 +1263,10 @@ test('CodexAdapter surfaces a failed turn as turn_error', async () => {
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { threadId: CODEX_THREAD, turn: { status: 'failed', error: { message: 'no credits' } } },
+      params: {
+        threadId: CODEX_THREAD,
+        turn: { status: 'failed', error: { message: 'no credits' } },
+      },
     }),
   ]);
 
