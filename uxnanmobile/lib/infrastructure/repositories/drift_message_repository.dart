@@ -24,10 +24,16 @@ class DriftMessageRepository implements IMessageRepository {
     String threadId, {
     int? limit,
     String? beforeId,
+    Set<MessageDeliveryState>? states,
   }) async {
     final query = _db.select(_db.messagesTable)
       ..where((m) => m.threadId.equals(threadId))
       ..orderBy([(m) => OrderingTerm.desc(m.orderIndex)]);
+    if (states != null) {
+      query.where(
+        (m) => m.deliveryState.isIn([for (final state in states) state.name]),
+      );
+    }
 
     if (beforeId != null) {
       final ref = await (_db.select(_db.messagesTable)
@@ -67,12 +73,77 @@ class DriftMessageRepository implements IMessageRepository {
   }
 
   @override
-  Stream<List<Message>> watchMessages(String threadId) {
+  Stream<List<Message>> watchMessages(String threadId, {int? limit}) {
+    if (limit == null) {
+      return (_db.select(_db.messagesTable)
+            ..where((m) => m.threadId.equals(threadId))
+            ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+          .watch()
+          .map((rows) => rows.map(_rowToMessage).toList());
+    }
+    // Newest N, read from the end and handed back oldest-first.
     return (_db.select(_db.messagesTable)
           ..where((m) => m.threadId.equals(threadId))
-          ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+          ..orderBy([(m) => OrderingTerm.desc(m.orderIndex)])
+          ..limit(limit))
         .watch()
-        .map((rows) => rows.map(_rowToMessage).toList());
+        .map((rows) => rows.reversed.map(_rowToMessage).toList());
+  }
+
+  @override
+  Future<Set<String>> turnIdsOf(String threadId) async {
+    final query = _db.selectOnly(_db.messagesTable, distinct: true)
+      ..addColumns([_db.messagesTable.turnId])
+      ..where(_db.messagesTable.threadId.equals(threadId));
+    final rows = await query.get();
+    return {
+      for (final row in rows) row.read(_db.messagesTable.turnId) ?? '',
+    };
+  }
+
+  @override
+  Future<List<Message>> getMessagesForTurns(
+    String threadId,
+    Set<String> turnIds, {
+    bool includeUnstamped = false,
+  }) async {
+    final wanted = {...turnIds, if (includeUnstamped) ''};
+    if (wanted.isEmpty) return const [];
+    final rows = await (_db.select(_db.messagesTable)
+          ..where((m) => m.threadId.equals(threadId) & m.turnId.isIn(wanted))
+          ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+        .get();
+    return rows.map(_rowToMessage).toList();
+  }
+
+  @override
+  Future<List<Message>> getMessagesFrom(
+    String threadId, {
+    required int fromOrderIndex,
+  }) async {
+    final rows = await (_db.select(_db.messagesTable)
+          ..where(
+            (m) =>
+                m.threadId.equals(threadId) &
+                m.orderIndex.isBiggerOrEqualValue(fromOrderIndex),
+          )
+          ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+        .get();
+    return rows.map(_rowToMessage).toList();
+  }
+
+  @override
+  Future<({int min, int max})?> orderBounds(String threadId) async {
+    final lowest = _db.messagesTable.orderIndex.min();
+    final highest = _db.messagesTable.orderIndex.max();
+    final row = await (_db.selectOnly(_db.messagesTable)
+          ..addColumns([lowest, highest])
+          ..where(_db.messagesTable.threadId.equals(threadId)))
+        .getSingle();
+    final min = row.read(lowest);
+    final max = row.read(highest);
+    if (min == null || max == null) return null;
+    return (min: min, max: max);
   }
 
   MessagesTableCompanion _toCompanion(Message message) {

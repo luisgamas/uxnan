@@ -74,7 +74,7 @@ describe("phase-five work-surface contracts", () => {
     expect(schedule).toContain("class={field.time}");
 
     const project = source("ProjectCard.svelte");
-    expect(project).toContain("group-hover/header:opacity-100");
+    expect(project).toContain("group-hover-header:opacity-100");
     expect(project).toContain("row.projectHeader");
   });
 });

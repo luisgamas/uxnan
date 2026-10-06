@@ -53,6 +53,10 @@ describe("presets", () => {
       petFlavour: true,
       workspaceAutoSleep: "off",
       autoSleepIdleMinutes: 30,
+      // Added after the mode, with its own default: a few hidden terminals keep
+      // their GPU renderer so switching back to them is a repaint, not a
+      // rebuild (Efficient keeps the old release-on-hide).
+      hiddenTerminalRenderers: 4,
     });
   });
 
@@ -67,6 +71,8 @@ describe("presets", () => {
     expect(e.resourceHistorySeconds).toBeLessThan(b.resourceHistorySeconds);
     expect(e.petFlavour).toBe(false);
     expect(e.workspaceAutoSleep).toBe("suggest");
+    expect(e.hiddenTerminalRenderers).toBe(0);
+    expect(e.hiddenTerminalRenderers).toBeLessThan(b.hiddenTerminalRenderers);
   });
 
   it("performance is fresher but never aggressive, and only extends concurrency", () => {
@@ -80,10 +86,17 @@ describe("presets", () => {
     // Auto-sleep and history stay at the balanced posture.
     expect(p.workspaceAutoSleep).toBe("off");
     expect(p.resourceHistorySeconds).toBe(b.resourceHistorySeconds);
+    expect(p.hiddenTerminalRenderers).toBeGreaterThan(b.hiddenTerminalRenderers);
   });
 
   it("every preset respects the hard limits", () => {
     for (const preset of Object.values(PRESETS)) {
+      expect(preset.hiddenTerminalRenderers).toBeGreaterThanOrEqual(
+        LIMITS.hiddenTerminalRenderers.min,
+      );
+      expect(preset.hiddenTerminalRenderers).toBeLessThanOrEqual(
+        LIMITS.hiddenTerminalRenderers.max,
+      );
       expect(preset.gitSweepIntervalMs).toBeGreaterThanOrEqual(LIMITS.gitSweepIntervalMs.min);
       expect(preset.gitSweepIntervalMs).toBeLessThanOrEqual(LIMITS.gitSweepIntervalMs.max);
       expect(preset.orchestrationConcurrency).toBeGreaterThanOrEqual(

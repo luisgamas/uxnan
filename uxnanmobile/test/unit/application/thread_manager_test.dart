@@ -1785,10 +1785,10 @@ void main() {
     await manager.selectThread('th1');
     await _settle();
 
-    // The initial window renders only the most-recent page (40).
-    expect(manager.timeline.messages.length, 40);
+    // A conversation opens on its newest dozen messages only.
+    expect(manager.timeline.messages.length, 12);
     expect(manager.timeline.hasMore, isTrue);
-    expect(manager.timeline.messages.first.id, 'm5');
+    expect(manager.timeline.messages.first.id, 'm33');
 
     unawaited(manager.loadMoreHistory());
     await _settle();
@@ -1847,11 +1847,20 @@ void main() {
 
     // Opened on the newest page (fromEnd), not the oldest.
     expect(listCalls.first['fromEnd'], isTrue);
+    // It renders the newest dozen of the twenty it fetched.
+    expect(paged.timeline.messages.length, 12);
+    expect(_text(paged.timeline.messages.first), 'reply 13');
+    expect(_text(paged.timeline.messages.last), 'reply 24');
+    expect(paged.timeline.hasMore, isTrue);
+
+    // Asking for more shows the rest of what is stored first...
+    await paged.loadMoreHistory();
+    await _settle();
     expect(paged.timeline.messages.length, 20);
     expect(_text(paged.timeline.messages.first), 'reply 5');
-    expect(_text(paged.timeline.messages.last), 'reply 24');
-    // 5 older turns still live on the bridge → more history is available.
+    // ...5 older turns still live on the bridge → more history is available.
     expect(paged.timeline.hasMore, isTrue);
+    expect(listCalls.any((c) => c['cursor'] == '0'), isFalse);
 
     await paged.loadMoreHistory();
     await _settle();

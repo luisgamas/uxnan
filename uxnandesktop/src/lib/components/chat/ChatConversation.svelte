@@ -58,6 +58,14 @@
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
   import { railAnchors } from "$lib/bridge/railAnchors";
   import ChatScrollRail from "./ChatScrollRail.svelte";
+  import {
+    EVERYTHING,
+    grownStart,
+    hiddenAbove,
+    newestWindowStart,
+    startIncluding,
+    windowed,
+  } from "./chatWindow";
 
   let {
     tab,
@@ -293,12 +301,55 @@
   let pending: number | null = saved && !saved.atEnd ? saved.top : null;
   let lastTop = 0;
 
+  // --- the rendered window (see chatWindow) ----------------------------------
+  // `null`: the newest turns, following new ones as they arrive. A number: the
+  // `seq` the timeline starts at, held while the reader is in history so what
+  // they are reading never moves. A place kept from earlier is an offset into
+  // the whole page, so that reader gets everything.
+  let windowStart = $state<number | null>(saved && !saved.atEnd ? EVERYTHING : null);
+  const start = $derived(windowStart ?? newestWindowStart(shown));
+  const rendered = $derived(windowed(shown, start));
+  const olderHere = $derived(hiddenAbove(shown, start));
+
+  /** Bring older turns in above the reader without moving what they see:
+   *  first the loaded ones the window leaves out, then the bridge's. */
+  async function revealOlder() {
+    if (!scroller) return;
+    const before = scroller.scrollHeight;
+    if (olderHere > 0) {
+      windowStart = grownStart(shown, start);
+    } else if (conversation.hasOlder && !conversation.loadingOlder) {
+      await conversation.loadOlder();
+      windowStart = EVERYTHING;
+    } else {
+      return;
+    }
+    await tick();
+    if (scroller) scroller.scrollTop += scroller.scrollHeight - before;
+  }
+
+  // Hidden at the end, the timeline goes back to its newest turns, so a tab in
+  // the background holds only those; a reader left in history keeps the window
+  // (and the place) they had. A beat later, so flicking tabs does not churn.
+  $effect(() => {
+    if (active) return;
+    const timer = setTimeout(() => {
+      if (following) windowStart = null;
+    }, 2000);
+    return () => clearTimeout(timer);
+  });
+
   /** Put the timeline where it belongs for its current size (see chatScroll). */
   function settle() {
     if (!scroller) return;
     const next = settleScroll(scroller, { following, pending, lastTop }, conversation.turns.length > 0);
     pending = next.pending;
     if (next.top !== null) scroller.scrollTop = next.top;
+    // A window too short to scroll could never be scrolled back from: widen it
+    // until it fills the pane (or the loaded history runs out).
+    if (scroller.clientHeight > 0 && olderHere > 0 && scroller.scrollHeight <= scroller.clientHeight + 120) {
+      windowStart = grownStart(shown, start);
+    }
   }
 
   // Settle whenever the pane or its content changes size: being shown after
@@ -325,19 +376,30 @@
     }
     const line = scroller.getBoundingClientRect().top + scroller.clientHeight / 3;
     let found: number | null = null;
+    let firstRendered: number | null = null;
     anchors.forEach((anchor, index) => {
       const el = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(anchor.turnId)}"]`);
-      if (el && el.getBoundingClientRect().top <= line) found = index;
+      if (!el) return; // above the window: not rendered
+      firstRendered ??= index;
+      if (el.getBoundingClientRect().top <= line) found = index;
     });
-    railCurrent = found ?? 0;
+    // Nothing rendered is above the line yet: the reader is just below the
+    // last message the window leaves out.
+    railCurrent = found ?? Math.max(0, (firstRendered ?? 0) - 1);
   }
   $effect(() => {
     void anchors.length;
     void tick().then(measureRail);
   });
-  function jumpToAnchor(index: number) {
+  async function jumpToAnchor(index: number) {
     const id = anchors[index]?.turnId;
-    const el = id ? scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`) : null;
+    if (!id) return;
+    const widened = startIncluding(shown, start, id);
+    if (widened !== start) {
+      windowStart = widened;
+      await tick();
+    }
+    const el = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`);
     el?.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 
@@ -347,20 +409,18 @@
     measureRail();
     const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     following = distance < 80;
+    // In history: hold the window where it is, so newer turns arriving never
+    // pull what the reader is looking at out of it.
+    if (!following && windowStart === null) windowStart = start;
     lastTop = scroller.scrollTop;
     saveReadingPosition(threadId, { top: scroller.scrollTop, atEnd: following });
-    if (scroller.scrollTop < 40 && conversation.hasOlder && !conversation.loadingOlder) {
-      const before = scroller.scrollHeight;
-      void conversation.loadOlder().then(async () => {
-        await tick();
-        if (scroller) scroller.scrollTop += scroller.scrollHeight - before;
-      });
-    }
+    if (scroller.scrollTop < 40) void revealOlder();
   }
 
   function jumpToEnd() {
     following = true;
     pending = null;
+    windowStart = null;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
 
@@ -484,12 +544,12 @@
             <div class="flex justify-center">
               <Spinner class={cn(icon.decorative, "text-muted-foreground")} />
             </div>
-          {:else if conversation.hasOlder}
+          {:else if olderHere > 0 || conversation.hasOlder}
             <Button
               variant="ghost"
               size="sm"
               class="self-center"
-              onclick={() => void conversation.loadOlder()}
+              onclick={() => void revealOlder()}
             >
               {i18n.t("chat.loadEarlier")}
             </Button>
@@ -505,7 +565,7 @@
             <p class={cn(text.meta, "py-10 text-center")}>{i18n.t("chat.emptyThread")}</p>
           {/if}
 
-          {#each shown as turn (turn.id)}
+          {#each rendered as turn (turn.id)}
             <div data-turn-id={turn.id}>
               <ChatTurnView {turn} {threadId} {cwd} {conversation} joinedRun={joined.has(turn.id)} />
             </div>

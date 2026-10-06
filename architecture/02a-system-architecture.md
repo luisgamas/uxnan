@@ -664,10 +664,21 @@ abstract class IThreadRepository {
 }
 
 abstract class IMessageRepository {
-  Future<List<Message>> getMessages(String threadId, {int? limit, String? beforeId});
+  Future<List<Message>> getMessages(String threadId,
+      {int? limit, String? beforeId, Set<MessageDeliveryState>? states});
   Future<void> saveMessage(Message message);
   Future<void> saveMessages(List<Message> messages);
-  Stream<List<Message>> watchMessages(String threadId);
+  Future<void> deleteMessage(String id);
+  // The open conversation watches only the newest window it renders (`limit`):
+  // the store re-runs a watched query on every write to the table, any thread's.
+  Stream<List<Message>> watchMessages(String threadId, {int? limit});
+  // A sync reconciles against the turns of the page it received — never the
+  // whole thread — and reads ids/bounds without decoding contents.
+  Future<Set<String>> turnIdsOf(String threadId);
+  Future<List<Message>> getMessagesForTurns(String threadId, Set<String> turnIds,
+      {bool includeUnstamped = false});
+  Future<List<Message>> getMessagesFrom(String threadId, {required int fromOrderIndex});
+  Future<({int min, int max})?> orderBounds(String threadId);
 }
 
 abstract class ITrustedDeviceRepository {

@@ -416,6 +416,6 @@ export const chat = {
   dock: "mb-2 flex max-h-[45vh] flex-col gap-2 overflow-y-auto uxnan-scroll",
   /** A message's hover actions (copy) and time, revealed with its row. */
   messageMeta:
-    "flex h-5 items-center gap-1 text-[11px] text-muted-foreground/70 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100",
+    "flex h-5 items-center gap-1 text-[11px] text-muted-foreground/70 opacity-0 transition-opacity group-hover-message:opacity-100 group-focus-within-message:opacity-100",
 } as const;
 

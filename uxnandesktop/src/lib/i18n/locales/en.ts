@@ -739,6 +739,9 @@ export const en = {
   "resourceMode.effect.autoSleepSuggest": "suggest after {minutes} min idle",
   "resourceMode.effect.autoSleepAuto": "sleep after {minutes} min idle",
   "resourceMode.effect.autoSleepFlagOff": "(switch below is off)",
+  "resourceMode.effect.terminalRenderers": "Hidden terminals kept ready",
+  "resourceMode.effect.terminalRenderersKept": "{n} most recent (shown instantly)",
+  "resourceMode.effect.terminalRenderersNone": "none (redrawn from scratch when shown)",
   "resourceMode.autoSleepFlag": "Workspace auto-sleep",
   "resourceMode.autoSleepFlagDesc":
     "Experimental. Lets Uxnan suggest — or, at the automatic level, perform — sleeping workspaces that have been idle. Sleeping stops that workspace's processes (scrollback and agent sessions are kept and resume on wake). A workspace with a working agent is only ever suggested, never slept without your confirmation.",

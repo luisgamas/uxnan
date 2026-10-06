@@ -4,6 +4,17 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Two Codex chats at once no longer swap their answers.** One Codex
+  app-server carries every Codex conversation the bridge drives, and each of
+  its notifications was handed to whichever turn happened to be first in
+  flight: with two chats running, one streamed the other's text, steps, plan
+  and even approval prompts, and each finished with the other's answer. Every
+  notification and approval request now goes to the turn of the Codex thread
+  it names (`threadId`, or `conversationId` on the legacy approval requests);
+  one for a thread with no turn here is ignored.
+
 
 ## [0.0.47-alpha.20261004] - 20261004
 ### Fixed

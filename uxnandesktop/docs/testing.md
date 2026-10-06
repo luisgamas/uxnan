@@ -321,7 +321,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,853 tests** across both
+ships in every build and is never shown). **1,871 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -407,7 +407,7 @@ instead of quietly agreeing with a mock nobody updated.
   went missing would hide for a long time; and a glyph resolving to `undefined`
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
-  it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
+  it, the spinner (one turning `<svg>`) for `working`, and a plain dot for `idle`.
 - `ProviderUsageEditor.svelte.test.ts` — a Codex reset is redeemed through the
   bridge (`usage/redeemReset`, the soonest-expiring credit, a key per attempt),
   and no provider state ever offers an OS grant: the bridge asks each CLI

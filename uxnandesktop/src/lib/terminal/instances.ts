@@ -19,10 +19,10 @@
 //
 // PTY lifecycle note: PTY event subscriptions (`pty:output:{id}`, `pty:exit:{id}`)
 // live here, on the instance, so output keeps streaming into the buffer even
-// during the brief parked window of a drag. The GPU (WebGL) renderer is NOT
-// owned here — mounts attach/release it with pane visibility (see
-// `Terminal.svelte`) so parked/hidden terminals never hold a GPU context; the
-// handle lives on the instance only so a remount can find it.
+// during the brief parked window of a drag. The GPU (WebGL) renderer is
+// attached by the mount that shows the terminal (see `Terminal.svelte`); how
+// many HIDDEN terminals keep theirs is decided here, against the resource
+// mode's budget (see *GPU renderer retention* below).
 
 import { invoke } from '@tauri-apps/api/core';
 import { SvelteSet } from 'svelte/reactivity';
@@ -298,6 +298,7 @@ export function disposeInstance(id: string): void {
   const inst = registry.get(id);
   if (!inst) return;
   registry.delete(id);
+  forgetHidden(inst);
   readyPtys.delete(id);
   forgetJunctionBlock(id);
   if (inst.launchTimer) clearTimeout(inst.launchTimer);
@@ -314,6 +315,102 @@ export function disposeInstance(id: string): void {
     // Core already torn down — nothing left to free.
   }
   inst.wrapper.remove();
+}
+
+// --- GPU renderer retention ------------------------------------------------
+//
+// Showing a terminal that kept its WebGL renderer is a repaint. Showing one
+// that gave it back rebuilds the renderer from nothing — a new GPU context, its
+// shaders and glyph textures — which took 0.4–0.8 s per pane in a debug build:
+// the stall people felt switching to a terminal tab. So a hidden terminal keeps
+// its renderer, up to the resource mode's `hiddenTerminalRenderers` budget,
+// and the ones hidden longest give theirs back first. The budget exists
+// because every kept renderer holds GPU memory and a webview caps its live
+// WebGL contexts (WebView2 at 16, shared with the panes on screen); Efficient
+// keeps none, which is the release-on-hide this replaced.
+
+/** Hidden terminals holding a renderer, the longest hidden first. */
+const hiddenRenderers: TerminalInstance[] = [];
+
+function forgetHidden(inst: TerminalInstance): void {
+  const index = hiddenRenderers.indexOf(inst);
+  if (index >= 0) hiddenRenderers.splice(index, 1);
+}
+
+/** The terminal is on screen again: its renderer is no longer a hidden one. */
+export function rendererShown(inst: TerminalInstance): void {
+  forgetHidden(inst);
+}
+
+/** The terminal went off screen: keep its renderer while the budget allows,
+ *  and give back the renderers hidden longest beyond it. */
+export function rendererHidden(inst: TerminalInstance, budget: number): void {
+  forgetHidden(inst);
+  if (inst.renderer) hiddenRenderers.push(inst);
+  // A renderer lost to a context loss while hidden no longer counts.
+  for (let i = hiddenRenderers.length - 1; i >= 0; i--) {
+    if (!hiddenRenderers[i]!.renderer) hiddenRenderers.splice(i, 1);
+  }
+  while (hiddenRenderers.length > Math.max(0, budget)) {
+    const oldest = hiddenRenderers.shift();
+    if (oldest) releaseRenderer(oldest);
+  }
+}
+
+/** Dispose a renderer defensively. xterm's WebGL disposer reaches into the
+ *  terminal core (to swap back to the DOM renderer), which throws if the core
+ *  is mid-teardown (unmount / HMR races); an uncaught throw there would leave
+ *  xterm with no renderer at all — a blank pane. Swallow it and clear the
+ *  handle (only when it is still the instance's current one). */
+export function disposeRenderer(
+  inst: TerminalInstance,
+  target: WebglAddon | undefined = inst.renderer,
+): void {
+  if (inst.renderer === target) inst.renderer = undefined;
+  try {
+    target?.dispose();
+  } catch {
+    // Already disposed or core torn down — nothing else to clean up.
+  }
+}
+
+/** Give a terminal's GPU context back now. `dispose()` alone reverts xterm to
+ *  the DOM renderer but on Windows/ANGLE does NOT reclaim the WebGL context
+ *  promptly — it waits for GC, so released renderers would keep counting
+ *  against WebView2's live-context budget until new terminals can't get a
+ *  context (a blank pane). So after disposing, the context is explicitly lost
+ *  and the canvas zeroed, freeing the slot now. xterm keeps parsing into the
+ *  buffer through the DOM fallback, so no output is lost; the next reveal
+ *  attaches a fresh renderer. */
+export function releaseRenderer(inst: TerminalInstance): void {
+  forgetHidden(inst);
+  if (!inst.renderer) return;
+  // Capture the WebGL canvas BEFORE dispose detaches it. Queried on the
+  // wrapper: that is where xterm's DOM lives, whichever mount parents it.
+  const canvases = Array.from(inst.wrapper.querySelectorAll('canvas'));
+  disposeRenderer(inst, inst.renderer);
+  for (const canvas of canvases) {
+    let gl: WebGL2RenderingContext | null = null;
+    try {
+      gl = canvas.getContext('webgl2');
+    } catch {
+      gl = null;
+    }
+    if (!gl) continue; // a non-WebGL (DOM/2D) canvas — nothing to release
+    try {
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      // Context already lost — the slot is freed regardless.
+    }
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+/** Test seam: the hidden terminals currently keeping a renderer, longest
+ *  hidden first. */
+export function hiddenRendererIds(): string[] {
+  return hiddenRenderers.map((inst) => inst.id);
 }
 
 /** Ask for the PTY grid to match the view's grid. This is the ONLY path that

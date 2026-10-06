@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/message.dart';
@@ -22,6 +24,7 @@ class _FakeMessageRepository implements IMessageRepository {
     String threadId, {
     int? limit,
     String? beforeId,
+    Set<MessageDeliveryState>? states,
   }) async {
     lastLimit = limit;
     final take = limit == null || limit >= messages.length
@@ -37,7 +40,40 @@ class _FakeMessageRepository implements IMessageRepository {
   @override
   Future<void> deleteMessage(String id) async {}
   @override
-  Stream<List<Message>> watchMessages(String threadId) => const Stream.empty();
+  Stream<List<Message>> watchMessages(String threadId, {int? limit}) =>
+      const Stream.empty();
+  @override
+  Future<Set<String>> turnIdsOf(String threadId) async =>
+      {for (final m in messages) m.turnId};
+  @override
+  Future<List<Message>> getMessagesForTurns(
+    String threadId,
+    Set<String> turnIds, {
+    bool includeUnstamped = false,
+  }) async =>
+      [
+        for (final m in messages)
+          if (turnIds.contains(m.turnId) ||
+              (includeUnstamped && m.turnId.isEmpty))
+            m,
+      ];
+  @override
+  Future<List<Message>> getMessagesFrom(
+    String threadId, {
+    required int fromOrderIndex,
+  }) async =>
+      [
+        for (final m in messages)
+          if (m.orderIndex >= fromOrderIndex) m,
+      ];
+  @override
+  Future<({int min, int max})?> orderBounds(String threadId) async =>
+      messages.isEmpty
+          ? null
+          : (
+              min: messages.map((m) => m.orderIndex).reduce(math.min),
+              max: messages.map((m) => m.orderIndex).reduce(math.max),
+            );
 }
 
 Message _msg(String id, int order, MessageRole role, String text) => Message(

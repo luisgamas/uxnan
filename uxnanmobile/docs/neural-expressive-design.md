@@ -780,8 +780,12 @@ no exception. Every move reports through a snackbar, because unlike the queue
 itself it happens in a control the user may not be looking at.
 
 **Motion.** Nothing on this surface should appear by snapping into existence.
-Timeline entries fade and lift 12 dp into place via `NeEnterTransition` (one
-shot per widget, then a pass-through — a long thread scrolls at full speed); a
+A message that arrives while the conversation is open fades and lifts 12 dp
+into place via `NeEnterTransition` (one shot per widget, then a pass-through — a
+long thread scrolls at full speed); the history already stored when it opens is
+simply there, because fading it in put every visible message in its own
+offscreen layer for each frame of the entrance — the slow first frames of
+opening a chat; a
 queued bubble cross-fades its one-line preview into the full message; the status
 line beneath it grows instead of jumping; the drafts palette opens with an
 `AnimatedSize`; and pills animate their tone between idle, selected and

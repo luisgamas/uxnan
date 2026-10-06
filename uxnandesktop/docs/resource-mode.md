@@ -133,6 +133,7 @@ be what blocks the machine.
 | Resource-monitor history (`resourceHistorySeconds`)* | 180 s | 600 s | 600 s |
 | Pet idle one-shots (`petFlavour`)* | off (state changes still animate) | on | on |
 | Workspace auto-sleep (`workspaceAutoSleep`*, behind the flag) | suggest after 30 min idle | off | off |
+| Hidden terminals that keep their GPU renderer (`hiddenTerminalRenderers`) | none — each gives its context back | the 4 most recently shown | the 6 most recently shown |
 | Browser page on close (the toolbar ✕; hiding the dock only hides it) | destroy webview | destroy webview | destroy webview (no preloading) |
 | Watchers (fs, active-worktree git, browse) | unchanged — they follow what is visible | unchanged | unchanged |
 
@@ -140,6 +141,15 @@ be what blocks the machine.
 else follows the preset. Forced refreshes — window focus, an agent state
 change, Uxnan's own git actions, every manual refresh button — always run in
 every preset.
+
+**Kept terminal renderers are the one Balanced value that is not the pre-mode
+behavior.** Before this capability every hidden terminal gave its WebGL context
+back and rebuilt it when shown. Keeping a few is what makes switching back to a
+terminal a repaint instead of a rebuild, and the ones hidden longest still give
+theirs back first (`rendererHidden` in `src/lib/terminal/instances.ts`). The cap
+stays well under a webview's live-context limit (WebView2 allows 16, shared
+with the panes on screen); Efficient keeps none, trading that instant switch
+for GPU memory.
 
 **Performance's extra parallelism is evidence-gated.** While a run is active
 and the profile allows extending, the orchestration engine holds the resource
@@ -198,6 +208,7 @@ evidence points at the benchmark scenarios
 | Updater check / download | `updater.start` | once per launch + on channel change; download opt-in | Settings → Updates | — | not governed |
 | Keep-awake | `power.rs` | none (a held OS request) | opt-in && agent working; 2 h cap | — | not governed — opt-in already |
 | Terminal PTYs / xterm | user-owned | — | workspace sleep/wake lifecycle | R02–R04 | auto-sleep (above); manual sleep unchanged |
+| Terminal GPU renderers (WebGL) | `src/lib/terminal/instances.ts` | none — attached when shown | kept while hidden up to the budget, longest-hidden released first | — | `hiddenTerminalRenderers` |
 | Browser page webviews | `browser/host.rs` | — | one per workspace with its panel open; at most 3 alive (`MAX_LIVE_PAGES`), the oldest released; destroyed on close and when its workspace sleeps, in every preset | R07 | already minimal; no preloading in v1 |
 | Broadcast console pacing | `orchestration` store | while the console is open | open/close | — | not governed — interactive |
 

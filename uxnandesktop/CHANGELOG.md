@@ -4,6 +4,42 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Switching tabs no longer stalls.** Moving focus between a chat's composer
+  and a terminal (which every tab switch does) cost about 120 ms on each side
+  in a busy workspace, and moving the pointer between regions paid the same.
+  The cause was how the hover- and focus-revealed controls were styled: the
+  webview re-checked every element of the page on each change. Those styles
+  are now keyed to the elements that use them, and a focus change costs under
+  a millisecond. Measured on a workspace with six long chats and three
+  terminals: showing a terminal went from ~300 ms to 30–60 ms, showing a long
+  chat from ~400 ms to 40–60 ms.
+- **A long chat renders its newest turns.** The timeline starts with the newest
+  six turns and brings older ones in as you scroll up or press *Load earlier
+  messages*, without moving what you are reading; a chat tab in the background
+  goes back to its newest turns. Hidden chats had been nearly all of the page:
+  the same workspace went from ~119 000 elements to ~38 000, and the app's web
+  process from ~1.8 GB to under 1 GB.
+- **Switching back to a terminal is a repaint.** A hidden terminal keeps its
+  GPU renderer instead of giving it back, up to a budget set by the resource
+  mode — 4 in Balanced, 6 in Performance, none in Efficient (the old behavior).
+  Settings → Resources shows it as *Hidden terminals kept ready*.
+- **A running agent no longer keeps the app repainting.** The live
+  *Working…* line and a running step's verb swept a band of light by
+  animating a background gradient, which repainted the text on every frame;
+  the band is now a window moved by `transform` over a brighter copy of the
+  words, which the compositor draws alone (`ShimmerText`). The Comet Trail
+  (nine separately animated dots) gives way to one turning spinner in the
+  working colour, the same glyph the app's dialogs use while they wait —
+  sidebar, tabs, project cards and the chat alike. With an agent working
+  and its chat on screen the app's web process went from ~8 % busy to
+  ~1–3 %, the same as with nothing moving.
+- **Terminal output no longer measures the page.** Every chunk any terminal
+  printed — hidden ones included — read the pane's geometry, forcing a layout
+  while an agent streamed in a background tab; it now reads the visibility the
+  pane already tracks.
+
 
 ## [0.0.76] - 20261004
 ### Added

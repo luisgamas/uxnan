@@ -329,15 +329,29 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   produced it — prose, and between it the steps it takes. Consecutive steps
   (commands, edits, tool calls, subagents) form one **work group**: a compact
   row per step (icon, verb, detail; while it runs its verb carries a soft
-  sweep of light and the Comet Trail sits where the state goes, red when it
+  sweep of light and the working spinner sits where the state goes, red when it
   failed), each one opening to its output or diff. A *Working for 12s* line —
-  the same Comet Trail and sweep — sits under the turn. The Comet Trail is the
-  app's one "working" mark, in the same hue as in the sidebar and on the
-  project cards (`ChatWorkingGlyph`, `stateHue.working`). When the agent
+  the same spinner and sweep — sits under the turn. The spinner is the app's
+  one "working" mark, in the same hue as in the sidebar and on the project
+  cards (`ChatWorkingGlyph`, `stateHue.working`). Both move on the compositor
+  alone (`transform`), so a running agent costs the app no repaint per frame
+  (`ShimmerText.svelte`, `ui/spinner`). When the agent
   compacts its context, one quiet *Context compacted* line between hairlines
   marks the spot; its tooltip (and screen-reader label) says why and by how
   much — the same words as on the phone, the token counts through the one
   `formatTokenCount` the context ring uses too.
+- **A long conversation renders its newest turns.** The timeline starts with
+  the newest six turns and brings older ones in as you scroll up (or press
+  *Load earlier messages*) — first the ones already loaded, then older pages
+  from the bridge — without moving what you are reading. While you read
+  history the window holds still as new turns arrive; when the tab goes to the
+  background with you at the end, it goes back to the newest turns, so a chat
+  tab you are not looking at keeps only those in the page (one long
+  conversation used to hold 56 000 elements, and hidden chats were nearly all
+  of a workspace's page). Jumping to a message on the scroll rail brings it in
+  first. A place you left in history (and saved across a restart) gets the
+  whole loaded page, so it reopens exactly where it was
+  (`src/lib/components/chat/chatWindow.ts`).
 - **Timeline, once a turn settles**: the work that led to the answer folds
   behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary

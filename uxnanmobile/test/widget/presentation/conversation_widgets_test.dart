@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -171,7 +173,16 @@ void main() {
       find.byType(MarkdownBody),
     );
     expect(markdown.data, '**Working**');
-    expect(markdown.selectable, isTrue);
+    // Selectable through one selection area over plain paragraphs — never a
+    // text editor per paragraph.
+    expect(markdown.selectable, isFalse);
+    expect(
+      find.ancestor(
+        of: find.byType(MarkdownBody),
+        matching: find.byType(SelectionArea),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Working'), findsOneWidget);
     expect(find.text('**Working**'), findsNothing);
   });
@@ -249,10 +260,10 @@ void main() {
     // widget is an unbreakable box in the paragraph's Wrap, which put the
     // path on a line of its own and started the next line with the comma.
     final paragraphs = tester
-        .widgetList<SelectableText>(
+        .widgetList<Text>(
           find.descendant(
             of: find.byType(MarkdownBody),
-            matching: find.byType(SelectableText),
+            matching: find.byType(Text),
           ),
         )
         .toList();
@@ -1392,21 +1403,48 @@ void main() {
     expect(sentCount, 0);
   });
 
-  testWidgets('ComposerBar autofocuses the text field on first build',
+  testWidgets('ComposerBar takes focus as soon as its screen is there',
       (tester) async {
     await tester.pumpWidget(_wrap(ComposerBar(onSend: (_) {})));
     await tester.pumpAndSettle();
 
-    // The TextField is created with autofocus: true so the keyboard pops up
-    // the moment the conversation is opened. The tap-outside-to-unfocus
-    // behavior (FocusScope.unfocus in ConversationScreen's GestureDetector)
-    // is unchanged by this flag — autofocus only seeds the initial focus, the
-    // user can still dismiss it by tapping the timeline.
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.autofocus, isTrue);
-    // The EditableText it owns should hold primary focus.
+    // The keyboard opens the moment the conversation is open — users almost
+    // always start typing. Tapping the timeline still dismisses it
+    // (FocusScope.unfocus in ConversationScreen).
     final editable = tester.widget<EditableText>(find.byType(EditableText));
     expect(editable.focusNode.hasPrimaryFocus, isTrue);
+  });
+
+  testWidgets('ComposerBar waits for its screen to finish arriving to focus',
+      (tester) async {
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          navigatorKey: navigator,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: SizedBox()),
+        ),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(body: ComposerBar(onSend: (_) {})),
+        ),
+      ),
+    );
+    // Mid-entrance: the keyboard must not rise while the screen slides in —
+    // every frame of it would re-lay the whole conversation out.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    EditableText editable() =>
+        tester.widget<EditableText>(find.byType(EditableText));
+    expect(editable().focusNode.hasFocus, isFalse);
+
+    await tester.pumpAndSettle();
+    expect(editable().focusNode.hasPrimaryFocus, isTrue);
   });
 
   testWidgets('ComposerBar contracts when idle and stretches on focus',

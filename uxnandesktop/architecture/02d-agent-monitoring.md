@@ -276,7 +276,7 @@ Los estados posibles de un agente son cuatro, cada uno con un significado especi
 
 | Estado | Significado | Indicador Visual (`AgentStatusIndicator.svelte`) |
 |--------|-------------|------------------|
-| `working` | Procesando activamente una tarea | **Comet Trail** verde (`CometTrail.svelte`) |
+| `working` | Procesando activamente una tarea | **Spinner** verde (`ui/spinner`, Hugeicons `Loading03`) |
 | `blocked` | Esperando respuesta de otro sistema (API, servicio externo) | Icono de pausa ambar (`circle-pause`) |
 | `waiting` | Esperando input del usuario | Burbuja de pregunta naranja (`message-circle-question-mark`) |
 | `done` | Tarea completada | Check azul (`circle-check`) |
@@ -289,14 +289,14 @@ Los estados posibles de un agente son cuatro, cada uno con un significado especi
 > proposito**: es el estado mas frecuente, y un glifo ahi seria ruido constante —
 > "glifo = pasa algo / punto = no pasa nada" es lo que hace escaneable la lista.
 >
-> **Comet Trail** es una matriz 3x3 de puntos: los 8 del perimetro llevan una
-> cabeza brillante con una cola de 2 puntos que se apaga, girando en sentido
-> horario (vuelta ≈ 1.15 s), mientras el punto central respira. Se anima con **CSS
-> puro** — un solo keyframe mas un `animation-delay` negativo por punto, tocando
-> unicamente `opacity` — para que corra en el compositor sin ningun timer de JS:
-> se renderiza uno por agente *trabajando*, y uxnan apunta a hardware modesto.
-> Respeta `prefers-reduced-motion` congelandose en un anillo **completo** (uno
-> congelado a mitad de barrido se lee como widget roto).
+> **Spinner de trabajo.** Un solo glifo que gira con `transform` — la animacion
+> que el compositor ejecuta sin tocar el hilo principal —, uno por agente
+> *trabajando*, en `stateHue.working`. Sustituyo al Comet Trail (matriz 3x3 de
+> puntos con `opacity` animada): nueve capas por indicador que, medidas con un
+> agente trabajando, añadian trabajo de render por frame; el texto vivo del chat
+> ("Trabajando…", un paso en curso) tambien barre su banda de luz solo con
+> `transform` (`ShimmerText.svelte`), que se apaga con `prefers-reduced-motion`; el spinner
+> sigue girando, porque su giro es el significado ("trabajando ahora").
 >
 > El tamano canonico es 12px (`icon.status` en `design.ts`). La **tira contraida**
 > (`AgentAvatar`) mantiene el anillo de color: a 16-20px la matriz no seria

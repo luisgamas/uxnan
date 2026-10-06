@@ -297,8 +297,8 @@ asserts both.
 | `chat.fold` / `chat.foldRule` | A settled turn's "Worked for 1m 3s ›": quiet text with no fill, then a hairline to the column's edge. |
 | `chat.activity` | One compact row of the agent's work — a command, an edit, a tool call — and the header of a work group or a folded turn. |
 | `chat.activityList` | An open work group's rows, hung off a quiet rule. |
-| `stateHue` | One hue per agent state (`working` emerald, `waiting`, `blocked`, `done`, `idle`), shared by `AgentStatusIndicator` and the chat's live mark (`ChatWorkingGlyph`: the Comet Trail in `stateHue.working`). |
-| `text-shimmer` (utility, `app.css`) | Live text — the agent working, a step running: a soft band of light sweeps across the words in their own colour; off under reduced motion. |
+| `stateHue` | One hue per agent state (`working` emerald, `waiting`, `blocked`, `done`, `idle`), shared by `AgentStatusIndicator` and the chat's live mark (`ChatWorkingGlyph`: the spinner in `stateHue.working`). |
+| `ShimmerText` (component) | Live text — the agent working, a step running: a soft band of light sweeps across the words in their own colour, moved by `transform` only (a window and a brighter copy), so nothing repaints per frame; off under reduced motion. Never animate `background-position`, colours or sizes for a running state. |
 | `chat.card` | A card inside the chat: an approval or a question (in the dock), a plan, the files a turn changed, the queue. |
 | `chat.output` | Captured output under an expanded activity line. |
 | `chat.pill` | A quiet control in the composer's toolbar (agent, model, run options, access mode): ghost until hovered. |
@@ -382,6 +382,17 @@ and mounted as CodeMirror's top panel (`lib/editorFind.svelte.ts`); CodeMirror
 still runs the search and draws the match highlights.
 
 ## Principles
+- **Group state variants stay keyed by the group's class.** Use `group-hover:`
+  / `group-focus-within:` for an unnamed `group`, and the named variants
+  `app.css` defines for a named one (`group-hover-message:`,
+  `group-focus-within-header:`, `group-hover-lane:`, `group-hover-thumb:`,
+  `group-focus-menu-item:`) — never Tailwind's stock `group-hover/<name>:`,
+  which is not generated here. Tailwind compiles its stock form to
+  `:is(:where(.group):hover *)`, and WebKit cannot key style invalidation on a
+  class inside `:where()`: every hover or focus change walked and re-matched the
+  whole page below it (~120 ms per focus on a large workspace, twice per tab
+  switch). A new named group gets its variant in `app.css` next to the others;
+  `src/lib/groupVariants.test.ts` fails on the stock form.
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays
   `text-muted-foreground` and un-bold. Reserve `text-foreground` / `font-medium`
   for primary or interactive content.

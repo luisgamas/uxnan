@@ -4,6 +4,7 @@ import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+import LoadingIcon from "@hugeicons/core-free-icons/Loading03Icon";
 import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
 import CirclePauseIcon from "@hugeicons/core-free-icons/PauseCircleIcon";
 import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
@@ -127,55 +128,38 @@ const DOT: Record<Tone, string> = {
   idle: "bg-faint",
 };
 
-/** Row-major 3×3 grid: the eight perimeter cells, clockwise from top-left. */
-const COMET_RING = [0, 1, 2, 5, 8, 7, 6, 3];
-const COMET_LAP = 1150;
-
-/** The app's working indicator: a bright head with a fading two-dot tail
- *  sweeping a 3×3 dot matrix, while the centre breathes. Pure CSS, same as the
- *  shipped component — one keyframe plus a negative per-dot delay. */
-function Comet({ size = 9 }: { size?: number }) {
-  const dot = Math.max(2, Math.round(size / 4));
-  const gap = (size - dot * 3) / 2;
-  const step = COMET_LAP / COMET_RING.length;
+/** The app's working indicator: one spinner turning, in the working hue —
+ *  the same glyph the shipped app draws (`ui/spinner`, Hugeicons `Loading03`). */
+function Working({ size = 9 }: { size?: number }) {
   return (
-    <span
+    <HugeiconsIcon
+      icon={LoadingIcon}
       aria-hidden
-      className="inline-grid shrink-0 text-live"
-      style={{
-        width: size,
-        height: size,
-        gridTemplateColumns: `repeat(3, ${dot}px)`,
-        gridTemplateRows: `repeat(3, ${dot}px)`,
-        gap,
-      }}
-    >
-      {Array.from({ length: 9 }, (_, cell) => {
-        const i = COMET_RING.indexOf(cell);
-        const centre = cell === 4;
-        return (
-          <span
-            key={cell}
-            className="rounded-full bg-current opacity-[0.14]"
-            style={{
-              animation: `${
-                centre ? "ux-comet-breathe" : "ux-comet-sweep"
-              } ${centre ? COMET_LAP * 2 : COMET_LAP}ms linear infinite`,
-              animationDelay: centre ? undefined : `${(i - COMET_RING.length) * step}ms`,
-            }}
-          />
-        );
-      })}
+      className="shrink-0 animate-spin text-live"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/** Live text: a band of light sweeps across the words. A window and a brighter
+ *  copy slide by transforms only, as the app's `ShimmerText` does. */
+function Shimmer({ children }: { children: string }) {
+  return (
+    <span className="ux-shimmer">
+      {children}
+      <span className="ux-shimmer-band" aria-hidden>
+        <span className="ux-shimmer-glint">{children}</span>
+      </span>
     </span>
   );
 }
 
 /** The agent-state glyph, one shape per state, exactly as the app draws them:
- *  the Comet Trail while working, a question bubble when it needs *you*, a pause
+ *  a spinner while working, a question bubble when it needs *you*, a pause
  *  circle when it's blocked on another system, a check when the turn is done.
  *  `idle` stays a plain dot — the most frequent state earns the quietest mark. */
 function Dot({ tone = "live" }: { tone?: Tone }) {
-  if (tone === "live") return <Comet />;
+  if (tone === "live") return <Working />;
   if (tone === "waiting")
     return (
       <HugeiconsIcon icon={MessageCircleQuestionMarkIcon} className="size-[9px] shrink-0 text-orange" />
@@ -450,7 +434,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
                 {STEPS.map((step) => (
                   <div key={step.verb} className="flex items-center gap-2 text-[10.5px]">
                     {step.running ? (
-                      <Comet size={9} />
+                      <Working size={9} />
                     ) : (
                       <HugeiconsIcon icon={step.glyph} className="size-3 shrink-0 text-faint" />
                     )}
@@ -474,8 +458,8 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
             </div>
 
             <div className="mt-3 flex items-center gap-2 text-[10.5px] text-dim">
-              <Comet />
-              <span className="ux-shimmer">Working for 41s</span>
+              <Working />
+              <Shimmer>Working for 41s</Shimmer>
             </div>
           </div>
 
