@@ -171,66 +171,53 @@ body::after {
   }
 }
 
-/* Comet Trail — the app's working indicator. The eight perimeter dots of a 3×3
-   matrix share this keyframe; a negative per-dot delay turns the phase offset
-   into a bright head with a two-dot fading tail sweeping the ring clockwise.
-   Mirrors `uxnandesktop/src/lib/components/CometTrail.svelte`. */
-@keyframes ux-comet-sweep {
-  0% {
-    opacity: 1;
-  }
-  12.5% {
-    opacity: 0.58;
-  }
-  25% {
-    opacity: 0.28;
-  }
-  37.5%,
-  100% {
-    opacity: 0.14;
-  }
+/* Live text — the agent working: a band of light sweeps across the words in
+   their own colour. A window slides by `transform` holding a brighter copy that
+   slides back by as much, so nothing is repainted per frame. Mirrors the
+   desktop's `ShimmerText` component. Off under reduced motion. */
+.ux-shimmer {
+  position: relative;
+  display: inline-block;
 }
-
-/* Live text — the agent working: a soft band of light sweeps across the words
-   in their own colour. Mirrors the desktop's `text-shimmer` utility
-   (`uxnandesktop/src/app.css`). Off under reduced motion. */
-@keyframes ux-shimmer {
+.ux-shimmer-band {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 40%;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 50%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 50%, transparent);
+  animation: ux-shimmer-band 2.2s linear infinite;
+}
+.ux-shimmer-glint {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 250%;
+  white-space: nowrap;
+  color: color-mix(in oklab, currentColor 35%, white);
+  animation: ux-shimmer-glint 2.2s linear infinite;
+}
+@keyframes ux-shimmer-band {
   from {
-    background-position: 100% 0;
+    transform: translateX(-100%);
   }
   to {
-    background-position: -100% 0;
+    transform: translateX(250%);
   }
 }
-.ux-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    currentColor 0%,
-    currentColor 38%,
-    color-mix(in oklab, currentColor 35%, white) 50%,
-    currentColor 62%,
-    currentColor 100%
-  );
-  background-size: 250% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: ux-shimmer 2.2s linear infinite;
+@keyframes ux-shimmer-glint {
+  from {
+    transform: translateX(40%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ux-shimmer {
-    animation: none;
-    -webkit-text-fill-color: currentColor;
-  }
-}
-
-@keyframes ux-comet-breathe {
-  0%,
-  100% {
-    opacity: 0.12;
-  }
-  50% {
-    opacity: 0.24;
+  .ux-shimmer-band {
+    display: none;
   }
 }
 
