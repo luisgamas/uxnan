@@ -352,6 +352,9 @@ interface ActiveRun {
   bridgeTurnId: string;
   /** The Codex app-server's turn id (used by `turn/interrupt`). */
   codexTurnId: string | null;
+  /** The Codex thread the turn runs on. One app-server serves every thread at
+   *  once, so this is how its notifications find their turn. */
+  codexThreadId: string;
   /** Context tokens from `thread/tokenUsage/updated` (NOT on turn/completed). */
   tokens?: number;
   /** Context window the same notification reports for the running model. */
@@ -696,6 +699,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#active.set(turnId, {
       bridgeTurnId: turnId,
       codexTurnId: null,
+      codexThreadId,
       threadId,
       agentTextByItem: new Map(),
       allAgentText: '',
@@ -969,7 +973,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         // response did — a compaction (`thread/compact/start`) answers `{}`.
         const turn = isRecord(p['turn']) ? p['turn'] : undefined;
         const id = turn ? str(turn['id']) : undefined;
-        const run = this.#activeRun();
+        const run = this.#runFor(p);
         if (run && run.codexTurnId === null && id) run.codexTurnId = id;
         return;
       }
@@ -992,7 +996,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'item/started': {
         // A step is shown as it starts; `item/completed` replaces it in place.
         const item = isRecord(p['item']) ? p['item'] : undefined;
-        const run = this.#activeRun();
+        const run = this.#runFor(p);
         const started = item ? codexItemStartBlock(item) : null;
         if (run && started) {
           this.emit({
@@ -1006,18 +1010,20 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       case 'item/completed': {
         const item = isRecord(p['item']) ? p['item'] : undefined;
-        if (item) await this.#onItemCompleted(item);
+        const run = this.#runFor(p);
+        if (item && run) await this.#onItemCompleted(run, item);
         return;
       }
       case 'turn/completed': {
         const turn = isRecord(p['turn']) ? p['turn'] : undefined;
-        if (turn) await this.#onTurnCompleted(turn);
+        const run = this.#runFor(p);
+        if (turn && run) await this.#onTurnCompleted(run, turn);
         return;
       }
       case 'turn/plan/updated': {
         // The turn's to-do list, sent whole on every change. Clients show the
         // latest plan of a turn, so an unchanged resend is not repeated.
-        const run = this.#activeRun();
+        const run = this.#runFor(p);
         const steps = extractPlanSteps(Array.isArray(p['plan']) ? p['plan'] : []);
         if (!run || steps.length === 0) return;
         const content = planBlock(steps, str(p['explanation']));
@@ -1049,12 +1055,18 @@ export class CodexAdapter extends BaseAgentAdapter {
           str(error['message']) ||
           (typeof p['message'] === 'string' ? p['message'] : '') ||
           'codex app-server error';
-        const run = this.#currentRun();
-        this.#emitTurnErrorForActive(message);
+        const run = this.#runFor(p);
+        if (!run) return;
+        this.emit({
+          type: 'turn_error',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { text: message },
+        });
         // The bridge ends the turn on this event, so the adapter must too:
         // a run left "in flight" here would hold the app-server — and with it
         // the thread's single writer — until some later turn released it.
-        if (run) this.#active.delete(run.turnId);
+        this.#active.delete(run.bridgeTurnId);
         this.#releaseAppServerIfIdle();
         return;
       }
@@ -1066,9 +1078,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /** Handle an item completion: route to the right bridge event. */
-  async #onItemCompleted(item: Record<string, unknown>): Promise<void> {
-    const run = this.#activeRun();
-    if (!run) return;
+  async #onItemCompleted(run: ActiveRun, item: Record<string, unknown>): Promise<void> {
     const itype = item['type'];
     switch (itype) {
       case 'agentMessage': {
@@ -1222,9 +1232,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /** Finalize a turn once the app-server's `turn/completed` arrives. */
-  async #onTurnCompleted(turn: Record<string, unknown>): Promise<void> {
-    const run = this.#activeRun();
-    if (!run) return;
+  async #onTurnCompleted(run: ActiveRun, turn: Record<string, unknown>): Promise<void> {
     const status = typeof turn['status'] === 'string' ? (turn['status'] as string) : 'completed';
     const error = isRecord(turn['error']) ? turn['error'] : undefined;
     this.#active.delete(run.bridgeTurnId);
@@ -1265,31 +1273,24 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Return the current in-flight run (mutable reference) so item-completed
-   * handlers can accumulate per-run state directly on
-   * the stored object. Returns `null` when no turn is active.
+   * The in-flight run a notification or server request belongs to. One
+   * app-server carries every Codex thread the bridge drives, and two chats can
+   * run at once, so each message is matched by the thread it names — every v2
+   * notification and request carries `threadId` (`conversationId` on the legacy
+   * approval requests). Matching "the first run in flight" instead streamed one
+   * chat's answer, steps and approvals into another.
    */
-  #activeRun(): ActiveRun | null {
-    for (const run of this.#active.values()) return run;
-    return null;
-  }
-
-  /** Helper: locate the current in-flight run keyed by bridge turnId. */
-  #currentRun(): { turnId: string; threadId: string; cwd: string } | null {
+  #runFor(p: Record<string, unknown>): ActiveRun | null {
+    const codexThreadId = str(p['threadId']) || str(p['conversationId']);
+    if (!codexThreadId) return null;
     for (const run of this.#active.values()) {
-      // There should be exactly one in-flight run for a single adapter; the
-      // bridge serializes turns per thread, so this picks the first one.
-      return {
-        turnId: run.bridgeTurnId,
-        threadId: run.threadId,
-        cwd: this.#defaultCwd,
-      };
+      if (run.codexThreadId === codexThreadId) return run;
     }
     return null;
   }
 
   #emitDelta(p: Record<string, unknown>, delta: string): void {
-    const run = this.#activeRun();
+    const run = this.#runFor(p);
     if (!run) return;
     const itemId = typeof p['itemId'] === 'string' ? (p['itemId'] as string) : '';
     this.#emitAgentDelta(run, itemId || '__unidentified_agent_message__', delta);
@@ -1306,25 +1307,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     });
   }
 
-  #emitThinking(_p: Record<string, unknown>, delta: string): void {
-    const run = this.#currentRun();
+  #emitThinking(p: Record<string, unknown>, delta: string): void {
+    const run = this.#runFor(p);
     if (!run) return;
     this.emit({
       type: 'thinking',
       threadId: run.threadId,
-      turnId: run.turnId,
+      turnId: run.bridgeTurnId,
       data: { text: delta },
-    });
-  }
-
-  #emitTurnErrorForActive(message: string): void {
-    const run = this.#currentRun();
-    if (!run) return;
-    this.emit({
-      type: 'turn_error',
-      threadId: run.threadId,
-      turnId: run.turnId,
-      data: { text: message },
     });
   }
 
@@ -1341,23 +1331,23 @@ export class CodexAdapter extends BaseAgentAdapter {
       // doesn't block waiting on a response we'd never send.
       throw new RpcError(-32000, `codex: unhandled server request '${method}' (auto-rejected)`);
     }
-    return this.#routeApproval(approval);
+    return this.#routeApproval(approval, this.#runFor(isRecord(params) ? params : {}));
   }
 
   /** Run a Codex approval through the bridge's approval round-trip. */
   async #routeApproval(
     draft: Omit<PendingCodexApproval, 'serverRequestId'> & { serverRequestId: number | string },
+    run: ActiveRun | null,
   ): Promise<unknown> {
     if (!this.#onApprovalRequest) {
       // No bridge callback wired (unit test, or a caller that didn't pass
       // `onApprovalRequest`): default to denying to fail safe.
       return approvalReply(draft, 'reject');
     }
-    const run = this.#currentRun();
     if (!run) {
       return approvalReply(draft, 'reject');
     }
-    const approvalId = `codex-${run.turnId}-${(this.#approvalSeq += 1)}`;
+    const approvalId = `codex-${run.bridgeTurnId}-${(this.#approvalSeq += 1)}`;
     this.#pendingApprovals.set(approvalId, {
       kind: draft.kind,
       serverRequestId: draft.serverRequestId,

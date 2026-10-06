@@ -647,6 +647,21 @@ Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
 (`resolve-*.ts`) prefers a directly-spawnable executable (native binary or
 `node <cli.js>`) so `shell:false` always holds.
 
+### One app-server carries every Codex conversation — route by thread
+
+While any Codex turn is in flight, **one** `codex app-server` process carries
+every Codex conversation the bridge drives, so two chats running at once share
+it. Every notification (`item/agentMessage/delta`, `item/started`,
+`item/completed`, `turn/started`, `turn/completed`, `turn/plan/updated`,
+`thread/tokenUsage/updated`, `error`) and every approval request names the
+Codex thread it belongs to — `threadId`, or `conversationId` on the legacy
+`execCommandApproval` / `applyPatchApproval` — verified against the protocol
+`codex app-server generate-ts` emits for codex-cli 0.157.1. `codex-adapter.ts`
+matches each one to the in-flight turn on that thread (`#runFor`), and drops one
+for a thread it has no turn on. It used to hand every notification to whichever
+turn was first in flight, and two concurrent chats swapped their answers,
+steps, plans and approval prompts.
+
 ### Codex holds one writer per thread — so the bridge lets go between turns
 
 Convergence has a second half: a conversation the **phone** started must open in

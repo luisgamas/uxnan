@@ -165,6 +165,11 @@ function collect(adapter: CodexAdapter): {
 /** All fake servers + adapters created by `setup`; cleaned in an `after` hook
  *  so the test process doesn't hang on open handles (NDJSON streams +
  *  readline interface attached to the fake app-server's stdout). */
+/** The Codex thread the fake app-server starts. Every notification and server
+ *  request a real app-server sends names the thread it belongs to, and the
+ *  adapter routes by it — so do the ones these tests feed. */
+const CODEX_THREAD = '019codex-thread-aaaa-bbbb-cccccccccccc';
+
 const allServers: FakeAppServer[] = [];
 const allAdapters: CodexAdapter[] = [];
 
@@ -185,13 +190,18 @@ function setup(
     defaultModel?: string;
     /** Make every `thread/resume` fail with this message (see the handover tests). */
     resumeError?: string;
+    /** Answer each `thread/start` with a thread of its own (`codex-thread-1`,
+     *  `codex-thread-2`, …), as a real app-server does — for tests that run
+     *  two conversations at once. */
+    mintThreads?: boolean;
   } = {},
 ): { adapter: CodexAdapter; server: FakeAppServer } {
   const server = new FakeAppServer();
   allServers.push(server);
   let turnSeq = 0;
+  let threadSeq = 0;
   // Stable, recognizable ids so assertions can match against them.
-  const THREAD_ID = '019codex-thread-aaaa-bbbb-cccccccccccc';
+  const THREAD_ID = CODEX_THREAD;
   server.handle((msg) => {
     if (msg.method === 'initialize') {
       server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } })]);
@@ -206,9 +216,11 @@ function setup(
         }),
       ]);
     } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
-      server.feed([
-        JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { thread: { id: THREAD_ID } } }),
-      ]);
+      const id =
+        options.mintThreads && msg.method === 'thread/start'
+          ? `codex-thread-${(threadSeq += 1)}`
+          : THREAD_ID;
+      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { thread: { id } } })]);
     } else if (msg.method === 'turn/start') {
       turnSeq += 1;
       const id = `codex-turn-${turnSeq}`;
@@ -521,17 +533,17 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/agentMessage/delta',
-      params: { delta: 'hello ' },
+      params: { threadId: CODEX_THREAD, delta: 'hello ' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/agentMessage/delta',
-      params: { delta: 'world' },
+      params: { threadId: CODEX_THREAD, delta: 'world' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { item: { type: 'agentMessage', text: 'hello world' } },
+      params: { threadId: CODEX_THREAD, item: { type: 'agentMessage', text: 'hello world' } },
     }),
     // Usage arrives on its OWN notification — a live app-server's
     // `turn/completed` carries none, which is why Codex used to show no
@@ -539,7 +551,7 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'thread/tokenUsage/updated',
-      params: {
+      params: { threadId: CODEX_THREAD,
         turnId: 'codex-turn-1',
         tokenUsage: {
           total: { totalTokens: 12, inputTokens: 10, cachedInputTokens: 4, outputTokens: 2 },
@@ -551,7 +563,7 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { id: 'codex-turn-1', status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { id: 'codex-turn-1', status: 'completed' } },
     }),
   ]);
 
@@ -582,6 +594,101 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   assert.equal(threadStart.params.sandbox, 'danger-full-access');
 });
 
+test('CodexAdapter keeps two conversations apart: a notification reaches the turn of the thread it names', async () => {
+  // One app-server carries every Codex thread. Two chats running at once used
+  // to swap answers: each notification went to whichever turn was first in
+  // flight, so one chat streamed the other's text, steps and approvals.
+  const approvals: string[] = [];
+  const { adapter, server } = setup({
+    mintThreads: true,
+    onApprovalRequest: async (threadId) => {
+      approvals.push(threadId);
+      return 'approve';
+    },
+  });
+  const { events, until } = collect(adapter);
+
+  void adapter.sendTurn({ threadId: 'chat-a', turnId: 'ua', text: 'first' });
+  await until((e) => e.type === 'turn_started' && e.threadId === 'chat-a');
+  void adapter.sendTurn({ threadId: 'chat-b', turnId: 'ub', text: 'second' });
+  await until((e) => e.type === 'turn_started' && e.threadId === 'chat-b');
+
+  const finished = until((e) => e.type === 'turn_completed' && e.threadId === 'chat-a');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { threadId: 'codex-thread-2', turnId: 'codex-turn-2', itemId: 'm-b', delta: 'for b' },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { threadId: 'codex-thread-1', turnId: 'codex-turn-1', itemId: 'm-a', delta: 'for a' },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 91,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-thread-2',
+        turnId: 'codex-turn-2',
+        itemId: 'call-b',
+        command: 'ls',
+        cwd: '/tmp',
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { threadId: 'codex-thread-2', turn: { id: 'codex-turn-2', status: 'completed' } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { threadId: 'codex-thread-1', turn: { id: 'codex-turn-1', status: 'completed' } },
+    }),
+  ]);
+  await finished;
+
+  const textOf = (threadId: string) =>
+    events
+      .filter((e) => e.type === 'delta' && e.threadId === threadId)
+      .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(textOf('chat-a'), ['for a']);
+  assert.deepEqual(textOf('chat-b'), ['for b']);
+  const completed = (threadId: string) =>
+    events.find((e) => e.type === 'turn_completed' && e.threadId === threadId);
+  assert.equal((completed('chat-a')?.data as { text: string }).text, 'for a');
+  assert.equal((completed('chat-b')?.data as { text: string }).text, 'for b');
+  assert.equal(completed('chat-a')?.turnId, 'ua');
+  assert.equal(completed('chat-b')?.turnId, 'ub');
+  assert.deepEqual(approvals, ['chat-b']);
+});
+
+test('CodexAdapter ignores a notification for a thread it has no turn on', async () => {
+  const { adapter, server } = setup();
+  const { events, done } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted((p) => new Promise((resolve) => {
+    const check = () => (events.some(p) ? resolve(events) : setTimeout(check, 1));
+    check();
+  }));
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { threadId: 'someone-elses-thread', turnId: 'x', itemId: 'm', delta: 'not mine' },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { threadId: CODEX_THREAD, turn: { id: 'codex-turn-1', status: 'completed' } },
+    }),
+  ]);
+  const all = await done;
+  assert.equal(all.some((e) => e.type === 'delta'), false);
+});
+
 test('CodexAdapter preserves commentary and final assistant items with boundaries', async () => {
   const { adapter, server } = setup();
   const { done, until } = collect(adapter);
@@ -592,12 +699,12 @@ test('CodexAdapter preserves commentary and final assistant items with boundarie
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/agentMessage/delta',
-      params: { itemId: 'msg-1', delta: 'I am checking.' },
+      params: { threadId: CODEX_THREAD, itemId: 'msg-1', delta: 'I am checking.' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: {
+      params: { threadId: CODEX_THREAD,
         item: {
           id: 'msg-1',
           type: 'agentMessage',
@@ -609,12 +716,12 @@ test('CodexAdapter preserves commentary and final assistant items with boundarie
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/agentMessage/delta',
-      params: { itemId: 'msg-2', delta: 'Everything is done.' },
+      params: { threadId: CODEX_THREAD, itemId: 'msg-2', delta: 'Everything is done.' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: {
+      params: { threadId: CODEX_THREAD,
         item: {
           id: 'msg-2',
           type: 'agentMessage',
@@ -626,7 +733,7 @@ test('CodexAdapter preserves commentary and final assistant items with boundarie
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
 
@@ -658,17 +765,17 @@ test('CodexAdapter routes reasoning-summaryTextDelta to thinking events', async 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/reasoning/summaryTextDelta',
-      params: { delta: 'thinking it ' },
+      params: { threadId: CODEX_THREAD, delta: 'thinking it ' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/reasoning/summaryTextDelta',
-      params: { delta: 'through' },
+      params: { threadId: CODEX_THREAD, delta: 'through' },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
 
@@ -689,7 +796,7 @@ test('CodexAdapter maps a commandExecution item to a command_execution block', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: {
+      params: { threadId: CODEX_THREAD,
         item: {
           type: 'commandExecution',
           command: 'ls',
@@ -702,7 +809,7 @@ test('CodexAdapter maps a commandExecution item to a command_execution block', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
 
@@ -726,12 +833,12 @@ test('CodexAdapter maps contextCompaction to a compaction block', async () => {
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { item: { type: 'contextCompaction' } },
+      params: { threadId: CODEX_THREAD, item: { type: 'contextCompaction' } },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
 
@@ -755,7 +862,7 @@ test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: {
+      params: { threadId: CODEX_THREAD,
         item: {
           type: 'fileChange',
           changes: [
@@ -771,7 +878,7 @@ test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
 
@@ -793,7 +900,7 @@ test('CodexAdapter persists the native session id from thread/start', async () =
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   // Wait a tick for the adapter to receive the turn/completed
@@ -820,7 +927,7 @@ test('CodexAdapter releases the app-server when the turn ends and resumes the sa
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -843,7 +950,7 @@ test('CodexAdapter releases the app-server when the turn ends and resumes the sa
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await second.done;
@@ -860,7 +967,7 @@ test('CodexAdapter says who holds the conversation when another Codex client own
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -887,7 +994,7 @@ test('CodexAdapter starts a fresh Codex thread when the rollout is gone', async 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -901,7 +1008,7 @@ test('CodexAdapter starts a fresh Codex thread when the rollout is gone', async 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await second.done;
@@ -919,7 +1026,7 @@ test('CodexAdapter releases the app-server after a catastrophic app-server error
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'error',
-      params: { message: 'context window exceeded' },
+      params: { threadId: CODEX_THREAD, message: 'context window exceeded' },
     }),
   ]);
   const events = await errored;
@@ -941,7 +1048,7 @@ test('CodexAdapter keeps a turn going through a dropped stream Codex retries', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'error',
-      params: {
+      params: { threadId: CODEX_THREAD,
         error: {
           message: 'Reconnecting... 2/5',
           additionalDetails: 'stream disconnected before completion',
@@ -952,7 +1059,7 @@ test('CodexAdapter keeps a turn going through a dropped stream Codex retries', a
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   const events = await run.done;
@@ -978,7 +1085,7 @@ test('CodexAdapter reads the message of an error it will not retry', async () =>
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'error',
-      params: { error: { message: 'usage limit reached' }, willRetry: false },
+      params: { threadId: CODEX_THREAD, error: { message: 'usage limit reached' }, willRetry: false },
     }),
   ]);
   const events = await errored;
@@ -1060,7 +1167,7 @@ test('CodexAdapter resumes a thread adopted after a bridge restart instead of st
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -1075,7 +1182,7 @@ test('CodexAdapter mirrors the conversation name onto the Codex thread', async (
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -1107,7 +1214,7 @@ test('CodexAdapter re-applies the thread access mode on every resume', async () 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await first.done;
@@ -1124,7 +1231,7 @@ test('CodexAdapter re-applies the thread access mode on every resume', async () 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await second.done;
@@ -1140,7 +1247,7 @@ test('CodexAdapter surfaces a failed turn as turn_error', async () => {
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'failed', error: { message: 'no credits' } } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'failed', error: { message: 'no credits' } } },
     }),
   ]);
 
@@ -1189,7 +1296,7 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
       method: 'item/commandExecution/requestApproval',
       // The v2 shape (codex-cli 0.157.1 schema): the command is one string.
       params: {
-        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        threadId: CODEX_THREAD,
         turnId: 'codex-turn-1',
         itemId: 'call-1',
         command: 'ls -la',
@@ -1219,7 +1326,7 @@ test('CodexAdapter routes commandExecution requestApproval to the bridge and rep
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await done;
@@ -1239,7 +1346,7 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
       id: 88,
       method: 'item/fileChange/requestApproval',
       params: {
-        threadId: '019codex-thread-aaaa-bbbb-cccccccccccc',
+        threadId: CODEX_THREAD,
         turnId: 'codex-turn-1',
         itemId: 'patch-1',
         reason: 'write outside the workspace',
@@ -1260,7 +1367,7 @@ test('CodexAdapter routes fileChange requestApproval to the bridge and replies w
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await done;
@@ -1277,7 +1384,7 @@ test('CodexAdapter replies denied to a requestApproval when the bridge rejects',
       jsonrpc: '2.0',
       id: 99,
       method: 'applyPatchApproval',
-      params: { conversationId: 'x', callId: 'p', fileChanges: {} },
+      params: { conversationId: CODEX_THREAD, callId: 'p', fileChanges: {} },
     }),
   ]);
 
@@ -1294,7 +1401,7 @@ test('CodexAdapter replies denied to a requestApproval when the bridge rejects',
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await done;
@@ -1330,7 +1437,7 @@ test('CodexAdapter auto-denies unknown server requests (so the app-server does n
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await done;
@@ -1386,7 +1493,7 @@ test('every access mode reaches thread/start and every turn/start with its polic
       JSON.stringify({
         jsonrpc: '2.0',
         method: 'turn/completed',
-        params: { turn: { status: 'completed' } },
+        params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
       }),
     ]);
     await done;
@@ -1417,7 +1524,7 @@ test('CodexAdapter maps reasoning effort to the turn/start effort field', async 
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await new Promise((r) => setImmediate(r));
@@ -1434,7 +1541,7 @@ test('CodexAdapter omits the effort field when no effort is set', async () => {
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await new Promise((r) => setImmediate(r));
@@ -1456,7 +1563,7 @@ test('CodexAdapter maps the reasoning knob (options) to the turn/start effort fi
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await new Promise((r) => setImmediate(r));
@@ -1639,7 +1746,7 @@ test('CodexAdapter runs a skill as a skill input item, the arguments as its text
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await new Promise((r) => setImmediate(r));
@@ -1668,7 +1775,7 @@ test('CodexAdapter expands a custom prompt and sends it as plain text', async ()
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   await new Promise((r) => setImmediate(r));
@@ -1698,17 +1805,17 @@ test('CodexAdapter compacts natively, as a turn of its own', async () => {
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/started',
-      params: { turn: { id: 'compact-1' } },
+      params: { threadId: CODEX_THREAD, turn: { id: 'compact-1' } },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'item/completed',
-      params: { item: { type: 'contextCompaction' } },
+      params: { threadId: CODEX_THREAD, item: { type: 'contextCompaction' } },
     }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: { turn: { status: 'completed' } },
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
     }),
   ]);
   const events = await done;
