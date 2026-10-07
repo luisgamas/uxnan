@@ -6,6 +6,7 @@ import { Writable } from 'node:stream';
 import {
   ClaudeCodeAdapter,
   claudeContextWindow,
+  claudeTakesEffort,
   claudeUsageTokens,
   parseClaudeLine,
   type SpawnedProcess,
@@ -543,8 +544,10 @@ test('ClaudeCodeAdapter advertises effort, with the default it sends, on every m
   assert.ok(models.length > 0);
   for (const model of models) {
     const opt = model.options?.find((o) => o.key === 'reasoning');
-    if (model.id === 'haiku') {
-      // Haiku takes no `--effort` (no `supportsEffort` in Claude's initialize).
+    if (model.id === 'claude-haiku-4-5') {
+      // Haiku 4.5 takes no `--effort` (no `supportsEffort` in Claude's
+      // initialize). The `haiku` alias does — it resolves to Haiku 5.5, which
+      // reports `supportsEffort: true`.
       assert.equal(opt, undefined);
       continue;
     }
@@ -607,15 +610,32 @@ test('claudeContextWindow maps tiers and ids to window sizes', () => {
   assert.equal(claudeContextWindow('fable'), 1_000_000);
   assert.equal(claudeContextWindow('opus'), 1_000_000);
   assert.equal(claudeContextWindow('sonnet'), 1_000_000);
-  assert.equal(claudeContextWindow('haiku'), 200_000);
+  // Haiku 5.5 is 1M, not the 200K of every older Haiku — the family is no
+  // longer one window, and the bare alias resolves to the newest one.
+  assert.equal(claudeContextWindow('haiku'), 1_000_000);
   assert.equal(claudeContextWindow('claude-fable-5-1'), 1_000_000);
   assert.equal(claudeContextWindow('claude-fable-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-opus-5-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-opus-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-opus-4-8'), 1_000_000);
+  assert.equal(claudeContextWindow('claude-haiku-5-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-haiku-4-5'), 200_000);
+  // the dated snapshot id the CLI reports for Haiku 4.5 maps to the same 200K
+  assert.equal(claudeContextWindow('claude-haiku-4-5-20251001'), 200_000);
   assert.equal(claudeContextWindow('mystery'), undefined);
   assert.equal(claudeContextWindow(undefined), undefined);
+});
+
+test('claudeTakesEffort excludes only Haiku 4.5, not the Haiku family', () => {
+  // Read off Claude Code's `initialize` on 2.1.293: Haiku 5.5 reports
+  // `supportsEffort: true`, Haiku 4.5 reports nothing. Every other model takes it.
+  assert.equal(claudeTakesEffort('claude-haiku-4-5'), false);
+  assert.equal(claudeTakesEffort('claude-haiku-5-5'), true);
+  assert.equal(claudeTakesEffort('claude-opus-5-5'), true);
+  assert.equal(claudeTakesEffort('claude-sonnet-5'), true);
+  assert.equal(claudeTakesEffort('claude-fable-5-1'), true);
+  // the moving alias resolves to the newest Haiku, which does take effort
+  assert.equal(claudeTakesEffort('haiku'), true);
 });
 
 test('claudeUsageTokens sums input, cache and output tokens', () => {

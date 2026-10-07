@@ -190,11 +190,14 @@ const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption(
 );
 
 /**
- * Whether a model takes `--effort`: every one but Haiku, which Claude Code's
- * `initialize` lists without `supportsEffort` (verified on 2.1.283).
+ * Whether a model takes `--effort`: every one but **Haiku 4.5**, the one model
+ * Claude Code's `initialize` lists without `supportsEffort`. Read off that same
+ * control request on 2.1.293 — `Haiku 5.5` carries `supportsEffort: true` like
+ * the rest of the 5.x line, so the rule is that one id, not the Haiku family
+ * (which used to be one).
  */
 export function claudeTakesEffort(modelId: string): boolean {
-  return !/haiku/i.test(modelId);
+  return !/haiku-4-5/i.test(modelId);
 }
 
 /**
@@ -368,14 +371,18 @@ export interface ClaudeEvent {
 
 /**
  * Context-window size (tokens) for a Claude model id or alias, so the phone can
- * show context usage as a percentage. Fable/Opus/Sonnet are 1M, Haiku is 200K
- * (matches the current model catalog); unknown ids return undefined.
+ * show context usage as a percentage. Everything current is 1M — **including
+ * Haiku 5.5**, which jumped from Haiku 4.5's 200K; only that one concrete model
+ * is 200K (matches the current model catalog). The bare `haiku` alias is 1M
+ * too: `initialize` resolves it to the newest Haiku the account has, which is
+ * 5.5. Unknown ids return undefined.
  */
 export function claudeContextWindow(model: string | undefined): number | undefined {
   if (!model) return undefined;
   const m = model.toLowerCase();
-  if (m.includes('haiku')) return 200_000;
-  if (m.includes('fable') || m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  if (m.includes('haiku-4-5')) return 200_000;
+  if (m.includes('fable') || m.includes('opus') || m.includes('sonnet') || m.includes('haiku'))
+    return 1_000_000;
   return undefined;
 }
 

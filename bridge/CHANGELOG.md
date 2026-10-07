@@ -4,6 +4,27 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Claude Haiku 5.5 in the phone's model picker.** `claude-haiku-5-5` joins
+  the built-in `agents.claude-code.models` baseline (the live code seed, so
+  every install gets it without editing `~/.uxnan/daemon-config.json`), led by
+  the `haiku` alias, which now resolves to it. `usage-prices.ts` prices it at
+  $0.10/$0.50 per MTok, over Haiku 4.5's $1/$5.
+
+### Fixed
+
+- **Haiku is no longer one model as far as effort and context are concerned.**
+  Haiku 5.5 arrives with 1M tokens of context and a `--effort` knob, where every
+  earlier Haiku had 200K and neither — so `claudeContextWindow` was reporting a
+  window five times too small, and `claudeTakesEffort` hid the reasoning knob
+  the model does take. Both are now keyed on the one id that is really the
+  exception, `claude-haiku-4-5`; the bare `haiku` alias is 1M with effort,
+  because `initialize` resolves it to 5.5. Read off Claude Code's own
+  `initialize` control request on 2.1.293, which reports
+  `supportsEffort`/`supportsAutoMode` per model — the first time the rule could
+  not be a family. *Approve for me* (`--permission-mode auto`) likewise works on
+  Haiku 5.5; the docs said it did not.
 
 ## [0.0.48-alpha.20261006] - 20261006
 ### Fixed

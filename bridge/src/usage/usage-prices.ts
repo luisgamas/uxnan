@@ -27,7 +27,15 @@ const tier = (input: number, output: number): Rate => ({
   cacheWrite1h: input * 2,
 });
 
-/** Claude model families, most specific first (a model id is matched by prefix). */
+/**
+ * Claude model families, most specific first (a model id is matched by prefix).
+ *
+ * One flat rate per model: the ≤100K-prompt tier Anthropic publishes for each.
+ * Haiku 5.5 also charges more above a 100K prompt ($0.50/$2.50 rather than
+ * $0.10/$0.50), which this shape cannot express — long-context turns are
+ * under-estimated rather than over-estimated. An unknown model is left unpriced
+ * (see {@link estimateCost}), never guessed at the nearest tier.
+ */
 const CLAUDE_RATES: readonly (readonly [string, Rate])[] = [
   ['claude-fable', tier(10, 50)],
   ['claude-mythos', tier(10, 50)],
@@ -41,6 +49,7 @@ const CLAUDE_RATES: readonly (readonly [string, Rate])[] = [
   ['claude-sonnet-5', tier(2, 10)],
   ['claude-sonnet-4-6', tier(2, 10)],
   ['claude-sonnet-4', tier(3, 15)],
+  ['claude-haiku-5-5', tier(0.1, 0.5)],
   ['claude-haiku-4-5', tier(1, 5)],
 ];
 

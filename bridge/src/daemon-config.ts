@@ -214,6 +214,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
         { id: 'claude-sonnet-5', displayName: 'Sonnet 5' },
         { id: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' },
         { id: 'claude-sonnet-4-5', displayName: 'Sonnet 4.5' },
+        { id: 'claude-haiku-5-5', displayName: 'Haiku 5.5' },
         { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
       ],
     },
