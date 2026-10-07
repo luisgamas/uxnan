@@ -4,6 +4,28 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Claude spend is priced at Anthropic's actual rates.** The price table was
+  wrong for four models, and wrong *silently* — a spend screen simply showed a
+  number. Claude Opus 5.5 was billed at **$10/$50** per million tokens, which is
+  Fable 5.1's rate and **2.5x** the published $4/$20; it had been added on the
+  line next to Fable with the same figure. Claude Sonnet 4.6 was billed at
+  Sonnet 5's $2/$10 rather than its own $3/$15. Fable 5.1 and Mythos 5.1 were
+  billed a cache *read* at a tenth of their input price, where Anthropic charges
+  a **twenty-fifth** — so every cached token was overcharged **4x**. Every rate is
+  now pinned to the published table by a test that probes the real estimator, so
+  a wrong price fails CI instead of a screen.
+- **A cache read is no longer assumed to cost a tenth of the input price.**
+  Anthropic prices it at 0.025x on Fable 5.1 and Mythos 5.1, 0.05x on Opus 5.5
+  and 0.1x elsewhere — so the rate takes the multiplier instead of deriving it.
+- **A long Haiku 5.5 conversation is no longer under-priced.** It is the one
+  model Anthropic prices by prompt length: past 100 000 tokens **every** rate is
+  five times the one below ($0.50/$2.50 rather than $0.10/$0.50), which the flat
+  table could not express and so priced every such turn at a fifth of its cost.
+  The whole prompt — fresh input, cache hits and cache writes — counts against
+  the threshold.
+
 ### Added
 
 - **Claude Sonnet 5.5 in the phone's model picker.** `claude-sonnet-5-5` joins

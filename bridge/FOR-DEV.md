@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1050, shared 58, relay
+standalone). It builds clean and the suite is green (bridge 1057, shared 58, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -554,6 +554,16 @@ successful run. Remaining post-publish hardening:
 
 ## Known issues
 
+- [ ] **Claude fast mode is not priced (a 2x under-estimate).** Anthropic bills
+      fast mode at exactly double — $8/$40 on Opus 5.5, $10/$50 on Opus 5 and
+      Opus 4.8 — and Claude Code's `initialize` reports `supportsFastMode` on
+      those three. `CLAUDE_PRICES` in `src/usage/usage-prices.ts` does not carry
+      the 2x, so a turn run in fast mode is estimated at half. The blocker is
+      attribution, not the rate: `fast_mode_state` is reported per **session**,
+      not per response, so a transcript cannot say which responses ran in it.
+      Unblocked when the CLI reports it per response (or when the spend surface
+      can read the session's mode and apply it to the responses of that session).
+      Until then it is a deliberate under-estimate, not an oversight.
 - [ ] **Echo-agent E2E flaky on Windows CI** — the end-to-end turn-routing + approval
       round-trip tests in `bridge/test/handlers/thread-handlers.test.ts` intermittently
       never report `completed` on **Windows CI runners** (time out even at 120s), while
