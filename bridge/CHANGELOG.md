@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.49-alpha.20261007] - 20261007
 ### Fixed
 
 - **Claude spend is priced at Anthropic's actual rates.** The price table was
