@@ -642,7 +642,7 @@ pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
 /// Keep newest/most-capable first (that's the picker order). The user can always
 /// pick "Default" in the UI to let the CLI choose its own configured model.
 /// Source of truth for current ids: the Claude API model catalog.
-const CLAUDE_MODELS: [(&str, &str); 12] = [
+const CLAUDE_MODELS: [(&str, &str); 14] = [
     ("claude-fable-5-1", "Fable 5.1"),
     ("claude-fable-5", "Fable 5"),
     ("claude-opus-5-5", "Opus 5.5"),
@@ -651,9 +651,11 @@ const CLAUDE_MODELS: [(&str, &str); 12] = [
     ("claude-opus-4-7", "Opus 4.7"),
     ("claude-opus-4-6", "Opus 4.6"),
     ("claude-opus-4-5", "Opus 4.5"),
+    ("claude-sonnet-5-5", "Sonnet 5.5"),
     ("claude-sonnet-5", "Sonnet 5"),
     ("claude-sonnet-4-6", "Sonnet 4.6"),
     ("claude-sonnet-4-5", "Sonnet 4.5"),
+    ("claude-haiku-5-5", "Haiku 5.5"),
     ("claude-haiku-4-5", "Haiku 4.5"),
 ];
 
@@ -1192,8 +1194,19 @@ Available models:
         assert_eq!(claude[1].id, "claude-fable-5");
         assert_eq!(claude[2].id, "claude-opus-5-5");
         assert_eq!(claude[3].id, "claude-opus-5");
+        assert!(claude.iter().any(|m| m.id == "claude-sonnet-5-5"));
         assert!(claude.iter().any(|m| m.id == "claude-sonnet-5"));
         assert!(claude.iter().any(|m| m.id == "claude-sonnet-4-5"));
+        assert!(claude.iter().any(|m| m.id == "claude-haiku-5-5"));
+        // newest first within a tier: 5.5 leads each tier, the one before it follows
+        for (newer, older) in [
+            ("claude-sonnet-5-5", "claude-sonnet-5"),
+            ("claude-haiku-5-5", "claude-haiku-4-5"),
+        ] {
+            let before = claude.iter().position(|m| m.id == newer).unwrap();
+            let after = claude.iter().position(|m| m.id == older).unwrap();
+            assert!(before < after, "{newer} must precede {older}");
+        }
         assert!(claude.iter().all(|m| m.id.starts_with("claude-")));
         // no routing variants (`…[1m]`, `…-fast`) leak into the table
         assert!(claude

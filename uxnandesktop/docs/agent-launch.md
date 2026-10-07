@@ -306,6 +306,16 @@ alias in a desktop table — it pins an exact version so a generated commit mess
 stays reproducible. The bridge documents the same rule from its side in
 [`bridge/docs/agents.md`](../../bridge/docs/agents.md).
 
+**The desktop half is only the picker; the bridge half is more.** Because this
+table feeds commit-message and PR-body drafting, it carries ids and labels only.
+Everything else about a model — whether it takes `--effort`, its context window,
+its price — lives in the bridge (`claudeTakesEffort` / `claudeContextWindow` /
+`CLAUDE_RATES`), and a new generation that changes any of them lands there in
+the same change set. Haiku 5.5 is the case that made this explicit: it arrived
+with 1M context and `supportsEffort`, where every earlier Haiku had 200K and
+neither, so "the Haiku family" stopped being a rule and both became the single
+exception `claude-haiku-4-5`.
+
 ---
 
 ## Conversation names

@@ -486,9 +486,19 @@ Three audiences, three homes — keep them separate so none of them rots:
   Canonical ids only: no date suffixes, no routing variants (`…[1m]`, `…-fast`),
   no invitation-only models, and no bare `fable`/`opus`/`sonnet`/`haiku` alias
   inside a table (the bridge advertises aliases separately from
-  `claude-adapter.ts`, hand-kept too and verified against `claude --help`). A
-  model in an existing tier needs no context-window edit —
-  `claudeContextWindow()` maps by tier. Full rules:
+  `claude-adapter.ts`, hand-kept too and verified against `claude --help`).
+
+  **A new generation moves four tables, not one.** The two pickers above are the
+  obvious pair; the same id also decides whether the model takes `--effort`
+  (`claudeTakesEffort()`), its context window (`claudeContextWindow()`) and its
+  price (`CLAUDE_PRICES` in `bridge/src/usage/usage-prices.ts`, pinned to
+  Anthropic's published rates by `test/usage/transcript-usage.test.ts`). **The
+  last three are keyed on the model id, not on its family**, because Haiku 5.5
+  arrived with a 1M window and `supportsEffort` where every earlier Haiku had
+  200K and neither — "the Haiku family" stopped being a rule and became the
+  single exception `claude-haiku-4-5`. Claude Code's `initialize` control request
+  reports `supportsEffort` / `supportedEffortLevels` / `supportsAutoMode` per
+  model, so read it there rather than inferring from the name. Full rules:
   [`bridge/docs/agents.md`](bridge/docs/agents.md) and
   [`uxnandesktop/docs/agent-launch.md`](uxnandesktop/docs/agent-launch.md).
 

@@ -4,6 +4,16 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Claude Sonnet 5.5 in the Claude model pickers.** `CLAUDE_MODELS` in
+  `agentcli.rs` gains `claude-sonnet-5-5`, so *Settings → AI commit* and
+  *Settings → GitHub → AI PR body* can draft on it. Added to the bridge's twin
+  list in the same change set.
+- **Claude Haiku 5.5 in the Claude model pickers.** `CLAUDE_MODELS` in
+  `agentcli.rs` gains `claude-haiku-5-5`, so *Settings → AI commit* and
+  *Settings → GitHub → AI PR body* can draft on it. Added to the bridge's twin
+  list in the same change set, so both surfaces offer the same versions.
 
 ## [0.0.77] - 20261006
 ### Changed

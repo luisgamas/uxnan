@@ -4,6 +4,54 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Claude spend is priced at Anthropic's actual rates.** The price table was
+  wrong for four models, and wrong *silently* — a spend screen simply showed a
+  number. Claude Opus 5.5 was billed at **$10/$50** per million tokens, which is
+  Fable 5.1's rate and **2.5x** the published $4/$20; it had been added on the
+  line next to Fable with the same figure. Claude Sonnet 4.6 was billed at
+  Sonnet 5's $2/$10 rather than its own $3/$15. Fable 5.1 and Mythos 5.1 were
+  billed a cache *read* at a tenth of their input price, where Anthropic charges
+  a **twenty-fifth** — so every cached token was overcharged **4x**. Every rate is
+  now pinned to the published table by a test that probes the real estimator, so
+  a wrong price fails CI instead of a screen.
+- **A cache read is no longer assumed to cost a tenth of the input price.**
+  Anthropic prices it at 0.025x on Fable 5.1 and Mythos 5.1, 0.05x on Opus 5.5
+  and 0.1x elsewhere — so the rate takes the multiplier instead of deriving it.
+- **A long Haiku 5.5 conversation is no longer under-priced.** It is the one
+  model Anthropic prices by prompt length: past 100 000 tokens **every** rate is
+  five times the one below ($0.50/$2.50 rather than $0.10/$0.50), which the flat
+  table could not express and so priced every such turn at a fifth of its cost.
+  The whole prompt — fresh input, cache hits and cache writes — counts against
+  the threshold.
+
+### Added
+
+- **Claude Sonnet 5.5 in the phone's model picker.** `claude-sonnet-5-5` joins
+  the built-in `agents.claude-code.models` baseline, leading the Sonnets — it
+  is also what the account's own default resolves to, so a fresh install could
+  name a model the picker never offered. Priced at $2/$10 per MTok, given its
+  own row rather than inheriting the `claude-sonnet-5` prefix's.
+- **Claude Haiku 5.5 in the phone's model picker.** `claude-haiku-5-5` joins
+  the built-in `agents.claude-code.models` baseline (the live code seed, so
+  every install gets it without editing `~/.uxnan/daemon-config.json`), led by
+  the `haiku` alias, which now resolves to it. `usage-prices.ts` prices it at
+  $0.10/$0.50 per MTok, over Haiku 4.5's $1/$5.
+
+### Fixed
+
+- **Haiku is no longer one model as far as effort and context are concerned.**
+  Haiku 5.5 arrives with 1M tokens of context and a `--effort` knob, where every
+  earlier Haiku had 200K and neither — so `claudeContextWindow` was reporting a
+  window five times too small, and `claudeTakesEffort` hid the reasoning knob
+  the model does take. Both are now keyed on the one id that is really the
+  exception, `claude-haiku-4-5`; the bare `haiku` alias is 1M with effort,
+  because `initialize` resolves it to 5.5. Read off Claude Code's own
+  `initialize` control request on 2.1.293, which reports
+  `supportsEffort`/`supportsAutoMode` per model — the first time the rule could
+  not be a family. *Approve for me* (`--permission-mode auto`) likewise works on
+  Haiku 5.5; the docs said it did not.
 
 ## [0.0.48-alpha.20261006] - 20261006
 ### Fixed

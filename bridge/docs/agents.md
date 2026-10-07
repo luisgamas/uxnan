@@ -427,7 +427,7 @@ file in the project, touch one outside it.
 
 | Agent | Request approval | Approve for me | Full access | Plan only | Default |
 |---|---|---|---|---|---|
-| **Claude Code** | `PreToolUse` hook to the phone + `--permission-mode default` — offered only when the bridge serves the hook (LAN on); a turn before its URL exists fails rather than run unasked | `--permission-mode auto` (Claude's own reviewer). Not every model has it: haiku starts in `default` and declines what needs approval — the turn says so (`system/init` reports the mode) | `--dangerously-skip-permissions` | `--permission-mode plan` | full access |
+| **Claude Code** | `PreToolUse` hook to the phone + `--permission-mode default` — offered only when the bridge serves the hook (LAN on); a turn before its URL exists fails rather than run unasked | `--permission-mode auto` (Claude's own reviewer). Not every model has it: **Haiku 4.5** starts in `default` and declines what needs approval (its `initialize` entry carries no `supportsAutoMode`) — the turn says so (`system/init` reports the mode). Every other model, Haiku 5.5 included, reports `supportsAutoMode: true` | `--dangerously-skip-permissions` | `--permission-mode plan` | full access |
 | **Codex** | `untrusted` + reviewer `user` + `workspace-write` | `on-request` + reviewer `auto_review` + `workspace-write` (its own reviewer decides sandbox escapes; measured: a write outside the workspace was approved without asking) | `never` + `danger-full-access` | `never` + `read-only` | full access |
 | **OpenCode** | every gated action `ask` | `edit`/`shell` allow, `webfetch`/`external_directory` ask — OpenCode checks paths on its file tools, not on shell commands, so a command can still reach outside | everything `allow` | its `plan` agent (v1 `agent` on the prompt, v2 `POST /api/session/:id/agent`) + every action `ask` as a backstop. Not `deny` rules: OpenCode's free models refuse a session that denies tools ("free tier can only be used from within OpenCode") | full access |
 | **Zero** | ACP mode `ask` | ACP mode `auto` (runs safe tools, asks before risky ones — those questions go to the person) | **not offered**: `zero acp` cannot run outside its sandbox (no ACP mode, no flag; only the user's global config) | ACP mode `plan` | approve for me |
@@ -847,7 +847,7 @@ configuration would choose:
 | Agent | Levels | Default |
 |---|---|---|
 | **Codex** | the app-server `model/list` (`supportedReasoningEfforts`) | the model's `defaultReasoningEffort` |
-| **Claude Code** | `--effort` low…max, on every model but Haiku (Claude's `initialize` lists Haiku without `supportsEffort`) | `high` — Claude decides its own at run time (remote configuration, then the model's capabilities) and no headless surface reports it, so the bridge names one and sends it |
+| **Claude Code** | `--effort` low…max, on every model but **Haiku 4.5** (Claude's `initialize` lists it without `supportsEffort`; Haiku 5.5 reports `supportsEffort: true`, verified on 2.1.293) | `high` — Claude decides its own at run time (remote configuration, then the model's capabilities) and no headless surface reports it, so the bridge names one and sends it |
 | **pi** | `--thinking` off…max, on models whose `thinking` column is `yes` | what pi itself would use: `settings.json` `modelThinkingLevels["provider/model"]`, then `defaultThinkingLevel`, then `medium` |
 | **Grok** | ACP `_meta.reasoningEfforts` | the entry flagged `default` |
 | **OpenCode** 2 | the model's `variants` (sent as `variant`) | none named: an untouched turn runs at the provider's own |
@@ -1016,9 +1016,11 @@ control:
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
         { "id": "claude-opus-4-6",  "displayName": "Opus 4.6" },
         { "id": "claude-opus-4-5",  "displayName": "Opus 4.5" },
+        { "id": "claude-sonnet-5-5","displayName": "Sonnet 5.5" },
         { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
         { "id": "claude-sonnet-4-5","displayName": "Sonnet 4.5" },
+        { "id": "claude-haiku-5-5", "displayName": "Haiku 5.5" },
         { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
         "claude-opus-4-1"               // bare id — displayName falls back to the id
       ]
@@ -1053,10 +1055,32 @@ model** — updating only one silently leaves that surface a version behind:
 
 Keep the **same ids, labels and order** in both (newest/most capable first). Use
 canonical ids only: never append a date suffix or a routing variant (`…[1m]`,
-`…-fast`) to a concrete id, and never put a bare alias in either list. Context
-windows need no edit for a model in an existing tier — `claudeContextWindow()`
-(`src/adapters/claude-adapter.ts`) maps by tier (`fable`/`opus`/`sonnet` → 1M,
-`haiku` → 200K), which is what drives the phone's context-usage percentage.
+`…-fast`) to a concrete id, and never put a bare alias in either list.
+
+**A new generation moves three tables, not one.** Adding a model is only the
+picker entry: the same id also decides `--effort` and the context window, and
+pricing is a fourth place. Check each against the current catalog rather than
+assuming a family keeps its old behaviour:
+
+| Table | Where | What a new generation changes |
+|---|---|---|
+| Reasoning effort | `claudeTakesEffort()` (`src/adapters/claude-adapter.ts`) | keyed on **`claude-haiku-4-5`** alone — Haiku 5.5 reports `supportsEffort: true`, so "every model but Haiku" stopped being true |
+| Context window | `claudeContextWindow()` (same file) | keyed on **`claude-haiku-4-5`** alone → 200K; everything else, Haiku 5.5 included, is 1M. This drives the phone's context-usage percentage |
+| Price | `src/usage/usage-prices.ts` → `CLAUDE_RATES` | one flat rate per id, matched by prefix, most specific first |
+
+Both of the first two are exceptions rather than tier rules *because* Haiku 5.5
+broke the tier: it gained effort and 5× the window. Claude Code's own
+`initialize` control request (already driven for `agent/commands`) reports
+`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking` and
+`supportsAutoMode` **per model** — read it there rather than inferring from the
+family name.
+
+Read `supportedEffortLevels` too: it is the CLI naming the levels *that model*
+accepts, where `CLAUDE_EFFORT_LEVELS` is the union the picker offers.
+`supportsAutoMode` is what decides whether *Approve for me*
+(`--permission-mode auto`) works — the bridge always sends the flag and reports
+the mode `system/init` answers, so no per-model branch is needed, only the
+prose here.
 
 ## Plan limits (`agent/usageStats`)
 

@@ -260,6 +260,7 @@ export {
 export {
   ClaudeCodeAdapter,
   claudeContextWindow,
+  claudeTakesEffort,
   claudeUsageTokens,
   parseClaudeLine,
   type ClaudeCodeAdapterOptions,

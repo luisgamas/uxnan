@@ -12,6 +12,7 @@ import {
   parseZeroLine,
   type CodexParseState,
 } from '../../src/usage/transcript-usage.js';
+import type { UsageRecord } from '../../src/usage/transcript-usage.js';
 import { estimateCost } from '../../src/usage/usage-prices.js';
 import { UsageScanner, localDay, type UsageLocations } from '../../src/usage/usage-scan.js';
 import { DaemonState } from '../../src/index.js';
@@ -53,10 +54,12 @@ test('a Claude response: tokens as written, the cache split by lifetime, a key f
     reasoningTokens: 10,
     dedupeKey: 'msg_1:req_1',
   });
-  // Priced at Claude Code's own rates for its tier ($10/$50 per million).
+  // Opus 5.5's published rates: $4/$20 per million, a cache hit at 0.05x
+  // ($0.20), the hour-long write at 2x ($8). The 1000 written tokens are all
+  // `cacheWriteLongTokens`, so nothing is priced as a 5m write.
   assert.equal(
     estimateCost(r!)!.toFixed(6),
-    ((2 * 10 + 5000 * 1 + 1000 * 20 + 400 * 50) / 1e6).toFixed(6),
+    ((2 * 4 + 5000 * 0.2 + 1000 * 8 + 400 * 20) / 1e6).toFixed(6),
   );
   // Not a model response, or one Claude Code wrote itself.
   assert.equal(parseClaudeLine(JSON.stringify({ type: 'user', message: {} })), undefined);
@@ -197,6 +200,133 @@ test('Zero: a provider_usage event, at the session model, never priced', () => {
   });
   assert.equal(estimateCost(r!), undefined);
   assert.equal(parseZeroLine(JSON.stringify({ type: 'message', payload: {} }), 'm'), undefined);
+});
+
+// --- Claude price table: pinned to Anthropic's published rates ----------------
+// These are a transcription of the model-pricing table read 2026-10-07
+// (platform.claude.com/docs/en/about-claude/pricing), one million tokens of a
+// single kind so the answer IS that kind's rate. They exist because the table
+// is hand-kept: Opus 5.5 once carried Fable's $10/$50, Fable 5.1 carried
+// Fable 5's cache-read rate and Sonnet 4.6 carried Sonnet 5's, and none of it
+// broke anything until a spend screen showed numbers 2.5x and 4x too high.
+// Re-read the table and update these when a model is added — do not adjust them
+// to make a code change pass.
+const record = (model: string, tokens: Partial<UsageRecord>): UsageRecord => ({
+  agentId: 'claude-code',
+  model,
+  at: 0,
+  inputTokens: 0,
+  cachedInputTokens: 0,
+  cacheWriteTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  ...tokens,
+});
+
+const RATES_PER_MTOK: readonly (readonly [string, [number, number, number, number, number]])[] = [
+  // model,                 input, output, cacheRead, 5m write, 1h write
+  ['claude-fable-5-1', [10, 50, 0.25, 12.5, 20]],
+  ['claude-mythos-5-1', [10, 50, 0.25, 12.5, 20]],
+  ['claude-fable-5', [10, 50, 1, 12.5, 20]],
+  ['claude-mythos-5', [10, 50, 1, 12.5, 20]],
+  ['claude-opus-5-5', [4, 20, 0.2, 5, 8]],
+  ['claude-opus-5', [5, 25, 0.5, 6.25, 10]],
+  ['claude-opus-4-8', [5, 25, 0.5, 6.25, 10]],
+  ['claude-opus-4-7', [5, 25, 0.5, 6.25, 10]],
+  ['claude-opus-4-6', [5, 25, 0.5, 6.25, 10]],
+  ['claude-opus-4-5', [5, 25, 0.5, 6.25, 10]],
+  ['claude-opus-4-1', [15, 75, 1.5, 18.75, 30]],
+  ['claude-opus-4', [15, 75, 1.5, 18.75, 30]],
+  ['claude-sonnet-5-5', [2, 10, 0.2, 2.5, 4]],
+  ['claude-sonnet-5', [2, 10, 0.2, 2.5, 4]],
+  ['claude-sonnet-4-6', [3, 15, 0.3, 3.75, 6]],
+  ['claude-sonnet-4-5', [3, 15, 0.3, 3.75, 6]],
+  ['claude-sonnet-4', [3, 15, 0.3, 3.75, 6]],
+  ['claude-haiku-4-5', [1, 5, 0.1, 1.25, 2]],
+];
+
+test("every Claude model is priced at Anthropic's published rates", () => {
+  const one = (model: string, kind: Partial<UsageRecord>): number =>
+    estimateCost(record(model, kind))!;
+  // Rates are multiples of the input price, so they land a hair off; compare
+  // them the way money is compared, not by bit pattern.
+  const worth = (got: number, want: number): boolean => Math.abs(got - want) < 1e-9;
+  for (const [model, [input, output, cacheRead, write5m, write1h]] of RATES_PER_MTOK) {
+    assert.ok(worth(one(model, { inputTokens: 1e6 }), input), `${model} input`);
+    assert.ok(worth(one(model, { outputTokens: 1e6 }), output), `${model} output`);
+    assert.ok(worth(one(model, { cachedInputTokens: 1e6 }), cacheRead), `${model} cache read`);
+    assert.ok(worth(one(model, { cacheWriteTokens: 1e6 }), write5m), `${model} 5m cache write`);
+    assert.ok(
+      worth(one(model, { cacheWriteTokens: 1e6, cacheWriteLongTokens: 1e6 }), write1h),
+      `${model} 1h cache write`,
+    );
+  }
+});
+
+test('a dated snapshot prices as the generation it belongs to', () => {
+  // Claude Code records the dated id for the models that still carry one.
+  assert.ok(
+    Math.abs(estimateCost(record('claude-haiku-4-5-20251001', { inputTokens: 1e6 }))! - 1) < 1e-9,
+  );
+  assert.ok(
+    Math.abs(estimateCost(record('claude-opus-4-5-20251101', { inputTokens: 1e6 }))! - 5) < 1e-9,
+  );
+  // A routing variant is the same model too.
+  assert.ok(
+    Math.abs(estimateCost(record('claude-opus-5-5[1m]', { inputTokens: 1e6 }))! - 4) < 1e-9,
+  );
+});
+
+test('a moving alias is not priced: what it resolves to depends on the account', () => {
+  // `opus` is Opus 5.5 today on this account and Opus 5 on an older one, so
+  // pricing the alias would mean guessing. Transcripts name the concrete model,
+  // so a real turn is always priced; the alias only reaches here if something
+  // hands us the shorthand, and an unknown price is the honest answer.
+  assert.equal(estimateCost(record('opus', { inputTokens: 1e6 })), undefined);
+  assert.equal(estimateCost(record('sonnet', { inputTokens: 1e6 })), undefined);
+  assert.equal(estimateCost(record('haiku', { inputTokens: 1e6 })), undefined);
+});
+
+test('Haiku 5.5 costs five times more past a 100k prompt', () => {
+  const cost = (promptTokens: number): number | undefined =>
+    estimateCost(record('claude-haiku-5-5', { inputTokens: promptTokens }));
+  // Every line of the rate is 5x above the threshold, and the whole prompt —
+  // fresh, cached or written — is what counts against it.
+  assert.equal(cost(99_999), (99_999 * 0.1) / 1e6);
+  assert.equal(cost(100_000), (100_000 * 0.1) / 1e6);
+  assert.equal(cost(100_001), (100_001 * 0.5) / 1e6);
+  // Cache tokens count toward the prompt even when they carry no fresh input.
+  assert.equal(
+    estimateCost(record('claude-haiku-5-5', { cachedInputTokens: 100_001 })),
+    (100_001 * 0.05) / 1e6,
+  );
+  // Output at the higher band too, not just input.
+  assert.equal(
+    estimateCost(record('claude-haiku-5-5', { inputTokens: 100_001, outputTokens: 1_000 })),
+    (100_001 * 0.5 + 1_000 * 2.5) / 1e6,
+  );
+});
+
+test('every priced model has an unbounded last band, however long the prompt', () => {
+  // A model whose bands stop short of the top would silently fall out of the
+  // table on a long conversation and report no cost at all.
+  for (const [model] of RATES_PER_MTOK) {
+    assert.notEqual(
+      estimateCost(record(model, { inputTokens: 900_000_000 })),
+      undefined,
+      `${model} is still priced at a 900M-token prompt`,
+    );
+  }
+});
+
+test('a model outside the table is left unpriced rather than guessed', () => {
+  assert.equal(estimateCost(record('claude-mystery-9', { inputTokens: 1e6 })), undefined);
+  assert.equal(estimateCost(record('gpt-5.6-luna', { inputTokens: 1e6 })), undefined);
+  // Only Claude Code is priced here; another agent's spend is its own.
+  assert.equal(
+    estimateCost({ ...record('claude-opus-5-5', { inputTokens: 1e6 }), agentId: 'codex' }),
+    undefined,
+  );
 });
 
 test('the scan counts each Claude response once across files and reads only what was appended', async () => {

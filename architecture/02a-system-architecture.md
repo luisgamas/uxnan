@@ -2508,11 +2508,17 @@ Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`, Zero `~/.local/share/zero/ses
 cuenta **todo** lo que el agente gasto en esa PC, los turnos del bridge y las sesiones
 que la persona corrio en una terminal. Antigravity queda fuera: su transcripcion no
 registra tokens (`bridge/FOR-DEV.md`). El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
-una estimacion a precios de API (Claude, con la tabla de precios del propio CLI);
-un modelo sin precio conocido se muestra como tal (`unpricedTokens`), nunca se
-adivina. Escaneo incremental con cache en `~/.uxnan/usage-scan.json` (lo leido de
-cada archivo y hasta donde); las respuestas de Claude que una sesion reanudada
-copia a otro archivo se cuentan una vez. Nada crudo sale del bridge: solo sumas.
+una estimacion a los **precios publicados por Anthropic** (Claude: la tabla de
+precios de modelos, mantenida a mano en `bridge/src/usage/usage-prices.ts` e
+incluyendo los tramos por longitud de prompt de Haiku 5.5). Es una estimacion
+porque se infiere de los tokens, no porque falte el dato: el CLI de Claude si
+registra su coste real por modelo (`cost-state` → `modelUsage[].costUSD` en su
+transcripcion, junto a `hasUnknownModelCost`), que Uxnan todavia no lee — igual
+que si hace con pi, Grok y OpenCode. Un modelo sin precio conocido se muestra
+como tal (`unpricedTokens`), nunca se adivina. Escaneo incremental con cache en
+`~/.uxnan/usage-scan.json` (lo leido de cada archivo y hasta donde); las
+respuestas de Claude que una sesion reanudada copia a otro archivo se cuentan
+una vez. Nada crudo sale del bridge: solo sumas.
 
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 
