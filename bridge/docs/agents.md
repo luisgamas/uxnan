@@ -1016,6 +1016,7 @@ control:
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
         { "id": "claude-opus-4-6",  "displayName": "Opus 4.6" },
         { "id": "claude-opus-4-5",  "displayName": "Opus 4.5" },
+        { "id": "claude-sonnet-5-5","displayName": "Sonnet 5.5" },
         { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
         { "id": "claude-sonnet-4-5","displayName": "Sonnet 4.5" },

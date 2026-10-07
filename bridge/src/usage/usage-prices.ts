@@ -46,6 +46,10 @@ const CLAUDE_RATES: readonly (readonly [string, Rate])[] = [
   ['claude-opus-4-7', tier(5, 25)],
   ['claude-opus-4-8', tier(5, 25)],
   ['claude-opus-4', tier(15, 75)],
+  // Explicit, not inherited from the `claude-sonnet-5` prefix below: same rate
+  // today, but a new generation gets its own row rather than silently costing
+  // whatever the one before it does.
+  ['claude-sonnet-5-5', tier(2, 10)],
   ['claude-sonnet-5', tier(2, 10)],
   ['claude-sonnet-4-6', tier(2, 10)],
   ['claude-sonnet-4', tier(3, 15)],

@@ -144,6 +144,7 @@ reserved and not yet consumed.)
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5" },
         { "id": "claude-opus-5", "displayName": "Opus 5" },
         { "id": "claude-opus-4-8", "displayName": "Opus 4.8" },
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5" },
         { "id": "claude-sonnet-5", "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6", "displayName": "Sonnet 4.6" },
         { "id": "claude-haiku-5-5", "displayName": "Haiku 5.5" },

@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **Claude Sonnet 5.5 in the phone's model picker.** `claude-sonnet-5-5` joins
+  the built-in `agents.claude-code.models` baseline, leading the Sonnets — it
+  is also what the account's own default resolves to, so a fresh install could
+  name a model the picker never offered. Priced at $2/$10 per MTok, given its
+  own row rather than inheriting the `claude-sonnet-5` prefix's.
 - **Claude Haiku 5.5 in the phone's model picker.** `claude-haiku-5-5` joins
   the built-in `agents.claude-code.models` baseline (the live code seed, so
   every install gets it without editing `~/.uxnan/daemon-config.json`), led by
