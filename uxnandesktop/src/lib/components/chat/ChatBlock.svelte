@@ -1,3 +1,23 @@
+<script lang="ts" module>
+  /** Every block type this client knows — including the ones it shows nothing
+   *  for on purpose (an empty plan, a notice without text, usage, thinking).
+   *  Only a type outside this list gets the "unsupported" line, as on the phone. */
+  const KNOWN_TYPES = new Set([
+    "approval",
+    "question",
+    "plan",
+    "system",
+    "code",
+    "image",
+    "compaction",
+    "view",
+    "text",
+    "thinking",
+    "usage",
+    "assistant_response_boundary",
+  ]);
+</script>
+
 <script lang="ts">
   // One structured block of an agent's turn — what the phone calls a content
   // block (`MessageContent`). This dispatches it to its face:
@@ -46,23 +66,6 @@
       : ({} as Record<string, unknown>),
   );
   const type = $derived(typeof b.type === "string" ? b.type : "");
-  /** Every block type this client knows — including the ones it shows nothing
-   *  for on purpose (an empty plan, a notice without text, usage, thinking).
-   *  Only a type outside this list gets the "unsupported" line, as on the phone. */
-  const KNOWN_TYPES = new Set([
-    "approval",
-    "question",
-    "plan",
-    "system",
-    "code",
-    "image",
-    "compaction",
-    "view",
-    "text",
-    "thinking",
-    "usage",
-    "assistant_response_boundary",
-  ]);
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const req = $derived(
     b.request && typeof b.request === "object" ? (b.request as Record<string, unknown>) : b,
