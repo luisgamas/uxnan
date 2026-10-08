@@ -33,11 +33,10 @@ export interface WorktreesConfig {
 /**
  * An explicit model to surface in the phone's model picker, declared in config.
  *
- * Use this to pin concrete, versioned models alongside an agent's own
- * auto-updating aliases — e.g. for Claude Code, the
- * `fable`/`opus`/`sonnet`/`haiku` aliases always track the latest, and pinning
- * `claude-opus-4-7` here adds an older-but-available version to the picker. `id`
- * is passed verbatim to the CLI's `--model`/`-m` flag.
+ * Use this to add a model the agent's CLI does not list for the account yet
+ * but accepts — Claude Code's picker is otherwise exactly what its
+ * `initialize` reports. `id` is passed verbatim to the CLI's `--model`/`-m`
+ * flag.
  */
 export interface AgentModelSpec {
   /** Exact model id passed to the agent (e.g. `claude-opus-4-8`). */
@@ -55,15 +54,12 @@ export interface AgentSettings {
   /** Default model the agent uses (e.g. `provider/model` for OpenCode). */
   model?: string;
   /**
-   * Extra explicit models to show in the picker, **added on top of** the
-   * project's built-in (seeded) list — the two are UNION-ed by id at load time
-   * (see `mergeAgentModels`), so the built-in list always stays current with the
-   * app and your entries extend/override it. For Claude Code (whose CLI exposes
-   * only the moving `fable`/`opus`/`sonnet`/`haiku` aliases) this is how you pin
-   * an extra concrete version; a same-id entry overrides the seed's `displayName`.
+   * Extra explicit models to show in the picker, **added after** the ones the
+   * agent's CLI reports. An id the CLI already lists keeps the CLI's entry.
    * Entries may be a bare id string or an {@link AgentModelSpec}. Currently
-   * consumed by the Claude Code adapter; ignored by active agents that enumerate
-   * their own models (OpenCode, Codex, pi, Antigravity, Zero and Grok).
+   * consumed by the Claude Code adapter; ignored by the agents whose pickers
+   * take nothing but their CLI's list (OpenCode, Codex, pi, Antigravity, Zero
+   * and Grok).
    */
   models?: (string | AgentModelSpec)[];
   /**
@@ -187,72 +183,8 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   browseRoots: [],
   worktrees: { location: 'managed' },
   projectAgents: [],
-  // Seed Claude Code with the concrete, currently-available versions its CLI
-  // accepts, so the picker shows exact models out of the box alongside the
-  // auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases. Curate this list as
-  // models are released or retired — the aliases always cover "latest"
-  // regardless. Newest/most capable first (that's the picker order), and only
-  // ids `claude --model` takes: no date-suffixed snapshots, no routing variants
-  // (`…[1m]`, `…-fast`), no invitation-only models. See docs/agents.md.
-  //
-  // TWIN LIST — KEEP IN SYNC. The desktop app ships its own hand-kept copy of
-  // this table in `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` (`CLAUDE_MODELS`,
-  // used by AI commit messages / PR bodies). Claude Code has no enumerate
-  // command, so both are maintained by hand: every new Claude model must be
-  // added to BOTH lists, with the same ids, labels and order.
-  agents: {
-    'claude-code': {
-      models: [
-        { id: 'claude-fable-5-1', displayName: 'Fable 5.1' },
-        { id: 'claude-fable-5', displayName: 'Fable 5' },
-        { id: 'claude-opus-5-5', displayName: 'Opus 5.5' },
-        { id: 'claude-opus-5', displayName: 'Opus 5' },
-        { id: 'claude-opus-4-8', displayName: 'Opus 4.8' },
-        { id: 'claude-opus-4-7', displayName: 'Opus 4.7' },
-        { id: 'claude-opus-4-6', displayName: 'Opus 4.6' },
-        { id: 'claude-opus-4-5', displayName: 'Opus 4.5' },
-        { id: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
-        { id: 'claude-sonnet-5', displayName: 'Sonnet 5' },
-        { id: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' },
-        { id: 'claude-sonnet-4-5', displayName: 'Sonnet 4.5' },
-        { id: 'claude-haiku-5-5', displayName: 'Haiku 5.5' },
-        { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
-      ],
-    },
-  },
+  agents: {},
 };
-
-/** The id of a `models` entry (bare string or {@link AgentModelSpec}). */
-function modelId(entry: string | AgentModelSpec): string {
-  return (typeof entry === 'string' ? entry : entry.id).trim();
-}
-
-/**
- * Union the built-in (seeded) `models` with the user's, deduped by id.
- *
- * The **built-in list is a live baseline from code** (not frozen on disk): a new
- * app version that adds a model to the seed surfaces it for every install,
- * without the user editing their config. The user's entries are treated as
- * additions/overrides — a new id is appended, and an id that collides with a
- * seed entry replaces it (so a custom `displayName` wins) while keeping the
- * seed's position. Returns `undefined` when neither side has any (so the field
- * stays absent rather than an empty array).
- */
-export function mergeAgentModels(
-  seed?: (string | AgentModelSpec)[],
-  user?: (string | AgentModelSpec)[],
-): (string | AgentModelSpec)[] | undefined {
-  if (!seed?.length && !user?.length) return undefined;
-  const order: string[] = [];
-  const byId = new Map<string, string | AgentModelSpec>();
-  for (const entry of [...(seed ?? []), ...(user ?? [])]) {
-    const id = modelId(entry);
-    if (!id) continue;
-    if (!byId.has(id)) order.push(id);
-    byId.set(id, entry); // later (user) entry wins on a collision
-  }
-  return order.length > 0 ? order.map((id) => byId.get(id)!) : undefined;
-}
 
 /** Merge a partial (e.g. loaded from disk) over the defaults. */
 export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): DaemonConfig {
@@ -282,11 +214,8 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
     (entry): entry is AgentConfig => (entry.agentId as string) !== 'gemini-cli',
   );
   // Deep-merge per-agent settings so a partial override (e.g. setting just
-  // `permissionMode` for one agent) preserves seeded defaults rather than wiping
-  // the whole agents map. `models` is special: the seeded list is a live
-  // baseline from code, UNION-ed with the user's entries (see
-  // `mergeAgentModels`), so new seeded models reach existing installs
-  // automatically — a persisted (possibly stale) `models` never shadows them.
+  // `permissionMode` for one agent) preserves any defaults rather than wiping
+  // the whole agents map.
   const ids = new Set<string>([
     ...Object.keys(DEFAULT_DAEMON_CONFIG.agents),
     ...Object.keys(raw.agents ?? {}).filter((id) => id !== 'gemini-cli'),
@@ -294,17 +223,7 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
   const agents: Partial<Record<AgentId, AgentSettings>> = {};
   for (const id of ids) {
     const key = id as AgentId;
-    const settings: AgentSettings = {
-      ...DEFAULT_DAEMON_CONFIG.agents[key],
-      ...(raw.agents?.[key] ?? {}),
-    };
-    const models = mergeAgentModels(
-      DEFAULT_DAEMON_CONFIG.agents[key]?.models,
-      raw.agents?.[key]?.models,
-    );
-    if (models) settings.models = models;
-    else delete settings.models;
-    agents[key] = settings;
+    agents[key] = { ...DEFAULT_DAEMON_CONFIG.agents[key], ...(raw.agents?.[key] ?? {}) };
   }
   merged.agents = agents;
   return merged;

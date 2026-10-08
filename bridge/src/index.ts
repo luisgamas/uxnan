@@ -39,7 +39,6 @@ export { DaemonState, renameWithRetry, DAEMON_FILES } from './daemon-state.js';
 export {
   DEFAULT_DAEMON_CONFIG,
   resolveDaemonConfig,
-  mergeAgentModels,
   type DaemonConfig,
   type AgentSettings,
   type AgentModelSpec,
@@ -260,12 +259,14 @@ export {
 export {
   ClaudeCodeAdapter,
   claudeContextWindow,
-  claudeTakesEffort,
+  claudeModels,
   claudeUsageTokens,
   parseClaudeLine,
+  parseInitializeModels,
   type ClaudeCodeAdapterOptions,
   type ClaudeEvent,
   type ClaudeModelSpec,
+  type ClaudeReportedModel,
 } from './adapters/claude-adapter.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {

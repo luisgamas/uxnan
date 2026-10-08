@@ -6,12 +6,15 @@ import { Writable } from 'node:stream';
 import {
   ClaudeCodeAdapter,
   claudeContextWindow,
-  claudeTakesEffort,
+  claudeModels,
   claudeUsageTokens,
   parseClaudeLine,
   type SpawnedProcess,
 } from '../../src/index.js';
-import { parseInitializeCommands } from '../../src/adapters/claude-adapter.js';
+import {
+  parseInitializeCommands,
+  parseInitializeModels,
+} from '../../src/adapters/claude-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
@@ -538,104 +541,355 @@ test('ClaudeCodeAdapter maps the reasoning knob (options) to --effort', async ()
   assert.equal(args[args.indexOf('--effort') + 1], 'max');
 });
 
-test('ClaudeCodeAdapter advertises effort, with the default it sends, on every model that takes it', async () => {
-  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
-  const models = await adapter.listModels();
-  assert.ok(models.length > 0);
-  for (const model of models) {
-    const opt = model.options?.find((o) => o.key === 'reasoning');
-    if (model.id === 'claude-haiku-4-5') {
-      // Haiku 4.5 takes no `--effort` (no `supportsEffort` in Claude's
-      // initialize). The `haiku` alias does — it resolves to Haiku 5.5, which
-      // reports `supportsEffort: true`.
-      assert.equal(opt, undefined);
-      continue;
-    }
-    assert.ok(opt, `model ${model.id} advertises the reasoning knob`);
-    assert.equal(opt?.kind, 'enum');
-    assert.equal(opt?.default, 'high');
-    assert.deepEqual(
-      opt?.values?.map((v) => v.value),
-      ['low', 'medium', 'high', 'xhigh', 'max'],
-    );
-  }
-});
+/**
+ * The `models` claude 2.1.293 answered `initialize` with on a Max account,
+ * verbatim (captured 2026-10-07 with `claude -p --input-format stream-json
+ * --output-format stream-json --verbose` and a bare `initialize` request).
+ */
+const INITIALIZE_MODELS_2_1_293 = [
+  {
+    value: 'default',
+    resolvedModel: 'claude-sonnet-5-5',
+    displayName: 'Default (recommended)',
+    description: 'Sonnet 5.5 · Efficient for routine tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'opus',
+    resolvedModel: 'claude-opus-5-5',
+    displayName: 'Opus 5.5',
+    description: 'For complex work and everyday tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsFastMode: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'fable',
+    resolvedModel: 'claude-fable-5-1',
+    displayName: 'Fable 5.1',
+    description: 'For your toughest challenges',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'sonnet',
+    resolvedModel: 'claude-sonnet-5-5',
+    displayName: 'Sonnet 5.5',
+    description: 'Most efficient for simpler tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'haiku',
+    resolvedModel: 'claude-haiku-5-5',
+    displayName: 'Haiku 5.5',
+    description: 'Fastest for quick answers',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-haiku-4-5-20251001',
+    resolvedModel: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku 4.5',
+    description: 'Fastest for quick answers',
+  },
+  {
+    value: 'claude-sonnet-5',
+    resolvedModel: 'claude-sonnet-5',
+    displayName: 'Sonnet 5',
+    description: 'Efficient for routine tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-opus-5',
+    resolvedModel: 'claude-opus-5',
+    displayName: 'Opus 5',
+    description: 'Best for everyday, complex tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsFastMode: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-fable-5',
+    resolvedModel: 'claude-fable-5',
+    displayName: 'Fable 5',
+    description: 'Most capable for your hardest and longest-running tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-opus-4-8',
+    resolvedModel: 'claude-opus-4-8',
+    displayName: 'Opus 4.8',
+    description: 'Best for everyday, complex tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsFastMode: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-opus-4-7',
+    resolvedModel: 'claude-opus-4-7',
+    displayName: 'Opus 4.7',
+    description: 'Best for everyday, complex tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-opus-4-6',
+    resolvedModel: 'claude-opus-4-6',
+    displayName: 'Opus 4.6',
+    description: 'Best for everyday, complex tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+  {
+    value: 'claude-sonnet-4-6',
+    resolvedModel: 'claude-sonnet-4-6',
+    displayName: 'Sonnet 4.6',
+    description: 'Efficient for routine tasks',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+  },
+];
 
-test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', async () => {
-  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', defaultModel: 'sonnet' });
+/** A spawner whose CLI answers `initialize` with [models] (and counts the asks). */
+function initializeSpawner(models: unknown[] = INITIALIZE_MODELS_2_1_293): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string; written: string[] }[];
+} {
+  return commandsSpawner({
+    subtype: 'success',
+    request_id: 'uxnan-initialize',
+    response: { commands: [], models },
+  });
+}
+
+test('ClaudeCodeAdapter lists the models the CLI reports: aliases, what they run, then older ids', async () => {
+  const { spawnFn, calls } = initializeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const models = await adapter.listModels();
   assert.deepEqual(
-    models.map((m) => m.id),
-    ['fable', 'opus', 'sonnet', 'haiku'],
+    models.map((m) => [m.id, m.displayName]),
+    [
+      ['opus', 'Opus 5.5 (latest)'],
+      ['fable', 'Fable 5.1 (latest)'],
+      ['sonnet', 'Sonnet 5.5 (latest)'],
+      ['haiku', 'Haiku 5.5 (latest)'],
+      ['claude-opus-5-5', 'Opus 5.5'],
+      ['claude-fable-5-1', 'Fable 5.1'],
+      ['claude-sonnet-5-5', 'Sonnet 5.5'],
+      ['claude-haiku-5-5', 'Haiku 5.5'],
+      ['claude-haiku-4-5-20251001', 'Haiku 4.5'],
+      ['claude-sonnet-5', 'Sonnet 5'],
+      ['claude-opus-5', 'Opus 5'],
+      ['claude-fable-5', 'Fable 5'],
+      ['claude-opus-4-8', 'Opus 4.8'],
+      ['claude-opus-4-7', 'Opus 4.7'],
+      ['claude-opus-4-6', 'Opus 4.6'],
+      ['claude-sonnet-4-6', 'Sonnet 4.6'],
+    ],
   );
-  assert.deepEqual(
-    models.map((m) => m.displayName),
-    ['Fable (latest)', 'Opus (latest)', 'Sonnet (latest)', 'Haiku (latest)'],
+  const opus = models.find((m) => m.id === 'opus');
+  // An alias is the moving target, and says what it runs today.
+  assert.equal(opus?.isLatestAlias, true);
+  assert.equal(opus?.version, 'claude-opus-5-5');
+  assert.equal(opus?.description, 'For complex work and everyday tasks');
+  assert.equal(models.find((m) => m.id === 'claude-opus-5-5')?.isLatestAlias, undefined);
+  // The CLI's own `default` is what picking nothing runs, not a row.
+  assert.equal(
+    models.some((m) => m.id === 'default'),
+    false,
   );
-  assert.equal(models.find((m) => m.id === 'sonnet')?.isDefault, true);
-  assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
-  // Every alias is flagged as a moving-target "latest" model.
-  assert.ok(models.every((m) => m.isLatestAlias === true));
+  // Asked once, with the same `initialize` the commands come from.
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.written.join(''), /"subtype":"initialize"/);
 });
 
-test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async () => {
+test('ClaudeCodeAdapter marks as default what a turn with no model runs', async () => {
+  const { spawnFn } = initializeSpawner();
+  const models = await new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn }).listModels();
+  // `default` resolves to Sonnet 5.5: the first entry that runs it is the alias.
+  assert.deepEqual(
+    models.filter((m) => m.isDefault).map((m) => m.id),
+    ['sonnet'],
+  );
+  // A default the bridge is configured with wins over the CLI's.
+  const configured = await new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn: initializeSpawner().spawnFn,
+    defaultModel: 'claude-opus-4-8',
+  }).listModels();
+  assert.deepEqual(
+    configured.filter((m) => m.isDefault).map((m) => m.id),
+    ['claude-opus-4-8'],
+  );
+});
+
+test('ClaudeCodeAdapter offers each model exactly the effort levels it reports', async () => {
+  const { spawnFn } = initializeSpawner();
+  const models = await new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn }).listModels();
+  const levels = (id: string): string[] | undefined =>
+    models
+      .find((m) => m.id === id)
+      ?.options?.find((o) => o.key === 'reasoning')
+      ?.values?.map((v) => v.value);
+  assert.deepEqual(levels('opus'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(levels('claude-haiku-5-5'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  // Opus 4.6 and Sonnet 4.6 stop short of `xhigh`.
+  assert.deepEqual(levels('claude-opus-4-6'), ['low', 'medium', 'high', 'max']);
+  assert.deepEqual(levels('claude-sonnet-4-6'), ['low', 'medium', 'high', 'max']);
+  // Haiku 4.5 reports no effort at all, so it gets no knob.
+  assert.equal(models.find((m) => m.id === 'claude-haiku-4-5-20251001')?.options, undefined);
+  // The default the bridge sends is the one the knob shows.
+  const knob = models.find((m) => m.id === 'opus')?.options?.[0];
+  assert.equal(knob?.kind, 'enum');
+  assert.equal(knob?.default, 'high');
+});
+
+test('claudeModels leaves the default unset when the model offers no `high`', () => {
+  const [model] = claudeModels([
+    {
+      value: 'claude-x',
+      resolvedModel: 'claude-x',
+      supportsEffort: true,
+      supportedEffortLevels: ['low', 'medium'],
+    },
+  ]);
+  assert.equal(model?.options?.[0]?.default, undefined);
+  assert.deepEqual(
+    model?.options?.[0]?.values?.map((v) => v.value),
+    ['low', 'medium'],
+  );
+});
+
+test('ClaudeCodeAdapter appends pinned models the CLI does not list', async () => {
+  const { spawnFn } = initializeSpawner();
   const adapter = new ClaudeCodeAdapter({
     binaryPath: 'claude',
-    defaultModel: 'claude-opus-4-7',
+    spawnFn,
+    defaultModel: 'claude-opus-4-5',
     pinnedModels: [
-      { id: 'claude-opus-4-8', displayName: 'Opus 4.8' },
-      { id: 'claude-opus-4-7' },
-      // collides with an alias → dropped (the alias is the "latest" entry)
-      { id: 'opus' },
+      { id: 'claude-opus-4-5', displayName: 'Opus 4.5' },
+      { id: 'claude-sonnet-4-5' },
+      // already listed by the CLI → its entry wins
+      { id: 'claude-opus-4-8', displayName: 'My Opus' },
       { id: '   ' }, // blank → skipped
     ],
   });
   const models = await adapter.listModels();
   assert.deepEqual(
-    models.map((m) => m.id),
-    ['fable', 'opus', 'sonnet', 'haiku', 'claude-opus-4-8', 'claude-opus-4-7'],
+    models.slice(-2).map((m) => [m.id, m.displayName]),
+    [
+      ['claude-opus-4-5', 'Opus 4.5'],
+      ['claude-sonnet-4-5', 'claude-sonnet-4-5'],
+    ],
   );
-  // explicit displayName kept; missing one falls back to the id
   assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.displayName, 'Opus 4.8');
-  assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.displayName, 'claude-opus-4-7');
-  // the pinned id matching defaultModel is the default, not an alias
-  assert.equal(models.find((m) => m.id === 'claude-opus-4-7')?.isDefault, true);
-  assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
-  // only the aliases are flagged "latest"; the pinned concrete versions are not
-  assert.equal(models.find((m) => m.id === 'opus')?.isLatestAlias, true);
-  assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.isLatestAlias, undefined);
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-5')?.isDefault, true);
+  // Nothing is known of a pinned model's effort, so none is offered.
+  assert.equal(models.find((m) => m.id === 'claude-opus-4-5')?.options, undefined);
 });
 
-test('claudeContextWindow maps tiers and ids to window sizes', () => {
-  assert.equal(claudeContextWindow('fable'), 1_000_000);
-  assert.equal(claudeContextWindow('opus'), 1_000_000);
-  assert.equal(claudeContextWindow('sonnet'), 1_000_000);
-  // Haiku 5.5 is 1M, not the 200K of every older Haiku — the family is no
-  // longer one window, and the bare alias resolves to the newest one.
-  assert.equal(claudeContextWindow('haiku'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-fable-5-1'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-fable-5'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-opus-5-5'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-opus-5'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-opus-4-8'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-haiku-5-5'), 1_000_000);
-  assert.equal(claudeContextWindow('claude-haiku-4-5'), 200_000);
-  // the dated snapshot id the CLI reports for Haiku 4.5 maps to the same 200K
-  assert.equal(claudeContextWindow('claude-haiku-4-5-20251001'), 200_000);
-  assert.equal(claudeContextWindow('mystery'), undefined);
-  assert.equal(claudeContextWindow(undefined), undefined);
+test('ClaudeCodeAdapter reuses the model list, and a CLI that will not say leaves the pins', async () => {
+  const { spawnFn, calls } = initializeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  await Promise.all([adapter.listModels(), adapter.listModels()]);
+  await adapter.listModels();
+  assert.equal(calls.length, 1);
+
+  const silent = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout: new PassThrough(),
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const broken = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn: silent,
+    pinnedModels: [{ id: 'claude-opus-4-8' }],
+  });
+  assert.deepEqual(
+    (await broken.listModels()).map((m) => m.id),
+    ['claude-opus-4-8'],
+  );
 });
 
-test('claudeTakesEffort excludes only Haiku 4.5, not the Haiku family', () => {
-  // Read off Claude Code's `initialize` on 2.1.293: Haiku 5.5 reports
-  // `supportsEffort: true`, Haiku 4.5 reports nothing. Every other model takes it.
-  assert.equal(claudeTakesEffort('claude-haiku-4-5'), false);
-  assert.equal(claudeTakesEffort('claude-haiku-5-5'), true);
-  assert.equal(claudeTakesEffort('claude-opus-5-5'), true);
-  assert.equal(claudeTakesEffort('claude-sonnet-5'), true);
-  assert.equal(claudeTakesEffort('claude-fable-5-1'), true);
-  // the moving alias resolves to the newest Haiku, which does take effort
-  assert.equal(claudeTakesEffort('haiku'), true);
+test('ClaudeCodeAdapter keeps the models a command listing brought along', async () => {
+  const { spawnFn, calls } = initializeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  await adapter.listCommands('/repo');
+  assert.ok((await adapter.listModels()).some((m) => m.id === 'opus'));
+  // One `initialize` answered both.
+  assert.equal(calls.length, 1);
+});
+
+test('parseInitializeModels reads only the initialize answer', () => {
+  assert.equal(parseInitializeModels('{"type":"system","subtype":"init"}'), undefined);
+  assert.equal(parseInitializeModels('not json'), undefined);
+  assert.deepEqual(
+    parseInitializeModels(
+      JSON.stringify({
+        type: 'control_response',
+        response: {
+          response: {
+            models: [
+              { value: 'opus', resolvedModel: 'claude-opus-5-5', supportsEffort: true },
+              { displayName: 'no value' },
+              { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+            ],
+          },
+        },
+      }),
+    ),
+    [
+      { value: 'opus', resolvedModel: 'claude-opus-5-5', supportsEffort: true },
+      { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+    ],
+  );
+});
+
+test('claudeContextWindow takes the window the turn reported for its own model', () => {
+  const windows = { 'claude-opus-5-5': 1_000_000, 'claude-haiku-4-5-20251001': 200_000 };
+  assert.equal(claudeContextWindow(windows, 'claude-opus-5-5'), 1_000_000);
+  assert.equal(claudeContextWindow(windows, 'claude-haiku-4-5-20251001'), 200_000);
+  // A routing suffix on either side still names the same model.
+  assert.equal(claudeContextWindow(windows, 'claude-opus-5-5[1m]'), 1_000_000);
+  assert.equal(claudeContextWindow({ 'claude-opus-5[1m]': 1_000_000 }, 'claude-opus-5'), 1_000_000);
+  // Two models and none of them the turn's: no guess.
+  assert.equal(claudeContextWindow(windows, 'claude-sonnet-5'), undefined);
+  // A lone entry is the turn's.
+  assert.equal(claudeContextWindow({ 'claude-haiku-5-5': 1_000_000 }, undefined), 1_000_000);
+  assert.equal(claudeContextWindow(undefined, 'claude-opus-5-5'), undefined);
 });
 
 test('claudeUsageTokens sums input, cache and output tokens', () => {
@@ -661,7 +915,9 @@ test('ClaudeCodeAdapter reports usage with a context window on completion', asyn
   last().feed([
     '{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}',
     '{"type":"result","subtype":"success","result":"ok","session_id":"s","usage":' +
-      '{"input_tokens":1000,"cache_read_input_tokens":200,"output_tokens":50}}',
+      '{"input_tokens":1000,"cache_read_input_tokens":200,"output_tokens":50},' +
+      '"modelUsage":{"claude-opus-4-8":{"inputTokens":1000,"contextWindow":1000000},' +
+      '"claude-haiku-4-5-20251001":{"inputTokens":10,"contextWindow":200000}}}',
   ]);
 
   const events = await done;

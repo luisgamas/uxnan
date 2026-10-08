@@ -35,7 +35,6 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
-  AgentModelOption,
   CompactionReason,
   GenerateTitleOptions,
   NativeSessionInfo,
@@ -132,22 +131,14 @@ const CLAUDE_BRIDGE_OWNED_COMMANDS = new Set([
  */
 const WAKE_GRACE_MS = 30_000;
 
+/** How long a folder's command list `initialize` reported is reused. */
 const COMMANDS_TTL_MS = 60_000;
 
-/** How long the CLI may take to answer `initialize`. */
-const COMMANDS_TIMEOUT_MS = 10_000;
+/** How long the account's model list `initialize` reported is reused. */
+const MODELS_TTL_MS = 60_000;
 
-/**
- * Stable `--model` aliases Claude Code accepts. Claude Code has no enumerate
- * command (verified against `claude` 2.1.x `--help`, which names `fable`, `opus`
- * and `sonnet`): `--model` takes an alias or a full id, and the alias is the
- * plug-and-play routing key — it always resolves to the latest model of that
- * tier the account can use. The concrete version a run resolved to is reported
- * in the `system/init` event and surfaced via the `model_resolved` stream event
- * (so the user can see e.g. `opus → claude-opus-5`). Ordered most capable first;
- * the phone renders this order verbatim.
- */
-const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
+/** How long the CLI may take to answer `initialize`. */
+const INITIALIZE_TIMEOUT_MS = 10_000;
 
 /**
  * Model used to name a conversation — the cheapest tier, never the one the
@@ -156,49 +147,16 @@ const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
  */
 const TITLE_MODEL = 'haiku';
 
-/** Human-facing labels for the stable aliases. */
-const CLAUDE_ALIAS_LABELS: Record<string, string> = {
-  fable: 'Fable',
-  opus: 'Opus',
-  sonnet: 'Sonnet',
-  haiku: 'Haiku',
-};
-
-/**
- * Reasoning-effort levels Claude Code's `--effort` flag accepts (verified against
- * `claude --help`: low, medium, high, xhigh, max). Claude Code has no enumerate
- * API, so this is a maintained table — kept in lock-step with the CLI, the same
- * way the model aliases are. (`ultrathink` and friends are prompt-level thinking
- * triggers, NOT `--effort` levels, so they don't belong here.)
- */
-const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-
 /**
  * The effort a Claude turn runs at when nobody picked one. Claude Code's own
  * default is decided per model at run time (remote configuration, then the
  * model's capabilities, then `high`), and no headless surface reports it —
  * neither `system/init` nor the `initialize` / `get_status` control requests
  * (verified on 2.1.283). So the bridge names one and sends it: the level the
- * picker shows as the default is the level the turn runs at.
+ * picker shows as the default is the level the turn runs at. Offered only on
+ * a model whose `supportedEffortLevels` include it.
  */
 const CLAUDE_DEFAULT_EFFORT = 'high';
-
-/** Reasoning-effort knob advertised on the Claude models that take one. */
-const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption(
-  effortValues(CLAUDE_EFFORT_LEVELS),
-  CLAUDE_DEFAULT_EFFORT,
-);
-
-/**
- * Whether a model takes `--effort`: every one but **Haiku 4.5**, the one model
- * Claude Code's `initialize` lists without `supportsEffort`. Read off that same
- * control request on 2.1.293 — `Haiku 5.5` carries `supportsEffort: true` like
- * the rest of the 5.x line, so the rule is that one id, not the Haiku family
- * (which used to be one).
- */
-export function claudeTakesEffort(modelId: string): boolean {
-  return !/haiku-4-5/i.test(modelId);
-}
 
 /**
  * How each access mode runs on `claude -p` (verified on claude 2.1.287):
@@ -225,7 +183,7 @@ const CLAUDE_REPORTED_MODE: Record<AccessMode, string> = {
   plan: 'plan',
 };
 
-/** An explicit, concrete model to add to the picker beyond the stable aliases. */
+/** An explicit model to add to the picker beyond what the CLI reports. */
 export interface ClaudeModelSpec {
   /** Exact model id passed to `--model` (e.g. `claude-opus-4-8`). */
   id: string;
@@ -245,10 +203,10 @@ export interface ClaudeCodeAdapterOptions {
   /** Default model (`alias` or full id) when the thread/turn doesn't pick one. */
   defaultModel?: string;
   /**
-   * Concrete, versioned models to surface in the picker **in addition** to the
-   * stable `fable`/`opus`/`sonnet`/`haiku` aliases — declared in daemon config
-   * (`agents.claude-code.models`). Lets users pick an exact/older version while
-   * the aliases keep tracking "latest". Deduplicated against the aliases by id.
+   * Models to surface in the picker **in addition** to the ones the CLI
+   * reports — declared in daemon config (`agents.claude-code.models`), for an
+   * id the account does not list yet but `--model` takes. Deduplicated against
+   * the reported models by id; the CLI's entry wins.
    */
   pinnedModels?: ClaudeModelSpec[];
   /**
@@ -359,6 +317,11 @@ export interface ClaudeEvent {
   errors?: string[];
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
+  /**
+   * Only set for `result`: each model's context window, as its `modelUsage`
+   * entry reports it (`contextWindow`), keyed by the model id the CLI used.
+   */
+  contextWindows?: Record<string, number>;
   /** Only set for `system/compact_boundary`. */
   compactionReason?: CompactionReason;
   /** Context tokens immediately before a compact boundary, when reported. */
@@ -370,20 +333,46 @@ export interface ClaudeEvent {
 }
 
 /**
- * Context-window size (tokens) for a Claude model id or alias, so the phone can
- * show context usage as a percentage. Everything current is 1M — **including
- * Haiku 5.5**, which jumped from Haiku 4.5's 200K; only that one concrete model
- * is 200K (matches the current model catalog). The bare `haiku` alias is 1M
- * too: `initialize` resolves it to the newest Haiku the account has, which is
- * 5.5. Unknown ids return undefined.
+ * The context window (tokens) of the model a turn ran on, as the CLI reported
+ * it in the turn's `result` — `modelUsage[<model>].contextWindow`, verified on
+ * claude 2.1.293 (`1000000` for Haiku 5.5, `200000` for Haiku 4.5). So the
+ * phone's context percentage never rests on a table the bridge keeps.
+ *
+ * `modelUsage` can name more than one model (a subagent on another model), so
+ * the turn's own is picked by the id `system/init` resolved, compared without a
+ * routing suffix like `[1m]`; a lone entry is the turn's whatever its key.
  */
-export function claudeContextWindow(model: string | undefined): number | undefined {
-  if (!model) return undefined;
-  const m = model.toLowerCase();
-  if (m.includes('haiku-4-5')) return 200_000;
-  if (m.includes('fable') || m.includes('opus') || m.includes('sonnet') || m.includes('haiku'))
-    return 1_000_000;
-  return undefined;
+export function claudeContextWindow(
+  windows: Record<string, number> | undefined,
+  model: string | undefined,
+): number | undefined {
+  if (!windows) return undefined;
+  const entries = Object.entries(windows);
+  if (model !== undefined) {
+    if (windows[model] !== undefined) return windows[model];
+    const bare = stripRoutingSuffix(model);
+    const match = entries.find(([id]) => stripRoutingSuffix(id) === bare);
+    if (match) return match[1];
+  }
+  return entries.length === 1 ? entries[0]![1] : undefined;
+}
+
+/** A model id without a routing suffix (`claude-opus-5-5[1m]` → `claude-opus-5-5`). */
+function stripRoutingSuffix(model: string): string {
+  return model.replace(/\[[^\]]*\]$/, '');
+}
+
+/** Each model's `contextWindow` in a `result` line's `modelUsage`. */
+function parseContextWindows(modelUsage: unknown): Record<string, number> | undefined {
+  if (!isRecord(modelUsage)) return undefined;
+  const windows: Record<string, number> = {};
+  for (const [model, usage] of Object.entries(modelUsage)) {
+    const window = isRecord(usage) ? usage['contextWindow'] : undefined;
+    if (typeof window === 'number' && Number.isFinite(window) && window > 0) {
+      windows[model] = window;
+    }
+  }
+  return Object.keys(windows).length > 0 ? windows : undefined;
 }
 
 /** Sum the context-occupying token counts from a Claude `result.usage` object. */
@@ -549,6 +538,7 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       const errors = Array.isArray(parsed['errors'])
         ? parsed['errors'].filter((e): e is string => typeof e === 'string')
         : [];
+      const contextWindows = parseContextWindows(parsed['modelUsage']);
       return {
         kind: 'result',
         ...base,
@@ -556,6 +546,7 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
         isError,
         ...(errors.length > 0 ? { errors } : {}),
         ...(parsed['usage'] !== undefined ? { usage: parsed['usage'] } : {}),
+        ...(contextWindows !== undefined ? { contextWindows } : {}),
       };
     }
     default:
@@ -611,6 +602,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   #terminalCommands: string[] = CLAUDE_TERMINAL_COMMANDS;
   /** The CLI's command list per folder, briefly reused (see listCommands). */
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
+  /** The models the CLI last reported — account-wide, not per folder (see listModels). */
+  #reportedModels: { at: number; models: ClaudeReportedModel[] } | undefined;
+  /** The `initialize` asked for models and not answered yet, shared by every caller. */
+  #modelsInFlight: Promise<void> | undefined;
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   readonly #homeDir: string;
@@ -1157,7 +1152,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           // narration is also the only text that still holds the first reply.
           const finalText = full.length > 0 ? full : (event.text ?? '');
           const tokens = claudeUsageTokens(event.usage ?? lastUsage);
-          const window = claudeContextWindow(resolvedModel ?? model);
+          const window = claudeContextWindow(event.contextWindows, resolvedModel);
           const usage =
             tokens !== undefined
               ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
@@ -1364,52 +1359,41 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Claude Code has no model-list command. Expose the stable `--model` aliases
-   * (each tracks the latest model of its tier the account can use — the concrete
-   * version is reported per-run via the `model_resolved` event), followed by any
-   * concrete versions pinned in config. Pinned ids that collide with an alias
-   * are dropped so the alias (the "latest" entry) wins.
+   * The models Claude Code offers this account, as the CLI itself lists them:
+   * the same stream-json `initialize` control request {@link listCommands}
+   * asks answers with every model, its label, description, the concrete id an
+   * alias resolves to and the effort levels it takes (verified on claude
+   * 2.1.293) — see {@link claudeModels} for how they are shown. Any model
+   * pinned in config follows. The list is the account's, not a folder's, so
+   * it is asked once and reused: past {@link MODELS_TTL_MS} the last list is
+   * still answered while a fresh one is asked behind it, so only the very
+   * first listing waits for the CLI. A CLI that will not say leaves only the
+   * pinned models.
    */
-  listModels(): Promise<AgentModel[]> {
-    const def = this.#defaultModel;
-    const aliasModels = CLAUDE_MODEL_ALIASES.map((alias) => {
-      const label = CLAUDE_ALIAS_LABELS[alias] ?? alias;
-      return {
-        id: alias,
-        // The "(latest)" suffix flags that the alias auto-tracks the newest
-        // model; the picker also shows the bare alias id beneath it.
-        displayName: `${label} (latest)`,
-        description: `Always the newest ${label} your account can use`,
-        isDefault: def === alias,
-        // Flags the moving-target alias so the phone can offer to hide these
-        // and show only the concrete pinned versions (contract field).
-        isLatestAlias: true,
-      } satisfies AgentModel;
-    });
-
-    const aliasIds = new Set<string>(CLAUDE_MODEL_ALIASES);
-    const seen = new Set<string>(aliasIds);
-    const pinnedModels: AgentModel[] = [];
-    for (const spec of this.#pinnedModels) {
-      const id = spec.id.trim();
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      pinnedModels.push({
-        id,
-        displayName: spec.displayName && spec.displayName.length > 0 ? spec.displayName : id,
-        ...(spec.description && spec.description.length > 0
-          ? { description: spec.description }
-          : {}),
-        isDefault: def === id,
-      });
+  async listModels(): Promise<AgentModel[]> {
+    const cached = this.#reportedModels;
+    if (!cached || Date.now() - cached.at >= MODELS_TTL_MS) {
+      const asked = this.#askModels();
+      if (!cached) await asked;
     }
+    return claudeModels(this.#reportedModels?.models ?? [], {
+      ...(this.#defaultModel !== undefined ? { defaultModel: this.#defaultModel } : {}),
+      pinned: this.#pinnedModels,
+    });
+  }
 
-    // The same `--effort` levels on every model that takes one.
-    return Promise.resolve(
-      [...aliasModels, ...pinnedModels].map((model) =>
-        claudeTakesEffort(model.id) ? { ...model, options: [CLAUDE_REASONING_OPTION] } : model,
-      ),
-    );
+  /** Ask the CLI for its models, once at a time, and keep what it says. */
+  #askModels(): Promise<void> {
+    this.#modelsInFlight ??= this.#askInitialize(this.#defaultCwd)
+      .then((answer) => {
+        if (answer && answer.models.length > 0) {
+          this.#reportedModels = { at: Date.now(), models: answer.models };
+        }
+      })
+      .finally(() => {
+        this.#modelsInFlight = undefined;
+      });
+    return this.#modelsInFlight;
   }
 
   /**
@@ -1422,13 +1406,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * the bridge owns ({@link CLAUDE_BRIDGE_OWNED_COMMANDS}). A picked command
    * is sent as `/name args`, which Claude expands natively against the
    * thread's `--resume` session — no {@link expandCommand}. Reused per folder
-   * for a minute; an unanswered request yields no commands.
+   * for a minute; an unanswered request yields no commands. The same answer
+   * carries the account's models, which are kept for {@link listModels}.
    */
   async listCommands(cwd?: string): Promise<AgentCommand[]> {
     const dir = cwd ?? this.#defaultCwd;
     const cached = this.#commandsByCwd.get(dir);
     if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
-    const reported = await this.#askCommands(dir);
+    const answer = await this.#askInitialize(dir);
+    if (answer && answer.models.length > 0) {
+      this.#reportedModels = { at: Date.now(), models: answer.models };
+    }
+    const reported = answer?.commands ?? [];
     const hidden = new Set([...this.#terminalCommands, ...CLAUDE_BRIDGE_OWNED_COMMANDS]);
     const commands: AgentCommand[] = [];
     const seen = new Set<string>();
@@ -1450,8 +1439,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return commands;
   }
 
-  /** Ask the CLI in [cwd] for its commands (`initialize`); [] if it will not say. */
-  #askCommands(cwd: string): Promise<ClaudeReportedCommand[]> {
+  /**
+   * Ask the CLI in [cwd] what it offers (`initialize`): its commands there and
+   * the account's models. `undefined` if it will not say.
+   */
+  #askInitialize(cwd: string): Promise<ClaudeInitializeAnswer | undefined> {
     return new Promise((resolve) => {
       const args = [
         '-p',
@@ -1467,30 +1459,37 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           stdin: 'pipe',
         });
       } catch {
-        resolve([]);
+        resolve(undefined);
         return;
       }
       let settled = false;
-      const finish = (commands: ClaudeReportedCommand[]): void => {
+      const finish = (answer: ClaudeInitializeAnswer | undefined): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         child.kill();
-        resolve(commands);
+        resolve(answer);
       };
-      const timer = setTimeout(() => finish([]), COMMANDS_TIMEOUT_MS);
+      const timer = setTimeout(() => finish(undefined), INITIALIZE_TIMEOUT_MS);
       const reader = createInterface({ input: child.stdout });
       reader.on('line', (line) => {
-        const commands = parseInitializeCommands(line);
-        if (commands) finish(commands);
+        const response = initializeResponse(line);
+        if (response === undefined) return;
+        finish({ commands: readCommands(response), models: readModels(response) });
       });
-      child.on('close', () => finish([]));
-      child.on('error', () => finish([]));
+      child.on('close', () => finish(undefined));
+      child.on('error', () => finish(undefined));
       child.stdin?.write(
-        `${JSON.stringify({ type: 'control_request', request_id: 'uxnan-commands', request: { subtype: 'initialize' } })}\n`,
+        `${JSON.stringify({ type: 'control_request', request_id: 'uxnan-initialize', request: { subtype: 'initialize' } })}\n`,
       );
     });
   }
+}
+
+/** What an `initialize` answer offers: commands in its folder, models for the account. */
+interface ClaudeInitializeAnswer {
+  commands: ClaudeReportedCommand[];
+  models: ClaudeReportedModel[];
 }
 
 /** One command as `initialize` reports it. */
@@ -1502,10 +1501,25 @@ interface ClaudeReportedCommand {
 }
 
 /**
- * The commands in a stream-json `control_response` to `initialize`, or
- * `undefined` for any other line.
+ * One model as `initialize` reports it (claude 2.1.293). `value` is what
+ * `--model` takes: an alias (`opus`), the CLI's own `default`, or a concrete
+ * id. `resolvedModel` is the concrete model it runs today. A model that takes
+ * no `--effort` (Haiku 4.5) carries neither effort field.
  */
-export function parseInitializeCommands(line: string): ClaudeReportedCommand[] | undefined {
+export interface ClaudeReportedModel {
+  value: string;
+  resolvedModel?: string;
+  displayName?: string;
+  description?: string;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: string[];
+}
+
+/**
+ * The response body of a stream-json `control_response` to `initialize`, or
+ * `undefined` for any other line. An answer without one (an error) is `{}`.
+ */
+function initializeResponse(line: string): Record<string, unknown> | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line);
@@ -1515,9 +1529,13 @@ export function parseInitializeCommands(line: string): ClaudeReportedCommand[] |
   if (!isRecord(parsed) || parsed['type'] !== 'control_response') return undefined;
   const outer = parsed['response'];
   const inner = isRecord(outer) && isRecord(outer['response']) ? outer['response'] : outer;
-  if (!isRecord(inner) || !Array.isArray(inner['commands'])) return [];
+  return isRecord(inner) ? inner : {};
+}
+
+function readCommands(response: Record<string, unknown>): ClaudeReportedCommand[] {
+  if (!Array.isArray(response['commands'])) return [];
   const commands: ClaudeReportedCommand[] = [];
-  for (const c of inner['commands']) {
+  for (const c of response['commands']) {
     if (!isRecord(c) || typeof c['name'] !== 'string') continue;
     commands.push({
       name: c['name'],
@@ -1527,6 +1545,144 @@ export function parseInitializeCommands(line: string): ClaudeReportedCommand[] |
     });
   }
   return commands;
+}
+
+function readModels(response: Record<string, unknown>): ClaudeReportedModel[] {
+  if (!Array.isArray(response['models'])) return [];
+  const models: ClaudeReportedModel[] = [];
+  for (const m of response['models']) {
+    if (!isRecord(m) || typeof m['value'] !== 'string' || m['value'].trim() === '') continue;
+    const text = (key: string): string | undefined =>
+      typeof m[key] === 'string' && (m[key] as string).length > 0 ? (m[key] as string) : undefined;
+    const levels = Array.isArray(m['supportedEffortLevels'])
+      ? m['supportedEffortLevels'].filter((l): l is string => typeof l === 'string' && l !== '')
+      : [];
+    const resolvedModel = text('resolvedModel');
+    const displayName = text('displayName');
+    const description = text('description');
+    models.push({
+      value: m['value'].trim(),
+      ...(resolvedModel !== undefined ? { resolvedModel } : {}),
+      ...(displayName !== undefined ? { displayName } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(m['supportsEffort'] === true ? { supportsEffort: true } : {}),
+      ...(levels.length > 0 ? { supportedEffortLevels: levels } : {}),
+    });
+  }
+  return models;
+}
+
+/**
+ * The commands in a stream-json `control_response` to `initialize`, or
+ * `undefined` for any other line.
+ */
+export function parseInitializeCommands(line: string): ClaudeReportedCommand[] | undefined {
+  const response = initializeResponse(line);
+  return response === undefined ? undefined : readCommands(response);
+}
+
+/**
+ * The models in a stream-json `control_response` to `initialize`, or
+ * `undefined` for any other line.
+ */
+export function parseInitializeModels(line: string): ClaudeReportedModel[] | undefined {
+  const response = initializeResponse(line);
+  return response === undefined ? undefined : readModels(response);
+}
+
+/** The CLI's `value` for "no `--model`": what a turn that picks none runs. */
+const CLAUDE_DEFAULT_VALUE = 'default';
+
+/**
+ * The picker's models from what `initialize` reported, in the CLI's own order:
+ *
+ *  - **Aliases first** (`opus`, `fable`, `sonnet`, `haiku` — any `value` that
+ *    is not its own `resolvedModel`), labelled `<name> (latest)` and flagged
+ *    `isLatestAlias`, with the concrete model they run today as `version`.
+ *  - **The concrete model each alias runs**, as its own entry. The CLI lists
+ *    the newest of each tier only through its alias, and `--model` takes the
+ *    concrete id too: without it, a picker that hides the moving aliases (the
+ *    phone's setting) would hide every current model.
+ *  - **The rest of the concrete ids**, as the CLI lists them (older models,
+ *    dated snapshots like `claude-haiku-4-5-20251001` included — that is the id
+ *    the CLI takes).
+ *  - **Pinned models** from config not already listed.
+ *
+ * The CLI's own `default` entry is not a model to pick: picking nothing runs
+ * it, and every client already offers that. It decides `isDefault` instead —
+ * the first entry that runs the same concrete model — unless the bridge was
+ * configured with a default model of its own.
+ *
+ * Effort is offered with exactly the levels each model reports, defaulting to
+ * {@link CLAUDE_DEFAULT_EFFORT} when it is one of them.
+ */
+export function claudeModels(
+  reported: readonly ClaudeReportedModel[],
+  options: { defaultModel?: string; pinned?: readonly ClaudeModelSpec[] } = {},
+): AgentModel[] {
+  const entries: { model: AgentModel; runs: string }[] = [];
+  const seen = new Set<string>();
+  const add = (model: AgentModel, runs: string): void => {
+    if (seen.has(model.id)) return;
+    seen.add(model.id);
+    entries.push({ model, runs });
+  };
+  const effort = (m: ClaudeReportedModel): Pick<AgentModel, 'options'> => {
+    const levels = m.supportsEffort ? (m.supportedEffortLevels ?? []) : [];
+    if (levels.length === 0) return {};
+    const fallback = levels.includes(CLAUDE_DEFAULT_EFFORT) ? CLAUDE_DEFAULT_EFFORT : undefined;
+    return { options: [reasoningOption(effortValues(levels), fallback)] };
+  };
+  const describe = (m: ClaudeReportedModel): Pick<AgentModel, 'description'> =>
+    m.description !== undefined ? { description: m.description } : {};
+
+  const listed = reported.filter((m) => m.value !== CLAUDE_DEFAULT_VALUE);
+  const isAlias = (m: ClaudeReportedModel): boolean =>
+    m.resolvedModel !== undefined && m.resolvedModel !== m.value;
+  const aliases = listed.filter(isAlias);
+  for (const m of aliases) {
+    add(
+      {
+        id: m.value,
+        displayName: `${m.displayName ?? m.value} (latest)`,
+        ...describe(m),
+        version: m.resolvedModel,
+        isLatestAlias: true,
+        ...effort(m),
+      },
+      m.resolvedModel!,
+    );
+  }
+  for (const m of aliases) {
+    const id = m.resolvedModel!;
+    add({ id, displayName: m.displayName ?? id, ...describe(m), ...effort(m) }, id);
+  }
+  for (const m of listed.filter((m) => !isAlias(m))) {
+    add(
+      { id: m.value, displayName: m.displayName ?? m.value, ...describe(m), ...effort(m) },
+      m.value,
+    );
+  }
+  for (const spec of options.pinned ?? []) {
+    const id = spec.id.trim();
+    if (!id) continue;
+    add(
+      {
+        id,
+        displayName: spec.displayName && spec.displayName.length > 0 ? spec.displayName : id,
+        ...(spec.description && spec.description.length > 0
+          ? { description: spec.description }
+          : {}),
+      },
+      id,
+    );
+  }
+
+  const cliDefault = reported.find((m) => m.value === CLAUDE_DEFAULT_VALUE)?.resolvedModel;
+  const defaultId =
+    options.defaultModel ??
+    (cliDefault !== undefined ? entries.find((e) => e.runs === cliDefault)?.model.id : undefined);
+  return entries.map(({ model }) => ({ ...model, isDefault: model.id === defaultId }));
 }
 
 function extractAssistantText(content: unknown): string {

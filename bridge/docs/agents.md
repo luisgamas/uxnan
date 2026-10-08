@@ -406,7 +406,7 @@ so a format change there is a **two-app** fix.
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE), 1.x or 2.x | persisted server session id | per-session permission rules + its `plan` agent — see *Access modes*; the rules are re-applied before a turn whose mode changed (`PATCH /session/:id` on 1.x, `PATCH /api/session/:id` on 2.x) | `opencode models` (1.x) / `GET /api/model` (2.x) |
-| **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --replay-user-messages` (prompt and uuid-tagged follow-ups on stdin) | `--resume <session_id>` | per-turn flags — see *Access modes* | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
+| **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --replay-user-messages` (prompt and uuid-tagged follow-ups on stdin) | `--resume <session_id>` | per-turn flags — see *Access modes* | `initialize` `models`: aliases (latest), what each runs, older ids **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `approvalPolicy` + `approvalsReviewer` + sandbox on `thread/start`, every `thread/resume` and every `turn/start` — see *Access modes*; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | no access modes: `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Antigravity** | `agy [--conversation <id>] --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json --print-timeout 2h` — one resident process per thread; the turn is a `user` message on stdin | `--conversation <id>`, the id `agy` announced on the first process's `init`, passed on every later spawn for the thread (never client-minted: 1.2.x refuses an unknown id and starts a new conversation) | no access modes (headless `agy` cannot ask): `permissionMode` → `--dangerously-skip-permissions` (default) / `--mode plan` | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
@@ -978,109 +978,85 @@ A non-multimodal model is not a bug: the attachment is delivered either way, the
 agent just reasons about the bytes instead of the picture. Pick a multimodal
 model when you need real vision.
 
-## Claude Code models: latest aliases + pinned versions
+## Claude Code models: what `initialize` reports
 
-Claude Code has **no enumerate command** — `--model` accepts either a stable
-alias (`fable`/`opus`/`sonnet`/`haiku`) or a full id (e.g. `claude-opus-5`). The
-bridge exposes both, so users get plug-and-play "latest" *and* explicit version
-control:
+Claude Code lists its models itself: the stream-json `initialize` control
+request — the same one `agent/commands` asks, answered in ~0.5 s without
+running a turn or spending a token — carries a `models` array (verified on
+claude 2.1.293). Each entry has the `value` `--model` takes, the
+`resolvedModel` it runs today, a `displayName`, a `description`,
+`supportsEffort` and `supportedEffortLevels`. It is **account-aware**: it lists
+only what this account can use. The bridge keeps no table of its own;
+`claudeModels()` (`src/adapters/claude-adapter.ts`) turns that list into
+`agent/models`, in the CLI's order:
 
-- **Aliases (always present):** `fable`/`opus`/`sonnet`/`haiku` are shown as
-  `Fable (latest)` / `Opus (latest)` / `Sonnet (latest)` / `Haiku (latest)`. They
-  auto-track the newest model of that tier the account can use — nothing to
-  maintain. After a turn runs, the concrete version the alias resolved to (e.g.
-  `claude-opus-5`) is reported via the `model_resolved` event and shown in the
-  phone's session status sheet.
-- **Pinned concrete versions (built-in baseline + your extras):** the bridge
-  ships a curated list of concrete versions in code (`DEFAULT_DAEMON_CONFIG`) and
-  **unions** it with anything you add in `agents.claude-code.models`, deduped by
-  id. So the built-in list stays current with the app automatically (a new
-  version adds models to every install — see the "live baseline" note below),
-  and your entries extend it: a new id is appended, and an entry whose id matches
-  a built-in one overrides its `displayName`. An entry may be a bare id string or
-  `{ id, displayName?, description? }`. Ids equal to an alias are dropped (the
-  alias is the canonical "latest" entry).
+1. **Aliases** (`opus`, `fable`, `sonnet`, `haiku` — any `value` that is not its
+   own `resolvedModel`), labelled `<displayName> (latest)` (`Opus 5.5 (latest)`),
+   flagged `isLatestAlias`, with the concrete model as `version`. After a turn,
+   the concrete id it ran on is also reported through `model_resolved`.
+2. **The concrete model each alias runs** (`claude-opus-5-5`), as its own entry.
+   The CLI lists the newest model of each tier only through its alias, and
+   `--model` takes the concrete id too — without this entry, the phone's
+   setting that hides the moving aliases would hide every current model.
+3. **The other concrete ids**, as the CLI lists them — dated snapshots
+   included (`claude-haiku-4-5-20251001` is the id the CLI takes for Haiku 4.5).
+4. **Pinned models** from `agents.claude-code.models` the CLI did not list.
+
+The CLI's own `default` entry is not a row: picking nothing runs it, and every
+client already offers that. It marks `isDefault` instead, on the first entry
+that runs the same concrete model — unless `agents.claude-code.model` is set,
+which wins.
+
+**Effort** is offered per model with exactly the levels it reports: Opus 4.6
+and Sonnet 4.6 stop at `high`/`max` without `xhigh`, and Haiku 4.5 reports
+neither field, so it has no knob. The default the knob shows (and the bridge
+sends when nobody picks one) is `high`, offered only where the model lists it.
+
+**Context window** comes from the turn, not the list: `initialize` carries
+none, but the `result` closing every turn has `modelUsage[<model>].contextWindow`
+(`1000000` for Haiku 5.5, `200000` for Haiku 4.5). The turn's own entry is
+picked by the id `system/init` resolved; that is what the phone's context
+percentage divides by.
+
+**Caching.** The list is the account's, not a folder's: it is asked once
+(`agent/commands` answers bring it along) and reused for a minute; after that
+the last list is still answered while a fresh one is asked behind it, so only
+the very first listing waits for the CLI. A CLI that will not answer leaves
+only the pinned models.
 
 ```jsonc
 // ~/.uxnan/daemon-config.json
 {
   "agents": {
     "claude-code": {
-      "model": "opus",                 // default: the latest Opus alias
-      "models": [                       // extra concrete versions in the picker
-        { "id": "claude-fable-5-1", "displayName": "Fable 5.1" },
-        { "id": "claude-fable-5",   "displayName": "Fable 5" },
-        { "id": "claude-opus-5-5",  "displayName": "Opus 5.5" },
-        { "id": "claude-opus-5",    "displayName": "Opus 5" },
-        { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
-        { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
-        { "id": "claude-opus-4-6",  "displayName": "Opus 4.6" },
-        { "id": "claude-opus-4-5",  "displayName": "Opus 4.5" },
-        { "id": "claude-sonnet-5-5","displayName": "Sonnet 5.5" },
-        { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
-        { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
-        { "id": "claude-sonnet-4-5","displayName": "Sonnet 4.5" },
-        { "id": "claude-haiku-5-5", "displayName": "Haiku 5.5" },
-        { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
-        "claude-opus-4-1"               // bare id — displayName falls back to the id
+      "model": "opus",                // default when a thread picks none
+      "models": [                     // ids the CLI does not list (yet), if any
+        { "id": "claude-opus-4-5", "displayName": "Opus 4.5" },
+        "claude-sonnet-4-5"           // bare id — displayName falls back to the id
       ]
     }
   }
 }
 ```
 
-**Live baseline (why you never have to edit this file to get new models):** the
-built-in list is a *code* default (`DEFAULT_DAEMON_CONFIG`), unioned in at load
-time — it is **not** frozen into `~/.uxnan/daemon-config.json`. `initConfig`
-persists the seed *without* the `agents` block, and `resolveDaemonConfig` unions
-the code seed with whatever is on disk. So when a new app version adds a model to
-the seed, every existing install picks it up automatically; your own `models`
-entries are preserved on top. (Because the two are unioned, an empty
-`"models": []` no longer clears the list — the baseline always stays.) The
-aliases cover "latest" regardless, so pinning is purely for explicit/older-version
-selection. Use only ids Claude Code accepts (`claude --model <id>` validates
-them). The same `models` field works for any agent the adapter honors it for;
-today that's Claude Code (OpenCode and Codex enumerate their own models).
+`models` is only for an id the account does not list but `--model` accepts;
+an id the CLI does list keeps the CLI's entry. Nothing else is configured:
+a new Claude model appears in every picker, phone and desktop, the moment the
+installed CLI knows it.
 
-### Maintaining the built-in list — it has a twin in the desktop app
+**The desktop asks the same request.** Its AI commit-message / PR-body picker
+(`uxnandesktop/src-tauri/src/aicommit.rs` → `claude_models`, parsed by
+`parse_claude_initialize_models` in `crates/workspace-engine/src/agentcli.rs`)
+shows entries 2 and 3 — the concrete models, since a commit message names the
+model that wrote it — under the same labels.
 
-Claude Code cannot enumerate its models, so the concrete versions are hand-kept
-in **two** places. **Both must be updated whenever Anthropic ships or retires a
-model** — updating only one silently leaves that surface a version behind:
-
-| List | Where | Feeds |
-|---|---|---|
-| Bridge seed | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the phone's model picker (`agent/models`) |
-| Desktop table | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` | the desktop's AI commit-message / PR-body drafting picker |
-
-Keep the **same ids, labels and order** in both (newest/most capable first). Use
-canonical ids only: never append a date suffix or a routing variant (`…[1m]`,
-`…-fast`) to a concrete id, and never put a bare alias in either list.
-
-**A new generation moves three tables, not one.** Adding a model is only the
-picker entry: the same id also decides `--effort` and the context window, and
-pricing is a fourth place. Check each against the current catalog rather than
-assuming a family keeps its old behaviour:
-
-| Table | Where | What a new generation changes |
-|---|---|---|
-| Reasoning effort | `claudeTakesEffort()` (`src/adapters/claude-adapter.ts`) | keyed on **`claude-haiku-4-5`** alone — Haiku 5.5 reports `supportsEffort: true`, so "every model but Haiku" stopped being true |
-| Context window | `claudeContextWindow()` (same file) | keyed on **`claude-haiku-4-5`** alone → 200K; everything else, Haiku 5.5 included, is 1M. This drives the phone's context-usage percentage |
-| Price | `src/usage/usage-prices.ts` → `CLAUDE_RATES` | one flat rate per id, matched by prefix, most specific first |
-
-Both of the first two are exceptions rather than tier rules *because* Haiku 5.5
-broke the tier: it gained effort and 5× the window. Claude Code's own
-`initialize` control request (already driven for `agent/commands`) reports
-`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking` and
-`supportsAutoMode` **per model** — read it there rather than inferring from the
-family name.
-
-Read `supportedEffortLevels` too: it is the CLI naming the levels *that model*
-accepts, where `CLAUDE_EFFORT_LEVELS` is the union the picker offers.
-`supportsAutoMode` is what decides whether *Approve for me*
-(`--permission-mode auto`) works — the bridge always sends the flag and reports
-the mode `system/init` answers, so no per-model branch is needed, only the
-prose here.
+**The one table left is the price** (`src/usage/usage-prices.ts` →
+`CLAUDE_PRICES`, pinned to Anthropic's published rates by
+`test/usage/transcript-usage.test.ts`). Spend is read from the transcripts
+(`src/usage/transcript-usage.ts`, architecture `02a` §5.8.10), which record
+tokens per response but cost only per CLI process (`cost-state`), so a new generation still needs an entry there, keyed
+on the model id rather than its family. A model without one is shown as
+unpriced tokens, never a guess.
 
 ## Plan limits (`agent/usageStats`)
 

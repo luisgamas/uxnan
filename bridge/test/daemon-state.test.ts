@@ -67,19 +67,10 @@ test('readConfig keeps a well-formed relay endpoint', async () => {
   await rmrf(state.baseDir);
 });
 
-test('initConfig does not freeze the seeded model lists to disk', async () => {
+test('initConfig writes the defaults once and reads them back', async () => {
   const state = freshState();
-  await state.initConfig();
-  // The on-disk file must NOT carry the built-in agents/models — otherwise a
-  // future app version could never add a model to an existing install.
-  const onDisk = await state.readJson<Record<string, unknown>>('daemon-config.json');
-  assert.equal(onDisk?.['agents'], undefined);
-  // Yet the effective config still surfaces the live seed (Sonnet 5 included).
-  const effective = await state.readConfig();
-  const ids = (effective.agents['claude-code']?.models ?? []).map((m) =>
-    typeof m === 'string' ? m : m.id,
-  );
-  assert.ok(ids.includes('claude-sonnet-5'));
+  assert.deepEqual(await state.initConfig(), DEFAULT_DAEMON_CONFIG);
+  assert.deepEqual(await state.readConfig(), DEFAULT_DAEMON_CONFIG);
   await rmrf(state.baseDir);
 });
 
