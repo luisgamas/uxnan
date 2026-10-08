@@ -12,6 +12,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   reserve and update their bounded height, and offer annotate, expand, retry,
   page-to-composer messaging and confirmed external links. Pages are cached in
   memory (eight entries); Android file/content access and zoom are disabled.
+  A view never folds away with the earlier responses of a settled turn: it
+  opens the visible answer.
 
 ### Changed
 

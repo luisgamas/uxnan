@@ -78,6 +78,21 @@ describe("groupParts", () => {
 });
 
 describe("splitAnswer", () => {
+  it("lifts the views out of the work into the answer, in order", () => {
+    const view = (id: string) => ({ type: "view", viewId: id.repeat(32), title: id });
+    const items = groupParts([cmd("ls"), view("a"), text("between"), cmd("pwd"), view("b"), text("done")]);
+    const { work, answer } = splitAnswer(items);
+    expect(work.some((i) => i.kind === "block")).toBe(false);
+    expect(answer.map((i) => (i.kind === "block" ? (i.block as { title: string }).title : i.kind))).toEqual([
+      "a",
+      "b",
+      "text",
+    ]);
+    // A turn that ends on its view, with no closing text, still shows it.
+    expect(splitAnswer(groupParts([cmd("ls"), view("c")])).answer).toHaveLength(1);
+  });
+
+
   it("keeps the text after the last block as the answer", () => {
     const items = groupParts([text("plan"), cmd("ls"), text("It works."), text("Ship it.")]);
     const { work, answer } = splitAnswer(items);

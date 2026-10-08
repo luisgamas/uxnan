@@ -41,3 +41,7 @@ test/unit/infrastructure/bridge_agent_view_repository_test.dart
 test/widget/presentation/view_block_test.dart`, then `dart analyze` and
 `dart format lib test`. A real Android/iOS WebView pass is still needed to check
 platform gesture arbitration, JavaScript channel behavior and theme updates.
+
+## Where a view sits in a settled turn
+
+A view is part of the answer, never of the work. When a settled turn folds the steps (desktop) or the earlier responses (phone) that led to its answer, the views leave the fold, in the order the agent showed them, and open the visible answer — otherwise only someone who knew a view was there would find it. The desktop does it in `splitAnswer` (`src/lib/bridge/timeline.ts`), the phone in the message view's response grouping; both follow the same rule.

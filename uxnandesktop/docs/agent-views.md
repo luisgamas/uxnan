@@ -23,3 +23,7 @@ The host accepts messages only when `event.source` is the iframe's `contentWindo
 Run `npm run check` and `npm test` from `uxnandesktop/`. Run Rust checks from `uxnandesktop/src-tauri/` with `cargo fmt --check`, `cargo clippy --all-targets --all-features`, and `cargo test views::`. The tests cover JSON-RPC validation, bounded parameters, height clamping, annotation formatting, scheme response headers, and store eviction.
 
 The automated component test asserts `sandbox="allow-scripts"`, no `allow` attribute, `no-referrer`, and the dedicated scheme URL. The Rust response test asserts the scheme response carries the exact no-network CSP (`connect-src 'none'`) and security headers. When Tauri is upgraded, re-check the two facts the IPC isolation rests on (main-frame-only bootstrap, invoke-key check) in its sources.
+
+## Where a view sits in a settled turn
+
+A view is part of the answer, never of the work. When a settled turn folds the steps (desktop) or the earlier responses (phone) that led to its answer, the views leave the fold, in the order the agent showed them, and open the visible answer — otherwise only someone who knew a view was there would find it. The desktop does it in `splitAnswer` (`src/lib/bridge/timeline.ts`), the phone in the message view's response grouping; both follow the same rule.

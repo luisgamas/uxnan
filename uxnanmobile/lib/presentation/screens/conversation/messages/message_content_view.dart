@@ -1948,8 +1948,26 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final collapsePrevious = !message.isStreaming &&
         message.continuedIn == null &&
         responseGroups.length > 1;
+    // A view the agent showed is part of the answer, never of the folded
+    // responses: it is what the person asked to see, and behind "Worked for…"
+    // only someone who knew it was there would find it. Views leave the earlier
+    // responses, in the order they were shown, and open the visible answer
+    // (the desktop's `splitAnswer` does the same).
+    final earlier = collapsePrevious
+        ? [
+            for (final group in responseGroups.take(responseGroups.length - 1))
+              [
+                for (final content in group)
+                  if (content is! ViewContent) content,
+              ],
+          ]
+        : const <List<MessageContent>>[];
     final visibleContents = collapsePrevious
-        ? responseGroups.last
+        ? [
+            for (final group in responseGroups.take(responseGroups.length - 1))
+              ...group.whereType<ViewContent>(),
+            ...responseGroups.last,
+          ]
         : [for (final group in responseGroups) ...group];
     // Earlier responses and the visible answer are laid out by the same
     // builder ([_responseSegments]), so a folded response opens exactly as the
@@ -1970,10 +1988,10 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (var r = 0; r < responseGroups.length - 1; r++) ...[
+                    for (var r = 0; r < earlier.length; r++) ...[
                       if (r > 0) const SizedBox(height: UxnanSpacing.md),
                       ..._responseSegments(
-                        contents: responseGroups[r],
+                        contents: earlier[r],
                         threadId: message.threadId,
                         onTapLink: widget.onTapLink,
                         processPrefix: 'previous-$r-',

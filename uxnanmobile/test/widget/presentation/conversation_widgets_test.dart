@@ -7,6 +7,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uxnan/domain/entities/agent_view_page.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
@@ -16,17 +17,21 @@ import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
+import 'package:uxnan/domain/repositories/i_agent_view_repository.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+
 import '../../support/ux_icon_finder.dart';
 
 Widget _wrap(Widget child) => ProviderScope(
@@ -906,6 +911,55 @@ void main() {
     expect(find.textContaining('Second part.'), findsOneWidget);
   });
 
+  testWidgets('a view in an earlier response stays in the answer, not the fold',
+      (tester) async {
+    final message = Message(
+      id: 'm-view',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('Let me chart it.'),
+        ViewContent(
+          viewId: '0123456789abcdef0123456789abcdef',
+          title: 'Tokens by day',
+          bytes: 10,
+        ),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'one',
+        ),
+        TextContent('Friday was the busiest day.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.finalAnswer,
+          itemId: 'two',
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          agentViewRepositoryProvider.overrideWithValue(_PendingViews()),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: MessageBubble(message: message)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('1 previous message'), findsOneWidget);
+    expect(find.textContaining('Let me chart it.'), findsNothing);
+    expect(find.byType(ViewBlock), findsOneWidget);
+    expect(find.textContaining('Friday was the busiest day.'), findsOneWidget);
+  });
+
   testWidgets('settled assistant turn collapses earlier native responses',
       (tester) async {
     final message = Message(
@@ -1563,4 +1617,11 @@ class _FakeSpeech extends SpeechToTextService {
 
   void emit(String text, {bool isFinal = false}) =>
       _onResult?.call(SpeechResult(text: text, isFinal: isFinal));
+}
+
+/// A view repository whose pages never arrive: the card stays loading.
+class _PendingViews implements IAgentViewRepository {
+  @override
+  Future<AgentViewPage> readView(String viewId) =>
+      Completer<AgentViewPage>().future;
 }

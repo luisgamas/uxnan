@@ -3417,7 +3417,10 @@ tambien: funciona con solo el telefono.
   `allow-same-origin` (origen opaco; la CSP de la app solo admite ese esquema en
   `frame-src`); el telefono, en un WebView (§5.4.7). Ambos montan solo lo que
   esta en pantalla, limitan las vistas vivas y reservan la altura para que el
-  chat no salte.
+  chat no salte. Una vista **es parte de la respuesta, nunca del trabajo**: al
+  plegar un turno terminado ("Worked for…" en el desktop, las respuestas
+  anteriores en el telefono) las vistas salen de lo plegado, en el orden en que
+  se mostraron, y abren la respuesta visible.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

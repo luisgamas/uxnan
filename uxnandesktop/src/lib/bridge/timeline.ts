@@ -97,7 +97,12 @@ function isNotice(item: TimelineItem): boolean {
 /** Splits a settled turn into the work that led to the answer and the answer
  *  itself: the text after the last block, with any notices that follow it. A
  *  turn with no blocks is all answer. A notice closing the turn used to count
- *  as its last block, which folded the whole answer away behind it. */
+ *  as its last block, which folded the whole answer away behind it.
+ *
+ *  A view the agent showed is part of the answer, never of the work: it is
+ *  what the person asked to see, and folded behind "Worked for…" only someone
+ *  who knew it was there would find it. Views leave the work, in the order the
+ *  agent showed them, and open the answer. */
 export function splitAnswer(items: readonly TimelineItem[]): {
   work: TimelineItem[];
   answer: TimelineItem[];
@@ -106,7 +111,12 @@ export function splitAnswer(items: readonly TimelineItem[]): {
   while (cut > 0 && (items[cut - 1].kind === "text" || isNotice(items[cut - 1]))) cut -= 1;
   // Notices alone are not an answer: they stay where they are, after the work.
   if (!items.slice(cut).some((i) => i.kind === "text")) cut = items.length;
-  return { work: items.slice(0, cut), answer: items.slice(cut) };
+  const isView = (i: TimelineItem) => i.kind === "block" && typeOf(i.block) === "view";
+  const work = items.slice(0, cut);
+  return {
+    work: work.filter((i) => !isView(i)),
+    answer: [...work.filter(isView), ...items.slice(cut)],
+  };
 }
 
 /** Whether an activity block failed (a non-zero exit, an error status, a tool error, a failed subagent). */

@@ -15,7 +15,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   expanded. **Annotate** picks an element in the page; the note goes to the
   composer, like a message the page proposes — nothing is sent on its own. At
   most four frames stay live. A block type the app does not know now shows a
-  one-line notice instead of nothing, as on the phone.
+  one-line notice instead of nothing, as on the phone. A view never folds away
+  with the work behind "Worked for…": it opens the answer.
 
 ### Changed
 
