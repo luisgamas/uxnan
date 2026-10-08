@@ -473,34 +473,26 @@ Three audiences, three homes — keep them separate so none of them rots:
   reports live in [`bridge/docs/agents.md`](bridge/docs/agents.md) →
   *Drive surface*; keep it current in the same change set.
 
-- **Hand-kept model tables come in PAIRS — a new model goes in BOTH.** Agent CLIs
-  are discovered live except **Claude Code**, whose curated table exists once per
-  app:
+- **Claude Code's models come from its CLI — never from a table.** Every wired
+  agent's picker is what its own CLI reports, Claude Code included: the bridge
+  (`claudeModels()` in `bridge/src/adapters/claude-adapter.ts`) and the desktop
+  (`parse_claude_initialize_models` in
+  `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs`) both read the
+  `models` its stream-json `initialize` control request answers — aliases with
+  the concrete model they run, older ids, and each model's
+  `supportedEffortLevels`. A turn's context window is the `contextWindow` its
+  `result` reports per model. Do not bring back a curated model list, an alias
+  table or an id-keyed rule for effort or context: a new model must appear
+  without a code change, and only for the accounts that can use it.
 
-  | Agent | Bridge (feeds the phone) | Desktop (feeds AI commit / PR body) |
-  |---|---|---|
-  | Claude Code | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` |
-
-  Edit **both halves in the same change set** (one alone leaves the other app a
-  version behind), same ids, labels and order — newest/most capable first.
-  Canonical ids only: no date suffixes, no routing variants (`…[1m]`, `…-fast`),
-  no invitation-only models, and no bare `fable`/`opus`/`sonnet`/`haiku` alias
-  inside a table (the bridge advertises aliases separately from
-  `claude-adapter.ts`, hand-kept too and verified against `claude --help`).
-
-  **A new generation moves four tables, not one.** The two pickers above are the
-  obvious pair; the same id also decides whether the model takes `--effort`
-  (`claudeTakesEffort()`), its context window (`claudeContextWindow()`) and its
-  price (`CLAUDE_PRICES` in `bridge/src/usage/usage-prices.ts`, pinned to
-  Anthropic's published rates by `test/usage/transcript-usage.test.ts`). **The
-  last three are keyed on the model id, not on its family**, because Haiku 5.5
-  arrived with a 1M window and `supportsEffort` where every earlier Haiku had
-  200K and neither — "the Haiku family" stopped being a rule and became the
-  single exception `claude-haiku-4-5`. Claude Code's `initialize` control request
-  reports `supportsEffort` / `supportedEffortLevels` / `supportsAutoMode` per
-  model, so read it there rather than inferring from the name. Full rules:
-  [`bridge/docs/agents.md`](bridge/docs/agents.md) and
-  [`uxnandesktop/docs/agent-launch.md`](uxnandesktop/docs/agent-launch.md).
+  **The one Claude table left is the price**: `CLAUDE_PRICES` in
+  `bridge/src/usage/usage-prices.ts`, pinned to Anthropic's published rates by
+  `test/usage/transcript-usage.test.ts` and keyed on the model id, not its
+  family (Haiku 5.5 prices by prompt length; Opus 5.5 and Fable 5.1 read the
+  cache at their own rates). Spend is read from transcripts that record tokens
+  per response but cost only per CLI process, so a new generation needs its
+  entry there; one without it shows as unpriced tokens, never a guess. Full
+  rules: [`bridge/docs/agents.md`](bridge/docs/agents.md) → *Claude Code models*.
 
 - **The standalone Gemini CLI is intentionally unsupported: do not reintroduce
   it.** Its adapter, contract id, catalogs, hooks, quota reader and UI surfaces

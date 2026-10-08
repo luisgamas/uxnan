@@ -13,8 +13,8 @@
 // direction, plus a logo key the catalog knows and a matching display name.
 //
 // The five offered agents are wired end to end: each resolves to a spawnable
-// binary, answers a model list (Claude from a curated table, Codex via
-// `codex app-server`, OpenCode/Antigravity/Grok from their own `models`
+// binary, answers a model list (Claude via its stream-json `initialize`, Codex
+// via `codex app-server`, OpenCode/Antigravity/Grok from their own `models`
 // command), and returns its answer on stdout in print mode.
 
 export interface AiCommitAgent {

@@ -610,54 +610,65 @@ pub fn build_args(
     Some(args)
 }
 
-/// Statically-known models for agents whose CLI exposes no list command
-/// (Claude's curated table below). Empty for agents discovered live.
-pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
-    match agent_id {
-        "claude" => CLAUDE_MODELS
-            .iter()
-            .map(|(id, name)| AgentModel::new(id, name))
-            .collect(),
-        _ => vec![],
+/// The concrete Claude models a stream-json `initialize` answer lists, for a
+/// picker that names an exact model rather than a moving alias (AI commit, PR
+/// bodies: the message is reproducible). `line` is one line of
+/// `claude -p --input-format stream-json --output-format stream-json --verbose`
+/// output; `None` unless it is the `control_response` to `initialize`.
+///
+/// Claude Code reports every model the account can use (verified on claude
+/// 2.1.293): its aliases (`opus` → `resolvedModel: claude-opus-5-5`), its own
+/// `default`, and older concrete ids (`claude-opus-4-8`,
+/// `claude-haiku-4-5-20251001`). The newest model of each tier appears only
+/// through its alias, so each alias contributes the concrete model it runs,
+/// under its label; the concrete ids follow as listed. `default` is left out —
+/// the picker offers "Default" itself. The bridge shows the same concrete
+/// entries after its aliases (`claudeModels`, `bridge/src/adapters/
+/// claude-adapter.ts`).
+pub fn parse_claude_initialize_models(line: &str) -> Option<Vec<AgentModel>> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    if v.get("type").and_then(|t| t.as_str()) != Some("control_response") {
+        return None;
     }
+    let outer = v.get("response")?;
+    let inner = outer.get("response").unwrap_or(outer);
+    let Some(arr) = inner.get("models").and_then(|m| m.as_array()) else {
+        return Some(vec![]);
+    };
+    let text = |e: &serde_json::Value, key: &str| -> Option<String> {
+        e.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    // (id the picker sends, label, whether it is an alias's concrete model)
+    let mut aliased = Vec::new();
+    let mut listed = Vec::new();
+    for e in arr {
+        let Some(value) = text(e, "value") else {
+            continue;
+        };
+        if value == "default" {
+            continue;
+        }
+        let resolved = text(e, "resolvedModel").unwrap_or_else(|| value.clone());
+        let label = text(e, "displayName").unwrap_or_else(|| resolved.clone());
+        if resolved != value {
+            aliased.push(AgentModel::new(&resolved, &label));
+        } else {
+            listed.push(AgentModel::new(&value, &label));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    Some(
+        aliased
+            .into_iter()
+            .chain(listed)
+            .filter(|m| seen.insert(m.id.clone()))
+            .collect(),
+    )
 }
-
-/// Curated Claude model ids + display names. Claude Code's CLI has **no**
-/// list-models command, so we ship this hand-kept table of **exact** model ids
-/// (the concrete versions Claude Code's `--model` flag accepts — *not* the
-/// `fable`/`opus`/`sonnet`/`haiku` "latest" aliases, so the message is
-/// reproducible).
-///
-/// ## How to maintain this list
-/// **This table has a twin. Keep the two in sync.** The bridge ships the same
-/// curated list for the mobile app's picker in `bridge/src/daemon-config.ts`
-/// (`DEFAULT_DAEMON_CONFIG.agents['claude-code'].models`). Neither can be
-/// discovered from the CLI, so both are hand-kept: when Anthropic ships or
-/// retires a model, edit **both** arrays, with the same ids, labels and order.
-/// - **id** (left): the exact `--model` string, e.g. `claude-opus-5`. These are
-///   the canonical model ids — never append a date suffix or a routing variant
-///   (`…[1m]`, `…-fast`) to a concrete id, and don't use the bare aliases here.
-/// - **display name** (right): what the picker shows, e.g. `Opus 5`.
-///
-/// Keep newest/most-capable first (that's the picker order). The user can always
-/// pick "Default" in the UI to let the CLI choose its own configured model.
-/// Source of truth for current ids: the Claude API model catalog.
-const CLAUDE_MODELS: [(&str, &str); 14] = [
-    ("claude-fable-5-1", "Fable 5.1"),
-    ("claude-fable-5", "Fable 5"),
-    ("claude-opus-5-5", "Opus 5.5"),
-    ("claude-opus-5", "Opus 5"),
-    ("claude-opus-4-8", "Opus 4.8"),
-    ("claude-opus-4-7", "Opus 4.7"),
-    ("claude-opus-4-6", "Opus 4.6"),
-    ("claude-opus-4-5", "Opus 4.5"),
-    ("claude-sonnet-5-5", "Sonnet 5.5"),
-    ("claude-sonnet-5", "Sonnet 5"),
-    ("claude-sonnet-4-6", "Sonnet 4.6"),
-    ("claude-sonnet-4-5", "Sonnet 4.5"),
-    ("claude-haiku-5-5", "Haiku 5.5"),
-    ("claude-haiku-4-5", "Haiku 4.5"),
-];
 
 /// Strip ANSI SGR escape sequences (`ESC [ … m`) from a line.
 fn strip_ansi(line: &str) -> String {
@@ -1185,36 +1196,68 @@ Available models:
         );
     }
 
+    /// The `models` claude 2.1.293 answered `initialize` with on a Max account
+    /// (captured 2026-10-07), trimmed to the fields the picker reads.
+    const CLAUDE_INITIALIZE_2_1_293: &str = r#"{"type":"control_response","response":{"subtype":"success","request_id":"uxnan-models","response":{"models":[
+        {"value":"default","resolvedModel":"claude-sonnet-5-5","displayName":"Default (recommended)"},
+        {"value":"opus","resolvedModel":"claude-opus-5-5","displayName":"Opus 5.5"},
+        {"value":"fable","resolvedModel":"claude-fable-5-1","displayName":"Fable 5.1"},
+        {"value":"sonnet","resolvedModel":"claude-sonnet-5-5","displayName":"Sonnet 5.5"},
+        {"value":"haiku","resolvedModel":"claude-haiku-5-5","displayName":"Haiku 5.5"},
+        {"value":"claude-haiku-4-5-20251001","resolvedModel":"claude-haiku-4-5-20251001","displayName":"Haiku 4.5"},
+        {"value":"claude-sonnet-5","resolvedModel":"claude-sonnet-5","displayName":"Sonnet 5"},
+        {"value":"claude-opus-5","resolvedModel":"claude-opus-5","displayName":"Opus 5"},
+        {"value":"claude-fable-5","resolvedModel":"claude-fable-5","displayName":"Fable 5"},
+        {"value":"claude-opus-4-8","resolvedModel":"claude-opus-4-8","displayName":"Opus 4.8"},
+        {"value":"claude-opus-4-7","resolvedModel":"claude-opus-4-7","displayName":"Opus 4.7"},
+        {"value":"claude-opus-4-6","resolvedModel":"claude-opus-4-6","displayName":"Opus 4.6"},
+        {"value":"claude-sonnet-4-6","resolvedModel":"claude-sonnet-4-6","displayName":"Sonnet 4.6"}
+    ]}}}"#;
+
     #[test]
-    fn static_models_for_claude() {
-        let claude = static_models("claude");
-        // Exact concrete model ids (no "latest" aliases), newest first — the same
-        // order as the bridge's twin list (see the CLAUDE_MODELS doc comment).
-        assert_eq!(claude.first().unwrap().id, "claude-fable-5-1");
-        assert_eq!(claude[1].id, "claude-fable-5");
-        assert_eq!(claude[2].id, "claude-opus-5-5");
-        assert_eq!(claude[3].id, "claude-opus-5");
-        assert!(claude.iter().any(|m| m.id == "claude-sonnet-5-5"));
-        assert!(claude.iter().any(|m| m.id == "claude-sonnet-5"));
-        assert!(claude.iter().any(|m| m.id == "claude-sonnet-4-5"));
-        assert!(claude.iter().any(|m| m.id == "claude-haiku-5-5"));
-        // newest first within a tier: 5.5 leads each tier, the one before it follows
-        for (newer, older) in [
-            ("claude-sonnet-5-5", "claude-sonnet-5"),
-            ("claude-haiku-5-5", "claude-haiku-4-5"),
-        ] {
-            let before = claude.iter().position(|m| m.id == newer).unwrap();
-            let after = claude.iter().position(|m| m.id == older).unwrap();
-            assert!(before < after, "{newer} must precede {older}");
-        }
-        assert!(claude.iter().all(|m| m.id.starts_with("claude-")));
-        // no routing variants (`…[1m]`, `…-fast`) leak into the table
-        assert!(claude
-            .iter()
-            .all(|m| !m.id.contains('[') && !m.id.ends_with("-fast")));
-        // Live-discovered agents have no static list.
-        assert!(static_models("opencode").is_empty());
-        assert!(static_models("codex").is_empty());
+    fn claude_models_are_the_concrete_ones_initialize_reports() {
+        let models = parse_claude_initialize_models(CLAUDE_INITIALIZE_2_1_293).unwrap();
+        assert_eq!(
+            models
+                .iter()
+                .map(|m| (m.id.as_str(), m.display_name.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                // what each alias runs today, under its label…
+                ("claude-opus-5-5", "Opus 5.5"),
+                ("claude-fable-5-1", "Fable 5.1"),
+                ("claude-sonnet-5-5", "Sonnet 5.5"),
+                ("claude-haiku-5-5", "Haiku 5.5"),
+                // …then the concrete ids, as the CLI lists them
+                ("claude-haiku-4-5-20251001", "Haiku 4.5"),
+                ("claude-sonnet-5", "Sonnet 5"),
+                ("claude-opus-5", "Opus 5"),
+                ("claude-fable-5", "Fable 5"),
+                ("claude-opus-4-8", "Opus 4.8"),
+                ("claude-opus-4-7", "Opus 4.7"),
+                ("claude-opus-4-6", "Opus 4.6"),
+                ("claude-sonnet-4-6", "Sonnet 4.6"),
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_initialize_parser_reads_only_its_answer() {
+        assert!(parse_claude_initialize_models(r#"{"type":"system","subtype":"init"}"#).is_none());
+        assert!(parse_claude_initialize_models("not json").is_none());
+        // An answer without models (an error) is an empty list, not "keep waiting".
+        assert_eq!(
+            parse_claude_initialize_models(
+                r#"{"type":"control_response","response":{"subtype":"error","error":"nope"}}"#
+            ),
+            Some(vec![])
+        );
+        // No label → the id; a blank value is skipped.
+        let models = parse_claude_initialize_models(
+            r#"{"type":"control_response","response":{"response":{"models":[{"value":"claude-x"},{"value":" "}]}}}"#,
+        )
+        .unwrap();
+        assert_eq!(models, vec![AgentModel::new("claude-x", "claude-x")]);
     }
 
     #[test]

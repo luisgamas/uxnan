@@ -4,6 +4,36 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Claude Code's models come from Claude Code.** `agent/models` for Claude is
+  now the list its stream-json `initialize` control request answers — the same
+  request `agent/commands` already asks, with no turn and no tokens — instead
+  of four aliases plus a hand-kept list of fourteen ids. The picker shows the
+  aliases with the model they run today (`Opus 5.5 (latest)` → `claude-opus-5-5`),
+  that concrete model on its own, then the older ids the account can use, with
+  the CLI's own labels and descriptions. A new Claude model appears without a
+  bridge release, and a model the account cannot use is no longer offered:
+  `claude-opus-4-5` and `claude-sonnet-4-5`, which the list carried, are not
+  among the models Claude Code 2.1.293 lists. The list is asked once and reused (refreshed
+  behind the last answer after a minute), so a turn never waits on it.
+- **Reasoning effort is offered with each model's own levels.** They come from
+  the model's `supportedEffortLevels`: Opus 4.6 and Sonnet 4.6 no longer offer
+  `xhigh`, which they do not take, and the one model with no effort (Haiku 4.5)
+  is the one that says so, rather than an id the bridge recognized.
+- **The context window is the one the turn reports.** A Claude turn's usage
+  takes the `contextWindow` its `result` reports for the model it ran on (1M on
+  Haiku 5.5, 200K on Haiku 4.5) instead of a rule keyed on model names.
+- **What a turn with no model runs is marked as the default** — the CLI's own
+  `default` entry decides it — unless `agents.claude-code.model` is set.
+
+### Removed
+
+- The built-in Claude model list in `DEFAULT_DAEMON_CONFIG` and the merge that
+  unioned it with the user's (`mergeAgentModels`). `agents.claude-code.models`
+  keeps working: its ids are added after what the CLI lists. Also gone:
+  `claudeTakesEffort()` and the name-keyed `claudeContextWindow(model)` (now
+  `claudeContextWindow(windows, model)`, reading the turn's report).
 
 ## [0.0.49-alpha.20261007] - 20261007
 ### Fixed
