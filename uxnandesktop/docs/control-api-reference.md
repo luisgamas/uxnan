@@ -33,6 +33,7 @@ uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
+uxnan-cli view render <file.html> [--width <px>] --out <file.png>   # how an agent's view page renders
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
 uxnan-cli skills get control [--full]           # this guide / the full reference
 Global: --json (stable machine output), --timeout <seconds>
@@ -68,6 +69,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `automation/show` (MCP tool `automation_show`) — Describe one saved automation in full: what `automation/list` gives plus each step's prompt, dependencies, failure handling and whether it approves its own tool use, and the run policy (overlap, ceilings, notifications, and the precondition that may make a run do nothing).
 - `browser/status` (MCP tool `browser_status`) — Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask).
 - `browser/snapshot` (MCP tool `browser_snapshot`) — Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type.
+- `view/render` (MCP tool `view_render`) — Render a prepared view page off screen and return a screenshot, its console messages and its height, so you can check the page before it is shown.
 - `browser/screenshot` (MCP tool `browser_screenshot`) — Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show.
 - `browser/console` (MCP tool `browser_console`) — Read what your workspace's browser page logged to its console since it loaded — messages, warnings, errors and uncaught exceptions — to debug the web app you are building.
 - `browser/wait` (MCP tool `browser_wait`) — Wait until your workspace's browser page shows some text (case-insensitive), or the time runs out — for content that appears after a request or an animation, instead of guessing a delay.
@@ -1056,6 +1058,48 @@ Read your workspace's browser page as a compact outline of what is visible — h
   "id": 1,
   "method": "browser/snapshot",
   "params": {}
+}
+```
+
+### `view/render`
+
+Render a prepared view page off screen and return a screenshot, its console messages and its height, so you can check the page before it is shown.
+
+- **Group:** `read` · read-only
+- **MCP:** `view_render`
+- **CLI:** `uxnan-cli view render <file.html> [--width <px>] --out <file.png>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `html` | string | yes | The prepared HTML page, including its CSP and bootstrap. At most 2 MiB in UTF-8. |
+| `width` | integer | no | The off-screen webview width in CSS pixels. Default 720. |
+
+**Result**
+
+- `image` (object) — The capture.
+  - `mimeType` (string) — `image/png`.
+  - `width` (integer) — Width in pixels.
+  - `height` (integer) — Height in pixels.
+  - `data` (string) — The PNG, base64. MCP callers receive it as an image content block instead.
+- `contentHeight` (integer) — The page document's content height in CSS pixels; 0 when the page did not report before timeout.
+- `console` (array of object) — Up to 50 console messages, oldest first.
+  - `level` (string) — `error`, `warning` or `log`.
+  - `text` (string) — Console or uncaught-error text, at most 500 characters.
+- `timedOut` (boolean) — Whether the page did not produce a report within 10 seconds.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "view/render",
+  "params": {
+    "html": "<!doctype html><html><body><h1>Preview</h1></body></html>",
+    "width": 720
+  }
 }
 ```
 
@@ -2294,11 +2338,11 @@ Send a whole message to a chat, exactly as if it were typed in the chat tab or o
 
 ### `chat/read`
 
-Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end.
+Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end (pass `answerFrom` to read another part; `answerLength` is its full size), and a failed turn says why in `error`.
 
 - **Group:** `converse` · read-only
 - **MCP:** `chat_read`
-- **CLI:** `uxnan-cli chat read <chat> [--turns <n>]`
+- **CLI:** `uxnan-cli chat read <chat> [--turns <n>] [--answer-from <byte>]`
 
 **Params**
 
@@ -2306,6 +2350,7 @@ Read what a chat has said: its newest turns (1 by default, at most 20), each wit
 |---|---|---|---|
 | `chat` | string | yes | The chat, as `id:<id>` from `chat/list` or `chat/start`. |
 | `turns` | integer | no | How many of its newest turns. Default 1, at most 20. |
+| `answerFrom` | integer | no | Read each answer from this byte on (16 KiB at most) instead of its last 16 KiB — page with `answerFrom` 0, 16384, … up to `answerLength`. |
 
 **Result**
 
@@ -2315,7 +2360,10 @@ Read what a chat has said: its newest turns (1 by default, at most 20), each wit
   - `id` (string) — The turn's id.
   - `status` (string) — The bridge's status for it (`streaming`, `completed`, `error`, `aborted`, `queued`, …).
   - `prompt` (string) — The message it was given.
-  - `answer` (string) — The agent's answer so far (its end, when longer than 16 KiB).
+  - `answer` (string) — The agent's answer so far: 16 KiB of it at most — its end, or the part from `answerFrom`; a cut side is marked `…`.
+  - `answerFrom` (integer) — The byte of the whole answer the returned part starts at.
+  - `answerLength` (integer) — The whole answer's size, in bytes.
+  - `error` (string) — Why the turn failed, when the bridge reported an error (absent otherwise).
   - `steps` (array of string) — The steps it took, in order.
 
 **Request**

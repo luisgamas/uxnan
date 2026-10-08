@@ -306,7 +306,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       // `false` asks it to reject with `AgentBusy` instead.
       ...optionalQueue(p),
       ...optionalClientTurnId(p),
-      // Sent from a desktop: its agents get that desktop's tools.
+      // Sent from a desktop: its agents get that desktop's MCP server.
       ...(session?.local !== undefined && isDesktopClientId(session.local)
         ? { desktopClient: session.local }
         : {}),

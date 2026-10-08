@@ -131,15 +131,23 @@ export const COMPONENTS = [
       { file: 'uxnandesktop/src-tauri/tauri.conf.json', adapter: 'json' },
       { file: 'uxnandesktop/src-tauri/Cargo.toml', adapter: 'cargo-toml' },
       { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-desktop' },
-      // The two workspace members take `version.workspace = true` from the
-      // root Cargo.toml (the `[workspace.package]` line is the one the
-      // cargo-toml adapter rewrites), so only their lock entries need a hand.
-      {
+      // The workspace members take `version.workspace = true` from the root
+      // Cargo.toml (the `[workspace.package]` line is the one the cargo-toml
+      // adapter rewrites), so only their lock entries need a hand. Every member
+      // is listed: `components.test.mjs` reads the workspace and fails on one
+      // that is missing (four were, and 0.0.78 shipped them at 0.0.75).
+      ...[
+        'uxnan-control-protocol',
+        'uxnan-control-client',
+        'uxnan-cli',
+        'uxnan-workspace-engine',
+        'uxnan-host-protocol',
+        'uxnan-host',
+      ].map((crate) => ({
         file: 'uxnandesktop/src-tauri/Cargo.lock',
         adapter: 'cargo-lock',
-        crate: 'uxnan-control-protocol',
-      },
-      { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-cli' },
+        crate,
+      })),
       { file: 'uxnandesktop/package.json', adapter: 'json' },
       { file: 'uxnandesktop/package-lock.json', adapter: 'lock-root' },
     ],

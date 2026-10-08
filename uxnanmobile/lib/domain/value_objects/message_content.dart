@@ -6,6 +6,7 @@ import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
+import 'package:uxnan/domain/value_objects/agent_view.dart';
 
 /// A single block of message content (spec 02a §6.2).
 ///
@@ -40,11 +41,40 @@ sealed class MessageContent {
       PlanContent.typeName => PlanContent.fromJson(json),
       SubagentContent.typeName => SubagentContent.fromJson(json),
       QuestionContent.typeName => QuestionContent.fromJson(json),
+      ViewContent.typeName => _decodeView(json),
       _ => UnknownContent(
           type: json['type'] is String ? json['type'] as String : 'unknown',
           raw: json,
         ),
     };
+  }
+
+  static MessageContent _decodeView(Map<String, dynamic> json) {
+    final id = json['viewId'];
+    if (id is! String || !RegExp(r'^[0-9a-f]{32}$').hasMatch(id)) {
+      return UnknownContent(type: ViewContent.typeName, raw: json);
+    }
+    final title = json['title'];
+    final bytes = json['bytes'];
+    final height = json['height'];
+    final blockId = json['blockId'];
+    if (title is! String ||
+        title.isEmpty ||
+        title.length > viewMaxTitleLength ||
+        bytes is! int ||
+        bytes < 0 ||
+        bytes > viewMaxHtmlBytes ||
+        (height != null && (height is! num || !height.isFinite)) ||
+        (blockId != null && blockId is! String)) {
+      return UnknownContent(type: ViewContent.typeName, raw: json);
+    }
+    return ViewContent(
+      viewId: id,
+      title: title,
+      bytes: bytes,
+      height: height == null ? null : clampViewHeight(height as num),
+      blockId: blockId as String?,
+    );
   }
 
   /// The wire `type` discriminator.
@@ -55,6 +85,45 @@ sealed class MessageContent {
 
   /// Serializes this content to JSON.
   Map<String, dynamic> toJson();
+}
+
+/// A bridge-owned interactive agent page. The HTML is fetched separately via
+/// `view/read`; it never travels in a message block.
+class ViewContent extends MessageContent with EquatableMixin {
+  const ViewContent({
+    required this.viewId,
+    required this.title,
+    required this.bytes,
+    this.height,
+    this.blockId,
+  });
+
+  final String viewId;
+  final String title;
+  final int bytes;
+  final int? height;
+  final String? blockId;
+
+  static const String typeName = 'view';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => title;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'viewId': viewId,
+        'title': title,
+        'bytes': bytes,
+        if (height != null) 'height': height,
+        if (blockId != null) 'blockId': blockId,
+      };
+
+  @override
+  List<Object?> get props => [viewId, title, bytes, height, blockId];
 }
 
 /// Zero-text metadata separating native assistant messages inside one turn.

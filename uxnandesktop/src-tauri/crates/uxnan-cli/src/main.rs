@@ -141,6 +141,11 @@ enum Command {
         #[command(subcommand)]
         cmd: BrowserCmd,
     },
+    /// Agent views: pages agents show in chats.
+    View {
+        #[command(subcommand)]
+        cmd: ViewCmd,
+    },
     /// Call any catalog entry by its method name.
     Rpc {
         /// The method, e.g. `worktree/list`.
@@ -323,6 +328,10 @@ enum ChatCmd {
         /// How many of its newest turns (default 1, at most 20).
         #[arg(long, default_value_t = 1)]
         turns: u64,
+        /// Read each answer from this byte on instead of its last 16 KiB
+        /// (page with 0, 16384, … up to the `answerLength` it reports).
+        #[arg(long)]
+        answer_from: Option<u64>,
     },
     /// Wait until a chat's turn ends (`idle`) or it asks something (`waiting`).
     Wait {
@@ -574,6 +583,21 @@ enum FileCmd {
 }
 
 #[derive(Subcommand)]
+enum ViewCmd {
+    /// Render a prepared view page off screen and save a PNG of it.
+    Render {
+        /// The page: an HTML file, as the bridge prepares it.
+        file: std::path::PathBuf,
+        /// Width to render at, CSS pixels (240–1600, default 720).
+        #[arg(long)]
+        width: Option<u32>,
+        /// Where to write the PNG.
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum BrowserCmd {
     /// Open a URL in the integrated browser.
     Open { url: String },
@@ -802,8 +826,16 @@ fn plan(command: Command) -> Result<Plan, String> {
                 }
                 with("chat/start", p)
             }
-            ChatCmd::Read { chat, turns } => {
-                with("chat/read", json!({ "chat": chat, "turns": turns }))
+            ChatCmd::Read {
+                chat,
+                turns,
+                answer_from,
+            } => {
+                let mut params = json!({ "chat": chat, "turns": turns });
+                if let Some(from) = answer_from {
+                    params["answerFrom"] = json!(from);
+                }
+                with("chat/read", params)
             }
             ChatCmd::Wait {
                 chat,
@@ -1109,6 +1141,21 @@ fn plan(command: Command) -> Result<Plan, String> {
                     p["worktree"] = json!(w);
                 }
                 with("file/diff", p)
+            }
+        },
+        Command::View { cmd } => match cmd {
+            ViewCmd::Render { file, width, out } => {
+                let html = std::fs::read_to_string(&file)
+                    .map_err(|e| format!("cannot read page {}: {e}", file.display()))?;
+                let mut params = json!({ "html": html });
+                if let Some(w) = width {
+                    params["width"] = json!(w);
+                }
+                Ok(Plan::Save {
+                    method: "view/render",
+                    params,
+                    out,
+                })
             }
         },
         Command::Browser { cmd } => match cmd {

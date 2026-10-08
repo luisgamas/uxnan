@@ -341,37 +341,132 @@ installed while the bridge runs gets its adapter built where it was found, and
 every client hears it (`stream/agents/updated`). `agent/doctor` lists, per
 agent, the command it runs and every location it checked.
 
-### Uxnan Desktop's tools (`desktop/attach`)
+### MCP servers for every run: the bridge's own and the desktop's
 
-When Uxnan Desktop is connected over the local control channel it attaches its
-own MCP server — the one it hands the agents it launches in its terminals
-(browser, terminals, other agents, the control catalog) — with
-`desktop/attach { mcpUrl, token }` (accepted only from a local client, and only
-for a loopback `/mcp` endpoint). Turns started from then on carry
-`SendTurnOptions.desktopTools`; the bridge forgets them when that client
-disconnects. An adapter registers the server **for its own conversation only**,
-under the same name the desktop's launches use (`uxnan-browser`), with the token
-never in argv or a file (only in the environment or in a message on the agent's
-stdin) and the conversation's folder in the `x-uxnan-cwd` header,
-percent-encoded (`encodeCwdHeader`) so any path is a valid header value — the
-desktop decodes it and scopes the agent to that project. A change of attachment
-(attached, detached, a new token after a desktop restart) reaches the next turn:
+Every turn carries one ordered list, `SendTurnOptions.mcpServers`
+(`AgentMcpServer { name, url, token }`):
+
+- **`uxnan` — the bridge's own server, always.** A minimal Streamable HTTP MCP
+  server on `127.0.0.1` (random port, `/mcp`), with a fresh 32-byte bearer
+  token per daemon start (`src/views/mcp-server.ts`). It serves `view_show`
+  (see *Agent views* below), so it is there with or without a desktop.
+- **`uxnan-browser` — Uxnan Desktop's server, while one is attached.** The
+  desktop attaches the server it hands the agents in its terminals (browser,
+  terminals, other agents, the control catalog) with
+  `desktop/attach { mcpUrl, token }` — accepted only from a local client and
+  only for a loopback `/mcp` endpoint. A turn sent by a desktop gets that
+  desktop's; a phone's turn gets the one attached longest; a client's entry
+  goes when it disconnects.
+
+An adapter registers **every server of the list for its own conversation
+only**, under the server's `name`, with the token never in argv or a file (only
+in the environment or in a message on the agent's stdin) and the conversation's
+folder in the `x-uxnan-cwd` header (`UXNAN_CWD_HEADER`), percent-encoded
+(`encodeCwdHeader`) so any path is a valid header value. A changed list
+(attached, detached, a new token) reaches the next turn: resident processes
+recycle, server-backed agents get the new per-thread config.
 
 | Agent | Mechanism | Verified |
 |---|---|---|
-| **Claude Code** | `--mcp-config '<json>'` per run; `${UXNAN_MCP_TOKEN}` / `${UXNAN_THREAD_CWD}` in its headers expanded from the env at load | claude 2.1.282: connects, lists and calls, both headers expanded |
-| **Codex** | per-thread `config` on `thread/start` / `thread/resume` (`mcp_servers.uxnan-browser` with `http_headers`) — one app-server serves every thread, so the override is per thread, not per process | codex-cli 0.156.1: connects for that thread only; the token reaches neither the rollout, the state DB nor the logs |
-| **OpenCode** | `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve` (merged over the user's config), token by reference (`{env:UXNAN_MCP_TOKEN}`); an idle server restarts when the attachment changes | opencode 2.0.16: connects once the folder loads, sends both headers, calls |
-| **pi** | no MCP client of its own, so the bridge ships one: `-e dist/src/adapters/pi-desktop-extension.js` (Streamable HTTP over `fetch`, one pi tool per MCP tool), fed `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` through the env; the resident process recycles on a change of attachment. **Not in the read-only posture** (`--tools` is a strict allowlist, and the tools act) | pi 0.85.1, through the bridge: the model is offered the tools, a call with arguments reaches the server and its answer ends the turn; the token reaches no session file |
-| **Grok** | ACP `mcpServers` (http variant) on `session/new` / `session/load`, sent only when `initialize` advertises `agentCapabilities.mcpCapabilities.http` | unit-tested against the ACP schema; **not run** against the binary (not installed on the verifying machine) |
-| **Antigravity** | `agy` reads MCP servers only from its user-global `~/.gemini/config/mcp_config.json`, so the running bridge keeps ONE secret-free entry there (`agy mcp add uxnan-browser -- <node> <cli.js> mcp-proxy`, `agents/global-mcp-entry.ts`): a stdio proxy (`adapters/mcp-proxy.ts`) that reads `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` from the environment the bridge gives `agy` while the desktop is attached, and outside a bridge run answers as a server with no tools. The resident process recycles on a change of attachment. Removed by `uninstall-service` | agy 1.2.10, real turn: the tools are discovered through the proxy and a call answers, token and folder on every request |
-| **Zero** | **not reachable.** `zero acp` ignores ACP `mcpServers` (the bridge still sends them the moment it advertises HTTP MCP — same code path as Grok), and its stdio MCP servers run inside its macOS sandbox with the network denied, so a proxy cannot reach the desktop either | zero 0.9.0: `initialize` advertises no `mcpCapabilities`; a stdio server's loopback HTTP and Unix-socket connections fail with `EPERM` (`ZERO_SANDBOXED=1`) |
+| **Claude Code** | `--mcp-config '<json>'` per run, one entry per server; `${UXNAN_MCP_TOKEN_<n>}` / `${UXNAN_THREAD_CWD}` in its headers expanded from the env at load | claude 2.1.282: connects, lists and calls, both headers expanded. 2026-10-08, claude 2.1.293 through a scratch bridge: `view_show` called, `view` block out |
+| **Codex** | per-thread `config` on `thread/start` / `thread/resume` (`mcp_servers.<name>` with `http_headers`) — one app-server serves every thread, so the override is per thread, not per process | codex-cli 0.156.1: connects for that thread only; the token reaches neither the rollout, the state DB nor the logs. 2026-10-08, 0.161.0: `view_show` called, `view` block out |
+| **OpenCode** | `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve` (merged over the user's config), one entry per server, tokens by reference (`{env:UXNAN_MCP_TOKEN_<n>}`); an idle server restarts when the list changes | opencode 2.0.16: connects once the folder loads, sends both headers, calls. 2026-10-08, 2.0.24 (`opencode/mimo-v2.6-flash-free`): the model reaches the tool from its code-mode `execute` (`tools.uxnan.view_show(...)`) — the result still carries the marker, so the step becomes the view |
+| **pi** | the bridge's extension, `-e dist/src/adapters/pi-desktop-extension.js` (Streamable HTTP over `fetch`, one pi tool per MCP tool), fed `UXNAN_MCP_SERVERS` / `UXNAN_THREAD_CWD` through the env, so nothing is written to pi's own MCP config (pi 1.1.0 does ship a client of its own — `pi mcp add`, `~/.pi/agent/mcp.json` — which the bridge leaves alone); the resident process recycles on a change. **Not in the read-only posture** (`--tools` is a strict allowlist, and the tools act) | pi 0.85.1, through the bridge: the model is offered the tools, a call with arguments reaches the server and its answer ends the turn; the token reaches no session file. 2026-10-08, pi 1.1.0 (`openrouter/cohere/north-mini-code:free`): `view_show` called, `view` block out |
+| **Grok** | ACP `mcpServers` (http variant, one per server) on `session/new` / `session/load`, sent only when `initialize` advertises `agentCapabilities.mcpCapabilities.http` | 2026-10-08, grok 1.0.46 through a scratch bridge: the model finds `uxnan__view_show` with its `SearchTool` and calls it with `UseTool`; the result arrives only in the update's `rawOutput` (`{ type: 'MCP', output: { OkayOutput } }`), which the bridge now reads when `content` has no text |
+| **Antigravity** | `agy` reads MCP servers only from its user-global `~/.gemini/config/mcp_config.json`, so the running bridge keeps ONE secret-free entry there (`agy mcp add uxnan-browser -- <node> <cli.js> mcp-proxy`, `agents/global-mcp-entry.ts`): a stdio proxy (`adapters/mcp-proxy.ts`) that fronts every server of `UXNAN_MCP_SERVERS` from the environment the bridge gives `agy` (and, for an `agy` Uxnan Desktop launches in a terminal, the desktop's `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` pair), and outside either answers as a server with no tools. The resident process recycles on a change. Removed by `uninstall-service` | agy 1.2.10, real turn: the tools are discovered through the proxy and a call answers, token and folder on every request. **`view_show` not yet run live** — the global entry belongs to the installed daemon and points at its proxy (`bridge/FOR-DEV.md`) |
+| **Zero** | **not reachable.** `zero acp` ignores ACP `mcpServers` (the bridge still sends them the moment it advertises HTTP MCP — same code path as Grok), and its stdio MCP servers run inside its macOS sandbox with the network denied, so a proxy cannot reach either server. No views on Zero (`bridge/FOR-DEV.md`) | zero 0.9.0: `initialize` advertises no `mcpCapabilities`; a stdio server's loopback HTTP and Unix-socket connections fail with `EPERM` (`ZERO_SANDBOXED=1`) |
 
 The proxy entry is only ever written by the long-running daemon (`uxnan-bridge
 start`), never by a test or a short-lived command, and is left alone once it
 already points at this bridge. Launched from one of Uxnan Desktop's own
 terminals, the same proxy forwards that terminal's `UXNAN_AGENT_ID`, so the
 desktop scopes it like any agent it launched.
+
+### Agent views (`view_show`)
+
+`view_show { title, html? | path?, height? }` lets an agent show a
+self-contained HTML page — a chart, table, diagram, comparison, mockup or small
+tool — inline in the chat, on the desktop and on the phone. The tool's
+description and the server's `instructions` are how the agent learns it has it
+and how to use it (self-contained, no network, light, the theme variables).
+`path` is read from the conversation's folder with the workspace path guard;
+pages are capped at 512 KiB, prepared (the no-network CSP, charset, viewport
+and the view bootstrap put first, before anything the agent wrote — a `<meta>`
+policy only governs what follows it) and stored in `~/.uxnan/views/` (newest
+500 / 256 MiB kept). The answer carries `uxnan-view:<viewId>`.
+
+**How an agent knows to show one.** The person never names the tool, so the
+tool's description and the server's `instructions` state the rule — numbers to
+compare, a trend, a breakdown, a ranking, a schedule, a diagram or a mockup go
+in a view, on the agent's own initiative — rather than allowing it as an
+option. Codex does not put an MCP server's `instructions` in front of its model,
+so for Codex they travel as the thread's `developerInstructions` on
+`thread/start` / `thread/resume` (`AgentMcpServer.instructions`,
+`codexDeveloperInstructions`); nothing is ever added to the person's message.
+Measured on 2026-10-08 with an ordinary question ("this week I spent these
+tokens per day: …; how does my week look? compare them"), a view shown without
+being asked:
+
+| Agent (model) | Optional wording | Rule, MCP channel only | Rule + Codex developer instructions |
+|---|---|---|---|
+| Claude Code (haiku 5.5) | 0/1 | 1/1 | — |
+| Codex (gpt-6-luna) | 0/1 | 0/3 | 3/3 |
+| OpenCode (`space-bunny-free` / `mimo-v2.6-flash-free`) | 0/1 | 7/10 (tool description only) | with the session instruction entry: most, not all (see below) |
+| pi (`openrouter/cohere/north-mini-code:free`) | — | 1/1 | — |
+| Grok | — | 1/1 | — |
+
+**OpenCode gets them per session.** OpenCode 2 never shows its model an MCP
+tool directly (they sit behind its code-mode `execute` tool) and drops both an
+MCP server's `instructions` and a prompt's `system` field (accepted, ignored —
+asked, the model says it sees neither; opencode 2.0.24). It does read a
+session **instruction entry**: the bridge keeps the run's servers'
+instructions as the `uxnan` entry of each session
+(`PUT /api/experimental/session/:id/instructions/entries/uxnan`, sent only when
+it changes, removed when the run has none). OpenCode 1 takes them as the
+prompt's `system`. Measured with free models on ordinary questions: a view on
+most of them, not all — `opencode/space-bunny-free` and
+`opencode/mimo-v2.6-flash-free` each skip one now and then; a comparison of a
+few options is where every model hesitates most.
+
+**Checking a page first: `view_check`.** Same `html` / `path` as `view_show`,
+nothing stored or shown. It prepares the page exactly as `view_show` would and
+answers with what will go wrong — what the no-network policy blocks (remote
+scripts, styles, images, fonts; `fetch` and friends), whether the page follows
+the theme — and, while a desktop is attached, how it renders: the bridge sends
+the prepared page to the desktop's `view_render` (control catalog
+`view/render`, through its MCP server) and returns its screenshot as an image,
+its console errors and its content height (`views/view-check.ts`). With no
+desktop, the answer says it checked the source only. The server's instructions
+tell agents to check anything beyond a simple page first.
+
+**Bundled libraries, no network.** A page keeps its no-network policy, so it
+cannot load a library from a CDN; instead it names one the bridge ships —
+`<script src="uxnan:chart.js"></script>` — and the bridge puts the library's
+code in its place when it prepares the page (`views/view-libraries.ts`). The
+page works offline and over the relay, loads at once, and reaches nothing.
+The tool's description lists what there is. Today: Chart.js (MIT, ~200 KB,
+global `Chart`). A library is added only when it is permissively licensed,
+maintained and small enough to ride in each view that uses it — Mermaid, at
+122 MB unpacked, is not (`FOR-DEV.md`). The 512 KiB cap counts the agent's
+HTML, not the bundled code.
+
+The step becomes the view in **one place**, `views/convert-view-block.ts`, run
+by the `AgentManager` on every adapter's blocks: a finished, non-error tool
+block whose output carries the marker of a view this bridge just made becomes a
+`view` block (same `blockId`) — **whatever the tool is called**, because agents
+reach it under their own names and wrappers (`mcp__uxnan__view_show`, Codex's
+`view_show`, OpenCode's code-mode `execute`, Grok's `UseTool`). Each view is
+claimed once, so a later step that merely prints an old marker stays a step. A
+`view_show` step that is running, failed or names no live view stays a tool
+step, with its `html` replaced by `htmlBytes`. Clients fetch the page with
+`view/read`.
+
+The probe that verified the table above (2026-10-08) is a scratch bridge from
+`bridge/dist` (`startBridge({ baseDir: <tmp>, secretStore: new
+InMemorySecretStore() })`, no LAN, relay or global entries) that sends each
+agent "call view_show once" through `thread/start` + `turn/send` and checks for
+a `view` block and a `view/read` page that starts with the policy — the real
+CLIs with the user's own sign-ins, nothing written to their configs.
 
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on

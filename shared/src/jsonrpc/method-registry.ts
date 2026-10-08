@@ -22,6 +22,8 @@ export const METHOD_NAMES = [
   'turn/send',
   'turn/cancel',
   'turn/attachment',
+  // Agent views
+  'view/read',
   // Message queue
   'queue/resume',
   'queue/clear',

@@ -40,7 +40,7 @@ import type {
   NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
+import { UXNAN_CWD_HEADER, encodeCwdHeader, type AgentMcpServer } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { listClaudeSessions } from './native-sessions.js';
@@ -564,24 +564,26 @@ function isMissingSession(errors: string[] | undefined): boolean {
 /** The environment variables a run's desktop MCP config expands: the bearer
  *  token (the same name the desktop's own launches use) and the conversation's
  *  working directory, which the desktop scopes the agent to. */
-export const DESKTOP_TOKEN_ENV = 'UXNAN_MCP_TOKEN';
-export const DESKTOP_CWD_ENV = 'UXNAN_THREAD_CWD';
+export const UXNAN_CWD_ENV = 'UXNAN_THREAD_CWD';
 
 /** `--mcp-config` for a run with Uxnan Desktop's tools: the desktop's MCP
  *  endpoint under the name its terminal agents know, with the token and the
  *  cwd read from the environment when Claude loads it. */
-export function claudeDesktopMcpConfig(mcpUrl: string): string {
+export function claudeMcpConfig(servers: AgentMcpServer[]): string {
   return JSON.stringify({
-    mcpServers: {
-      [DESKTOP_MCP_SERVER_NAME]: {
-        type: 'http',
-        url: mcpUrl,
-        headers: {
-          Authorization: `Bearer \${${DESKTOP_TOKEN_ENV}}`,
-          [DESKTOP_CWD_HEADER]: `\${${DESKTOP_CWD_ENV}}`,
+    mcpServers: Object.fromEntries(
+      servers.map((server, index) => [
+        server.name,
+        {
+          type: 'http',
+          url: server.url,
+          headers: {
+            Authorization: `Bearer \${UXNAN_MCP_TOKEN_${index}}`,
+            [UXNAN_CWD_HEADER]: `\${${UXNAN_CWD_ENV}}`,
+          },
         },
-      },
-    },
+      ]),
+    ),
   });
 }
 
@@ -752,8 +754,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // 2.1.282: a JSON-string `--mcp-config` connects, lists and calls the
     // server, and expands `${VAR}` in its headers from the environment — so the
     // token never reaches argv or a file.
-    const desktop = options.desktopTools;
-    if (desktop) args.push('--mcp-config', claudeDesktopMcpConfig(desktop.mcpUrl));
+    const servers = options.mcpServers ?? [];
+    if (servers.length) args.push('--mcp-config', claudeMcpConfig(servers));
 
     const env: Record<string, string> = {
       ...(hookUrl !== undefined
@@ -763,8 +765,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             UXNAN_HOOK_THREAD_ID: threadId,
           }
         : {}),
-      ...(desktop
-        ? { [DESKTOP_TOKEN_ENV]: desktop.token, [DESKTOP_CWD_ENV]: encodeCwdHeader(cwd ?? '') }
+      ...(servers.length
+        ? {
+            ...Object.fromEntries(
+              servers.map((server, index) => [`UXNAN_MCP_TOKEN_${index}`, server.token]),
+            ),
+            [UXNAN_CWD_ENV]: encodeCwdHeader(cwd ?? ''),
+          }
         : {}),
     };
     const spawnExtra = {

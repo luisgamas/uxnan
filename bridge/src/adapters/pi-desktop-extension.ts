@@ -1,21 +1,20 @@
 /**
- * Uxnan Desktop's tools for pi — a pi extension, loaded with `-e` into the
- * resident `pi --mode rpc` of a conversation while the desktop is attached
- * (architecture/02a §5.8.15). pi has no MCP client of its own, so this file is
- * one: it opens the desktop's MCP server at startup, lists its tools and
- * registers each one as a pi tool whose `execute` is a `tools/call`.
+ * MCP servers for pi — a bridge extension, loaded with `-e` into the resident
+ * `pi --mode rpc` of one conversation. pi 1.1.0 has a built-in MCP client; the
+ * bridge uses this extension to provide run-scoped credentials without writing
+ * its user-global MCP configuration. It lists each server's tools and registers
+ * each as a pi tool whose `execute` is a `tools/call`.
  *
  * It runs **inside pi's process**, not the bridge's, so it imports nothing: pi
  * loads it on its own (through jiti) and hands the factory its extension API.
  * Everything it needs arrives in the environment the bridge spawns pi with —
- * `UXNAN_MCP_URL`, `UXNAN_MCP_TOKEN` and `UXNAN_THREAD_CWD` (the conversation's
- * folder, already percent-encoded for its header) — so the token never reaches
- * argv or a file. Verified against pi 0.85.1: the factory is awaited before the
+ * `UXNAN_MCP_SERVERS` and `UXNAN_THREAD_CWD` (the conversation folder,
+ * percent-encoded for its header) — so credentials never reach argv or a file.
+ * Verified against pi 1.1.0: the factory is awaited before the
  * session starts, the tools reach the model, and a call answers.
  *
- * The MCP client itself is `desktop-mcp-client.ts`, shared with the stdio
- * proxy. A server that cannot be reached registers nothing — pi still starts,
- * without the tools.
+ * The HTTP client is shared with the stdio proxy. A server that cannot be
+ * reached registers nothing — pi still starts with any reachable servers.
  */
 import { DesktopMcpClient, type McpContent, type McpTool } from './desktop-mcp-client.js';
 
@@ -62,34 +61,51 @@ function toPiResult(result: unknown): { content: PiContent[] } {
   return { content: out.length > 0 ? out : [{ type: 'text', text: '(no output)' }] };
 }
 
-export default async function uxnanDesktopTools(pi: PiExtensionApi): Promise<void> {
-  const url = process.env['UXNAN_MCP_URL'];
-  const token = process.env['UXNAN_MCP_TOKEN'];
-  const cwd = process.env['UXNAN_THREAD_CWD'] ?? '';
-  if (!url || !token) return;
-
-  const client = new DesktopMcpClient(url, token, cwd, 'uxnan-pi');
-  let tools: McpTool[];
-  let instructions: string | undefined;
+export default async function uxnanMcpServers(pi: PiExtensionApi): Promise<void> {
+  let servers: { name: string; url: string; token: string }[];
   try {
-    const signal = AbortSignal.timeout(STARTUP_TIMEOUT_MS);
-    ({ instructions } = await client.initialize(signal));
-    tools = await client.listTools(signal);
+    servers = JSON.parse(process.env['UXNAN_MCP_SERVERS'] ?? '[]') as typeof servers;
   } catch {
-    // The desktop is gone or refused us: pi runs without its tools.
     return;
   }
-
+  const cwd = process.env['UXNAN_THREAD_CWD'] ?? '';
+  if (!servers.length) return;
+  const registered: { client: DesktopMcpClient; server: string; tool: McpTool }[] = [];
+  const instructionSet = new Set<string>();
+  for (const server of servers) {
+    if (
+      !server ||
+      typeof server.name !== 'string' ||
+      typeof server.url !== 'string' ||
+      typeof server.token !== 'string'
+    )
+      continue;
+    const client = new DesktopMcpClient(server.url, server.token, cwd, 'uxnan-pi');
+    try {
+      const signal = AbortSignal.timeout(STARTUP_TIMEOUT_MS);
+      const initialized = await client.initialize(signal);
+      if (initialized.instructions) instructionSet.add(initialized.instructions);
+      for (const tool of await client.listTools(signal))
+        registered.push({ client, server: server.name, tool });
+    } catch {
+      /* A disconnected server does not prevent the remaining servers from loading. */
+    }
+  }
+  const counts = new Map<string, number>();
+  for (const item of registered) counts.set(item.tool.name, (counts.get(item.tool.name) ?? 0) + 1);
   let first = true;
-  for (const tool of tools) {
+  for (const item of registered) {
+    const { client, server, tool } = item;
     if (PI_BUILTIN_TOOLS.has(tool.name)) continue;
+    const prefix = server.replace(/[^a-zA-Z0-9_]/g, '_');
+    const name = counts.get(tool.name)! > 1 ? `${prefix}_${tool.name}` : tool.name;
     pi.registerTool({
-      name: tool.name,
+      name,
       label: tool.title ?? tool.name,
       description: tool.description ?? tool.name,
       // The server's own guidance, once — pi adds it to the system prompt while
       // the tool is active.
-      ...(first && instructions ? { promptGuidelines: [instructions] } : {}),
+      ...(first && instructionSet.size ? { promptGuidelines: [...instructionSet] } : {}),
       parameters: tool.inputSchema ?? { type: 'object', properties: {} },
       async execute(_toolCallId, params, signal) {
         return toPiResult(

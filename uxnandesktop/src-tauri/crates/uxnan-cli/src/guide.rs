@@ -457,7 +457,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "chat/open" => "uxnan-cli chat open <chat>",
         "chat/send" => "uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]",
         "chat/start" => "uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--idempotency-key <key>]",
-        "chat/read" => "uxnan-cli chat read <chat> [--turns <n>]",
+        "chat/read" => "uxnan-cli chat read <chat> [--turns <n>] [--answer-from <byte>]",
         "chat/wait" => "uxnan-cli chat wait <chat> [--for idle|waiting] [--timeout <seconds>]",
         "run/list" => "uxnan-cli run ls",
         "run/show" => "uxnan-cli run show <run-id>",
@@ -480,6 +480,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "browser/status" => "uxnan-cli browser status",
         "browser/snapshot" => "uxnan-cli browser snapshot",
         "browser/screenshot" => "uxnan-cli browser screenshot --out <file.png>",
+        "view/render" => "uxnan-cli view render <file.html> [--width <px>] --out <file.png>",
         "browser/console" => "uxnan-cli browser console [--since <n>] [--level all|warn|error]",
         "browser/wait" => "uxnan-cli browser wait <text> [--for <seconds>]",
         "browser/click" => "uxnan-cli browser click <ref> [--snapshot]",
@@ -626,6 +627,7 @@ uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
+uxnan-cli view render <file.html> [--width <px>] --out <file.png>   # how an agent's view page renders
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
 uxnan-cli skills get control [--full]           # this guide / the full reference
 Global: --json (stable machine output), --timeout <seconds>

@@ -19,4 +19,5 @@ pub mod run;
 pub mod status;
 pub mod terminal;
 pub mod ui;
+pub mod view;
 pub mod worktree;

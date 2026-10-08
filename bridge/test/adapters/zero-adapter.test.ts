@@ -431,6 +431,22 @@ test('ZeroAdapter loads an adopted session instead of opening a new one', async 
   assert.equal(adapter.nativeSessionId('t1'), 'stored_sess');
 });
 
+test('Zero receives no MCP servers because its driven ACP surface cannot reach them', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  const done = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hello',
+    mcpServers: [{ name: 'uxnan', url: 'http://127.0.0.1:1/mcp', token: 'never-sent' }],
+  });
+  await done;
+  assert.deepEqual(server.sent.find((m) => m.method === 'session/new')?.params.mcpServers, []);
+});
+
 test('ZeroAdapter opens a fresh session when the adopted one cannot be loaded', async () => {
   const { adapter, server } = setup();
   server.loadFails = true;

@@ -40,12 +40,12 @@ import type {
   AgentModel,
   ApprovalDecision,
   QuestionItem,
-  DesktopTools,
+  AgentMcpServer,
   GenerateTitleOptions,
   NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
+import { UXNAN_CWD_HEADER, encodeCwdHeader } from '@uxnan/shared';
 import { createHash } from 'node:crypto';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
@@ -166,38 +166,48 @@ const COMMANDS_TTL_MS = 60_000;
 const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
 
 /**
- * Uxnan Desktop's tools for the `opencode serve` of one folder: the desktop's
- * MCP server merged over the user's config (`OPENCODE_CONFIG_CONTENT`), the
- * token read by OpenCode from `UXNAN_MCP_TOKEN` (`{env:…}`) and the folder in
- * `x-uxnan-cwd` — one server per folder, so the header is that folder's. The
- * same mechanism the desktop uses for the OpenCode it launches in a terminal.
+ * The run's MCP servers for the `opencode serve` of one folder, merged over
+ * the user's config (`OPENCODE_CONFIG_CONTENT`). Each token is read by
+ * OpenCode from an indexed environment reference, and every server gets the
+ * conversation folder in `x-uxnan-cwd`. A changed list restarts an idle server.
  * Verified against opencode 2.0.16: the server connects once the folder loads
- * and sends both headers. Empty without desktop tools.
+ * and sends both headers. Empty without MCP servers.
  */
-export function openCodeDesktopEnv(
-  desktop: DesktopTools | undefined,
+export function openCodeMcpEnv(
+  servers: AgentMcpServer[] | undefined,
   cwd: string,
 ): Record<string, string> {
-  if (!desktop) return {};
+  if (!servers?.length) return {};
+  const tokens: Record<string, string> = {};
   const config = {
-    mcp: {
-      [DESKTOP_MCP_SERVER_NAME]: {
-        type: 'remote',
-        url: desktop.mcpUrl,
-        headers: {
-          Authorization: `Bearer {env:UXNAN_MCP_TOKEN}`,
-          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
-        },
-      },
-    },
+    mcp: Object.fromEntries(
+      servers.map((server, index) => {
+        const tokenKey = `UXNAN_MCP_TOKEN_${index}`;
+        tokens[tokenKey] = server.token;
+        return [
+          server.name,
+          {
+            type: 'remote',
+            url: server.url,
+            headers: {
+              Authorization: `Bearer {env:${tokenKey}}`,
+              [UXNAN_CWD_HEADER]: encodeCwdHeader(cwd),
+            },
+          },
+        ];
+      }),
+    ),
   };
-  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(config), UXNAN_MCP_TOKEN: desktop.token };
+  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(config), ...tokens };
 }
 
 /** What a folder's server was started with, to tell when it must restart. */
-function toolsFingerprint(desktop: DesktopTools | undefined): string {
-  if (!desktop) return '';
-  return `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`;
+function toolsFingerprint(servers: AgentMcpServer[] | undefined): string {
+  if (!servers?.length) return '';
+  return createHash('sha256')
+    .update(JSON.stringify(servers.map((s) => [s.name, s.url, s.token])))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /** An in-flight turn's mutable state, keyed by the OpenCode session id. */
@@ -250,9 +260,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #serverFactory: OpenCodeAdapterOptions['serverFactory'];
   /** cwd → the server for that project directory (created, maybe not started yet). */
   readonly #serverByCwd = new Map<string, Promise<IOpenCodeServer>>();
-  /** cwd → the desktop tools the next turn there wants (see `sendTurn`). */
-  readonly #wantedTools = new Map<string, DesktopTools | undefined>();
-  /** cwd → fingerprint of the desktop tools its server was started with. */
+  /** cwd → the MCP servers the next turn there wants (see `sendTurn`). */
+  readonly #wantedTools = new Map<string, AgentMcpServer[] | undefined>();
+  /** cwd → fingerprint of the MCP servers its server was started with. */
   readonly #toolsByCwd = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
   readonly #runBySession = new Map<string, ActiveRun>();
@@ -366,10 +376,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const variant = reasoningValue(options);
     void this.loadContextWindows();
 
-    // A folder's server carries the desktop's tools it was started with; when
+    // A folder's server carries the MCP servers it was started with; when
     // they changed (attached, detached, a new token) and nothing runs there,
     // restart it — sessions are OpenCode's own, so the thread keeps its history.
-    await this.#refreshServerTools(cwd, options.desktopTools);
+    await this.#refreshServerTools(cwd, options.mcpServers);
 
     let server: IOpenCodeServer;
     try {
@@ -471,12 +481,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     );
 
     try {
+      // The run's servers' instructions: OpenCode reads them from neither the
+      // servers nor anywhere else the bridge controls but the prompt itself.
+      const system = (options.mcpServers ?? [])
+        .map((server) => server.instructions?.trim())
+        .filter((value): value is string => !!value)
+        .join('\n\n');
       if (options.command) {
         // The server runs its own commands and skills: it expands the template
         // (or loads the skill) itself, and the turn streams like a prompt.
         const { name } = options.command;
         const known = (await this.#commandsFor(cwd).catch(() => [])).find((c) => c.name === name);
         await server.runCommand(sessionId, {
+          ...(system ? { system } : {}),
           name,
           args: options.command.args?.trim() ?? '',
           skill: known?.skill ?? false,
@@ -488,6 +505,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } else {
         await server.prompt(sessionId, {
           text,
+          ...(system ? { system } : {}),
           agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
@@ -612,11 +630,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return protocolFor(await detectOpenCodeMajor(this.#spawn, this.#binaryPath, cwd));
   }
 
-  /** Closes a folder's idle server when the desktop's tools it holds are not
+  /** Closes a folder's idle server when the MCP servers it holds are not
    *  the ones wanted now, so the next start carries the right ones. */
-  async #refreshServerTools(cwd: string, desktop: DesktopTools | undefined): Promise<void> {
-    const wanted = toolsFingerprint(desktop);
-    this.#wantedTools.set(cwd, desktop);
+  async #refreshServerTools(cwd: string, servers: AgentMcpServer[] | undefined): Promise<void> {
+    const wanted = toolsFingerprint(servers);
+    this.#wantedTools.set(cwd, servers);
     if (!this.#serverByCwd.has(cwd)) return;
     if ((this.#toolsByCwd.get(cwd) ?? '') === wanted) return;
     const busy = [...this.#active.values()].some((run) => run.cwd === cwd && !run.finished);
@@ -631,10 +649,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   #serverFor(cwd: string): Promise<IOpenCodeServer> {
     let pending = this.#serverByCwd.get(cwd);
     if (!pending) {
-      const desktop = this.#wantedTools.get(cwd);
-      this.#toolsByCwd.set(cwd, toolsFingerprint(desktop));
+      const servers = this.#wantedTools.get(cwd);
+      this.#toolsByCwd.set(cwd, toolsFingerprint(servers));
       pending = (async () => {
-        const env = openCodeDesktopEnv(desktop, cwd);
+        const env = openCodeMcpEnv(servers, cwd);
         const server = this.#serverFactory
           ? this.#serverFactory(cwd)
           : createOpenCodeServer(await this.#protocol(cwd), {

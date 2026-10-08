@@ -24,7 +24,7 @@ test('only a local client attaches desktop tools, and only a loopback endpoint',
 
     const fromPhone = (await call(TOOLS, PHONE)) as { error?: { code: number } };
     assert.equal(fromPhone.error?.code, -32001);
-    assert.equal(bridge.context.agentManager.desktopToolsAttached, false);
+    assert.equal(bridge.context.agentManager.desktopMcpServerAttached, false);
 
     const remote = (await call({ ...TOOLS, mcpUrl: 'http://10.0.0.5:51234/mcp' }, LOCAL)) as {
       error?: { code: number };
@@ -33,11 +33,11 @@ test('only a local client attaches desktop tools, and only a loopback endpoint',
 
     const ok = (await call(TOOLS, LOCAL)) as { result?: { attached: boolean } };
     assert.deepEqual(ok.result, { attached: true });
-    assert.equal(bridge.context.agentManager.desktopToolsAttached, true);
+    assert.equal(bridge.context.agentManager.desktopMcpServerAttached, true);
 
     // Another local client cannot drop what the desktop attached; the desktop can.
-    bridge.context.agentManager.clearDesktopTools('someone-else');
-    assert.equal(bridge.context.agentManager.desktopToolsAttached, true);
+    bridge.context.agentManager.clearDesktopMcpServer('someone-else');
+    assert.equal(bridge.context.agentManager.desktopMcpServerAttached, true);
     const detached = (await bridge.router.dispatch(makeRequest('d', 'desktop/detach'), LOCAL)) as {
       result?: { attached: boolean };
     };
@@ -71,8 +71,8 @@ test("two desktop profiles keep their own tools; one leaving does not take the o
     };
     // The development build went away; the installed app's agents keep theirs.
     assert.deepEqual(detached.result, { attached: true });
-    bridge.context.agentManager.clearDesktopTools(installed.local);
-    assert.equal(bridge.context.agentManager.desktopToolsAttached, false);
+    bridge.context.agentManager.clearDesktopMcpServer(installed.local);
+    assert.equal(bridge.context.agentManager.desktopMcpServerAttached, false);
   } finally {
     await bridge.stop();
     await rm(baseDir, { recursive: true, force: true });

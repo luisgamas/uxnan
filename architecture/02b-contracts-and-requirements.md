@@ -1,6 +1,16 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.2.4 | **Fecha:** 2026-10-04 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.3.0 | **Fecha:** 2026-10-08 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.3.0):** agent views. `view/read { viewId }` →
+> `ViewReadResult { viewId, title, html, bytes }`, the page an agent showed with
+> the bridge's own MCP tool `view_show`, already prepared (no-network CSP + view
+> bootstrap); and the content block `ViewContentBlock { type: 'view', viewId,
+> title, height?, bytes }`, which replaces the finished tool step. The page ↔
+> host protocol is `shared/src/views/view-protocol.ts`. `SendTurnOptions`
+> carries `mcpServers: AgentMcpServer[]` instead of `desktopTools`, and
+> `DESKTOP_CWD_HEADER` is now `UXNAN_CWD_HEADER`. **103 methods**, 25
+> notifications.
 >
 > **Executive summary (1.2.4):** `SyncChanges.live` — `ThreadLiveState[]`, every
 > conversation running or waiting on the user right now (`activeTurnId?`,
@@ -161,7 +171,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 102 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 103 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge consume el paquete
 > compartido directamente y el relay empaqueta solo su subpath
@@ -192,6 +202,7 @@ turn/list               -> turnos de un thread; paginacion por cursor offset (ol
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
 turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` nombra un archivo) (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
+view/read               -> la pagina de una vista de agente (`ViewContentBlock.viewId`, §5.8.20 de 02a). Params: { viewId } (32 hex). Result: ViewReadResult { viewId, title, html, bytes }: el HTML del agente (≤ 512 KiB, `VIEW_MAX_HTML_BYTES`) con la CSP sin red y el bootstrap de la vista ya insertados por el bridge, listo para renderizarse en un iframe con sandbox (desktop) o un WebView (telefono). Un id desconocido responde un error de recurso no encontrado. Los clientes lo piden solo cuando la vista entra en pantalla y lo guardan en memoria acotada.
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
 queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason?, deliveringTurnId? }.
 queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
@@ -944,6 +955,11 @@ interface ApprovalRequestBlock {
   Codex's collaboration tools, Antigravity's subagents — once it finished, with
   its report; `SubagentContentBlock`)
 - `usage` (token usage)
+- `view` (`{ viewId, title, height?, bytes }`, since 2026-10): an interactive
+  page the agent showed with the bridge's `view_show` tool. It replaces the
+  finished tool step in place (same `blockId`); the page itself is fetched with
+  `view/read` and rendered sandboxed, and talks to its host through
+  `shared/src/views/view-protocol.ts` (`ViewContentBlock`, 02a §5.8.20)
 
 ### 1.6 Protocolo de control del relay
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
@@ -50,6 +50,29 @@ describe('the registry', () => {
           `${meta.id}: Cargo.toml has no Cargo.lock in the bump list`,
         );
       }
+    }
+  });
+
+  it('bumps the lock entry of every desktop workspace member', () => {
+    // The members inherit the workspace version, so the lock is the only file
+    // that names each one: a member missing here keeps its old version there.
+    const root = 'uxnandesktop/src-tauri';
+    const manifest = readFileSync(join(repo, root, 'Cargo.toml'), 'utf8');
+    const members = [
+      ...(manifest.match(/members\s*=\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/"([^"]+)"/g),
+    ]
+      .map((m) => readFileSync(join(repo, root, m[1], 'Cargo.toml'), 'utf8'))
+      .filter((toml) => /^version\.workspace\s*=\s*true/m.test(toml))
+      .map((toml) => toml.match(/^name\s*=\s*"([^"]+)"/m)?.[1]);
+    assert.ok(members.length > 0, 'no workspace members found');
+    const locked = allVersionFiles(component('desktop'))
+      .filter((e) => e.adapter === 'cargo-lock')
+      .map((e) => e.crate);
+    for (const crate of members) {
+      assert.ok(
+        locked.includes(crate),
+        `desktop: ${crate} has no Cargo.lock entry in the bump list`,
+      );
     }
   });
 

@@ -135,7 +135,9 @@ available today are:
   the same conversation Uxnan Mobile shows, live in both. The **Bridge** window,
   one click from the sidebar, shows the bridge's state, updates it and draws the
   pairing QR; Settings → Bridge & mobile also installs it and lists every paired
-  phone to rename or unpair ([chat tabs & the bridge](./docs/chat.md)).
+  phone to rename or unpair. Agent views render inline in a lazy sandboxed frame
+  with annotations and draft insertion ([chat tabs & the bridge](./docs/chat.md),
+  [agent views](./docs/agent-views.md)).
 - **From a terminal to a chat, and back.** A terminal running an agent holds its
   session, so nothing else writes to it. *Continue as chat* on the tab closes the
   agent there and continues its session in a chat, *Open in terminal* on a chat
@@ -216,7 +218,8 @@ available today are:
   how many agent slots the machine has left —, `project_list`, `worktree_show`,
   `terminal_list`, `agent_list`, `run_show`, `automation_show`), to show you
   things (`file_open`, in Uxnan's tab or in one of your own editors,
-  `file_diff`, `terminal_reveal`, `app_focus`), to give a
+  `file_diff`, `terminal_reveal`, `app_focus`, and `view_render` to check a
+  prepared agent view before showing it), to give a
   subtask its own worktree and agent (`worktree_create`, `terminal_create`),
   to talk to a running agent (`agent_send`, `agent_wait`, `terminal_read`) and
   to **coordinate a run of workers** — tasks, an agent of any installed kind
@@ -354,6 +357,7 @@ Detailed docs live in [`docs/`](./docs/):
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
 [chat tabs & the bridge connection](./docs/chat.md) ·
+[agent views in chat](./docs/agent-views.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·

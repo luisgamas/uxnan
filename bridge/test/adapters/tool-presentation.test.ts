@@ -14,7 +14,7 @@ import {
   unwrapShellCommand,
   withProjectPaths,
 } from '../../src/adapters/content-blocks.js';
-import { acpToolBlock } from '../../src/adapters/acp-tools.js';
+import { acpToolBlock, rawOutputText } from '../../src/adapters/acp-tools.js';
 import { codexToolItemBlock } from '../../src/adapters/codex-tools.js';
 import { toolUseToBlock } from '../../src/adapters/claude-tools.js';
 import { opencodeToolBlock } from '../../src/adapters/opencode-tools.js';
@@ -364,4 +364,20 @@ test('committedTextOrNull reads a file as committed, or null', () => {
   assert.equal(committedTextOrNull(join(dir, 'a.txt')), 'committed\n');
   assert.equal(committedTextOrNull(join(dir, 'new.txt')), null);
   assert.equal(committedTextOrNull(join(tmpdir(), 'nowhere', 'x.txt')), null);
+});
+
+test('an ACP tool with no text content reads its rawOutput (Grok MCP results)', () => {
+  const block = acpToolBlock({
+    toolCallId: 'c1',
+    title: 'uxnan__view_show',
+    kind: 'other',
+    status: 'completed',
+    rawInput: { variant: 'UseTool', tool_name: 'uxnan__view_show', tool_input: { title: 't' } },
+    rawOutput: { type: 'MCP', output: { OkayOutput: 'Shown. uxnan-view:abc' } },
+  }) as Record<string, unknown>;
+  assert.equal(block['output'], 'Shown. uxnan-view:abc');
+  assert.equal(rawOutputText({ output: { ErrorOutput: 'nope' } }), 'nope');
+  assert.equal(rawOutputText('plain'), 'plain');
+  assert.equal(rawOutputText({ a: 1 }), '{"a":1}');
+  assert.equal(rawOutputText(undefined), '');
 });

@@ -1,10 +1,24 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.6.2
-> **Fecha:** 2026-10-03
+> **Version:** 1.7.0
+> **Fecha:** 2026-10-08
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.7.0):** agents can **show interactive views** in a
+> chat — a chart, table, diagram, mockup or small tool as one self-contained HTML
+> page — on the desktop **and** on the phone, with or without the desktop. The
+> bridge owns them: it runs its own loopback MCP server (`uxnan`) that every
+> agent run gets next to the desktop's (`uxnan-browser`, while attached), with
+> the tool `view_show`. The bridge validates and prepares the page (a
+> no-network Content-Security-Policy and the view bootstrap), stores it, and
+> turns the finished call into a `view` block; clients fetch the page with
+> `view/read` and render it sandboxed — an opaque-origin iframe on a dedicated
+> scheme on the desktop, a WebView with every navigation blocked on the phone.
+> Page and host speak a subset of the open MCP Apps host protocol; the person
+> can **pick an element and annotate it**, and the note goes to the composer.
+> The phone gains its first WebView dependency for this (§5.4.7, §5.8.20).
 
 > **Executive summary (1.6.2):** the relay is the last resort. The bridge
 > publishes where it listens **now** — `BridgeSettings.hosts`, its live
@@ -1438,7 +1452,8 @@ class TurnTimelineSnapshot {
 
 - **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Partial streaming prose and settled prose use the same `MarkdownBody` renderer and shared style sheet, preventing a source-text-to-formatted-layout swap when a turn completes. **A reply that is still streaming is rendered as several bodies, not one:** it is cut at boundaries that can no longer move (a blank line outside a code fence, followed by a line that unmistakably starts a new block — never between list items, inside a quote, table, indented code or a fence), and each settled chunk keeps its widget instance so Flutter skips it instead of rebuilding. Rendering the whole accumulated reply on every delta made a turn cost time quadratic in its own length: measured on device, p95 per frame went 5.4 ms under 4 500 characters to 28.1 ms past it, with the raster flat at 3.7 ms; after the split, 11.0 ms past 4 500 and no longer growing with the reply. Separate bodies lose the renderer's inter-block spacing, so it is restored explicitly (`uxnanMarkdownBlockSpacing`) and the two renderings are compared pixel by pixel in `streaming_markdown_fidelity_test.dart`. Explicit Markdown links, bare local paths and inline-code paths share one tap callback: local paths open the workspace file viewer, remote links are copied rather than launched. Workspace previews target GitHub-flavored Markdown as GitHub renders it, without embedding a WebView: GitHub **alerts** (`> [!NOTE]` …) and **`<details>` disclosures** are extracted as blocks and given their own chrome, common README HTML (including rectangular tables, `<kbd>`, `<sub>`/`<sup>`) is normalized, and the renderer runs the `gitHubWeb` extension set with a checkbox builder and a syntax-highlighted, horizontally scrollable code-block builder. An HTTPS resource is decoded by the media type its **response** declares (`content-type` + payload signature), never by its URL, because README shields are served from extensionless endpoints as `image/svg+xml`.
 - **SVG:** two renderers by design. `flutter_svg` draws the app's own bundled assets; **`jovial_svg`** draws documents the user did not author (workspace previews, README shields), because `vector_graphics` does not apply transforms to `<text>` and every badge service scales its label down with one.
-- **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder; no WebView dependency is part of the current mobile UI stack.
+- **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder.
+- **Agent views (`view` blocks, §5.8.20):** the only WebView in the mobile UI stack (`webview_flutter`). A view is a page the bridge prepared; the phone fetches it with `view/read`, loads it with `loadHtmlString` (no base URL), prevents every navigation after the first load, disables file access and exposes one JavaScript channel (`UxnanView`) whose messages are validated against the view protocol. WebViews are created only for blocks on screen and capped; the inline height follows the page's reported height within 80–1600 px, and a taller page scrolls only in the full-screen route.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
 
@@ -2996,6 +3011,11 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
   `mcpServers`) y **Antigravity** (sin mecanismo por ejecucion) solo leen una
   configuracion global del usuario: pendiente de decision
   (`bridge/FOR-DEV.md`).
+  Desde 1.7.0 este servidor es **una entrada de una lista**: cada ejecucion
+  recibe `SendTurnOptions.mcpServers` — el servidor propio del bridge
+  (`uxnan`, siempre, §5.8.20) y el del desktop mientras este adjunto — y cada
+  adapter registra la lista entera con las mismas garantias. La cabecera de la
+  carpeta es `UXNAN_CWD_HEADER` (`x-uxnan-cwd`) para ambos.
 
 **No es una variante criptografica**: es una ruta local con token, el mismo
 modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.
@@ -3338,6 +3358,84 @@ al empezar una conversacion (desktop: el inicio del chat; movil: *Nueva
 conversacion*), muestran la retencion sobre el compositor con *Continuar aqui*
 (`requestHandoff`) y lo ofrecen solo si el bridge anuncia
 `features.agentSessions`.
+
+#### 5.8.20 Vistas de agente en el chat (2026-10)
+
+Un agente puede **mostrar una vista**: una pagina HTML autocontenida (grafica,
+tabla, diagrama, comparacion, maqueta o una herramienta pequena) que la persona
+ve **dentro del chat**, en el desktop y en el telefono, con o sin desktop.
+
+**Dueño: el bridge.** Las conversaciones son suyas, asi que la capacidad
+tambien: funciona con solo el telefono.
+
+- **Servidor MCP propio** (`bridge/src/views/`): Streamable HTTP minimo en
+  `127.0.0.1` (puerto aleatorio, ruta `/mcp`), token bearer aleatorio por
+  arranque, nunca en una direccion que no sea loopback. Se registra en **cada
+  ejecucion de cada agente** con el nombre `uxnan` (`BRIDGE_MCP_SERVER_NAME`)
+  junto al del desktop (§5.8.15), por el mismo mecanismo de cada adapter.
+  **Zero** no lo alcanza (su `acp` ignora `mcpServers` y su sandbox bloquea
+  loopback): `FOR-DEV` en `bridge/FOR-DEV.md`.
+- **Herramienta `view_show { title, html? | path?, height? }`**: `path` se lee
+  de la carpeta de la conversacion (`x-uxnan-cwd`) con el guardia de rutas del
+  workspace. Tope `VIEW_MAX_HTML_BYTES` (512 KiB, cabe en un frame E2EE del
+  relay). El bridge **prepara** la pagina — inserta primero en `<head>` una CSP
+  sin red (`default-src 'none'`; scripts y estilos solo en linea; imagenes,
+  fuentes y medios solo `data:`/`blob:`; `connect-src`, `frame-src`,
+  `form-action` y `base-uri` cerrados) y el *bootstrap* de la vista — y la
+  guarda en `~/.uxnan/views/` (se poda lo mas viejo). Sin red, una pagina
+  no puede cargar bibliotecas de un CDN: nombra una que el bridge incluye
+  (`<script src="uxnan:chart.js"></script>`) y el bridge pone su codigo en ese
+  lugar al prepararla (hoy Chart.js, MIT). **`view_check`** (mismos
+  `html`/`path`, nada se guarda ni se muestra) le dice al agente que bloqueara
+  la politica sin red y si sigue el tema y, con un desktop adjunto, como se ve:
+  el bridge le pasa la pagina preparada al `view/render` del desktop (por su
+  servidor MCP) y devuelve la captura, los errores de consola y la altura. La respuesta al modelo
+  lleva el marcador `uxnan-view:<viewId>`. La descripcion de la herramienta y
+  las `instructions` del servidor son como el agente **sabe** que la tiene y
+  cuando usarla: como **regla** (datos que comparar, una tendencia, un
+  desglose, un diagrama o una maqueta van en una vista, por iniciativa propia;
+  la persona nunca nombra la herramienta), no como opcion — medido: redactadas
+  como opcion, ningun agente mostro una vista ante una pregunta normal. Codex no
+  lee las `instructions` de un servidor MCP, asi que las recibe como
+  `developerInstructions` de su hilo (`AgentMcpServer.instructions`), y OpenCode
+  — que esconde las herramientas MCP tras su modo codigo y descarta esas
+  instrucciones — como entrada de instrucciones de la sesion (OpenCode 2) o
+  `system` del prompt (OpenCode 1); nada se agrega jamas al mensaje de la
+  persona.
+- **Un solo punto de conversion**: el `AgentManager`, por donde pasan los
+  bloques de todos los adapters, convierte el bloque `tool` terminado de
+  `view_show` con un marcador valido en un `ViewContentBlock`
+  (`{ type: 'view', viewId, title, height?, bytes }`, mismo `blockId`), y quita
+  el `html` del `input` de todo bloque de esa herramienta: la pagina nunca viaja
+  en el stream ni en el historial.
+- **`view/read { viewId }`** devuelve la pagina preparada a cualquier cliente.
+- **Protocolo vista ↔ anfitrion** (`shared/src/views/view-protocol.ts`):
+  subconjunto JSON-RPC del protocolo abierto de apps MCP — `ui/initialize`
+  (el anfitrion responde con su `hostContext`: tema claro/oscuro y las
+  variables CSS estandar con sus propios tokens), `ui/notifications/initialized`,
+  `ui/notifications/size-changed`, `ui/notifications/host-context-changed`,
+  `ui/open-link` (el anfitrion pregunta antes de abrir fuera), `ui/message`
+  (el texto va al compositor; nunca se envia solo) — mas `uxnan/annotate` y
+  `uxnan/annotation`, `uxnan/annotations` y `uxnan/mark`: la persona activa
+  *Anotar* y elige un elemento (selector, etiqueta, texto, inicio del HTML y
+  posicion, acotados); la pagina **lo retiene** resaltado mientras escribe la
+  nota (un popover anclado al elemento en el desktop, una hoja inferior en el
+  telefono). Puede dejar **varias notas**: el anfitrion le envia la lista
+  (`uxnan/annotations`) y la pagina dibuja un marcador numerado sobre cada
+  elemento; tocar un marcador (`uxnan/mark`) abre esa nota para editarla o
+  borrarla. *N notas · Añadir al mensaje* lleva todas al compositor con
+  `formatViewAnnotations`, igual en ambos clientes. Que sea el protocolo abierto deja la puerta a hospedar, con el
+  mismo renderizador, las interfaces de servidores MCP de terceros cuando los
+  CLIs las expongan.
+- **Clientes**: el desktop sirve la pagina por un esquema propio (`uxnan-view`)
+  con su propia CSP y la monta en un iframe `sandbox="allow-scripts"` sin
+  `allow-same-origin` (origen opaco; la CSP de la app solo admite ese esquema en
+  `frame-src`); el telefono, en un WebView (§5.4.7). Ambos montan solo lo que
+  esta en pantalla, limitan las vistas vivas y reservan la altura para que el
+  chat no salte. Una vista **es parte de la respuesta, nunca del trabajo**: al
+  plegar un turno terminado ("Worked for…" en el desktop, las respuestas
+  anteriores en el telefono) las vistas salen de lo plegado, en el orden en que
+  se mostraron, y abren la respuesta visible.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

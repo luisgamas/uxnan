@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
+  BRIDGE_MCP_SERVER_NAME,
   LOCAL_CONTROL_FILE,
   directRoute,
   StreamNotification,
@@ -38,6 +39,10 @@ import {
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
+import { VIEW_BOOTSTRAP } from './views/view-bootstrap.js';
+import { VIEW_SERVER_INSTRUCTIONS, startViewMcpServer } from './views/mcp-server.js';
+import { desktopRenderer } from './views/view-check.js';
+import { ViewStore } from './views/view-store.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile } from './lock-file.js';
 import { SecureDeviceState } from './secure-device-state.js';
@@ -162,6 +167,8 @@ export interface StartBridgeOptions {
   relayConnect?: boolean;
   /** Close a phone connection after this long without a frame (tests). */
   sessionIdleTimeoutMs?: number;
+  /** Isolated view storage for tests. Defaults to `<baseDir>/views`. */
+  viewDirectory?: string;
 }
 
 export interface Bridge {
@@ -376,12 +383,32 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Restore persisted push registrations so background push survives a restart.
   await pushService.load();
+  const viewStore = new ViewStore({
+    directory: options.viewDirectory ?? join(state.baseDir, 'views'),
+    bootstrap: VIEW_BOOTSTRAP,
+    now,
+  });
+  // `view_check` draws a page on an attached desktop (its `view_render`); the
+  // manager is created just below and read only when a check runs.
+  const viewMcp = await startViewMcpServer({
+    store: viewStore,
+    renderer: desktopRenderer(() => agentManager.desktopMcpServer()),
+  });
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),
     now,
     logger,
     defaultAgent: config.defaultAgent,
+    mcpServers: [
+      {
+        name: BRIDGE_MCP_SERVER_NAME,
+        url: viewMcp.url,
+        token: viewMcp.token,
+        instructions: VIEW_SERVER_INSTRUCTIONS,
+      },
+    ],
+    viewStore,
     onTurnEnd: (info) => pushService.onTurnEnd(info),
     // Pause the approval auto-reject countdown while no phone is connected, so an
     // approval requested while the app is backgrounded waits (and replays on
@@ -706,6 +733,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     usage,
     sessionHistory,
     agentManager,
+    viewStore,
     sessionHolds,
     agentInstalls,
     projects,
@@ -965,7 +993,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           agentManager.onPhoneDisconnected();
           presence.disconnected(localReceiverId(clientId));
           // Its tools' token dies with it (the desktop mints a new one).
-          agentManager.clearDesktopTools(clientId);
+          agentManager.clearDesktopMcpServer(clientId);
           // So do its terminals' holds: the terminals close with the app, and a
           // desktop that reconnects says again what it holds.
           sessionHolds.releaseAll(clientId);
@@ -999,6 +1027,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     stop: async () => {
       logger.info('bridge stopping');
       relay.stop();
+      await viewMcp.close();
       clearInterval(updateTimer);
       await agentManager.stopAll();
       if (childLedger) {

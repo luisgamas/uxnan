@@ -59,6 +59,7 @@
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
   import { railAnchors } from "$lib/bridge/railAnchors";
   import ChatScrollRail from "./ChatScrollRail.svelte";
+  import { provideViewComposer } from "./viewComposer.svelte";
   import {
     EVERYTHING,
     grownStart,
@@ -95,6 +96,7 @@
   // Kept as the tab's draft (persisted with the layout), a beat after typing
   // stops, so it survives switching tabs and closing the app.
   let draft = $state(untrack(() => tab.draft ?? ""));
+  provideViewComposer((text) => { draft = draft ? `${draft}\n\n${text}` : text; });
   $effect(() => {
     const text = draft;
     const timer = setTimeout(() => (tab.draft = text || undefined), 300);
@@ -856,4 +858,3 @@
     </div>
   </div>
 {/if}
-

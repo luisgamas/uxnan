@@ -4,7 +4,46 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Agent views in chat.** Every run gets the bridge's loopback `uxnan` MCP
+  server with `view_show`. The bridge prepares pages with a strict no-network
+  CSP, stores them under `~/.uxnan/views/`, and replaces completed tool blocks
+  with compact view references; clients read the prepared page through
+  `view/read`. The step becomes the view whatever the agent calls the tool
+  (OpenCode reaches it from its code-mode `execute`, Grok through `UseTool`);
+  run live with Claude Code, Codex, OpenCode, pi and Grok. Not on Zero, and
+  not yet run live on Antigravity (`FOR-DEV.md`). Agents show a view on their
+  own: the tool's description and the server's instructions state when, and
+  Codex — which does not read an MCP server's instructions — gets them as its
+  thread's developer instructions. Measured on an ordinary question about
+  numbers: Claude Code, Codex, pi and Grok showed one every time. OpenCode,
+  which hides MCP tools behind code mode and drops their instructions, gets
+  them as each session's instruction entry (OpenCode 2) or the prompt's
+  `system` (OpenCode 1), and shows a view on most such questions.
+  **Bundled libraries:** a page loads Chart.js with
+  `<script src="uxnan:chart.js"></script>`; the bridge puts the library's code
+  there when it prepares the page, so charts need no network.
+  **`view_check`:** an agent can see a page before showing it — what the
+  no-network policy will block and whether it follows the theme, and, with a
+  desktop attached, a screenshot of how it renders, its console errors and its
+  height (the desktop's `view_render`).
+
+### Fixed
+
+- **Grok's MCP tool results were empty.** Grok reports an MCP tool's answer
+  only in the ACP update's `rawOutput` (`{ type: 'MCP', output: { OkayOutput }
+  }`), never in `content`, so every MCP step — the desktop's tools included —
+  showed no output. The bridge reads `rawOutput` when `content` has no text.
+
 ### Changed
+
+- **One MCP server list per run.** The bridge's view server and an attached
+  desktop server now travel together through each adapter, with attachment
+  changes invalidating resident sessions. Antigravity's stdio proxy fronts the
+  whole list (and still the desktop's own server for an `agy` the desktop
+  launches in a terminal). Zero remains unreachable because its ACP ignores MCP
+  servers and its sandbox blocks loopback.
 
 - **Claude Code's picker lists each model once, as the CLI does.** Its current
   models come through their alias only, under the CLI's own label (`Opus 5.5`,

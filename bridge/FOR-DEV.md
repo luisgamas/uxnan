@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1057, shared 58, relay
+standalone). It builds clean and the suite is green (bridge 1067, shared 64, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -22,6 +22,17 @@ release follow-ups are the post-publish *Packaging* hardening items and real-dev
 push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
+
+- **Agent views in chat** (architecture/02a §5.8.20, `src/views/`,
+  `view/read`): the bridge runs its own loopback MCP server (`uxnan`) that every
+  run gets next to an attached desktop's (`SendTurnOptions.mcpServers`), with
+  `view_show`; pages are validated, prepared (no-network CSP and the view
+  bootstrap first) and stored, and the finished step becomes a `view` block in
+  one place (`convert-view-block.ts`) whatever the agent calls the tool. Run
+  live on 2026-10-08 through a scratch bridge with Claude Code, Codex, OpenCode,
+  pi and Grok (`docs/agents.md` → *MCP servers for every run*); that run also
+  fixed Grok's MCP results arriving empty (they come in ACP `rawOutput`).
+  Antigravity and Zero: see *Pending*.
 
 - **The bridge updates itself** (architecture/02a §5.8.18, `self-update.ts`):
   it checks the registry hourly while it runs, tells every client
@@ -358,13 +369,34 @@ push validation (FOR-HUMAN).
       instead of the heuristic (slower, per-CLI).
 - [ ] **Uxnan Desktop's tools for Zero** — Claude Code, Codex, OpenCode, pi and
       Antigravity are wired and verified, Grok behind its ACP capability
-      (`docs/agents.md` → *Uxnan Desktop's tools*). Zero cannot be reached:
+      (`docs/agents.md` → *MCP servers for every run*). Zero cannot be reached:
       `zero acp` (0.9.0) ignores ACP `mcpServers`, and its stdio MCP servers run
       in its macOS sandbox with the network denied (`EPERM` on loopback HTTP and
       Unix sockets). Unblocked by Zero honoring ACP `mcpServers` (the bridge
       already sends them when it advertises HTTP MCP) or offering a sandbox
-      allowance for one MCP server. Also owed: run Grok's path against the real
-      binary with an account that has access.
+      allowance for one MCP server. The same block keeps **agent views** off
+      Zero (it cannot reach the bridge's `uxnan` server either). Marker:
+      `src/adapters/zero-adapter.ts`.
+- [ ] **More bundled view libraries** — `src/views/view-libraries.ts` ships
+      Chart.js only. A diagram library is the obvious next one, but Mermaid
+      (122 MB unpacked) is too large to ride in the bridge package and in every
+      view that uses it. Unblocked by a small, permissively licensed diagram
+      renderer, or by serving shared libraries from the clients instead of
+      inlining them per view.
+- [ ] **Views that load from declared domains** — pages have no network at
+      all. The open MCP Apps standard lets a page declare the domains it loads
+      from (`_meta.ui.csp`) for the host to show and the person to approve;
+      that is needed anyway to host third-party MCP Apps. Build both together:
+      `src/views/` (CSP per view), the desktop's `uxnan-view` scheme and the
+      phone's WebView. Deferred by the maintainer's choice of no network by
+      default (2026-10-08).
+- [ ] **Agent views on Antigravity: run it live** — the proxy fronts the whole
+      `UXNAN_MCP_SERVERS` list (unit-tested, `test/adapters/mcp-proxy.test.ts`),
+      but `agy` reaches it through the ONE global entry, which belongs to the
+      installed daemon and points at that daemon's own proxy — a scratch bridge
+      cannot test it without rewriting the user's `agy` config. Run the
+      one-turn `view_show` probe (`docs/agents.md` → *Agent views*) once a bridge
+      with this proxy is the installed service.
 - [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` serves
       only `desktop/attach` / `desktop/detach` (the desktop's tools for bridge-run
       agents, local channel only); nothing for an embedded sidecar exists. This is

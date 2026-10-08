@@ -82,6 +82,10 @@ this app:
   Android and iOS. While a reply is pending, its waiting label has a
   subtle skeleton sweep; after the first token only the live loader remains,
   moving after the latest streamed token like a writing cursor.
+- **Interactive agent views.** Agents can show self-contained pages inline in a
+  conversation. The phone isolates each prepared page in a lazy WebView, lets
+  you annotate or expand it, and puts page-proposed text in the composer for
+  your review.
 - **One native session, whichever client you use.** Keep a conversation open in
   Mobile and completed turns written from Codex Desktop/CLI, OpenCode Desktop,
   Claude Code, pi, Zero or Grok join the same timeline within a few seconds.
@@ -141,6 +145,7 @@ flowchart LR
 | State management | Riverpod **3.x** (manual providers, **no** code generation) |
 | Navigation | `go_router` |
 | UI | Material 3 (+ "Neural Expressive" M3 Expressive design language), adaptive light/dark, centralized design tokens |
+| Agent views | `webview_flutter` with blocked navigation, Android file/content access disabled, and an eight-page in-memory cache |
 | Local persistence | `drift` (SQLite) — 10 tables |
 | Secure storage | `flutter_secure_storage` (Keychain / Keystore) |
 | Crypto | `cryptography` + `pointycastle` (X25519, Ed25519, AES-256-GCM, HKDF) |
@@ -223,5 +228,6 @@ iOS/Apple assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md); the full history is in
 
 Developer reference lives in [`docs/`](docs/README.md): the as-built
 [architecture](docs/architecture.md), the [testing guide](docs/testing.md), and
-the [conventions](docs/conventions.md). The product/design spec (source of
+the [conventions](docs/conventions.md), and [agent views](docs/agent-views.md).
+The product/design spec (source of
 truth) is the monorepo [`architecture/`](../architecture/00-index.md).

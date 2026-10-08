@@ -14,11 +14,7 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
-import {
-  PI_DESKTOP_EXTENSION,
-  parsePiCommands,
-  piDesktopLaunch,
-} from '../../src/adapters/pi-adapter.js';
+import { PI_MCP_EXTENSION, parsePiCommands, piMcpLaunch } from '../../src/adapters/pi-adapter.js';
 
 // --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
@@ -503,33 +499,35 @@ test('PiAdapter maps the permission posture to the right tool flags', async () =
 test('PiAdapter loads the desktop-tools extension while the desktop is attached', async () => {
   const { spawnFn, last, count } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
-  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
-  const turn = async (turnId: string, tools?: typeof desktopTools): Promise<void> => {
+  const mcpServers = [
+    { name: 'uxnan', url: 'http://127.0.0.1:51233/mcp', token: 'b'.repeat(43) },
+    { name: 'uxnan-browser', url: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) },
+  ];
+  const turn = async (turnId: string, tools?: typeof mcpServers): Promise<void> => {
     const { done } = collect(adapter);
     await adapter.sendTurn({
       threadId: 't1',
       turnId,
       text: 'hi',
       cwd: '/w/a b',
-      ...(tools ? { desktopTools: tools } : {}),
+      ...(tools ? { mcpServers: tools } : {}),
     });
     // Keep stdout open: the process stays resident, as the real one does.
     last().feedOpen([STATE, assistantEnd('ok'), AGENT_END, AGENT_SETTLED]);
     await done;
   };
 
-  await turn('u1', desktopTools);
+  await turn('u1', mcpServers);
   const args = last().args;
-  assert.equal(args[args.indexOf('-e') + 1], PI_DESKTOP_EXTENSION);
+  assert.equal(args[args.indexOf('-e') + 1], PI_MCP_EXTENSION);
   assert.deepEqual(last().env, {
-    UXNAN_MCP_URL: desktopTools.mcpUrl,
-    UXNAN_MCP_TOKEN: desktopTools.token,
+    UXNAN_MCP_SERVERS: JSON.stringify(mcpServers),
     UXNAN_THREAD_CWD: '%2Fw%2Fa%20b',
   });
-  assert.ok(!args.some((a) => a.includes(desktopTools.token)), 'the token never reaches argv');
+  assert.ok(!args.some((a) => a.includes(mcpServers[0]!.token)), 'the token never reaches argv');
 
   // Same attachment: the resident process is reused.
-  await turn('u2', desktopTools);
+  await turn('u2', mcpServers);
   assert.equal(count(), 1);
 
   // Detached: pi restarts (on the same session) without the extension.
@@ -540,18 +538,14 @@ test('PiAdapter loads the desktop-tools extension while the desktop is attached'
   await adapter.stop();
 });
 
-test('piDesktopLaunch offers nothing in the read-only posture or without the desktop', () => {
-  const desktop = { mcpUrl: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) };
-  assert.deepEqual(piDesktopLaunch(desktop, '/w', 'default'), { args: [], env: {}, key: '' });
-  assert.deepEqual(piDesktopLaunch(undefined, '/w', 'acceptEdits'), { args: [], env: {}, key: '' });
-  const launch = piDesktopLaunch(desktop, '/w', 'bypassPermissions');
-  assert.deepEqual(launch.args, ['-e', PI_DESKTOP_EXTENSION]);
-  assert.ok(launch.key.startsWith(desktop.mcpUrl));
-  assert.ok(!launch.key.includes(desktop.token));
-  assert.notEqual(
-    piDesktopLaunch({ ...desktop, token: 'j'.repeat(43) }, '/w', 'acceptEdits').key,
-    launch.key,
-  );
+test('piMcpLaunch offers every run server regardless of posture', () => {
+  const desktop = [{ name: 'uxnan-browser', url: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) }];
+  assert.deepEqual(piMcpLaunch(desktop, '/w').args, ['-e', PI_MCP_EXTENSION]);
+  assert.deepEqual(piMcpLaunch(undefined, '/w'), { args: [], env: {}, key: '' });
+  const launch = piMcpLaunch(desktop, '/w');
+  assert.deepEqual(launch.args, ['-e', PI_MCP_EXTENSION]);
+  assert.ok(!launch.key.includes(desktop[0]!.token));
+  assert.notEqual(piMcpLaunch([{ ...desktop[0]!, token: 'j'.repeat(43) }], '/w').key, launch.key);
 });
 
 test('PiAdapter surfaces an error stopReason as turn_error', async () => {

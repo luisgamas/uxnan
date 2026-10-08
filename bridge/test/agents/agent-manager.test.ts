@@ -1055,19 +1055,23 @@ baseTest('a turn runs with the sending desktop’s tools, else the longest-attac
     now: () => 1000,
     logger: createLogger('test', 'error'),
     defaultAgent: 'echo',
+    mcpServers: [{ name: 'uxnan', url: 'http://127.0.0.1:51233/mcp', token: 'bridge' }],
   });
-  const seen: (string | undefined)[] = [];
+  const seen: string[] = [];
   class RecordingAdapter extends ControlledAdapter {
     override sendTurn(options: SendTurnOptions): Promise<void> {
-      seen.push(options.desktopTools?.token);
+      seen.push(options.mcpServers?.map((s) => s.token).join(',') ?? '');
       this.complete(options.threadId, options.turnId, 'ok');
       return Promise.resolve();
     }
   }
   manager.register(new RecordingAdapter());
   const url = 'http://127.0.0.1:51234/mcp';
-  manager.setDesktopTools({ mcpUrl: url, token: 'installed' }, 'desktop-aaaaaaaaaaaa');
-  manager.setDesktopTools({ mcpUrl: url, token: 'dev' }, 'desktop-bbbbbbbbbbbb');
+  manager.setDesktopMcpServer(
+    { name: 'uxnan-browser', url, token: 'installed' },
+    'desktop-aaaaaaaaaaaa',
+  );
+  manager.setDesktopMcpServer({ name: 'uxnan-browser', url, token: 'dev' }, 'desktop-bbbbbbbbbbbb');
 
   const turn = async (desktopClient?: string): Promise<void> => {
     const thread = await store.startThread({ projectId: 'p' }, 1);
@@ -1077,11 +1081,11 @@ baseTest('a turn runs with the sending desktop’s tools, else the longest-attac
   };
   await turn('desktop-bbbbbbbbbbbb'); // a chat in the development build
   await turn(); // a phone's turn
-  manager.clearDesktopTools('desktop-aaaaaaaaaaaa');
+  manager.clearDesktopMcpServer('desktop-aaaaaaaaaaaa');
   await turn(); // the installed app went away
-  manager.clearDesktopTools('desktop-bbbbbbbbbbbb');
+  manager.clearDesktopMcpServer('desktop-bbbbbbbbbbbb');
   await turn();
-  assert.deepEqual(seen, ['dev', 'installed', 'dev', undefined]);
+  assert.deepEqual(seen, ['bridge,dev', 'bridge,installed', 'bridge,dev', 'bridge']);
   await rmrf(baseDir);
 });
 

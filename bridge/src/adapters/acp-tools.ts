@@ -42,6 +42,13 @@ export interface AcpToolCall {
   rawInput?: Record<string, unknown>;
   /** ACP `ToolCallContent[]` (text output and/or a diff). */
   content?: unknown[];
+  /**
+   * ACP `rawOutput`: what the tool returned, in the agent's own shape. Grok
+   * reports an MCP tool's result only here (`{ type: 'MCP', output: {
+   * OkayOutput | ErrorOutput } }`, verified on grok 1.0.46) and leaves
+   * `content` empty, so it is the output when `content` carries no text.
+   */
+  rawOutput?: unknown;
 }
 
 /** The ACP kinds that name a {@link ToolKind} outright. */
@@ -68,7 +75,9 @@ function toolName(tc: AcpToolCall, input: Record<string, unknown>): string {
 export function acpToolBlock(tc: AcpToolCall): Record<string, unknown> | null {
   const isError = tc.status === 'failed';
   const input = tc.rawInput ?? {};
-  const { output, diff } = extractToolContent(tc.content);
+  const extracted = extractToolContent(tc.content);
+  const { diff } = extracted;
+  const output = extracted.output || rawOutputText(tc.rawOutput);
   const kind = tc.kind.toLowerCase();
   const name = toolName(tc, input);
   const normalized = name.toLowerCase().replace(/[\s_-]+/g, '');
@@ -194,6 +203,27 @@ function extractToolContent(content: unknown): {
     }
   }
   return { output: texts.join('\n'), ...(diff ? { diff } : {}) };
+}
+
+/**
+ * The text of an ACP `rawOutput`: a string as is; Grok's MCP result
+ * (`{ output: { OkayOutput } }` / `{ output: { ErrorOutput } }`) unwrapped;
+ * anything else as compact JSON (cut by the block's own output limit).
+ */
+export function rawOutputText(raw: unknown): string {
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw === 'string') return raw;
+  if (isRecord(raw) && isRecord(raw['output'])) {
+    const out = raw['output'];
+    for (const key of ['OkayOutput', 'ErrorOutput']) {
+      if (typeof out[key] === 'string') return out[key] as string;
+    }
+  }
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return '';
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -44,6 +44,7 @@ export const DESKTOP_TERMINAL_ENV_KEYS = [
   'UXNAN_BROWSER_TOKEN',
   'UXNAN_MCP_URL',
   'UXNAN_MCP_TOKEN',
+  'UXNAN_MCP_SERVERS',
   // The desktop points an OpenCode it launches at its MCP server through this;
   // inherited, it would hand every `opencode serve` a server whose token and
   // terminal id the scrub above just removed.

@@ -452,6 +452,8 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   readonly #cwd: string;
   /** sessionID → the model it runs, so a turn switches only when it differs. */
   readonly #sessionModel = new Map<string, string>();
+  /** The instructions entry each session was last given (see {@link #useInstructions}). */
+  readonly #sessionInstructions = new Map<string, string>();
   /** sessionID → the primary agent it runs, as this process last set it. */
   readonly #sessionAgent = new Map<string, OpenCodeAgent>();
 
@@ -541,6 +543,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
     await this.#useModel(sessionId, prompt.model, prompt.variant);
     await this.#useAgent(sessionId, prompt.agent);
+    await this.#useInstructions(sessionId, prompt.system);
     await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
       text: prompt.text,
     });
@@ -576,6 +579,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   async runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
     await this.#useModel(sessionId, run.model, run.variant);
     await this.#useAgent(sessionId, run.agent);
+    await this.#useInstructions(sessionId, run.system);
     const id = encodeURIComponent(sessionId);
     if (run.skill) {
       await this.#serve.request('POST', `/api/session/${id}/prompt`, {
@@ -605,6 +609,22 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   }
 
   /** Switch the session's model when a turn asks for another one. */
+  /**
+   * Keep the run's instructions as the session's `uxnan` instruction entry.
+   * OpenCode 2 accepts a prompt's `system` field and ignores it, and does not
+   * pass an MCP server's `instructions` to its model; a session instruction
+   * entry it does (verified on 2.0.24: the model followed one). Sent only when
+   * it changed; an empty one removes the entry.
+   */
+  async #useInstructions(sessionId: string, system: string | undefined): Promise<void> {
+    const value = system?.trim() ?? '';
+    if ((this.#sessionInstructions.get(sessionId) ?? '') === value) return;
+    const path = `/api/experimental/session/${encodeURIComponent(sessionId)}/instructions/entries/${INSTRUCTIONS_KEY}`;
+    if (value) await this.#serve.request('PUT', path, { value });
+    else await this.#serve.request('DELETE', path);
+    this.#sessionInstructions.set(sessionId, value);
+  }
+
   async #useModel(sessionId: string, model?: OpenCodeModelRef, variant?: string): Promise<void> {
     if (!model) return;
     const key = modelKey(model, variant);
@@ -695,6 +715,9 @@ export class OpenCodeV2Server implements IOpenCodeServer {
     return Promise.resolve();
   }
 }
+
+/** The key of the bridge's instruction entry on an OpenCode 2 session. */
+const INSTRUCTIONS_KEY = 'uxnan';
 
 function modelRef(model: OpenCodeModelRef, variant?: string): Record<string, string> {
   return { id: model.modelID, providerID: model.providerID, ...(variant ? { variant } : {}) };

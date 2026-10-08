@@ -6,7 +6,12 @@ import { PassThrough } from 'node:stream';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { emptyServerAnswer, proxyLaunchEnv, runMcpProxy } from '../../src/adapters/mcp-proxy.js';
+import {
+  emptyServerAnswer,
+  proxyLaunchEnv,
+  proxyServers,
+  runMcpProxy,
+} from '../../src/adapters/mcp-proxy.js';
 import {
   configFileFor,
   ensureGlobalEntry,
@@ -81,41 +86,70 @@ test('inside a bridge run the proxy forwards to the desktop with its token and f
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address() as AddressInfo;
   try {
-    const env = { UXNAN_MCP_URL: `http://127.0.0.1:${port}/mcp`, UXNAN_MCP_TOKEN: 'tok' };
+    const env = {
+      UXNAN_MCP_SERVERS: JSON.stringify([
+        { name: 'uxnan-browser', url: `http://127.0.0.1:${port}/mcp`, token: 'tok' },
+        { name: 'uxnan-view', url: `http://127.0.0.1:${port}/mcp`, token: 'tok' },
+      ]),
+    };
     const answers = (await drive(env, [
       { jsonrpc: '2.0', id: 'a', method: 'initialize', params: {} },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
       { jsonrpc: '2.0', id: 'b', method: 'tools/list' },
+      {
+        jsonrpc: '2.0',
+        id: 'c',
+        method: 'tools/call',
+        params: { name: 'uxnan_view_uxnan_status' },
+      },
     ])) as { id: string; result: any }[];
     assert.deepEqual(
       answers.map((a) => a.id),
-      ['a', 'b'],
+      ['a', 'b', 'c'],
     );
-    assert.deepEqual(answers[1]?.result, { tools: [{ name: 'uxnan_status' }] });
-    assert.deepEqual(
-      seen.map((s) => s.method),
-      ['initialize', 'notifications/initialized', 'tools/list'],
+    assert.deepEqual(answers[1]?.result, {
+      tools: [{ name: 'uxnan_browser_uxnan_status' }, { name: 'uxnan_view_uxnan_status' }],
+    });
+    assert.deepEqual(answers[2]?.result, { ok: 'tools/call' });
+    const counts = Object.fromEntries(
+      ['initialize', 'notifications/initialized', 'tools/list', 'tools/call'].map((method) => [
+        method,
+        seen.filter((s) => s.method === method).length,
+      ]),
     );
+    assert.deepEqual(counts, {
+      initialize: 2,
+      'notifications/initialized': 2,
+      'tools/list': 2,
+      'tools/call': 1,
+    });
     // No folder in the environment → the proxy's own folder (the conversation's).
     assert.ok(seen.every((s) => s.auth === 'Bearer tok' && s.cwd === encodeURIComponent('/w/a b')));
   } finally {
     server.close();
   }
   // Desktop gone: discovery still answers (no tools), a call fails honestly.
-  const offline = (await drive({ UXNAN_MCP_URL: 'http://127.0.0.1:9/mcp', UXNAN_MCP_TOKEN: 't' }, [
-    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'x' } },
-  ])) as { result?: any; error?: any }[];
+  const offline = (await drive(
+    {
+      UXNAN_MCP_SERVERS: JSON.stringify([
+        { name: 'uxnan-browser', url: 'http://127.0.0.1:9/mcp', token: 't' },
+      ]),
+    },
+    [
+      { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'x' } },
+    ],
+  )) as { result?: any; error?: any }[];
   assert.deepEqual(offline[0]?.result, { tools: [] });
   assert.ok(offline[1]?.error);
 });
 
 test('the launch environment carries the endpoint only while attached', () => {
   assert.deepEqual(proxyLaunchEnv(undefined), { env: {}, key: '' });
-  const desktop = { mcpUrl: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) };
+  const desktop = [{ name: 'uxnan-browser', url: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) }];
   const shared = proxyLaunchEnv(desktop);
-  assert.deepEqual(Object.keys(shared.env).sort(), ['UXNAN_MCP_TOKEN', 'UXNAN_MCP_URL']);
-  assert.ok(!shared.key.includes(desktop.token));
+  assert.deepEqual(Object.keys(shared.env).sort(), ['UXNAN_MCP_SERVERS']);
+  assert.ok(!shared.key.includes(desktop[0]!.token));
   assert.equal(proxyLaunchEnv(desktop, '/w/x y').env['UXNAN_THREAD_CWD'], '%2Fw%2Fx%20y');
 });
 
@@ -171,4 +205,21 @@ test('the global entry is added once, left alone when right, and removed on unin
   } finally {
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test('the proxy fronts a bridge run list, else a desktop terminal pair, else nothing', () => {
+  const list = [{ name: 'uxnan', url: 'http://127.0.0.1:1/mcp', token: 't'.repeat(20) }];
+  assert.deepEqual(proxyServers({ UXNAN_MCP_SERVERS: JSON.stringify(list) }), list);
+  assert.deepEqual(
+    proxyServers({ UXNAN_MCP_SERVERS: '[]', UXNAN_MCP_URL: 'http://x/mcp', UXNAN_MCP_TOKEN: 'k' }),
+    [],
+    'a bridge run list wins, even empty',
+  );
+  assert.deepEqual(
+    proxyServers({ UXNAN_MCP_URL: 'http://127.0.0.1:2/mcp', UXNAN_MCP_TOKEN: 'k' }),
+    [{ name: 'uxnan-browser', url: 'http://127.0.0.1:2/mcp', token: 'k' }],
+  );
+  assert.deepEqual(proxyServers({ UXNAN_MCP_SERVERS: '{bad' }), []);
+  assert.deepEqual(proxyServers({ UXNAN_MCP_SERVERS: '[{"name":1}]' }), []);
+  assert.deepEqual(proxyServers({}), []);
 });

@@ -4,8 +4,35 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Agent views in chat.** When an agent shows a view (the bridge's
+  `view_show`), the chat renders the page inline: fetched with `view/read` only
+  when its card nears the screen, served from a dedicated `uxnan-view` scheme
+  with its own no-network policy, and framed with `sandbox="allow-scripts"` alone
+  (an opaque origin that cannot reach the app or its IPC). It follows the app's
+  theme, reports its own height, opens links only after asking, and can be
+  expanded. **Annotate** picks elements in the page: a picked element stays
+  highlighted while a popover anchored to it takes the note, each note leaves
+  a numbered marker (click it to edit or delete), and *Add to message* puts
+  them all in the composer, like a message the page proposes — nothing is sent
+  on its own. `view_render` (`view/render`, `uxnan-cli view render`) draws a
+  prepared page off screen — inside a sandboxed frame, out of reach of the
+  app's IPC — and returns its screenshot, console errors and height; the
+  bridge's `view_check` uses it so an agent sees its page before showing it. At
+  most four frames stay live. A block type the app does not know now shows a
+  one-line notice instead of nothing, as on the phone. A view never folds away
+  with the work behind "Worked for…": it opens the answer.
+
 ### Changed
 
+- **`chat/read` pages a long answer and says why a turn failed.** An answer
+  longer than 16 KiB used to come back as its last 16 KiB only, with no way to
+  read the rest; `answerFrom` (`uxnan-cli chat read --answer-from <byte>`)
+  returns the part from that byte, and every turn reports `answerFrom` and
+  `answerLength` so a caller can page through all of it. A failed turn carries
+  the bridge's reason in `error` (it used to read as an empty answer), and a
+  view the agent showed is listed among its steps.
 - **A new chat picks its access mode before the first message.** The composer
   of a new chat carries the access-mode pill, in its colours, and the
   conversation starts in the mode chosen there.

@@ -41,6 +41,7 @@ import 'package:uxnan/domain/enums/relay_reason.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
+import 'package:uxnan/domain/repositories/i_agent_view_repository.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
@@ -62,6 +63,7 @@ import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/domain/value_objects/usage_summary.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
+import 'package:uxnan/infrastructure/repositories/bridge_agent_view_repository.dart';
 import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -117,6 +119,12 @@ final sessionCoordinatorProvider = Provider<SessionCoordinator>((ref) {
   );
   ref.onDispose(coordinator.dispose);
   return coordinator;
+});
+
+/// Reads bridge-owned prepared agent views and keeps up to eight pages in RAM.
+final agentViewRepositoryProvider = Provider<IAgentViewRepository>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  return BridgeAgentViewRepository(coordinator.sendRequest);
 });
 
 /// Current connection phase, as a stream for the UI.

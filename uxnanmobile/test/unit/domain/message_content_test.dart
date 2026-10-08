@@ -12,6 +12,31 @@ void main() {
       MessageContent.fromJson(content.toJson());
 
   group('MessageContent JSON round-trip', () {
+    test('view and invalid view id', () {
+      const view = ViewContent(
+        viewId: '0123456789abcdef0123456789abcdef',
+        title: 'Usage',
+        bytes: 12,
+        height: 320,
+        blockId: 'b1',
+      );
+      expect(roundTrip(view), view);
+      expect(
+        MessageContent.fromJson({'type': 'view', 'viewId': '../bad'}),
+        isA<UnknownContent>(),
+      );
+      expect(
+        MessageContent.fromJson({
+          'type': 'view',
+          'viewId': view.viewId,
+          'title': 'x',
+          'bytes': 1,
+          'height': 99999,
+        }),
+        isA<ViewContent>().having((content) => content.height, 'height', 1600),
+      );
+    });
+
     test('text', () {
       const c = TextContent('hola', isStreaming: true);
       expect(roundTrip(c), c);

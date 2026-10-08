@@ -66,6 +66,13 @@ export interface OpenCodePrompt {
   variant?: string;
   /** The primary agent this turn runs on. */
   agent: OpenCodeAgent;
+  /**
+   * Instructions for the model apart from the person's text — the run's MCP
+   * servers' `instructions` (OpenCode does not read them from the servers).
+   * OpenCode 1 takes them as the prompt's `system`; OpenCode 2 ignores that
+   * field and keeps them as a session instruction entry instead.
+   */
+  system?: string;
 }
 
 /**
@@ -93,6 +100,8 @@ export interface OpenCodeCommandRun {
   variant?: string;
   /** The primary agent the command runs on. */
   agent: OpenCodeAgent;
+  /** As {@link OpenCodePrompt.system}. */
+  system?: string;
 }
 
 /** A model the CLI offers, with its context window when it reports one. */

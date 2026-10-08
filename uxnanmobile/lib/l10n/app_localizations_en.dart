@@ -3642,4 +3642,54 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get pcRelaySameNetworkUnreachable =>
       'On the same Wi-Fi, but the PC didn\'t answer directly (the network may isolate devices) — using your relay.';
+
+  @override
+  String get conversationViewAnnotate => 'Annotate';
+
+  @override
+  String get conversationViewStopAnnotating => 'Stop annotating';
+
+  @override
+  String get conversationViewExpand => 'Expand view';
+
+  @override
+  String get conversationViewLinkTitle => 'Open link?';
+
+  @override
+  String get conversationViewLinkCancel => 'Cancel';
+
+  @override
+  String get conversationViewLinkOpen => 'Open';
+
+  @override
+  String get conversationViewAddedToComposer =>
+      'Added to the conversation composer';
+
+  @override
+  String conversationViewNotesCount(int count) {
+    return '$count notes';
+  }
+
+  @override
+  String get conversationViewAddToMessage => 'Add to message';
+
+  @override
+  String get conversationViewDiscardNotes => 'Discard notes';
+
+  @override
+  String conversationViewNote(int n) {
+    return 'Note $n';
+  }
+
+  @override
+  String get conversationViewDelete => 'Delete';
+
+  @override
+  String get conversationViewSaveNote => 'Save note';
+
+  @override
+  String get conversationViewCouldNotLoadRetry => 'Could not load view · Retry';
+
+  @override
+  String get conversationViewLoadInteractive => 'Load interactive view';
 }

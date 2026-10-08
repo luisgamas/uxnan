@@ -14,7 +14,7 @@ environment:
 
 # Dependency set derived from architecture/02b-contracts-and-requirements.md (section 2).
 # Feature-specific packages that require native configuration (Firebase/FCM, SSH
-# terminal, QR scanner, rich-media WebView) are added in their respective module
+# terminal, QR scanner) are added in their respective module
 # increments to keep the initial build green. See CHANGELOG for the deferred list.
 dependencies:
   async: ^2.11.0 # reactive stream helpers
@@ -75,6 +75,9 @@ dependencies:
   url_launcher: ^6.3.0 # open external links (About source link, iOS store fallback)
   uuid: ^4.4.0 # UUID generation
   web_socket_channel: ^3.0.0 # WebSocket client (LAN + relay)
+  webview_flutter: ^4.14.1 # isolated agent views in conversations
+  webview_flutter_android: ^4.14.1 # disable Android file/content access
+  webview_flutter_wkwebview: 3.26.2 # keep plugin compatible with Flutter 3.44 CI
 
 dev_dependencies:
   build_runner: ^2.4.0 # drift code generation

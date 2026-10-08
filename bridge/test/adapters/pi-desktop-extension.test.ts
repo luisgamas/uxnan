@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import uxnanDesktopTools from '../../src/adapters/pi-desktop-extension.js';
+import uxnanMcpServers from '../../src/adapters/pi-desktop-extension.js';
 
-// The extension pi loads to reach Uxnan Desktop's tools: a Streamable-HTTP MCP
+// The extension pi loads to reach the per-run MCP server list: Streamable HTTP
 // client. This server answers `initialize` over SSE with a session id, and the
 // rest as plain JSON — both shapes the transport allows.
 interface Seen {
@@ -70,19 +70,30 @@ function withEnv(env: Record<string, string | undefined>, run: () => Promise<voi
   });
 }
 
-type Registered = Parameters<Parameters<typeof uxnanDesktopTools>[0]['registerTool']>[0];
+type Registered = Parameters<Parameters<typeof uxnanMcpServers>[0]['registerTool']>[0];
 
 test('the pi extension registers the desktop tools and calls them over MCP', async () => {
   await withServer(async (url, seen) => {
     const tools: Registered[] = [];
     await withEnv(
-      { UXNAN_MCP_URL: url, UXNAN_MCP_TOKEN: 'tok-123', UXNAN_THREAD_CWD: '%2Fw' },
-      () => uxnanDesktopTools({ registerTool: (t) => void tools.push(t) }),
+      {
+        UXNAN_MCP_SERVERS: JSON.stringify([
+          { name: 'uxnan', url, token: 'tok-123' },
+          { name: 'uxnan-browser', url, token: 'tok-456' },
+        ]),
+        UXNAN_THREAD_CWD: '%2Fw',
+      },
+      () => uxnanMcpServers({ registerTool: (t) => void tools.push(t) }),
     );
     // Every page listed; pi's own `read` is never shadowed.
     assert.deepEqual(
       tools.map((t) => t.name),
-      ['uxnan_status', 'terminal_read'],
+      [
+        'uxnan_uxnan_status',
+        'uxnan_terminal_read',
+        'uxnan_browser_uxnan_status',
+        'uxnan_browser_terminal_read',
+      ],
     );
     assert.equal(tools[0]!.label, 'Status');
     assert.deepEqual(tools[0]!.promptGuidelines, ['Call uxnan_status first.']);
@@ -93,25 +104,37 @@ test('the pi extension registers the desktop tools and calls them over MCP', asy
       content: [{ type: 'text', text: 'fine' }],
     });
     await assert.rejects(tools[1]!.execute('c2', { terminal: 'x' }, undefined), /no such terminal/);
+    assert.deepEqual(await tools[2]!.execute('c3', {}, undefined), {
+      content: [{ type: 'text', text: 'fine' }],
+    });
 
     for (const s of seen) {
-      assert.equal(s.headers['authorization'], 'Bearer tok-123');
+      assert.ok(['Bearer tok-123', 'Bearer tok-456'].includes(String(s.headers['authorization'])));
       assert.equal(s.headers['x-uxnan-cwd'], '%2Fw');
     }
+    assert.ok(seen.some((s) => s.headers.authorization === 'Bearer tok-456'));
     // The session the server handed out rides every later request.
-    assert.equal(seen[0]!.headers['mcp-session-id'], undefined);
-    assert.ok(seen.slice(1).every((s) => s.headers['mcp-session-id'] === 'sess-9'));
+    assert.ok(
+      seen.every((s) =>
+        s.method === 'initialize'
+          ? s.headers['mcp-session-id'] === undefined
+          : s.headers['mcp-session-id'] === 'sess-9',
+      ),
+    );
   });
 });
 
-test('the pi extension registers nothing without the desktop, or when it cannot be reached', async () => {
+test('the pi extension registers nothing without servers or when they cannot be reached', async () => {
   const tools: Registered[] = [];
   const pi = { registerTool: (t: Registered) => void tools.push(t) };
-  await withEnv({ UXNAN_MCP_URL: undefined, UXNAN_MCP_TOKEN: undefined }, () =>
-    uxnanDesktopTools(pi),
-  );
-  await withEnv({ UXNAN_MCP_URL: 'http://127.0.0.1:9/mcp', UXNAN_MCP_TOKEN: 'tok' }, () =>
-    uxnanDesktopTools(pi),
+  await withEnv({ UXNAN_MCP_SERVERS: '[]' }, () => uxnanMcpServers(pi));
+  await withEnv(
+    {
+      UXNAN_MCP_SERVERS: JSON.stringify([
+        { name: 'uxnan', url: 'http://127.0.0.1:9/mcp', token: 'tok' },
+      ]),
+    },
+    () => uxnanMcpServers(pi),
   );
   assert.equal(tools.length, 0);
 });

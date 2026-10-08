@@ -90,12 +90,12 @@ import type {
   AgentModel,
   AgentModelOption,
   ApprovalDecision,
-  DesktopTools,
+  AgentMcpServer,
   GenerateTitleOptions,
   NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
+import { UXNAN_CWD_HEADER, encodeCwdHeader } from '@uxnan/shared';
 import {
   expandCustomCommand,
   scanCustomCommands,
@@ -421,22 +421,44 @@ export function codexUsageTokens(usage: unknown): number | undefined {
  * against codex-cli 0.156.1: the server connects for that thread only, sends
  * both headers, and neither reaches the rollout, the state DB or the logs.
  */
-export function codexDesktopConfig(
-  desktop: DesktopTools | undefined,
+export function codexMcpConfig(
+  servers: AgentMcpServer[] | undefined,
   cwd: string,
 ): { config?: Record<string, unknown> } {
-  if (!desktop) return {};
+  if (!servers?.length) return {};
   return {
-    config: {
-      [`mcp_servers.${DESKTOP_MCP_SERVER_NAME}`]: {
-        url: desktop.mcpUrl,
-        http_headers: {
-          Authorization: `Bearer ${desktop.token}`,
-          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
+    config: Object.fromEntries(
+      servers.map((server) => [
+        `mcp_servers.${server.name}`,
+        {
+          url: server.url,
+          http_headers: {
+            Authorization: `Bearer ${server.token}`,
+            [UXNAN_CWD_HEADER]: encodeCwdHeader(cwd),
+          },
         },
-      },
-    },
+      ]),
+    ),
   };
+}
+
+/**
+ * The run's MCP servers' `instructions`, as the thread's
+ * `developerInstructions`. Codex does not put an MCP server's `instructions`
+ * in front of the model (measured 2026-10-08 on codex-cli 0.161.0: with them
+ * only, Codex never showed a view on an ordinary question about numbers; with
+ * them as developer instructions it did), so they travel on the channel Codex
+ * does read — set on `thread/start` and `thread/resume`, never in the person's
+ * message.
+ */
+export function codexDeveloperInstructions(servers: AgentMcpServer[] | undefined): {
+  developerInstructions?: string;
+} {
+  const text = (servers ?? [])
+    .map((server) => server.instructions?.trim())
+    .filter((value): value is string => !!value)
+    .join('\n\n');
+  return text ? { developerInstructions: text } : {};
 }
 
 function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
@@ -633,7 +655,8 @@ export class CodexAdapter extends BaseAgentAdapter {
           approvalsReviewer,
           sandbox,
           ...(typeof model === 'string' ? { model } : {}),
-          ...codexDesktopConfig(options.desktopTools, cwd),
+          ...codexMcpConfig(options.mcpServers, cwd),
+          ...codexDeveloperInstructions(options.mcpServers),
         });
         this.#loadedThreads.add(codexThreadId);
       } catch (err) {
@@ -676,7 +699,8 @@ export class CodexAdapter extends BaseAgentAdapter {
             // `thread_source` unset, which no first-party client does).
             threadSource: 'user',
             ...(typeof effort === 'string' ? { effort } : {}),
-            ...codexDesktopConfig(options.desktopTools, cwd),
+            ...codexMcpConfig(options.mcpServers, cwd),
+            ...codexDeveloperInstructions(options.mcpServers),
           },
         );
         codexThreadId = started.thread.id;

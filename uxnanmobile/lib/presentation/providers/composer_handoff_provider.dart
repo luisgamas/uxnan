@@ -136,6 +136,37 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     _set(threadId, _of(threadId).copyWith(draft: text));
   }
 
+  /// Offers page-authored text to the conversation composer without sending it.
+  /// An existing draft is kept as a rescued draft instead of being overwritten.
+  void offerText(String threadId, String text) {
+    final current = _of(threadId);
+    final occupied = current.draft.trim().isNotEmpty;
+    final incoming = current.incoming;
+    final offeredText = [
+      if (incoming?.text.trim().isNotEmpty ?? false) incoming!.text,
+      if (text.trim().isNotEmpty) text,
+    ].join('\n\n');
+    _set(
+      threadId,
+      current.copyWith(
+        incoming: ComposerIncoming(
+          text: offeredText,
+          images: incoming?.images ?? const [],
+          files: incoming?.files ?? const [],
+        ),
+        rescued: occupied
+            ? [
+                RescuedDraft(
+                  id: 'view-${DateTime.now().microsecondsSinceEpoch}',
+                  text: current.draft,
+                ),
+                ...current.rescued,
+              ]
+            : current.rescued,
+      ),
+    );
+  }
+
   /// Withdraws [turnId] from the queue — removing its bubble entirely — and
   /// hands [text], [images] and [files] back to the composer for rewriting.
   ///

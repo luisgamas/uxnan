@@ -6319,6 +6319,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the same Wi-Fi, but the PC didn\'t answer directly (the network may isolate devices) — using your relay.'**
   String get pcRelaySameNetworkUnreachable;
+
+  /// No description provided for @conversationViewAnnotate.
+  ///
+  /// In en, this message translates to:
+  /// **'Annotate'**
+  String get conversationViewAnnotate;
+
+  /// No description provided for @conversationViewStopAnnotating.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop annotating'**
+  String get conversationViewStopAnnotating;
+
+  /// No description provided for @conversationViewExpand.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand view'**
+  String get conversationViewExpand;
+
+  /// No description provided for @conversationViewLinkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link?'**
+  String get conversationViewLinkTitle;
+
+  /// No description provided for @conversationViewLinkCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get conversationViewLinkCancel;
+
+  /// No description provided for @conversationViewLinkOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get conversationViewLinkOpen;
+
+  /// No description provided for @conversationViewAddedToComposer.
+  ///
+  /// In en, this message translates to:
+  /// **'Added to the conversation composer'**
+  String get conversationViewAddedToComposer;
+
+  /// No description provided for @conversationViewNotesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} notes'**
+  String conversationViewNotesCount(int count);
+
+  /// No description provided for @conversationViewAddToMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to message'**
+  String get conversationViewAddToMessage;
+
+  /// No description provided for @conversationViewDiscardNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard notes'**
+  String get conversationViewDiscardNotes;
+
+  /// No description provided for @conversationViewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Note {n}'**
+  String conversationViewNote(int n);
+
+  /// No description provided for @conversationViewDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get conversationViewDelete;
+
+  /// No description provided for @conversationViewSaveNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Save note'**
+  String get conversationViewSaveNote;
+
+  /// No description provided for @conversationViewCouldNotLoadRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load view · Retry'**
+  String get conversationViewCouldNotLoadRetry;
+
+  /// No description provided for @conversationViewLoadInteractive.
+  ///
+  /// In en, this message translates to:
+  /// **'Load interactive view'**
+  String get conversationViewLoadInteractive;
 }
 
 class _AppLocalizationsDelegate
