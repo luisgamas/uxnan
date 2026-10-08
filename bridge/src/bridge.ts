@@ -41,6 +41,7 @@ import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
 import { VIEW_BOOTSTRAP } from './views/view-bootstrap.js';
 import { VIEW_SERVER_INSTRUCTIONS, startViewMcpServer } from './views/mcp-server.js';
+import { writeViewSkill } from './views/view-skill.js';
 import { ViewStore } from './views/view-store.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile } from './lock-file.js';
@@ -388,20 +389,20 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     now,
   });
   const viewMcp = await startViewMcpServer({ store: viewStore });
+  const viewSkills = await writeViewSkill(join(state.baseDir, 'agent-skills'));
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),
     now,
     logger,
     defaultAgent: config.defaultAgent,
-    // FOR-DEV: complete live view_show probes for Claude, Codex, OpenCode, pi,
-    // Antigravity, and Grok with isolated authenticated CLI homes; bridge/FOR-DEV.md.
     mcpServers: [
       {
         name: BRIDGE_MCP_SERVER_NAME,
         url: viewMcp.url,
         token: viewMcp.token,
         instructions: VIEW_SERVER_INSTRUCTIONS,
+        skills: viewSkills,
       },
     ],
     viewStore,

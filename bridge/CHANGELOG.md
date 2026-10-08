@@ -17,8 +17,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   own: the tool's description and the server's instructions state when, and
   Codex — which does not read an MCP server's instructions — gets them as its
   thread's developer instructions. Measured on an ordinary question about
-  numbers: Claude Code, Codex, pi and Grok showed one every time, OpenCode with
-  a free model four times in six.
+  numbers: Claude Code, Codex, pi and Grok showed one every time. OpenCode,
+  which hides MCP tools behind code mode and drops their instructions, learns
+  it from a `uxnan-views` skill the bridge writes in its own state folder and
+  adds to the run's skill paths (the person's skills stay).
 
 ### Fixed
 

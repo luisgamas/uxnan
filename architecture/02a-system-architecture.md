@@ -3390,8 +3390,11 @@ tambien: funciona con solo el telefono.
   la persona nunca nombra la herramienta), no como opcion — medido: redactadas
   como opcion, ningun agente mostro una vista ante una pregunta normal. Codex no
   lee las `instructions` de un servidor MCP, asi que las recibe como
-  `developerInstructions` de su hilo (`AgentMcpServer.instructions`); nada se
-  agrega jamas al mensaje de la persona.
+  `developerInstructions` de su hilo (`AgentMcpServer.instructions`), y OpenCode
+  2 — que esconde las herramientas MCP tras su modo codigo y descarta esas
+  instrucciones — aprende con una skill propia del bridge (`uxnan-views`,
+  escrita en su carpeta de estado y pasada como ruta extra de skills,
+  `AgentMcpServer.skills`); nada se agrega jamas al mensaje de la persona.
 - **Un solo punto de conversion**: el `AgentManager`, por donde pasan los
   bloques de todos los adapters, convierte el bloque `tool` terminado de
   `view_show` con un marcador valido en un `ViewContentBlock`

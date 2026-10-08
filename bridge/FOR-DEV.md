@@ -377,15 +377,14 @@ push validation (FOR-HUMAN).
       allowance for one MCP server. The same block keeps **agent views** off
       Zero (it cannot reach the bridge's `uxnan` server either). Marker:
       `src/adapters/zero-adapter.ts`.
-- [ ] **OpenCode does not always show a view on its own** — OpenCode 2 hands
-      its model only the tool's description (it drops an MCP server's
-      `instructions` and the prompt's `system` field), so with a free model it
-      showed a view on 7 of 10 ordinary questions where Claude Code, Codex, pi
-      and Grok did every time (`docs/agents.md` → *Agent views*). Unblocked by a
-      per-run instruction channel OpenCode honors — verify its config
-      `instructions` (does it concatenate with the person's own or replace
-      them?) with a model that follows instructions, then pass the bridge
-      server's instructions there. Site: `src/adapters/opencode-adapter.ts`
+- [ ] **OpenCode with a weak model does not always show a view** — OpenCode 2
+      hides MCP tools behind code mode and drops their instructions, so it is
+      taught through the bridge's `uxnan-views` skill (`docs/agents.md` →
+      *Agent views*): `opencode/mimo-v2.6-flash-free` shows a view every time,
+      `opencode/space-bunny-free` about half the time. Nothing more the bridge
+      can pass without replacing OpenCode's own agent prompt; revisit if
+      OpenCode gains a per-run instruction channel or a way to list MCP tools
+      to the model directly. Site: `src/adapters/opencode-adapter.ts`
       (`openCodeMcpEnv`).
 - [ ] **Agent views on Antigravity: run it live** — the proxy fronts the whole
       `UXNAN_MCP_SERVERS` list (unit-tested, `test/adapters/mcp-proxy.test.ts`),

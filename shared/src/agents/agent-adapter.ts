@@ -99,6 +99,12 @@ export interface AgentMcpServer {
    * pass on.
    */
   instructions?: string;
+  /**
+   * A folder of skills (`<name>/SKILL.md`) that teach this server's tools, for
+   * an adapter whose CLI shows its model skills but not MCP tools or their
+   * instructions (OpenCode 2, whose MCP tools sit behind code mode).
+   */
+  skills?: string;
 }
 
 /** Input for {@link IAgentAdapter.generateTitle}. */

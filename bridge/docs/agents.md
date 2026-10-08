@@ -411,16 +411,22 @@ being asked:
 |---|---|---|---|
 | Claude Code (haiku 5.5) | 0/1 | 1/1 | — |
 | Codex (gpt-6-luna) | 0/1 | 0/3 | 3/3 |
-| OpenCode (`opencode/space-bunny-free`) | 0/1 | 4/6, then 3/4 | — (see below) |
+| OpenCode (`space-bunny-free` / `mimo-v2.6-flash-free`) | 0/1 | 7/10 (tool description only) | with the `uxnan-views` skill: mimo 3/3, space-bunny about half (see below) |
 | pi (`openrouter/cohere/north-mini-code:free`) | — | 1/1 | — |
 | Grok | — | 1/1 | — |
 
-OpenCode 2 reaches its model with the tool's description only: asked whether
-its instructions mention Uxnan, it says no — it passes on neither an MCP
-server's `instructions` nor a `system` field on `POST /api/session/:id/prompt`
-(accepted, ignored; checked on 2.0.24), and its config `instructions` list
-could not be shown to reach the model with that free model either. So
-OpenCode shows a view most of the time, not always (`FOR-DEV.md`).
+**OpenCode 2 needs a skill.** Its model never sees an MCP tool directly — they
+sit behind its code-mode `execute` tool — and it is handed neither an MCP
+server's `instructions` nor a prompt's `system` field (accepted, ignored;
+asked, the model says it sees neither; opencode 2.0.24). It does list every
+skill, name and description, in its `skill` tool. So the bridge writes a skill
+of its own, `uxnan-views`, into its state folder
+(`<state>/agent-skills/uxnan-views/SKILL.md`, `views/view-skill.ts`) and hands
+OpenCode that folder as an extra skills path in the run's config
+(`AgentMcpServer.skills` → `skills.paths` in `OPENCODE_CONFIG_CONTENT`); the
+person's own skills stay listed beside it. Measured: `opencode/mimo-v2.6-flash-free`
+3/3, `opencode/space-bunny-free` about half — that model follows instructions
+loosely (`FOR-DEV.md`).
 
 The step becomes the view in **one place**, `views/convert-view-block.ts`, run
 by the `AgentManager` on every adapter's blocks: a finished, non-error tool
