@@ -1382,11 +1382,12 @@ pub fn catalog() -> Vec<Entry> {
             method: "chat/read",
             tool: "chat_read",
             group: Group::Converse,
-            summary: "Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end.",
+            summary: "Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end (pass `answerFrom` to read another part; `answerLength` is its full size), and a failed turn says why in `error`.",
             params: object(
                 json!({
                     "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list` or `chat/start`." },
-                    "turns": { "type": "integer", "description": "How many of its newest turns. Default 1, at most 20." }
+                    "turns": { "type": "integer", "description": "How many of its newest turns. Default 1, at most 20." },
+                    "answerFrom": { "type": "integer", "description": "Read each answer from this byte on (16 KiB at most) instead of its last 16 KiB — page with `answerFrom` 0, 16384, … up to `answerLength`." }
                 }),
                 &["chat"],
             ),
@@ -1398,7 +1399,10 @@ pub fn catalog() -> Vec<Entry> {
                     "id": field("string", "The turn's id."),
                     "status": field("string", "The bridge's status for it (`streaming`, `completed`, `error`, `aborted`, `queued`, …)."),
                     "prompt": field("string", "The message it was given."),
-                    "answer": field("string", "The agent's answer so far (its end, when longer than 16 KiB)."),
+                    "answer": field("string", "The agent's answer so far: 16 KiB of it at most — its end, or the part from `answerFrom`; a cut side is marked `…`."),
+                    "answerFrom": field("integer", "The byte of the whole answer the returned part starts at."),
+                    "answerLength": field("integer", "The whole answer's size, in bytes."),
+                    "error": field("string", "Why the turn failed, when the bridge reported an error (absent otherwise)."),
                     "steps": list_of(field("string", "One step: `ran …`, `edited … +a −d`, `read …`, `subagent: … (…)`, `(running)` while in flight."), "The steps it took, in order."),
                 })), "Oldest first."),
             })),

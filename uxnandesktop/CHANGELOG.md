@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Changed
 
+- **`chat/read` pages a long answer and says why a turn failed.** An answer
+  longer than 16 KiB used to come back as its last 16 KiB only, with no way to
+  read the rest; `answerFrom` (`uxnan-cli chat read --answer-from <byte>`)
+  returns the part from that byte, and every turn reports `answerFrom` and
+  `answerLength` so a caller can page through all of it. A failed turn carries
+  the bridge's reason in `error` (it used to read as an empty answer), and a
+  view the agent showed is listed among its steps.
 - **A new chat picks its access mode before the first message.** The composer
   of a new chat carries the access-mode pill, in its colours, and the
   conversation starts in the mode chosen there.

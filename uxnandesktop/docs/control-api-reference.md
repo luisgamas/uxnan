@@ -2294,11 +2294,11 @@ Send a whole message to a chat, exactly as if it were typed in the chat tab or o
 
 ### `chat/read`
 
-Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end.
+Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end (pass `answerFrom` to read another part; `answerLength` is its full size), and a failed turn says why in `error`.
 
 - **Group:** `converse` · read-only
 - **MCP:** `chat_read`
-- **CLI:** `uxnan-cli chat read <chat> [--turns <n>]`
+- **CLI:** `uxnan-cli chat read <chat> [--turns <n>] [--answer-from <byte>]`
 
 **Params**
 
@@ -2306,6 +2306,7 @@ Read what a chat has said: its newest turns (1 by default, at most 20), each wit
 |---|---|---|---|
 | `chat` | string | yes | The chat, as `id:<id>` from `chat/list` or `chat/start`. |
 | `turns` | integer | no | How many of its newest turns. Default 1, at most 20. |
+| `answerFrom` | integer | no | Read each answer from this byte on (16 KiB at most) instead of its last 16 KiB — page with `answerFrom` 0, 16384, … up to `answerLength`. |
 
 **Result**
 
@@ -2315,7 +2316,10 @@ Read what a chat has said: its newest turns (1 by default, at most 20), each wit
   - `id` (string) — The turn's id.
   - `status` (string) — The bridge's status for it (`streaming`, `completed`, `error`, `aborted`, `queued`, …).
   - `prompt` (string) — The message it was given.
-  - `answer` (string) — The agent's answer so far (its end, when longer than 16 KiB).
+  - `answer` (string) — The agent's answer so far: 16 KiB of it at most — its end, or the part from `answerFrom`; a cut side is marked `…`.
+  - `answerFrom` (integer) — The byte of the whole answer the returned part starts at.
+  - `answerLength` (integer) — The whole answer's size, in bytes.
+  - `error` (string) — Why the turn failed, when the bridge reported an error (absent otherwise).
   - `steps` (array of string) — The steps it took, in order.
 
 **Request**

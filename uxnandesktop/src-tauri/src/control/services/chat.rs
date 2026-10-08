@@ -363,14 +363,18 @@ fn step_line(block: &Value) -> Option<String> {
                 .unwrap_or("")
         ),
         "question" => "asked a question".to_string(),
+        "view" => format!("showed the view {}", str_of("title")),
         _ => return None,
     };
     Some(format!("{line}{suffix}"))
 }
 
 /// A turn as `chat/read` shows it: what was asked, what the agent answered,
-/// the steps it took — secrets redacted, a long answer cut to its end.
-fn turn_view(turn: &Value) -> Value {
+/// the steps it took and why it failed, if it did — secrets redacted. An
+/// answer longer than [`ANSWER_MAX`] keeps its end, unless `answer_from` asks
+/// for the part that starts at that byte; `answerLength` lets a caller page
+/// through the whole of it.
+fn turn_view(turn: &Value, answer_from: Option<usize>) -> Value {
     let messages = turn.get("messages").and_then(Value::as_array);
     let by_role = |role: &str| {
         messages
@@ -380,14 +384,21 @@ fn turn_view(turn: &Value) -> Value {
     };
     let prompt = by_role("user").map(text_of).unwrap_or_default();
     let assistant = by_role("assistant");
-    let mut answer = assistant.map(text_of).unwrap_or_default();
-    if answer.len() > ANSWER_MAX {
-        let mut cut = answer.len() - ANSWER_MAX;
-        while !answer.is_char_boundary(cut) {
-            cut += 1;
-        }
-        answer = format!("… {}", &answer[cut..]);
-    }
+    let full = assistant.map(text_of).unwrap_or_default();
+    let length = full.len();
+    let (answer, from) = answer_window(&full, answer_from);
+    let errors: Vec<String> = assistant
+        .and_then(|m| m.get("blocks"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|b| {
+            b.get("type").and_then(Value::as_str) == Some("system")
+                && b.get("kind").and_then(Value::as_str) == Some("error")
+        })
+        .filter_map(|b| b.get("text").and_then(Value::as_str))
+        .map(redact)
+        .collect();
     let steps: Vec<String> = assistant
         .and_then(|m| m.get("blocks"))
         .and_then(Value::as_array)
@@ -396,13 +407,46 @@ fn turn_view(turn: &Value) -> Value {
         .filter_map(step_line)
         .map(|l| redact(&l))
         .collect();
-    json!({
+    let mut view = json!({
         "id": turn.get("id").cloned().unwrap_or(Value::Null),
         "status": turn.get("status").cloned().unwrap_or(Value::Null),
         "prompt": redact(&prompt),
         "answer": redact(&answer),
+        "answerFrom": from,
+        "answerLength": length,
         "steps": steps,
-    })
+    });
+    if !errors.is_empty() {
+        view["error"] = Value::String(errors.join("\n"));
+    }
+    view
+}
+
+/// The part of an answer `chat/read` returns, and the byte it starts at: at
+/// most [`ANSWER_MAX`] bytes from `from` (snapped to a character boundary),
+/// or its end when no `from` is given. A cut side is marked with `…`.
+fn answer_window(full: &str, from: Option<usize>) -> (String, usize) {
+    let len = full.len();
+    let mut start = match from {
+        Some(f) => f.min(len),
+        None => len.saturating_sub(ANSWER_MAX),
+    };
+    while !full.is_char_boundary(start) {
+        start += 1;
+    }
+    let mut end = (start + ANSWER_MAX).min(len);
+    while !full.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut out = String::new();
+    if start > 0 {
+        out.push_str("… ");
+    }
+    out.push_str(&full[start..end]);
+    if end < len {
+        out.push_str(" …");
+    }
+    (out, start)
 }
 
 /// Where a chat is: `working` while a turn runs, `waiting` when that turn
@@ -465,11 +509,15 @@ pub async fn read<R: tauri::Runtime>(
         .and_then(Value::as_u64)
         .unwrap_or(1)
         .clamp(1, READ_TURNS_MAX);
+    let answer_from = params
+        .get("answerFrom")
+        .and_then(Value::as_u64)
+        .map(|f| usize::try_from(f).unwrap_or(usize::MAX));
     let (turns, active) = recent(app, &id, n).await?;
     Ok(json!({
         "chat": id,
         "state": chat_state(active, turns.last()),
-        "turns": turns.iter().map(turn_view).collect::<Vec<_>>(),
+        "turns": turns.iter().map(|t| turn_view(t, answer_from)).collect::<Vec<_>>(),
     }))
 }
 
@@ -594,7 +642,7 @@ mod tests {
                   ] }
             ]
         });
-        let v = turn_view(&turn);
+        let v = turn_view(&turn, None);
         assert_eq!(v["prompt"], "run the tests");
         assert!(!v["answer"]
             .as_str()
@@ -611,10 +659,42 @@ mod tests {
             ])
         );
         let long = json!({ "messages": [{ "role": "assistant", "content": "x".repeat(ANSWER_MAX + 10) }] });
-        assert!(turn_view(&long)["answer"]
-            .as_str()
-            .unwrap()
-            .starts_with("… "));
+        let end = turn_view(&long, None);
+        assert!(end["answer"].as_str().unwrap().starts_with("… "));
+        assert_eq!(end["answerFrom"], 10);
+        assert_eq!(end["answerLength"], ANSWER_MAX + 10);
+        let head = turn_view(&long, Some(0));
+        assert!(head["answer"].as_str().unwrap().ends_with(" …"));
+        assert_eq!(head["answerFrom"], 0);
+    }
+
+    #[test]
+    fn a_long_answer_pages_on_character_boundaries() {
+        let full = format!("{}é{}", "a".repeat(ANSWER_MAX - 1), "b".repeat(20));
+        let (head, from) = answer_window(&full, Some(0));
+        assert_eq!(from, 0);
+        assert_eq!(head.len(), ANSWER_MAX - 1 + " …".len());
+        let (rest, from) = answer_window(&full, Some(ANSWER_MAX));
+        assert_eq!(from, ANSWER_MAX + 1);
+        assert_eq!(rest, format!("… {}", "b".repeat(20)));
+        let (short, from) = answer_window("hello", None);
+        assert_eq!((short.as_str(), from), ("hello", 0));
+        assert_eq!(answer_window("hello", Some(99)), ("… ".to_string(), 5));
+    }
+
+    #[test]
+    fn a_failed_turn_says_why_and_a_view_is_a_step() {
+        let failed = json!({ "messages": [{ "role": "assistant", "content": "",
+            "blocks": [
+                { "type": "system", "kind": "error", "text": "failed to start codex app-server" },
+                { "type": "system", "kind": "warning", "text": "slow" },
+                { "type": "view", "viewId": "0123456789abcdef0123456789abcdef", "title": "Usage" }
+            ] }] });
+        let v = turn_view(&failed, None);
+        assert_eq!(v["error"], "failed to start codex app-server");
+        assert_eq!(v["steps"], json!(["showed the view Usage"]));
+        let fine = json!({ "messages": [{ "role": "assistant", "content": "ok" }] });
+        assert!(turn_view(&fine, None).get("error").is_none());
     }
 
     #[test]

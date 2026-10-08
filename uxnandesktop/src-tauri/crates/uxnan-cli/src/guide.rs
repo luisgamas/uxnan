@@ -457,7 +457,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "chat/open" => "uxnan-cli chat open <chat>",
         "chat/send" => "uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]",
         "chat/start" => "uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--idempotency-key <key>]",
-        "chat/read" => "uxnan-cli chat read <chat> [--turns <n>]",
+        "chat/read" => "uxnan-cli chat read <chat> [--turns <n>] [--answer-from <byte>]",
         "chat/wait" => "uxnan-cli chat wait <chat> [--for idle|waiting] [--timeout <seconds>]",
         "run/list" => "uxnan-cli run ls",
         "run/show" => "uxnan-cli run show <run-id>",

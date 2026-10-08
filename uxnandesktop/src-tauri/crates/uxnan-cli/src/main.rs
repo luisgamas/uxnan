@@ -323,6 +323,10 @@ enum ChatCmd {
         /// How many of its newest turns (default 1, at most 20).
         #[arg(long, default_value_t = 1)]
         turns: u64,
+        /// Read each answer from this byte on instead of its last 16 KiB
+        /// (page with 0, 16384, … up to the `answerLength` it reports).
+        #[arg(long)]
+        answer_from: Option<u64>,
     },
     /// Wait until a chat's turn ends (`idle`) or it asks something (`waiting`).
     Wait {
@@ -802,8 +806,16 @@ fn plan(command: Command) -> Result<Plan, String> {
                 }
                 with("chat/start", p)
             }
-            ChatCmd::Read { chat, turns } => {
-                with("chat/read", json!({ "chat": chat, "turns": turns }))
+            ChatCmd::Read {
+                chat,
+                turns,
+                answer_from,
+            } => {
+                let mut params = json!({ "chat": chat, "turns": turns });
+                if let Some(from) = answer_from {
+                    params["answerFrom"] = json!(from);
+                }
+                with("chat/read", params)
             }
             ChatCmd::Wait {
                 chat,
