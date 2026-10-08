@@ -291,7 +291,7 @@ committed lock. That is exactly how `uxnandesktop/package-lock.json` sat at
 |---|---|
 | shared / bridge | `<component>/package.json` **and the root `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`, which updates both |
 | relay Worker (carried by the bridge) | `relay/package.json` **and its entry in the root `package-lock.json`** — written by a **bridge** cut, and only when the Worker changed |
-| desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (the `[workspace.package]` version, which the app and the two member crates `uxnan-control-protocol` / `uxnan-cli` inherit), `src-tauri/Cargo.lock` (the `uxnan-desktop`, `uxnan-control-protocol` and `uxnan-cli` entries), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
+| desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (the `[workspace.package]` version, which the app and every workspace member crate inherit), `src-tauri/Cargo.lock` (the `uxnan-desktop` entry and one per member crate — `scripts/release/components.test.mjs` reads the workspace and fails when a member is missing), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
 | mobile | `uxnanmobile/pubspec.yaml` (its lock carries no app version) |
 
 Desktop files take the **numeric base only** (`0.0.PATCH`): the Windows MSI
