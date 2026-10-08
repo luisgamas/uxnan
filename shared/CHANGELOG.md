@@ -18,7 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   protocol, a subset of the open MCP Apps host protocol plus annotations:
   `VIEW_METHODS`, `VIEW_HOST_METHODS`, `ViewHostContext`,
   `VIEW_THEME_VARIABLES`, `ViewAnnotation`, `isViewAnnotation`,
-  `formatViewAnnotations`, `VIEW_CHANNEL`, `VIEW_RECEIVE_FUNCTION`.
+  `formatViewAnnotations`, `VIEW_CHANNEL`, `VIEW_RECEIVE_FUNCTION`; marks
+  (`uxnan/annotations`, `uxnan/mark`, `ViewMark`, `isViewMarkIndex`) and the
+  page's forwarded errors and warnings (`uxnan/log`). `VIEW_CHECK_TOOL_NAME` /
+  `isViewCheckToolName` for the check tool.
 
 ### Changed
 

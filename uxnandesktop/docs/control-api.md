@@ -87,7 +87,7 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
+| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait`, `view/render` | shipped |
 | `ui` | `app/focus`, `terminal/reveal`, `chat/open`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
 | `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `chat/start` (a chat with a bridge agent in a worktree, + first message — in a tab and on the phone), `run/start`, `automation/run` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read`, `chat/send` (a bridge conversation: queued behind a running turn, seen by every client), `chat/read` (its newest turns: the message, the answer, the steps taken — redacted), `chat/wait` (`idle` or `waiting`) | shipped |

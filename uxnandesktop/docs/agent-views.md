@@ -18,9 +18,37 @@ The host accepts messages only when `event.source` is the iframe's `contentWindo
 - The requested height is clamped to 80–1600 CSS pixels. The page can report a measured height, and taller content scrolls inside its frame.
 - **Annotate** lets the person pick elements in the view. A picked element stays highlighted while a popover anchored to it takes the note; each saved note leaves a numbered marker on its element, and clicking a marker reopens that note to edit or delete it. The header then shows *N notes · Add to message*, which puts every note into the composer at once (nothing is sent on its own); notes survive leaving annotate mode until added or discarded. **Expand** opens the same staged page in a large dialog.
 
+## Checking a view before it is shown
+
+The control catalog exposes `view_render` (`view/render`, CLI `uxnan-cli view
+render <file.html> --out <file.png>`) so an agent can check a prepared page before
+showing it; the bridge's `view_check` calls it when a desktop is attached. Pass the
+prepared HTML from the bridge, including its CSP and bootstrap, and optionally a
+width from 240 to 1600 CSS pixels (default 720). Only one render runs at a time.
+
+The desktop loads a disposable child webview off the window with the render frame
+(`uxnan-view://…/render/<key>`, `RENDER_FRAME` in `src-tauri/src/views.rs`): our own
+page, which holds the agent's page in an `allow-scripts` iframe. A webview's main
+frame gets Tauri's IPC bridge injected; the sandboxed child, with its opaque
+origin, gets none and cannot reach its parent — checked live: a page that looked
+for the bridge in itself and in its parent found neither. The frame answers the
+page's `ui/initialize`, keeps the height it reports and the errors and warnings
+its bootstrap forwards (`uxnan/log`), and once the page has loaded writes the
+report into its own URL's hash, which the Rust side reads; then it captures the
+PNG (`browser/capture.rs`) and closes the webview. A hidden webview gets no
+animation frames, so the frame waits on a timer.
+
+The result carries the capture as `image` (`mimeType`, `width`, `height`,
+`data` — MCP callers receive it as an image block), the document's content
+height, up to 50 bounded console messages, and `timedOut`. A timeout still
+returns a capture; `contentHeight` is 0 and `console` is empty when the page did
+not report before the 10-second deadline. The HTML is capped at 2 MiB. This is a
+preview in the desktop's webview engine and width, not a claim that every device
+renders it identically.
+
 ## Development and verification
 
-Run `npm run check` and `npm test` from `uxnandesktop/`. Run Rust checks from `uxnandesktop/src-tauri/` with `cargo fmt --check`, `cargo clippy --all-targets --all-features`, and `cargo test views::`. The tests cover JSON-RPC validation, bounded parameters, height clamping, annotation formatting, scheme response headers, and store eviction.
+Run `npm run check` and `npm test` from `uxnandesktop/`. Run Rust checks from `uxnandesktop/src-tauri/` with `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test view`. The tests cover JSON-RPC validation, bounded parameters and render reports, height clamping, annotation formatting, scheme response headers, and store eviction.
 
 The automated component test asserts `sandbox="allow-scripts"`, no `allow` attribute, `no-referrer`, and the dedicated scheme URL. The Rust response test asserts the scheme response carries the exact no-network CSP (`connect-src 'none'`) and security headers. When Tauri is upgraded, re-check the two facts the IPC isolation rests on (main-frame-only bootstrap, invoke-key check) in its sources.
 

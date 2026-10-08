@@ -33,6 +33,7 @@ uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
+uxnan-cli view render <file.html> [--width <px>] --out <file.png>   # how an agent's view page renders
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
 uxnan-cli skills get control [--full]           # this guide / the full reference
 Global: --json (stable machine output), --timeout <seconds>
@@ -68,6 +69,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `automation/show` (MCP tool `automation_show`) — Describe one saved automation in full: what `automation/list` gives plus each step's prompt, dependencies, failure handling and whether it approves its own tool use, and the run policy (overlap, ceilings, notifications, and the precondition that may make a run do nothing).
 - `browser/status` (MCP tool `browser_status`) — Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask).
 - `browser/snapshot` (MCP tool `browser_snapshot`) — Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type.
+- `view/render` (MCP tool `view_render`) — Render a prepared view page off screen and return a screenshot, its console messages and its height, so you can check the page before it is shown.
 - `browser/screenshot` (MCP tool `browser_screenshot`) — Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show.
 - `browser/console` (MCP tool `browser_console`) — Read what your workspace's browser page logged to its console since it loaded — messages, warnings, errors and uncaught exceptions — to debug the web app you are building.
 - `browser/wait` (MCP tool `browser_wait`) — Wait until your workspace's browser page shows some text (case-insensitive), or the time runs out — for content that appears after a request or an animation, instead of guessing a delay.
@@ -1056,6 +1058,48 @@ Read your workspace's browser page as a compact outline of what is visible — h
   "id": 1,
   "method": "browser/snapshot",
   "params": {}
+}
+```
+
+### `view/render`
+
+Render a prepared view page off screen and return a screenshot, its console messages and its height, so you can check the page before it is shown.
+
+- **Group:** `read` · read-only
+- **MCP:** `view_render`
+- **CLI:** `uxnan-cli view render <file.html> [--width <px>] --out <file.png>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `html` | string | yes | The prepared HTML page, including its CSP and bootstrap. At most 2 MiB in UTF-8. |
+| `width` | integer | no | The off-screen webview width in CSS pixels. Default 720. |
+
+**Result**
+
+- `image` (object) — The capture.
+  - `mimeType` (string) — `image/png`.
+  - `width` (integer) — Width in pixels.
+  - `height` (integer) — Height in pixels.
+  - `data` (string) — The PNG, base64. MCP callers receive it as an image content block instead.
+- `contentHeight` (integer) — The page document's content height in CSS pixels; 0 when the page did not report before timeout.
+- `console` (array of object) — Up to 50 console messages, oldest first.
+  - `level` (string) — `error`, `warning` or `log`.
+  - `text` (string) — Console or uncaught-error text, at most 500 characters.
+- `timedOut` (boolean) — Whether the page did not produce a report within 10 seconds.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "view/render",
+  "params": {
+    "html": "<!doctype html><html><body><h1>Preview</h1></body></html>",
+    "width": 720
+  }
 }
 ```
 

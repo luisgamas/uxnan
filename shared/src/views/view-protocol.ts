@@ -41,6 +41,10 @@ export const VIEW_METHODS = {
   /** Notification `{ index }`: the person clicked the marker of the note at
    *  that position of the last `uxnan/annotations` list, to edit or delete it. */
   mark: 'uxnan/mark',
+  /** Notification `{ level: 'error' | 'warning' | 'log', text }`: the page
+   *  logged an error or a warning, or threw (at most 50 per page, text cut to
+   *  500 characters). Chat hosts may ignore it; the render host reports it. */
+  log: 'uxnan/log',
 } as const;
 
 /** Host → view. */

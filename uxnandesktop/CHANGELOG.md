@@ -16,7 +16,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   highlighted while a popover anchored to it takes the note, each note leaves
   a numbered marker (click it to edit or delete), and *Add to message* puts
   them all in the composer, like a message the page proposes — nothing is sent
-  on its own. At
+  on its own. `view_render` (`view/render`, `uxnan-cli view render`) draws a
+  prepared page off screen — inside a sandboxed frame, out of reach of the
+  app's IPC — and returns its screenshot, console errors and height; the
+  bridge's `view_check` uses it so an agent sees its page before showing it. At
   most four frames stay live. A block type the app does not know now shows a
   one-line notice instead of nothing, as on the phone. A view never folds away
   with the work behind "Worked for…": it opens the answer.

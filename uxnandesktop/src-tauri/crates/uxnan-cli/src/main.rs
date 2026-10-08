@@ -141,6 +141,11 @@ enum Command {
         #[command(subcommand)]
         cmd: BrowserCmd,
     },
+    /// Agent views: pages agents show in chats.
+    View {
+        #[command(subcommand)]
+        cmd: ViewCmd,
+    },
     /// Call any catalog entry by its method name.
     Rpc {
         /// The method, e.g. `worktree/list`.
@@ -574,6 +579,21 @@ enum FileCmd {
         /// The staged (index vs HEAD) diff instead of the unstaged one.
         #[arg(long)]
         staged: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ViewCmd {
+    /// Render a prepared view page off screen and save a PNG of it.
+    Render {
+        /// The page: an HTML file, as the bridge prepares it.
+        file: std::path::PathBuf,
+        /// Width to render at, CSS pixels (240–1600, default 720).
+        #[arg(long)]
+        width: Option<u32>,
+        /// Where to write the PNG.
+        #[arg(long)]
+        out: std::path::PathBuf,
     },
 }
 
@@ -1121,6 +1141,21 @@ fn plan(command: Command) -> Result<Plan, String> {
                     p["worktree"] = json!(w);
                 }
                 with("file/diff", p)
+            }
+        },
+        Command::View { cmd } => match cmd {
+            ViewCmd::Render { file, width, out } => {
+                let html = std::fs::read_to_string(&file)
+                    .map_err(|e| format!("cannot read page {}: {e}", file.display()))?;
+                let mut params = json!({ "html": html });
+                if let Some(w) = width {
+                    params["width"] = json!(w);
+                }
+                Ok(Plan::Save {
+                    method: "view/render",
+                    params,
+                    out,
+                })
             }
         },
         Command::Browser { cmd } => match cmd {

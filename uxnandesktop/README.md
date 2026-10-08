@@ -218,7 +218,8 @@ available today are:
   how many agent slots the machine has left —, `project_list`, `worktree_show`,
   `terminal_list`, `agent_list`, `run_show`, `automation_show`), to show you
   things (`file_open`, in Uxnan's tab or in one of your own editors,
-  `file_diff`, `terminal_reveal`, `app_focus`), to give a
+  `file_diff`, `terminal_reveal`, `app_focus`, and `view_render` to check a
+  prepared agent view before showing it), to give a
   subtask its own worktree and agent (`worktree_create`, `terminal_create`),
   to talk to a running agent (`agent_send`, `agent_wait`, `terminal_read`) and
   to **coordinate a run of workers** — tasks, an agent of any installed kind

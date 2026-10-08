@@ -58,6 +58,24 @@ function receive(m) {
   else if (m.method === 'uxnan/annotations') setMarks(Array.isArray(params.marks) ? params.marks : []);
 }
 window.__uxnanHost = receive;
+
+// Errors and warnings go to the host too (uxnan/log): a page checked off
+// screen has no other way to say what went wrong.
+let logged = 0;
+const forward = (level, values) => {
+  if (logged >= 50) return;
+  logged++;
+  let text;
+  try { text = values.map((v) => typeof v === 'string' ? v : v instanceof Error ? v.name + ': ' + v.message : JSON.stringify(v)).join(' '); }
+  catch { text = values.map(String).join(' '); }
+  send('uxnan/log', { level, text: String(text).slice(0, 500) });
+};
+for (const [method, level] of [['error', 'error'], ['warn', 'warning']]) {
+  const original = console[method].bind(console);
+  console[method] = (...values) => { forward(level, values); return original(...values); };
+}
+addEventListener('error', (e) => forward('error', [e.message || 'Uncaught error']));
+addEventListener('unhandledrejection', (e) => forward('error', ['Unhandled rejection', e.reason]));
 window.addEventListener('message', (e) => { if (e.source === window.parent) receive(e.data); });
 
 function applyContext(c) {

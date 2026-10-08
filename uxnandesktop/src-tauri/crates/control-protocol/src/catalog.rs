@@ -825,6 +825,35 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({}),
         },
         Entry {
+            method: "view/render",
+            tool: "view_render",
+            group: Group::Read,
+            summary: "Render a prepared view page off screen and return a screenshot, its console messages and its height, so you can check the page before it is shown.",
+            params: object(
+                json!({
+                    "html": { "type": "string", "maxLength": 2097152, "description": "The prepared HTML page, including its CSP and bootstrap. At most 2 MiB in UTF-8." },
+                    "width": { "type": "integer", "minimum": 240, "maximum": 1600, "default": 720, "description": "The off-screen webview width in CSS pixels. Default 720." }
+                }),
+                &["html"],
+            ),
+            mutates: false,
+            result: result(json!({
+                "image": nested("The capture.", json!({
+                    "mimeType": field("string", "`image/png`."),
+                    "width": field("integer", "Width in pixels."),
+                    "height": field("integer", "Height in pixels."),
+                    "data": field("string", "The PNG, base64. MCP callers receive it as an image content block instead."),
+                })),
+                "contentHeight": field("integer", "The page document's content height in CSS pixels; 0 when the page did not report before timeout."),
+                "console": list_of(result(json!({
+                    "level": field("string", "`error`, `warning` or `log`."),
+                    "text": field("string", "Console or uncaught-error text, at most 500 characters."),
+                })), "Up to 50 console messages, oldest first."),
+                "timedOut": field("boolean", "Whether the page did not produce a report within 10 seconds."),
+            })),
+            example: json!({ "html": "<!doctype html><html><body><h1>Preview</h1></body></html>", "width": 720 }),
+        },
+        Entry {
             method: "browser/screenshot",
             tool: "browser_screenshot",
             group: Group::Read,
