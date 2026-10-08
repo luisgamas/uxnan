@@ -413,8 +413,19 @@ export const chat = {
   output:
     "uxnan-scroll max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-[11px] leading-4",
   /** A quiet control in the composer's toolbar (model, effort, access): ghost
-   *  until hovered, so the toolbar reads as part of the input. */
-  pill: "h-7 gap-1 rounded-full border-transparent bg-transparent px-2.5 text-xs font-normal text-muted-foreground shadow-none hover:bg-foreground/[0.05] hover:text-foreground dark:bg-transparent dark:hover:bg-foreground/[0.06]",
+   *  until hovered, so the toolbar reads as part of the input. It may shrink
+   *  (a `Button` does not by default) so a narrow composer squeezes its pills
+   *  instead of spilling them past its edge. */
+  pill: "h-7 min-w-0 shrink gap-1 rounded-full border-transparent bg-transparent px-2.5 text-xs font-normal text-muted-foreground shadow-none hover:bg-foreground/[0.05] hover:text-foreground dark:bg-transparent dark:hover:bg-foreground/[0.06]",
+  /** The composer itself: the container its toolbar sizes against. */
+  composer: "@container/composer",
+  /** A pill's label: truncated when the toolbar is tight. */
+  pillLabel: "min-w-0 truncate",
+  /** A secondary pill's label (effort, access): gone below 36rem of composer,
+   *  leaving its icon — the pill keeps its tooltip and accessible name. */
+  pillLabelCompact: "min-w-0 truncate @max-[36rem]/composer:hidden",
+  /** The model pill's label beside the agent's logo: gone below 24rem. */
+  pillLabelTight: "min-w-0 truncate @max-[24rem]/composer:hidden",
   /** What waits above the composer — open approvals and questions, the queue. */
   dock: "mb-2 flex max-h-[45vh] flex-col gap-2 overflow-y-auto uxnan-scroll",
   /** A message's hover actions (copy) and time, revealed with its row. */

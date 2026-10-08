@@ -237,7 +237,9 @@
           : cn("justify-between font-normal", triggerClass)}
       >
         {#if agent}<AgentLogo logo={agent.logo} class={cn(icon.status, "shrink-0")} />{/if}
-        <span class="truncate">{waiting ? i18n.t("modelPicker.loading") : label}</span>
+        <span class={variant === "pill" ? (agent ? chat.pillLabelTight : chat.pillLabel) : "truncate"}>
+          {waiting ? i18n.t("modelPicker.loading") : label}
+        </span>
         {#if waiting}
           <Spinner class={icon.status} aria-hidden="true" />
         {:else}
