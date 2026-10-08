@@ -81,8 +81,9 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
   @override
   void dispose() {
     _release();
-    _notes.removeListener(_syncInlineMarks);
-    _notes.dispose();
+    _notes
+      ..removeListener(_syncInlineMarks)
+      ..dispose();
     super.dispose();
   }
 
