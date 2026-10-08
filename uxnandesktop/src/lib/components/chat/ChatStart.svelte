@@ -6,8 +6,9 @@
   // every client sees the same bridge threads.
   //
   // A centered hero: the question, then the composer, whose toolbar carries the
-  // agent (the same `Combobox` + `AgentLogo` the new-worktree dialog uses) and
-  // the model with its run options (`ModelPicker`) as quiet pills; the conversations
+  // agent and its model in one pill (`ModelPicker` with its rail of agents),
+  // the model's run options, and the access mode the conversation will start
+  // in — chosen here, before the first message; the conversations
   // already running here are listed below it, and below those the agents' own
   // sessions in this folder that no conversation continues yet — started in a
   // terminal, here or elsewhere — to pick up as a chat (architecture/02a
@@ -25,10 +26,14 @@
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
-  import ModelPicker from "$lib/components/ModelPicker.svelte";
+  import ModelPicker, { type PickerAgent } from "$lib/components/ModelPicker.svelte";
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
-  import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
+  import { Separator } from "$lib/components/ui/separator";
+  import { SvelteSet } from "svelte/reactivity";
   import ChatComposer from "./ChatComposer.svelte";
+  import ChatAccessMenu from "./ChatAccessMenu.svelte";
+  import type { AccessMode } from "$shared/models/thread";
+  import { effectiveAccessMode } from "$lib/bridge/accessMode";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import { sessionKey, useChat } from "$lib/bridge/chat.svelte";
@@ -54,6 +59,8 @@
   let agentId = $state<string | undefined>(undefined);
   let model = $state("");
   let optionValues = $state<Record<string, string | boolean>>({});
+  /** The access mode picked before the first message; unset = the agent's default. */
+  let access = $state<AccessMode | undefined>(undefined);
   let starting = $state(false);
   // The composer's text is the tab's draft (persisted with the layout).
   let draft = $state(untrack(() => tab.draft ?? ""));
@@ -83,17 +90,26 @@
     void chat.modelsFor(id).finally(() => (modelsLoading = false));
   });
 
-  const agentGroups = $derived<ComboGroup[]>([
-    {
-      items: agents.map((a) => ({
-        value: a.agentId,
-        label: a.displayName,
-        disabled: !a.available,
-        ...(a.available ? {} : { meta: i18n.t("chat.notInstalled") }),
-      })),
-    },
-  ]);
+  const pickerAgents = $derived<PickerAgent[]>(
+    agents.map((a) => ({
+      id: a.agentId,
+      label: a.displayName,
+      logo: bridgeAgentLogo(a.agentId),
+      available: a.available,
+      ...(a.available ? {} : { note: i18n.t("chat.notInstalled") }),
+    })),
+  );
+  // Another agent's models, asked for when the picker shows them.
+  const browsing = new SvelteSet<string>();
+  function browseAgent(id: string) {
+    if (chat.cachedModels(id).length > 0 || browsing.has(id)) return;
+    browsing.add(id);
+    void chat.modelsFor(id).finally(() => browsing.delete(id));
+  }
   const models = $derived(chat.cachedModels(agentId));
+  const caps = $derived(chat.agent(agentId)?.capabilities);
+  const accessModes = $derived<AccessMode[]>(caps?.accessModes ?? []);
+  const accessMode = $derived(caps ? effectiveAccessMode(caps, access) : undefined);
   // "Default" runs the agent's own default model: offer that model's knobs.
   const runOptions = $derived(
     (models.find((m) => m.id === model) ?? (model ? undefined : models.find((m) => m.isDefault)))
@@ -165,6 +181,10 @@
     model = "";
     optionValues = {};
   }
+  function pickModel(id: string, agent?: string) {
+    if (agent) pickAgent(agent);
+    model = id;
+  }
 
   // The picked agent's commands; a new function when the agent changes, which
   // is what makes the composer ask again.
@@ -192,6 +212,11 @@
         // A name given to the tab before the first message is the user's.
         ...(tab.customTitle ? { title: tab.customTitle } : {}),
       });
+      // A mode picked here applies from the first turn; the agent's default
+      // needs nothing sent.
+      if (caps && accessMode !== undefined && accessMode !== effectiveAccessMode(caps, thread.accessMode)) {
+        await chat.setAccessMode(thread.id, accessMode);
+      }
       terminals.bindChatThread(tab.id, thread.id);
       // The conversation is empty on the bridge, so the first page is known
       // without a round trip; the bridge names the thread from this message.
@@ -279,10 +304,6 @@
   </button>
 {/snippet}
 
-{#snippet agentPrefix(item: ComboItem)}
-  <AgentLogo logo={bridgeAgentLogo(item.value)} class={cn(icon.brand, "shrink-0")} />
-{/snippet}
-
 <div class="uxnan-scroll h-full min-h-0 overflow-y-auto">
   <div class={cn(chatTokens.column, "flex min-h-full max-w-2xl flex-col justify-center gap-5 py-10")}>
     <div class="flex flex-col items-center gap-1.5 text-center">
@@ -308,26 +329,26 @@
         acceptsImages={chat.agent(agentId)?.capabilities?.images === true}
       >
         {#snippet leading()}
-          <Combobox
-            value={agentId}
-            groups={agentGroups}
-            placeholder={agents.length === 0 ? i18n.t("chat.agentsLoading") : i18n.t("chat.chooseAgent")}
-            searchPlaceholder={i18n.t("common.search")}
-            itemPrefix={agentPrefix}
-            triggerVariant="ghost"
-            triggerClass={cn(chatTokens.pill, "w-auto max-w-48")}
-            disabled={agents.length === 0}
-            onChange={pickAgent}
-          />
           <ModelPicker
             variant="pill"
+            agents={pickerAgents}
+            {agentId}
             {models}
             value={model}
-            loading={modelsLoading}
+            loading={modelsLoading || agents.length === 0}
+            modelsOf={(id) => chat.cachedModels(id)}
+            loadingOf={(id) => browsing.has(id)}
+            onBrowse={browseAgent}
             disabled={!agentId}
-            onSelect={(id) => (model = id)}
+            onSelect={pickModel}
           />
           <RunOptionsPicker options={runOptions} bind:values={optionValues} disabled={!agentId} />
+        {/snippet}
+        {#snippet trailing()}
+          {#if accessMode !== undefined}
+            <Separator orientation="vertical" class="mx-0.5 h-4! bg-border/60" />
+            <ChatAccessMenu value={accessMode} modes={accessModes} onChange={(mode) => (access = mode)} />
+          {/if}
         {/snippet}
       </ChatComposer>
       <p class={cn(text.meta, "px-1")}>{i18n.t("chat.agentFixedHint")}</p>

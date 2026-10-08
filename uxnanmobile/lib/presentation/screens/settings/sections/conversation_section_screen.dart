@@ -83,19 +83,6 @@ class ConversationSectionScreen extends ConsumerWidget {
                 },
               ),
 
-              // ── Claude ─────────────────────────────────────────────────
-              NeSectionHeader(label: l10n.settingsConversationClaudeGroup),
-              NeSwitchTile(
-                icon: UxIcons.autoAwesome,
-                title: l10n.settingsClaudeLatestTitle,
-                subtitle: l10n.settingsClaudeLatestSubtitle,
-                value: ref.watch(showClaudeLatestModelsProvider),
-                onChanged: (v) => ref
-                    .read(showClaudeLatestModelsProvider.notifier)
-                    .set(value: v),
-              ),
-              NeSectionHint(text: l10n.settingsClaudeLatestHint),
-
               // ── Autonomous agents ──────────────────────────────────────
               // Named for the BEHAVIOUR, not for one agent: Pi was the only
               // one running without per-action approval when this landed,

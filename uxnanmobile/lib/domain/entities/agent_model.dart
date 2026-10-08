@@ -104,6 +104,7 @@ class AgentModel extends Equatable {
     this.version,
     this.isDefault = false,
     this.isLatestAlias = false,
+    this.isLegacy = false,
     this.options = const [],
   });
 
@@ -137,6 +138,7 @@ class AgentModel extends Equatable {
         version: version != null && version.isNotEmpty ? version : null,
         isDefault: json['isDefault'] == true,
         isLatestAlias: json['isLatestAlias'] == true,
+        isLegacy: json['isLegacy'] == true,
         options: options,
       );
     }
@@ -164,6 +166,10 @@ class AgentModel extends Equatable {
   /// versions.
   final bool isLatestAlias;
 
+  /// Whether the agent's CLI lists this as an older model — a previous
+  /// generation it still offers. The picker folds these under "Older models".
+  final bool isLegacy;
+
   /// Per-model run-option knobs (reasoning effort, etc.); empty when none.
   final List<AgentModelOption> options;
 
@@ -175,6 +181,7 @@ class AgentModel extends Equatable {
         version,
         isDefault,
         isLatestAlias,
+        isLegacy,
         options,
       ];
 }

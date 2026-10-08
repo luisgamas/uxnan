@@ -17,7 +17,6 @@ class ConversationPreferencesStore {
       'uxnan.conversation.contextIndicatorMode';
   static const String _confirmPushKey = 'uxnan.git.confirmPush';
   static const String _confirmPrKey = 'uxnan.git.confirmPr';
-  static const String _showClaudeLatestKey = 'uxnan.models.showClaudeLatest';
   static const String _showAutonomousBannerKey =
       'uxnan.conversation.showAutonomousBanner';
 
@@ -88,21 +87,6 @@ class ConversationPreferencesStore {
   Future<void> writeConfirmPr({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_confirmPrKey, value);
-  }
-
-  /// Whether Claude Code's "latest" alias models
-  /// (`fable`/`opus`/`sonnet`/`haiku`) are shown in the model picker, or `null`
-  /// if never set (keep the default).
-  Future<bool?> readShowClaudeLatest() async {
-    final prefs = await _prefs;
-    if (!prefs.containsKey(_showClaudeLatestKey)) return null;
-    return prefs.getBool(_showClaudeLatestKey);
-  }
-
-  /// Persists the show-Claude-latest-aliases preference.
-  Future<void> writeShowClaudeLatest({required bool value}) async {
-    final prefs = await _prefs;
-    await prefs.setBool(_showClaudeLatestKey, value);
   }
 
   /// Whether the autonomous ("YOLO") mode banner is shown when a conversation

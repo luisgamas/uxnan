@@ -18,6 +18,8 @@ export interface PickerModel {
   description?: string;
   isDefault?: boolean;
   options?: AgentModelOption[];
+  /** The CLI lists it as an older model: folded at the end of the picker. */
+  isLegacy?: boolean;
 }
 
 export interface ModelGroup<M extends PickerModel = PickerModel> {

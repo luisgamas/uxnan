@@ -2,6 +2,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowDownIcon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+import AttachmentIcon from "@hugeicons/core-free-icons/Attachment01Icon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 import LoadingIcon from "@hugeicons/core-free-icons/Loading03Icon";
@@ -470,11 +471,13 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
                 Message the agent… <span className="caret" />
               </div>
               <div className="mt-2.5 flex items-center gap-3 text-[10px] text-dim">
-                <HugeiconsIcon icon={PlusIcon} className="size-3" />
+                <HugeiconsIcon icon={AttachmentIcon} className="size-3" />
                 <span className="flex items-center gap-1">
+                  <Mark src={AGENT_ICON.claudecode} id="claudecode" className="size-2.5" />
                   Opus 5.5
                   <HugeiconsIcon icon={ArrowDownIcon} className="size-2.5 opacity-60" />
                 </span>
+                <span className="h-3 w-px bg-line-2" />
                 <span className="flex items-center gap-1">
                   <HugeiconsIcon icon={UnlockIcon} className="size-2.5" />
                   Full access

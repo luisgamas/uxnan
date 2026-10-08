@@ -318,7 +318,7 @@ device/rename           -> { deviceId, name, ageMs? } -> TrustedDevice. Cualquie
 **Agentes (5):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
-agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
+agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?, isLegacy?)
 agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom'|'skill', headlessSupported?). Params { agentId, cwd? } (cwd: la carpeta del hilo). El bridge se los **pregunta al agente** en esa carpeta, por la superficie que maneja: Claude (`initialize` por stream-json), Codex (`skills/list` del app-server + `compact` nativo + prompts de `~/.codex/prompts`), OpenCode (su servidor, v1 y v2), pi (`get_commands`), Antigravity (sus skills, `agy -p /skills`), Grok (ACP `available_commands_update`; para una carpeta sin sesión, una sesión corta sin prompt), Zero (sus propias skills, `zero skills list --json`, solo las que su herramienta de skills puede cargar). Invocacion via `turn/send` `command`, nativa salvo los prompts de Codex y las skills de Zero (el bridge los expande a un prompt). Para cualquier agente `deprecated`, devuelve `[]`. Detalle: `bridge/docs/agents.md` → *Agent commands*.
 agent/doctor            -> { agents: AgentDiagnosis[] } — por agente: `available`, el comando que se ejecuta y cada ubicacion revisada (tabla compartida `shared/agent-locations.json` + PATH del shell de login)
 agent/usageStats        -> limites del plan por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo, reinicios canjeables). El bridge es el unico lector y todo cliente le pregunta; Claude Code y Codex se preguntan a si mismos (sin leer credenciales), Copilot y Grok por su token guardado → API oficial. Solo los proveedores solicitados (02a §5.8.10).
@@ -807,6 +807,7 @@ interface AgentModel {
   options?: AgentModelOption[];               // per-model run-option knobs
   contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi --list-models)
   isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude fable/opus/sonnet/haiku); ausente en versiones fijas
+  isLegacy?: boolean;                         // el CLI lo lista como modelo anterior (Claude: id concreto que ningun alias corre hoy); los clientes lo pliegan en "Modelos anteriores"
 }
 type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }

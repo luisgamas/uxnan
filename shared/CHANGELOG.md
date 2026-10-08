@@ -4,6 +4,11 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`AgentModel.isLegacy`.** Marks a model the agent's CLI lists as an older
+  one — a previous generation it still offers. Clients fold such models under
+  "Older models". Set only from what the CLI reports, never from a list.
 
 ## [0.0.32-alpha.20261004] - 20261004
 ### Added

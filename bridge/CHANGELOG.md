@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Changed
 
+- **Claude Code's picker lists each model once, as the CLI does.** Its current
+  models come through their alias only, under the CLI's own label (`Opus 5.5`,
+  no more `(latest)` beside a second `Opus 5.5`), and picking one follows the
+  tier to its next release. The concrete ids the CLI lists that no alias runs
+  today are flagged `isLegacy` — eight on a Max account today, Opus 5 to
+  Haiku 4.5. No other wired CLI marks older models (Codex's `hidden` is for
+  internal ones, OpenCode only dates them), so only Claude's list is flagged.
+### Changed
+
 - **Claude Code's models come from Claude Code.** `agent/models` for Claude is
   now the list its stream-json `initialize` control request answers — the same
   request `agent/commands` already asks, with no turn and no tokens — instead

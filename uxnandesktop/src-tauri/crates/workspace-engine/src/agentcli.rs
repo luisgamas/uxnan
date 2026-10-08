@@ -73,6 +73,10 @@ pub struct Resolved {
 pub struct AgentModel {
     pub id: String,
     pub display_name: String,
+    /// The CLI lists it as an older model (`isLegacy` in the shared
+    /// `AgentModel`): the picker folds it under "Older models".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_legacy: bool,
 }
 
 impl AgentModel {
@@ -80,7 +84,13 @@ impl AgentModel {
         Self {
             id: id.to_string(),
             display_name: display_name.to_string(),
+            is_legacy: false,
         }
+    }
+
+    fn legacy(mut self) -> Self {
+        self.is_legacy = true;
+        self
     }
 }
 
@@ -621,7 +631,9 @@ pub fn build_args(
 /// `default`, and older concrete ids (`claude-opus-4-8`,
 /// `claude-haiku-4-5-20251001`). The newest model of each tier appears only
 /// through its alias, so each alias contributes the concrete model it runs,
-/// under its label; the concrete ids follow as listed. `default` is left out —
+/// under its label; the concrete ids follow as listed, flagged legacy — no
+/// alias runs them today (unless there is no alias to tell them apart by).
+/// `default` is left out —
 /// the picker offers "Default" itself. The bridge shows the same concrete
 /// entries after its aliases (`claudeModels`, `bridge/src/adapters/
 /// claude-adapter.ts`).
@@ -659,6 +671,9 @@ pub fn parse_claude_initialize_models(line: &str) -> Option<Vec<AgentModel>> {
         } else {
             listed.push(AgentModel::new(&value, &label));
         }
+    }
+    if !aliased.is_empty() {
+        listed = listed.into_iter().map(AgentModel::legacy).collect();
     }
     let mut seen = std::collections::HashSet::new();
     Some(
@@ -1237,6 +1252,20 @@ Available models:
                 ("claude-opus-4-7", "Opus 4.7"),
                 ("claude-opus-4-6", "Opus 4.6"),
                 ("claude-sonnet-4-6", "Sonnet 4.6"),
+            ]
+        );
+        // Only what an alias runs is current; the rest is folded as older.
+        assert_eq!(
+            models
+                .iter()
+                .filter(|m| !m.is_legacy)
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "claude-opus-5-5",
+                "claude-fable-5-1",
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5"
             ]
         );
     }

@@ -887,7 +887,6 @@ pantalla dedicada. Las pantallas de sección viven en
 - `ConversationSectionScreen` — thinking / scroll-on-send / indicador de
   contexto + entrada a plantillas de prompt (el `_ContextIndicatorTile` se
   movió aquí).
-- `ModelsSectionScreen` — el toggle de modelos "(latest)" de Claude.
 - `SourceControlSectionScreen` — las confirmaciones de push / pull request.
 - `UpdatesSectionScreen` — el estado de actualización (ver módulo de updates).
 - `AboutSectionScreen` — identidad + versión de la app (`appPackageInfoProvider`

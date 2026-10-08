@@ -6,6 +6,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Changed
 
+- **The desktop mockup's composer follows the app's.** It attaches with a
+  paperclip, the model pill leads with the agent's mark, and a hairline sets
+  the access mode apart.
+
 - **The desktop mockup's working mark follows the app.** A working agent
   shows the app's spinner instead of the Comet Trail, and the *Working for
   41s* sweep moves by `transform` like the app's, instead of animating a

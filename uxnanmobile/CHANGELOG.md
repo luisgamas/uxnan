@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Older models fold away in the model picker.** Models the agent's CLI calls
+  older (today only Claude Code's) sit under one *Older models* row at the end
+  of the list, open from the start when the current model is one of them and
+  listed with the rest while searching.
+
+### Removed
+
+- **Settings ▸ Conversation ▸ "Show Claude Code latest models".** Claude
+  Code's picker now lists each model once, its current ones through their
+  alias, so hiding the aliases would hide every current model.
 
 ## [0.0.41-alpha.20261006+20261008] - 20261006
 ### Changed

@@ -36,7 +36,8 @@
   import { effectiveAccessMode } from "$lib/bridge/accessMode";
   import type { TurnAttachment } from "$shared/models/workspace";
   import type { Turn } from "$shared/models/thread";
-  import ModelPicker from "$lib/components/ModelPicker.svelte";
+  import ModelPicker, { type PickerAgent } from "$lib/components/ModelPicker.svelte";
+  import { Separator } from "$lib/components/ui/separator";
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
@@ -179,6 +180,12 @@
   /** Deleted on another client (or the bridge lost it): nothing to show. */
   const missing = $derived(chat.threadsLoaded && !thread);
   const agent = $derived(chat.agent(thread?.agentId));
+  /** The conversation's agent, fixed for its life: the model pill leads with it. */
+  const pickerAgents = $derived.by<PickerAgent[]>(() => {
+    const id = thread?.agentId;
+    if (!id) return [];
+    return [{ id, label: agent?.displayName ?? id, logo: bridgeAgentLogo(id), available: true }];
+  });
 
   // Where the agent's plan stands, for the context ring: the plan is read
   // (once, then every few minutes while open) whether or not it is activated
@@ -829,6 +836,8 @@
         {#snippet leading()}
           <ModelPicker
             variant="pill"
+            agents={pickerAgents}
+            agentId={thread?.agentId}
             {models}
             value={thread?.model ?? ""}
             loading={modelsLoading}
@@ -839,6 +848,7 @@
         {/snippet}
         {#snippet trailing()}
           {#if accessMode !== undefined}
+            <Separator orientation="vertical" class="mx-0.5 h-4! bg-border/60" />
             <ChatAccessMenu value={accessMode} modes={accessModes} onChange={(mode) => void setAccess(mode)} />
           {/if}
         {/snippet}

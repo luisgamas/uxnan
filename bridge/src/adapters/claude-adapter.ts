@@ -1594,18 +1594,20 @@ export function parseInitializeModels(line: string): ClaudeReportedModel[] | und
 const CLAUDE_DEFAULT_VALUE = 'default';
 
 /**
- * The picker's models from what `initialize` reported, in the CLI's own order:
+ * The picker's models from what `initialize` reported, as the CLI lists them —
+ * each model once:
  *
- *  - **Aliases first** (`opus`, `fable`, `sonnet`, `haiku` — any `value` that
- *    is not its own `resolvedModel`), labelled `<name> (latest)` and flagged
- *    `isLatestAlias`, with the concrete model they run today as `version`.
- *  - **The concrete model each alias runs**, as its own entry. The CLI lists
- *    the newest of each tier only through its alias, and `--model` takes the
- *    concrete id too: without it, a picker that hides the moving aliases (the
- *    phone's setting) would hide every current model.
- *  - **The rest of the concrete ids**, as the CLI lists them (older models,
- *    dated snapshots like `claude-haiku-4-5-20251001` included — that is the id
- *    the CLI takes).
+ *  - **Current models, through their alias** (`opus`, `fable`, `sonnet`,
+ *    `haiku` — any `value` that is not its own `resolvedModel`), under the
+ *    CLI's label (`Opus 5.5`), flagged `isLatestAlias`, with the concrete model
+ *    they run today as `version`. That is how the CLI itself offers its newest
+ *    models: picking one follows its tier to the next release.
+ *  - **The concrete ids**, as the CLI lists them (dated snapshots
+ *    like `claude-haiku-4-5-20251001` included — that is the id the CLI takes),
+ *    flagged `isLegacy`: the CLI lists them because the account can still use
+ *    them, but no alias runs any of them today — a newer model of their tier
+ *    took its place. (With no alias at all nothing can be told apart, and
+ *    nothing is flagged.)
  *  - **Pinned models** from config not already listed.
  *
  * The CLI's own `default` entry is not a model to pick: picking nothing runs
@@ -1644,7 +1646,7 @@ export function claudeModels(
     add(
       {
         id: m.value,
-        displayName: `${m.displayName ?? m.value} (latest)`,
+        displayName: m.displayName ?? m.value,
         ...describe(m),
         version: m.resolvedModel,
         isLatestAlias: true,
@@ -1653,13 +1655,17 @@ export function claudeModels(
       m.resolvedModel!,
     );
   }
-  for (const m of aliases) {
-    const id = m.resolvedModel!;
-    add({ id, displayName: m.displayName ?? id, ...describe(m), ...effort(m) }, id);
-  }
+
+  const legacy = aliases.length > 0 ? { isLegacy: true } : {};
   for (const m of listed.filter((m) => !isAlias(m))) {
     add(
-      { id: m.value, displayName: m.displayName ?? m.value, ...describe(m), ...effort(m) },
+      {
+        id: m.value,
+        displayName: m.displayName ?? m.value,
+        ...describe(m),
+        ...effort(m),
+        ...legacy,
+      },
       m.value,
     );
   }

@@ -988,19 +988,21 @@ claude 2.1.293). Each entry has the `value` `--model` takes, the
 `supportsEffort` and `supportedEffortLevels`. It is **account-aware**: it lists
 only what this account can use. The bridge keeps no table of its own;
 `claudeModels()` (`src/adapters/claude-adapter.ts`) turns that list into
-`agent/models`, in the CLI's order:
+`agent/models` the way the CLI offers it — each model once, in its order:
 
-1. **Aliases** (`opus`, `fable`, `sonnet`, `haiku` — any `value` that is not its
-   own `resolvedModel`), labelled `<displayName> (latest)` (`Opus 5.5 (latest)`),
-   flagged `isLatestAlias`, with the concrete model as `version`. After a turn,
-   the concrete id it ran on is also reported through `model_resolved`.
-2. **The concrete model each alias runs** (`claude-opus-5-5`), as its own entry.
-   The CLI lists the newest model of each tier only through its alias, and
-   `--model` takes the concrete id too — without this entry, the phone's
-   setting that hides the moving aliases would hide every current model.
-3. **The other concrete ids**, as the CLI lists them — dated snapshots
-   included (`claude-haiku-4-5-20251001` is the id the CLI takes for Haiku 4.5).
-4. **Pinned models** from `agents.claude-code.models` the CLI did not list.
+1. **Current models, by alias** (`opus`, `fable`, `sonnet`, `haiku` — any
+   `value` that is not its own `resolvedModel`), under the CLI's label
+   (`Opus 5.5`), flagged `isLatestAlias`, with the concrete model as `version`.
+   The CLI lists its newest models only this way: picking one follows the tier
+   to its next release. After a turn, the concrete id it ran on is also
+   reported through `model_resolved`.
+2. **Older models**: the concrete ids the CLI lists that no alias runs today
+   (dated snapshots included — `claude-haiku-4-5-20251001` is the id the CLI
+   takes for Haiku 4.5), flagged `isLegacy`. Every picker folds them under
+   *Older models*. No other wired CLI marks its models this way (checked
+   2026-10-08: Codex's `hidden` hides internal models, OpenCode only dates
+   them), so only Claude's list folds.
+3. **Pinned models** from `agents.claude-code.models` the CLI did not list.
 
 The CLI's own `default` entry is not a row: picking nothing runs it, and every
 client already offers that. It marks `isDefault` instead, on the first entry
@@ -1047,8 +1049,9 @@ installed CLI knows it.
 **The desktop asks the same request.** Its AI commit-message / PR-body picker
 (`uxnandesktop/src-tauri/src/aicommit.rs` → `claude_models`, parsed by
 `parse_claude_initialize_models` in `crates/workspace-engine/src/agentcli.rs`)
-shows entries 2 and 3 — the concrete models, since a commit message names the
-model that wrote it — under the same labels.
+shows concrete ids rather than aliases, since a commit message names the model
+that wrote it: what each alias runs today, under its label, then the older ids,
+folded the same way.
 
 **The one table left is the price** (`src/usage/usage-prices.ts` →
 `CLAUDE_PRICES`, pinned to Anthropic's published rates by

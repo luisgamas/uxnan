@@ -324,10 +324,9 @@ connected to live bridge data, validated on-device against a real bridge.
   bare path or inline code) and opens in that same viewer — resolved on the PC
   via `workspace/resolveFileLink`, so a citation into another worktree works.
   See `docs/file-viewer.md` for the exact matrix and boundaries.
-- **Structured model picker** (readable names, default badge, Claude alias
-  "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
-  a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"
-  entries and show only pinned versions (display-only; persisted locally).
+- **Structured model picker** (readable names, default badge, resolved-version
+  row, `thread/setModel`); models the CLI calls older (`isLegacy` — today only
+  Claude Code's) fold under one *Older models* row.
 - **Per-model run-option knobs** (data-driven: `enum` / `toggle`, generic
   renderer).
 - **Agent slash commands in the `/` palette** — the agent's own commands
