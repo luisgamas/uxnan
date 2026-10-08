@@ -10,6 +10,7 @@ import {
   formatViewAnnotations,
   isViewAnnotation,
   isViewId,
+  isViewMarkIndex,
   isViewToolName,
   viewIdInOutput,
 } from '../src/index.js';
@@ -92,4 +93,14 @@ test('formatViewAnnotations writes one readable entry per element', () => {
     text,
     'On the view "Usage":\n\n1. `#total` (<td>)\n   Text:  42 units \n   Note: should be bold\n\n2. `svg` (<svg>)',
   );
+});
+
+test('isViewMarkIndex accepts only an index of the current marks', () => {
+  assert.equal(isViewMarkIndex({ index: 0 }, 2), true);
+  assert.equal(isViewMarkIndex({ index: 1 }, 2), true);
+  assert.equal(isViewMarkIndex({ index: 2 }, 2), false);
+  assert.equal(isViewMarkIndex({ index: -1 }, 2), false);
+  assert.equal(isViewMarkIndex({ index: 0.5 }, 2), false);
+  assert.equal(isViewMarkIndex({}, 2), false);
+  assert.equal(isViewMarkIndex(null, 2), false);
 });

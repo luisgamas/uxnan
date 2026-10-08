@@ -9,17 +9,28 @@ function setup() {
   const onHeight = vi.fn();
   const onMessage = vi.fn();
   const onAnnotation = vi.fn();
+  const onMark = vi.fn();
   const openLink = vi.fn(async () => true);
   const host = createViewHost({
     context: () => ({ theme: 'dark', styles: { variables: {} }, displayMode: 'inline', platform: 'desktop', locale: 'en' }),
-    send, onHeight, onMessage, onAnnotation, openLink,
+    send, onHeight, onMessage, onAnnotation, openLink, onMark, markCount: () => 2,
   });
-  return { host, send, onHeight, onMessage, onAnnotation, openLink };
+  return { host, send, onHeight, onMessage, onAnnotation, openLink, onMark };
 }
 
 const annotation: ViewAnnotation = { selector: 'button.save', tag: 'button', text: 'Save', rect: { x: 1, y: 2, width: 30, height: 20 } };
 
 describe('desktop agent view protocol host', () => {
+  it('opens the note of a clicked marker, only for a marker it listed', async () => {
+    const { host, onMark } = setup();
+    expect(await host.receive({ jsonrpc: '2.0', method: VIEW_METHODS.mark, params: { index: 1 } })).toBe(true);
+    expect(onMark).toHaveBeenCalledWith(1);
+    expect(await host.receive({ jsonrpc: '2.0', method: VIEW_METHODS.mark, params: { index: 2 } })).toBe(false);
+    expect(await host.receive({ jsonrpc: '2.0', method: VIEW_METHODS.mark, params: { index: 0.5 } })).toBe(false);
+    expect(await host.receive({ jsonrpc: '2.0', id: 1, method: VIEW_METHODS.mark, params: { index: 0 } })).toBe(false);
+    expect(onMark).toHaveBeenCalledTimes(1);
+  });
+
   it('answers initialize with the current host context', async () => {
     const { host, send } = setup();
     expect(await host.receive({ jsonrpc: '2.0', id: 2, method: VIEW_METHODS.initialize, params: {} })).toBe(true);

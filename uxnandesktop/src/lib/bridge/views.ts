@@ -15,10 +15,10 @@ export const VIEW_THEME_VARIABLES = [
 export const VIEW_METHODS = {
   initialize: 'ui/initialize', initialized: 'ui/notifications/initialized',
   sizeChanged: 'ui/notifications/size-changed', openLink: 'ui/open-link',
-  message: 'ui/message', annotation: 'uxnan/annotation',
+  message: 'ui/message', annotation: 'uxnan/annotation', mark: 'uxnan/mark',
 } as const;
 export const VIEW_HOST_METHODS = {
-  hostContextChanged: 'ui/notifications/host-context-changed', annotate: 'uxnan/annotate',
+  hostContextChanged: 'ui/notifications/host-context-changed', annotate: 'uxnan/annotate', annotations: 'uxnan/annotations',
 } as const;
 
 export interface ViewAnnotation {
@@ -98,6 +98,10 @@ export interface ViewHostCallbacks {
   onHeight(height: number): void;
   onMessage(text: string): void;
   onAnnotation(annotation: ViewAnnotation): void;
+  /** The person clicked the marker of the note at [index]. */
+  onMark(index: number): void;
+  /** How many notes the page was last told about (`uxnan/annotations`). */
+  markCount(): number;
   openLink(url: string): Promise<boolean>;
 }
 
@@ -160,6 +164,12 @@ export function createViewHost(callbacks: ViewHostCallbacks) {
         if (item.type !== 'text' || !boundedString(item.text, 4000, true)) return false;
         callbacks.onMessage(item.text);
         answer({});
+        return true;
+      }
+      case VIEW_METHODS.mark: {
+        const index = p.index;
+        if (request || typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= callbacks.markCount()) return false;
+        callbacks.onMark(index);
         return true;
       }
       case VIEW_METHODS.annotation:

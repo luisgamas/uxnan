@@ -3406,10 +3406,15 @@ tambien: funciona con solo el telefono.
   `ui/notifications/size-changed`, `ui/notifications/host-context-changed`,
   `ui/open-link` (el anfitrion pregunta antes de abrir fuera), `ui/message`
   (el texto va al compositor; nunca se envia solo) — mas `uxnan/annotate` y
-  `uxnan/annotation`: la persona activa *Anotar*, elige un elemento (selector,
-  etiqueta, texto, inicio del HTML y posicion, acotados) y escribe una nota; las
-  notas llegan al compositor con `formatViewAnnotations`, igual en ambos
-  clientes. Que sea el protocolo abierto deja la puerta a hospedar, con el
+  `uxnan/annotation`, `uxnan/annotations` y `uxnan/mark`: la persona activa
+  *Anotar* y elige un elemento (selector, etiqueta, texto, inicio del HTML y
+  posicion, acotados); la pagina **lo retiene** resaltado mientras escribe la
+  nota (un popover anclado al elemento en el desktop, una hoja inferior en el
+  telefono). Puede dejar **varias notas**: el anfitrion le envia la lista
+  (`uxnan/annotations`) y la pagina dibuja un marcador numerado sobre cada
+  elemento; tocar un marcador (`uxnan/mark`) abre esa nota para editarla o
+  borrarla. *N notas · Añadir al mensaje* lleva todas al compositor con
+  `formatViewAnnotations`, igual en ambos clientes. Que sea el protocolo abierto deja la puerta a hospedar, con el
   mismo renderizador, las interfaces de servidores MCP de terceros cuando los
   CLIs las expongan.
 - **Clientes**: el desktop sirve la pagina por un esquema propio (`uxnan-view`)

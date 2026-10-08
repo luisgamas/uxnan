@@ -12,8 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with its own no-network policy, and framed with `sandbox="allow-scripts"` alone
   (an opaque origin that cannot reach the app or its IPC). It follows the app's
   theme, reports its own height, opens links only after asking, and can be
-  expanded. **Annotate** picks an element in the page; the note goes to the
-  composer, like a message the page proposes — nothing is sent on its own. At
+  expanded. **Annotate** picks elements in the page: a picked element stays
+  highlighted while a popover anchored to it takes the note, each note leaves
+  a numbered marker (click it to edit or delete), and *Add to message* puts
+  them all in the composer, like a message the page proposes — nothing is sent
+  on its own. At
   most four frames stay live. A block type the app does not know now shows a
   one-line notice instead of nothing, as on the phone. A view never folds away
   with the work behind "Worked for…": it opens the answer.

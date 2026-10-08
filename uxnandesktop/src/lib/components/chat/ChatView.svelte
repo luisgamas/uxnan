@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { Button } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
+  import * as Popover from '$lib/components/ui/popover';
   import { Textarea } from '$lib/components/ui/textarea';
   import ConfirmDialog from '../ConfirmDialog.svelte';
   import { openExternal } from '$lib/api';
@@ -12,6 +13,7 @@
   import ViewIcon from '@hugeicons/core-free-icons/BrowserIcon';
   import MaximizeIcon from '@hugeicons/core-free-icons/Maximize01Icon';
   import RefreshIcon from '@hugeicons/core-free-icons/RefreshIcon';
+  import CancelIcon from '@hugeicons/core-free-icons/Cancel01Icon';
   import { useChat } from '$lib/bridge/chat.svelte';
   import { useViewComposer } from './viewComposer.svelte';
   import {
@@ -34,8 +36,11 @@
   let frameLive = $state(false);
   let expanded = $state(false);
   let annotating = $state(false);
-  let pendingAnnotation = $state<ViewAnnotation | null>(null);
-  let note = $state('');
+  /** The notes the person has on this view, in the order of their markers. */
+  let notes = $state<{ annotation: ViewAnnotation; note: string }[]>([]);
+  /** The note being written (`index` null) or edited, its popover open. */
+  let editing = $state<{ index: number | null; annotation: ViewAnnotation; note: string } | null>(null);
+  let editorOpen = $state(false);
   let frame = $state<HTMLIFrameElement | null>(null);
   let card = $state<HTMLElement | null>(null);
   /** A link the page asked to open, waiting on the person's answer. */
@@ -71,7 +76,18 @@
     send: (message) => frame?.contentWindow?.postMessage(message, '*'),
     onHeight: (measured) => { height = Math.max(VIEW_MIN_HEIGHT, Math.min(VIEW_MAX_HEIGHT, measured)); },
     onMessage: (message) => insertIntoComposer?.(message),
-    onAnnotation: (annotation) => { if (annotating) { pendingAnnotation = annotation; note = ''; } },
+    onAnnotation: (annotation) => {
+      if (!annotating) return;
+      editing = { index: null, annotation, note: '' };
+      editorOpen = true;
+    },
+    onMark: (index) => {
+      const target = notes[index];
+      if (!target) return;
+      editing = { index, annotation: target.annotation, note: target.note };
+      editorOpen = true;
+    },
+    markCount: () => notes.length,
     openLink: async (href) => {
       pendingLink?.answer(false);
       const open = await new Promise<boolean>((answer) => { pendingLink = { url: href, answer }; linkOpen = true; });
@@ -105,24 +121,63 @@
   function frameReady(mode: 'inline' | 'fullscreen') {
     sentTheme = JSON.stringify(themeContext(mode));
     host.send(VIEW_HOST_METHODS.annotate, { on: annotating });
+    sendMarks();
+  }
+  /** Tell the page which notes exist: it draws their numbered markers and
+   *  lets go of the element it was holding for a note. */
+  function sendMarks() {
+    host.send(VIEW_HOST_METHODS.annotations, {
+      marks: notes.map((n, i) => ({ selector: n.annotation.selector, label: String(i + 1) })),
+    });
   }
   function setAnnotating(next: boolean) {
     annotating = next;
-    pendingAnnotation = null;
     host.send(VIEW_HOST_METHODS.annotate, { on: next });
+  }
+  /** Where the popover points: the picked element, in app coordinates. */
+  const editorAnchor = $derived.by(() => {
+    const at = editing?.annotation.rect;
+    if (!at) return null;
+    return {
+      getBoundingClientRect: () => {
+        const box = frame?.getBoundingClientRect();
+        return new DOMRect((box?.left ?? 0) + at.x, (box?.top ?? 0) + at.y, at.width, at.height);
+      },
+    };
+  });
+  function closeEditor() {
+    editorOpen = false;
+    editing = null;
+    sendMarks();
+  }
+  function saveNote() {
+    if (!editing) return;
+    const entry = { annotation: editing.annotation, note: editing.note.trim().slice(0, 1000) };
+    notes = editing.index === null
+      ? [...notes, entry]
+      : notes.map((n, i) => (i === editing!.index ? entry : n));
+    closeEditor();
+  }
+  function deleteNote() {
+    if (editing?.index != null) notes = notes.filter((_, i) => i !== editing!.index);
+    closeEditor();
+  }
+  /** Every note to the composer at once; the person decides to send. */
+  function addNotesToMessage() {
+    if (notes.length === 0) return;
+    insertIntoComposer?.(formatViewAnnotations(title, notes));
+    notes = [];
+    setAnnotating(false);
+    sendMarks();
+  }
+  function discardNotes() {
+    notes = [];
+    sendMarks();
   }
   function openExpanded() {
     expanded = true;
     claimFrame();
   }
-  function addAnnotation() {
-    if (!pendingAnnotation) return;
-    // Straight to the composer, where the person sees it and decides to send.
-    insertIntoComposer?.(formatViewAnnotations(title, [{ annotation: pendingAnnotation, note: note.slice(0, 1000) }]));
-    pendingAnnotation = null;
-    note = '';
-  }
-
   onMount(() => {
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) { near = true; void load(); claimFrame(); }
@@ -150,7 +205,12 @@
   <header class="flex min-h-10 items-center gap-2 border-b border-border/60 px-3 py-1.5">
     <Icon icon={ViewIcon} class="size-4 shrink-0 text-muted-foreground" />
     <h3 class="min-w-0 flex-1 truncate text-[13px] font-medium">{title}</h3>
-    <Button variant={annotating ? 'secondary' : 'ghost'} size="sm" class="h-7 px-2 text-xs" aria-pressed={annotating} onclick={() => setAnnotating(!annotating)}>{i18n.t('chat.viewAnnotate')}</Button>
+    {#if notes.length > 0}
+      <span class="shrink-0 text-xs text-muted-foreground" aria-live="polite">{i18n.t('chat.viewNotesCount', { count: notes.length })}</span>
+      <Button size="sm" class="h-7 px-2 text-xs" onclick={addNotesToMessage}>{i18n.t('chat.viewAddNotesToMessage')}</Button>
+      <Button variant="ghost" size="icon-xs" aria-label={i18n.t('chat.viewDiscardNotes')} title={i18n.t('chat.viewDiscardNotes')} onclick={discardNotes}><Icon icon={CancelIcon} class="size-3.5" /></Button>
+    {/if}
+    <Button variant={annotating ? 'secondary' : 'ghost'} size="sm" class="h-7 px-2 text-xs" aria-pressed={annotating} title={i18n.t('chat.viewAnnotateHint')} onclick={() => setAnnotating(!annotating)}>{i18n.t('chat.viewAnnotate')}</Button>
     <Button variant="ghost" size="icon-xs" aria-label={i18n.t('chat.viewExpand')} title={i18n.t('chat.viewExpand')} onclick={openExpanded}><Icon icon={MaximizeIcon} class="size-3.5" /></Button>
   </header>
   {#if error}
@@ -165,13 +225,6 @@
   {:else if url && !expanded}
     <div class="flex items-center justify-center bg-muted/30 text-xs text-muted-foreground" style={`height:${height}px`}>{i18n.t('chat.viewPaused')}</div>
   {/if}
-  {#if pendingAnnotation}
-    <div class="border-t border-border/60 bg-muted/30 p-3">
-      <p class="mb-2 truncate text-xs text-muted-foreground">{pendingAnnotation.selector}</p>
-      <Textarea bind:value={note} maxlength={1000} rows={2} aria-label={i18n.t('chat.viewAnnotationLabel')} placeholder={i18n.t('chat.viewAnnotationPlaceholder')} />
-      <div class="mt-2 flex justify-end gap-2"><Button variant="ghost" size="sm" onclick={() => pendingAnnotation = null}>{i18n.t('common.cancel')}</Button><Button size="sm" onclick={addAnnotation}>{i18n.t('chat.viewAddAnnotation')}</Button></div>
-    </div>
-  {/if}
 </article>
 
 <Dialog.Root bind:open={expanded} onOpenChange={(open) => { expanded = open; }}>
@@ -180,6 +233,29 @@
     {#if url && frameLive}<iframe bind:this={frame} title={title} src={url} sandbox={frameAttributes.sandbox} referrerpolicy="no-referrer" loading="lazy" class="min-h-0 w-full flex-1 border-0 bg-background" onload={() => frameReady('fullscreen')}></iframe>{:else if url}<div class="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground">{i18n.t('chat.viewPaused')}</div>{/if}
   </Dialog.Content>
 </Dialog.Root>
+
+<Popover.Root bind:open={editorOpen} onOpenChange={(open) => { if (!open) closeEditor(); }}>
+  <Popover.Content customAnchor={editorAnchor} side="bottom" align="start" width="form" onOpenAutoFocus={(e) => e.preventDefault()}>
+    {#if editing}
+      <div class="flex flex-col gap-2">
+        <p class="text-xs font-medium">
+          {editing.index === null ? i18n.t('chat.viewNoteNew', { n: notes.length + 1 }) : i18n.t('chat.viewNoteEdit', { n: editing.index + 1 })}
+          <span class="font-normal text-muted-foreground">· &lt;{editing.annotation.tag}&gt;{editing.annotation.text ? ` ${editing.annotation.text.slice(0, 60)}` : ''}</span>
+        </p>
+        <!-- svelte-ignore a11y_autofocus -->
+        <Textarea bind:value={editing.note} maxlength={1000} rows={3} autofocus aria-label={i18n.t('chat.viewAnnotationLabel')} placeholder={i18n.t('chat.viewAnnotationPlaceholder')}
+          onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNote(); } }} />
+        <div class="flex items-center justify-end gap-2">
+          {#if editing.index !== null}
+            <Button variant="ghost" size="sm" class="mr-auto text-destructive" onclick={deleteNote}>{i18n.t('chat.viewDeleteNote')}</Button>
+          {/if}
+          <Button variant="ghost" size="sm" onclick={closeEditor}>{i18n.t('common.cancel')}</Button>
+          <Button size="sm" onclick={saveNote}>{i18n.t('chat.viewSaveNote')}</Button>
+        </div>
+      </div>
+    {/if}
+  </Popover.Content>
+</Popover.Root>
 
 <ConfirmDialog
   bind:open={linkOpen}

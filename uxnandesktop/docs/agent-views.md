@@ -16,7 +16,7 @@ The host accepts messages only when `event.source` is the iframe's `contentWindo
 - Prepared HTML is cached in memory up to 4 MiB; the scheme store is bounded to 24 documents / 16 MiB.
 - At most four iframes stay mounted across the app. Older frames are suspended with their measured height reserved; returning to a card mounts it again.
 - The requested height is clamped to 80–1600 CSS pixels. The page can report a measured height, and taller content scrolls inside its frame.
-- **Annotate** lets the person select an element in the view and add a note to the composer. **Expand** opens the same staged page in a large dialog.
+- **Annotate** lets the person pick elements in the view. A picked element stays highlighted while a popover anchored to it takes the note; each saved note leaves a numbered marker on its element, and clicking a marker reopens that note to edit or delete it. The header then shows *N notes · Add to message*, which puts every note into the composer at once (nothing is sent on its own); notes survive leaving annotate mode until added or discarded. **Expand** opens the same staged page in a large dialog.
 
 ## Development and verification
 

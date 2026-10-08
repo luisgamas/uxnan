@@ -33,8 +33,14 @@ export const VIEW_METHODS = {
   /** Request `{ role: 'user', content: [{ type: 'text', text }] }`: propose a
    *  message; the host puts it in the composer, the person decides to send. */
   message: 'ui/message',
-  /** Notification {@link ViewAnnotation}: the person picked an element. */
+  /** Notification {@link ViewAnnotation}: the person picked an element. The
+   *  page then holds that element highlighted and stops following the pointer
+   *  until the host answers with `uxnan/annotations` (the note was saved or
+   *  dropped). */
   annotation: 'uxnan/annotation',
+  /** Notification `{ index }`: the person clicked the marker of the note at
+   *  that position of the last `uxnan/annotations` list, to edit or delete it. */
+  mark: 'uxnan/mark',
 } as const;
 
 /** Host → view. */
@@ -43,7 +49,28 @@ export const VIEW_HOST_METHODS = {
   hostContextChanged: 'ui/notifications/host-context-changed',
   /** Notification `{ on: boolean }`: enter or leave element-picking mode. */
   annotate: 'uxnan/annotate',
+  /** Notification `{ marks: ViewMark[] }`: the notes the person has on this
+   *  view now; the page draws a numbered marker on each element and releases
+   *  an element it was holding. Sent after every change, `[]` to clear. */
+  annotations: 'uxnan/annotations',
 } as const;
+
+/** A note's marker in the page: the element it is on and the number shown. */
+export interface ViewMark {
+  selector: string;
+  /** The marker's text, a short number (`"1"`, `"2"`, …). */
+  label: string;
+}
+
+/** The most marks a host sends — and a page draws — on one view. */
+export const VIEW_MAX_MARKS = 50;
+
+/** Whether `uxnan/mark` params name a marker of a list of [count] marks. */
+export function isViewMarkIndex(params: unknown, count: number): params is { index: number } {
+  if (!params || typeof params !== 'object') return false;
+  const index = (params as Record<string, unknown>)['index'];
+  return Number.isInteger(index) && (index as number) >= 0 && (index as number) < count;
+}
 
 /** The context a host gives the page: theme and where it is shown. */
 export interface ViewHostContext {
