@@ -24,6 +24,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   **Bundled libraries:** a page loads Chart.js with
   `<script src="uxnan:chart.js"></script>`; the bridge puts the library's code
   there when it prepares the page, so charts need no network.
+  **`view_check`:** an agent can see a page before showing it — what the
+  no-network policy will block and whether it follows the theme, and, with a
+  desktop attached, a screenshot of how it renders, its console errors and its
+  height (the desktop's `view_render`).
 
 ### Fixed
 

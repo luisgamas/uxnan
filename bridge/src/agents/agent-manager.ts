@@ -1365,6 +1365,11 @@ export class AgentManager {
     this.#desktopServers.delete(clientId);
   }
 
+  /** The desktop server attached longest, if any — what a phone's turn gets. */
+  desktopMcpServer(): AgentMcpServer | undefined {
+    return this.#desktopServers.values().next().value;
+  }
+
   get desktopMcpServerAttached(): boolean {
     return this.#desktopServers.size > 0;
   }

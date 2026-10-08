@@ -17,6 +17,15 @@ export const BRIDGE_MCP_SERVER_NAME = 'uxnan';
 /** The tool an agent calls to show a view. */
 export const VIEW_TOOL_NAME = 'view_show';
 
+/** The tool an agent calls to see a page before showing it. */
+export const VIEW_CHECK_TOOL_NAME = 'view_check';
+
+/** Whether a tool name, as an agent reports it, is the view check tool. */
+export function isViewCheckToolName(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[\s_./:-]+/g, '');
+  return normalized === 'viewcheck' || normalized.endsWith('uxnanviewcheck');
+}
+
 /** The most HTML an agent may hand over, in UTF-8 bytes. Keeps a prepared
  *  page inside one end-to-end-encrypted frame on the relay. */
 export const VIEW_MAX_HTML_BYTES = 512 * 1024;

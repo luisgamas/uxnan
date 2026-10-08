@@ -41,6 +41,7 @@ import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
 import { VIEW_BOOTSTRAP } from './views/view-bootstrap.js';
 import { VIEW_SERVER_INSTRUCTIONS, startViewMcpServer } from './views/mcp-server.js';
+import { desktopRenderer } from './views/view-check.js';
 import { ViewStore } from './views/view-store.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile } from './lock-file.js';
@@ -387,7 +388,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     bootstrap: VIEW_BOOTSTRAP,
     now,
   });
-  const viewMcp = await startViewMcpServer({ store: viewStore });
+  // `view_check` draws a page on an attached desktop (its `view_render`); the
+  // manager is created just below and read only when a check runs.
+  const viewMcp = await startViewMcpServer({
+    store: viewStore,
+    renderer: desktopRenderer(() => agentManager.desktopMcpServer()),
+  });
   const agentManager = new AgentManager({
     store: threadStore,
     notify: (message) => sessionRegistry.broadcast(message),

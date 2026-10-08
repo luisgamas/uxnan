@@ -1,4 +1,9 @@
-import { isViewToolName, viewIdInOutput, type ViewContentBlock } from '@uxnan/shared';
+import {
+  isViewCheckToolName,
+  isViewToolName,
+  viewIdInOutput,
+  type ViewContentBlock,
+} from '@uxnan/shared';
 import { isRunning } from '../adapters/content-blocks.js';
 import type { ViewStore } from './view-store.js';
 
@@ -6,7 +11,8 @@ import type { ViewStore } from './view-store.js';
  *  agent that calls MCP tools through a generic one (Grok's `UseTool`) — by
  *  the tool its arguments name. */
 function isViewCall(block: Record<string, unknown>, input: Record<string, unknown>): boolean {
-  const named = (value: unknown) => typeof value === 'string' && isViewToolName(value);
+  const named = (value: unknown) =>
+    typeof value === 'string' && (isViewToolName(value) || isViewCheckToolName(value));
   return named(block['toolName']) || named(input['tool_name']) || named(input['name']);
 }
 

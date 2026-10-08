@@ -3385,7 +3385,11 @@ tambien: funciona con solo el telefono.
   guarda en `~/.uxnan/views/` (se poda lo mas viejo). Sin red, una pagina
   no puede cargar bibliotecas de un CDN: nombra una que el bridge incluye
   (`<script src="uxnan:chart.js"></script>`) y el bridge pone su codigo en ese
-  lugar al prepararla (hoy Chart.js, MIT). La respuesta al modelo
+  lugar al prepararla (hoy Chart.js, MIT). **`view_check`** (mismos
+  `html`/`path`, nada se guarda ni se muestra) le dice al agente que bloqueara
+  la politica sin red y si sigue el tema y, con un desktop adjunto, como se ve:
+  el bridge le pasa la pagina preparada al `view/render` del desktop (por su
+  servidor MCP) y devuelve la captura, los errores de consola y la altura. La respuesta al modelo
   lleva el marcador `uxnan-view:<viewId>`. La descripcion de la herramienta y
   las `instructions` del servidor son como el agente **sabe** que la tiene y
   cuando usarla: como **regla** (datos que comparar, una tendencia, un

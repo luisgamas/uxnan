@@ -428,6 +428,17 @@ most of them, not all — `opencode/space-bunny-free` and
 `opencode/mimo-v2.6-flash-free` each skip one now and then; a comparison of a
 few options is where every model hesitates most.
 
+**Checking a page first: `view_check`.** Same `html` / `path` as `view_show`,
+nothing stored or shown. It prepares the page exactly as `view_show` would and
+answers with what will go wrong — what the no-network policy blocks (remote
+scripts, styles, images, fonts; `fetch` and friends), whether the page follows
+the theme — and, while a desktop is attached, how it renders: the bridge sends
+the prepared page to the desktop's `view_render` (control catalog
+`view/render`, through its MCP server) and returns its screenshot as an image,
+its console errors and its content height (`views/view-check.ts`). With no
+desktop, the answer says it checked the source only. The server's instructions
+tell agents to check anything beyond a simple page first.
+
 **Bundled libraries, no network.** A page keeps its no-network policy, so it
 cannot load a library from a CDN; instead it names one the bridge ships —
 `<script src="uxnan:chart.js"></script>` — and the bridge puts the library's

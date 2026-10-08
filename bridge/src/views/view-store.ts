@@ -37,13 +37,17 @@ export class ViewStore {
     this.now = options.now ?? Date.now;
   }
 
-  async create(input: {
-    title: string;
+  /**
+   * The page as clients would get it, without storing it: the agent's HTML
+   * (inline or read from [input.path] in [input.cwd]) checked, its bundled
+   * libraries put in, and the CSP and bootstrap added. `view_show` stores it;
+   * `view_check` renders it.
+   */
+  async prepare(input: {
     html?: string;
     path?: string;
-    height?: number;
     cwd?: string;
-  }): Promise<{ viewId: string; meta: ViewMeta }> {
+  }): Promise<{ source: string; html: string; bytes: number }> {
     if ((typeof input.html === 'string') === (typeof input.path === 'string'))
       throw new Error('Provide exactly one of html or path.');
     let source: string;
@@ -73,9 +77,20 @@ export class ViewStore {
     const bytes = Buffer.byteLength(source, 'utf8');
     if (bytes > VIEW_MAX_HTML_BYTES)
       throw new Error(`View HTML is ${bytes} bytes; the limit is ${VIEW_MAX_HTML_BYTES} bytes.`);
+    const html = prepareViewHtml(inlineViewLibraries(source).html, this.bootstrap);
+    return { source, html, bytes };
+  }
+
+  async create(input: {
+    title: string;
+    html?: string;
+    path?: string;
+    height?: number;
+    cwd?: string;
+  }): Promise<{ viewId: string; meta: ViewMeta }> {
+    const { html, bytes } = await this.prepare(input);
     const title = Array.from(input.title).slice(0, VIEW_MAX_TITLE_LENGTH).join('');
     const height = input.height === undefined ? undefined : clampViewHeight(input.height);
-    const html = prepareViewHtml(inlineViewLibraries(source).html, this.bootstrap);
     await mkdir(this.directory, { recursive: true });
     const viewId = randomBytes(16).toString('hex');
     const meta: ViewMeta = {
