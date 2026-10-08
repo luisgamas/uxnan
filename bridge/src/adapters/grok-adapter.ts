@@ -830,6 +830,7 @@ export class GrokAdapter extends BaseAgentAdapter {
       status: str(update['status']) || prev.status,
       rawInput: isRecord(update['rawInput']) ? update['rawInput'] : prev.rawInput,
       content: Array.isArray(update['content']) ? (update['content'] as unknown[]) : prev.content,
+      rawOutput: update['rawOutput'] !== undefined ? update['rawOutput'] : prev.rawOutput,
     };
     run.tools.set(id, merged);
     const finished = merged.status === 'completed' || merged.status === 'failed';

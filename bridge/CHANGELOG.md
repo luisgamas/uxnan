@@ -4,6 +4,13 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Grok's MCP tool results were empty.** Grok reports an MCP tool's answer
+  only in the ACP update's `rawOutput` (`{ type: 'MCP', output: { OkayOutput }
+  }`), never in `content`, so every MCP step — the desktop's tools included —
+  showed no output. The bridge reads `rawOutput` when `content` has no text.
+
 ### Changed
 
 - **Claude Code's picker lists each model once, as the CLI does.** Its current
