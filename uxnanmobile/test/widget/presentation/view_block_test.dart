@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/agent_view_page.dart';
 import 'package:uxnan/domain/repositories/i_agent_view_repository.dart';
+import 'package:uxnan/domain/value_objects/agent_view.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -67,5 +69,70 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Retry'), findsOneWidget);
     expect(attempts, 2);
+  });
+
+  testWidgets('notes header shows count and hands formatted notes to composer',
+      (tester) async {
+    const first = ViewAnnotation(
+      selector: '#save',
+      tag: 'button',
+      text: 'Save',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    );
+    const second = ViewAnnotation(
+      selector: '#total',
+      tag: 'p',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    );
+    final notes = ValueNotifier(
+      const ViewAnnotationNotes()
+          .add(first, 'Make it primary')
+          .add(second, 'Show the total'),
+    );
+    addTearDown(notes.dispose);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: ViewNotesHeader(
+              notes: notes,
+              onAddToMessage: () {
+                container.read(composerHandoffsProvider.notifier).offerText(
+                      'thread',
+                      formatViewAnnotations('Usage', notes.value.items),
+                    );
+              },
+              onDiscard: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('2 notes'), findsOneWidget);
+    await tester.tap(find.text('Add to message'));
+    final incoming =
+        container.read(composerHandoffsProvider)['thread']?.incoming;
+    expect(
+      incoming?.text,
+      'On the view "Usage":\n\n'
+      '1. `#save` (<button>)\n'
+      '   Text: Save\n'
+      '   Note: Make it primary\n\n'
+      '2. `#total` (<p>)\n'
+      '   Note: Show the total',
+    );
   });
 }

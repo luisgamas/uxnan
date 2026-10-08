@@ -2182,10 +2182,14 @@
   "conversationViewLinkCancel": "Cancel",
   "conversationViewLinkOpen": "Open",
   "conversationViewAddedToComposer": "Added to the conversation composer",
-  "conversationViewAnnotationFor": "Annotate {tag}",
-  "@conversationViewAnnotationFor": {"placeholders": {"tag": {"type": "String"}}},
-  "conversationViewAnnotationPrompt": "What should change?",
-  "conversationViewAnnotationAdd": "Add note",
+  "conversationViewNotesCount": "{count} notes",
+  "@conversationViewNotesCount": {"placeholders": {"count": {"type": "int"}}},
+  "conversationViewAddToMessage": "Add to message",
+  "conversationViewDiscardNotes": "Discard notes",
+  "conversationViewNote": "Note {n}",
+  "@conversationViewNote": {"placeholders": {"n": {"type": "int"}}},
+  "conversationViewDelete": "Delete",
+  "conversationViewSaveNote": "Save note",
   "conversationViewCouldNotLoadRetry": "Could not load view · Retry",
   "conversationViewLoadInteractive": "Load interactive view"
 }

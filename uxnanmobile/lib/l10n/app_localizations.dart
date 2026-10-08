@@ -6362,23 +6362,41 @@ abstract class AppLocalizations {
   /// **'Added to the conversation composer'**
   String get conversationViewAddedToComposer;
 
-  /// No description provided for @conversationViewAnnotationFor.
+  /// No description provided for @conversationViewNotesCount.
   ///
   /// In en, this message translates to:
-  /// **'Annotate {tag}'**
-  String conversationViewAnnotationFor(String tag);
+  /// **'{count} notes'**
+  String conversationViewNotesCount(int count);
 
-  /// No description provided for @conversationViewAnnotationPrompt.
+  /// No description provided for @conversationViewAddToMessage.
   ///
   /// In en, this message translates to:
-  /// **'What should change?'**
-  String get conversationViewAnnotationPrompt;
+  /// **'Add to message'**
+  String get conversationViewAddToMessage;
 
-  /// No description provided for @conversationViewAnnotationAdd.
+  /// No description provided for @conversationViewDiscardNotes.
   ///
   /// In en, this message translates to:
-  /// **'Add note'**
-  String get conversationViewAnnotationAdd;
+  /// **'Discard notes'**
+  String get conversationViewDiscardNotes;
+
+  /// No description provided for @conversationViewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Note {n}'**
+  String conversationViewNote(int n);
+
+  /// No description provided for @conversationViewDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get conversationViewDelete;
+
+  /// No description provided for @conversationViewSaveNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Save note'**
+  String get conversationViewSaveNote;
 
   /// No description provided for @conversationViewCouldNotLoadRetry.
   ///

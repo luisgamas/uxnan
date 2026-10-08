@@ -65,4 +65,42 @@ void main() {
       ].join('\n'),
     );
   });
+
+  test('view notes add, replace, edit, delete and discard with numbered marks',
+      () {
+    const first = ViewAnnotation(
+      selector: '#first',
+      tag: 'button',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    );
+    const second = ViewAnnotation(
+      selector: '#second',
+      tag: 'p',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    );
+    var notes =
+        const ViewAnnotationNotes().add(first, 'First').add(second, 'Second');
+    expect(notes.items.map((item) => item.note), ['First', 'Second']);
+    expect(notes.marks, [
+      {'selector': '#first', 'label': '1'},
+      {'selector': '#second', 'label': '2'},
+    ]);
+
+    notes = notes.edit(0, 'Updated');
+    expect(notes.items.first.note, 'Updated');
+    notes = notes.delete(0);
+    expect(notes.marks, [
+      {'selector': '#second', 'label': '1'},
+    ]);
+    notes = notes.add(second, 'Replaced');
+    expect(notes.items, hasLength(1));
+    expect(notes.items.single.note, 'Replaced');
+    expect(notes.discard().items, isEmpty);
+  });
 }

@@ -3683,15 +3683,26 @@ class AppLocalizationsEs extends AppLocalizations {
       'Se agregó al compositor de la conversación';
 
   @override
-  String conversationViewAnnotationFor(String tag) {
-    return 'Anotar $tag';
+  String conversationViewNotesCount(int count) {
+    return '$count notas';
   }
 
   @override
-  String get conversationViewAnnotationPrompt => '¿Qué debería cambiar?';
+  String get conversationViewAddToMessage => 'Añadir al mensaje';
 
   @override
-  String get conversationViewAnnotationAdd => 'Agregar nota';
+  String get conversationViewDiscardNotes => 'Descartar notas';
+
+  @override
+  String conversationViewNote(int n) {
+    return 'Nota $n';
+  }
+
+  @override
+  String get conversationViewDelete => 'Eliminar';
+
+  @override
+  String get conversationViewSaveNote => 'Guardar nota';
 
   @override
   String get conversationViewCouldNotLoadRetry =>

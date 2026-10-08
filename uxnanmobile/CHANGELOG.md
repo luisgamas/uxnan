@@ -13,7 +13,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   page-to-composer messaging and confirmed external links. Pages are cached in
   memory (eight entries); Android file/content access and zoom are disabled.
   A view never folds away with the earlier responses of a settled turn: it
-  opens the visible answer.
+  opens the visible answer. Element annotations now collect multiple editable
+  notes with numbered page markers; the user can add all notes to the composer
+  or discard them.
 
 ### Changed
 

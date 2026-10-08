@@ -9,6 +9,10 @@ const int viewMaxHtmlBytes = 512 * 1024;
 const int viewMaxSelectorLength = 300;
 const int viewMaxAnnotationTextLength = 500;
 const int viewMaxAnnotationHtmlLength = 1000;
+const int viewMaxMarks = 50;
+
+const String viewMarkMethod = 'uxnan/mark';
+const String viewAnnotationsMethod = 'uxnan/annotations';
 
 const List<String> viewThemeVariables = [
   '--color-background-primary',
@@ -110,6 +114,51 @@ class ViewAnnotation {
         if (html != null) 'html': html,
         'rect': {'x': x, 'y': y, 'width': width, 'height': height},
       };
+}
+
+typedef ViewNote = ({ViewAnnotation annotation, String note});
+
+/// Immutable notes attached to one rendered view.
+class ViewAnnotationNotes {
+  const ViewAnnotationNotes([this.items = const []]);
+
+  final List<ViewNote> items;
+
+  ViewAnnotationNotes add(ViewAnnotation annotation, String note) {
+    final next = List<ViewNote>.of(items);
+    final existing = next.indexWhere(
+      (item) => item.annotation.selector == annotation.selector,
+    );
+    if (existing >= 0) {
+      next[existing] = (annotation: annotation, note: note);
+    } else if (next.length < viewMaxMarks) {
+      next.add((annotation: annotation, note: note));
+    }
+    return ViewAnnotationNotes(List.unmodifiable(next));
+  }
+
+  ViewAnnotationNotes edit(int index, String note) {
+    if (index < 0 || index >= items.length) return this;
+    final next = List<ViewNote>.of(items);
+    next[index] = (annotation: next[index].annotation, note: note);
+    return ViewAnnotationNotes(List.unmodifiable(next));
+  }
+
+  ViewAnnotationNotes delete(int index) {
+    if (index < 0 || index >= items.length) return this;
+    final next = List<ViewNote>.of(items)..removeAt(index);
+    return ViewAnnotationNotes(List.unmodifiable(next));
+  }
+
+  ViewAnnotationNotes discard() => const ViewAnnotationNotes();
+
+  List<Map<String, String>> get marks => [
+        for (var index = 0; index < items.length; index++)
+          {
+            'selector': items[index].annotation.selector,
+            'label': '${index + 1}',
+          },
+      ];
 }
 
 /// Mirrors shared/src/views/view-protocol.ts `isViewAnnotation`.

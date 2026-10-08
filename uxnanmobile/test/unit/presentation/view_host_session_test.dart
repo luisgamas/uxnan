@@ -25,6 +25,8 @@ void main() {
       confirmOpenLink: (_) async => false,
       offerMessage: (message) async => offers.add(message),
       annotate: (_) async {},
+      annotationCount: () => 0,
+      mark: (_) async {},
       sizeChanged: (_) {},
     );
     expect(sent.single['result'], {
@@ -48,6 +50,8 @@ void main() {
       confirmOpenLink: (_) async => false,
       offerMessage: (message) async => offers.add(message),
       annotate: (_) async {},
+      annotationCount: () => 0,
+      mark: (_) async {},
       sizeChanged: (_) {},
     );
     expect(offers, ['Draft only']);
@@ -88,6 +92,8 @@ void main() {
           annotate: (_) async {
             annotationCount++;
           },
+          annotationCount: () => 0,
+          mark: (_) async {},
           sizeChanged: sizes.add,
         );
     await handle('{');
@@ -109,5 +115,39 @@ void main() {
     );
     expect(annotationCount, 0);
     expect(sizes, [1600]);
+  });
+
+  test('accepts only in-range mark notifications', () async {
+    final session = ViewHostSession(viewId: 'id', title: 'T');
+    final marks = <int>[];
+    Future<void> handle({Object? id, Object? params}) => session.handle(
+          jsonEncode({
+            'jsonrpc': '2.0',
+            if (id != null) 'id': id,
+            'method': 'uxnan/mark',
+            if (params != null) 'params': params,
+          }),
+          hostContext: const {},
+          sendToPage: (_) async {},
+          confirmOpenLink: (_) async => false,
+          offerMessage: (_) async {},
+          annotate: (_) async {},
+          annotationCount: () => 2,
+          mark: (index) async => marks.add(index),
+          sizeChanged: (_) {},
+        );
+
+    await handle(params: {'index': 0});
+    await handle(params: {'index': 1});
+    await handle(params: {'index': 2});
+    await handle(params: {'index': -1});
+    await handle(params: {'index': 0.0});
+    await handle(params: {'index': '0'});
+    await handle(params: {});
+    await handle(params: ['0']);
+    await handle(id: 1, params: {'index': 0});
+    await handle();
+
+    expect(marks, [0, 1]);
   });
 }

@@ -16,6 +16,7 @@ class ViewHostSession {
     'ui/open-link',
     'ui/message',
     'uxnan/annotation',
+    viewMarkMethod,
   };
 
   /// Validates one JavaScript-channel message and responds through the host
@@ -27,6 +28,8 @@ class ViewHostSession {
     required Future<bool> Function(Uri uri) confirmOpenLink,
     required Future<void> Function(String text) offerMessage,
     required Future<void> Function(ViewAnnotation annotation) annotate,
+    required int Function() annotationCount,
+    required Future<void> Function(int index) mark,
     required void Function(double height) sizeChanged,
   }) async {
     if (utf8.encode(raw).length > maxMessageBytes) return;
@@ -127,6 +130,12 @@ class ViewHostSession {
         final annotation = ViewAnnotation.parse(fields);
         if (annotation != null) await annotate(annotation);
         return;
+      case viewMarkMethod:
+        if (isRequest || params is! Map) return;
+        final index = fields['index'];
+        final count = annotationCount();
+        if (index is int && index >= 0 && index < count) await mark(index);
+        return;
     }
   }
 
@@ -161,5 +170,12 @@ class ViewHostSession {
         'jsonrpc': '2.0',
         'method': 'uxnan/annotate',
         'params': {'on': on},
+      };
+
+  /// Builds the current numbered marker list sent to the page.
+  Map<String, Object?> annotations(List<Map<String, String>> marks) => {
+        'jsonrpc': '2.0',
+        'method': viewAnnotationsMethod,
+        'params': {'marks': marks},
       };
 }

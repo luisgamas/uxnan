@@ -25,13 +25,25 @@ checks JSON-RPC 2.0, an explicit method allowlist, an 8 KiB message limit,
 bounded proposed text, bounded annotations and safe external URL schemes.
 `ui/initialize` receives host theme variables, brightness, platform, locale and
 display mode. Link requests require confirmation before the OS link opener is
-called. `ui/message` and annotation notes become composer drafts; they never
-send a turn automatically. Existing composer text is rescued using the app's
-composer handoff state.
+called. `ui/message` is offered to the composer, and annotation notes stay on
+the view until the user adds them to the message; neither path sends a turn
+automatically. Existing composer text is rescued using the app's composer
+handoff state.
+
+## Notes and markers
 
 Theme changes send `ui/notifications/host-context-changed`. Annotate toggles
-send `uxnan/annotate`; page selections open a note sheet and use the same
-`formatViewAnnotations` text format as the shared TypeScript contract.
+send `uxnan/annotate`. A page selection opens the note sheet while the page
+holds that element; saving adds or replaces a note, deleting removes it, and
+dismissing leaves the notes unchanged. The host sends the current numbered
+`uxnan/annotations` marks after every sheet closes and whenever notes change, so
+the page can release a held element and keep its markers current. A tapped
+`uxnan/mark` opens that note for editing or deletion. Notes remain on the view
+while annotation mode is off. The inline card and full-screen route share one
+notes model; *Add to message* hands the complete list to the composer using the
+same `formatViewAnnotations` text format as the shared TypeScript contract,
+then clears the notes and marker list. *Discard notes* clears the notes and
+markers without changing the composer.
 
 ## Verification
 

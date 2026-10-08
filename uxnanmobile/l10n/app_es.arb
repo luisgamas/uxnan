@@ -1163,10 +1163,14 @@
   "conversationViewLinkCancel": "Cancelar",
   "conversationViewLinkOpen": "Abrir",
   "conversationViewAddedToComposer": "Se agregó al compositor de la conversación",
-  "conversationViewAnnotationFor": "Anotar {tag}",
-  "@conversationViewAnnotationFor": {"placeholders": {"tag": {"type": "String"}}},
-  "conversationViewAnnotationPrompt": "¿Qué debería cambiar?",
-  "conversationViewAnnotationAdd": "Agregar nota",
+  "conversationViewNotesCount": "{count} notas",
+  "@conversationViewNotesCount": {"placeholders": {"count": {"type": "int"}}},
+  "conversationViewAddToMessage": "Añadir al mensaje",
+  "conversationViewDiscardNotes": "Descartar notas",
+  "conversationViewNote": "Nota {n}",
+  "@conversationViewNote": {"placeholders": {"n": {"type": "int"}}},
+  "conversationViewDelete": "Eliminar",
+  "conversationViewSaveNote": "Guardar nota",
   "conversationViewCouldNotLoadRetry": "No se pudo cargar la vista · Reintentar",
   "conversationViewLoadInteractive": "Cargar vista interactiva"
 }
