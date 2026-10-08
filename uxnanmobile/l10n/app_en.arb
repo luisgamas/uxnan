@@ -721,6 +721,12 @@
   "modelPickerSearchHint": "Search models",
   "modelPickerLoadFailed": "Couldn't load models",
   "modelPickerEmpty": "No matching models",
+  "modelPickerOlder": "Older models",
+  "modelPickerOlderCount": "{count, plural, =1{1 model} other{{count} models}}",
+  "@modelPickerOlderCount": {
+    "description": "Under the folded 'Older models' row of the model picker: how many it holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
   "modelPickerDefault": "Default",
   "modelPickerRefresh": "Refresh models",
   "newThreadFailed": "Couldn't start the conversation",
@@ -1176,18 +1182,6 @@
   "settingsModelsSection": "Models",
   "@settingsModelsSection": {
     "description": "Header for the settings section that controls the AI model picker."
-  },
-  "settingsClaudeLatestTitle": "Show Claude Code “latest” models",
-  "@settingsClaudeLatestTitle": {
-    "description": "Title of the toggle that shows/hides Claude Code's fable/opus/sonnet/haiku “latest” alias models in the model picker."
-  },
-  "settingsClaudeLatestSubtitle": "List the Fable, Opus, Sonnet and Haiku “(latest)” aliases in the model picker.",
-  "@settingsClaudeLatestSubtitle": {
-    "description": "Subtitle of the Claude Code latest-models toggle."
-  },
-  "settingsClaudeLatestHint": "The “(latest)” aliases always route to the newest version of each tier your account can use, so you don't have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.",
-  "@settingsClaudeLatestHint": {
-    "description": "Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do."
   },
   "settingsAutonomousBannerTitle": "Autonomous-mode banner",
   "@settingsAutonomousBannerTitle": {
@@ -1860,10 +1854,6 @@
   "settingsConversationAgentsGroup": "Agents",
   "@settingsConversationAgentsGroup": {
     "description": "Conversation section sub-group for agent behaviour (thinking, context)."
-  },
-  "settingsConversationClaudeGroup": "Claude",
-  "@settingsConversationClaudeGroup": {
-    "description": "Conversation section sub-group for Claude model-picker options."
   },
   "settingsConversationPiGroup": "Autonomous agents",
   "@settingsConversationPiGroup": {

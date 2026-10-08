@@ -54,7 +54,6 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final modelsAsync = ref.watch(agentModelsProvider(widget.agentId));
-    final showLatest = ref.watch(showClaudeLatestModelsProvider);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return SafeArea(
@@ -131,21 +130,12 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                   child: Text(l10n.modelPickerLoadFailed),
                 ),
                 data: (models) {
-                  // Hide Claude Code's moving-target "latest" aliases when the
-                  // user turned them off in settings — but always keep the
-                  // currently-selected model visible so the picker reflects it.
-                  final visible = showLatest
-                      ? models
-                      : models
-                          .where(
-                            (m) => !m.isLatestAlias || m.id == widget.current,
-                          )
-                          .toList();
                   return _ModelList(
                     models: _query.isEmpty
-                        ? visible
-                        : visible.where(_matchesQuery).toList(),
+                        ? models
+                        : models.where(_matchesQuery).toList(),
                     current: widget.current,
+                    searching: _query.isNotEmpty,
                   );
                 },
               ),
@@ -157,28 +147,56 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   }
 }
 
-class _ModelList extends StatelessWidget {
-  const _ModelList({required this.models, required this.current});
+/// The models, grouped by provider, with the ones the CLI calls older
+/// ([AgentModel.isLegacy]) folded under one "Older models" row at the end —
+/// open from the start when the current model is one of them, and flat in
+/// the results while searching.
+class _ModelList extends StatefulWidget {
+  const _ModelList({
+    required this.models,
+    required this.current,
+    required this.searching,
+  });
 
   final List<AgentModel> models;
   final String? current;
+  final bool searching;
+
+  @override
+  State<_ModelList> createState() => _ModelListState();
+}
+
+class _ModelListState extends State<_ModelList> {
+  late bool _olderOpen = widget.models.any(
+    (m) => m.isLegacy && m.id == widget.current,
+  );
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final models = widget.models;
     if (models.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(UxnanSpacing.md),
         child: Text(l10n.modelPickerEmpty),
       );
     }
+    final older = [
+      for (final m in models)
+        if (m.isLegacy) m,
+    ];
+    final current = [
+      for (final m in models)
+        if (!m.isLegacy) m,
+    ];
+    final olderShown = _olderOpen || widget.searching;
     // Group by provider so big multi-provider agents (pi, OpenCode) read as
     // sections. A single group (Claude/Codex bare ids) renders flat: we skip
     // the headers and the per-row provider stripping.
-    final groups = groupModelsByProvider(models);
+    final groups = groupModelsByProvider(current);
     final grouped = groups.length > 1;
-    // Flatten to a single lazy list of header (String) + model rows, so even
-    // hundreds of models stay cheap to build.
+    // Flatten to a single lazy list of header (String) + model rows (+ the
+    // fold), so even hundreds of models stay cheap to build.
     final entries = <Object>[];
     if (grouped) {
       for (final group in groups) {
@@ -187,7 +205,16 @@ class _ModelList extends StatelessWidget {
           ..addAll(group.models);
       }
     } else {
-      entries.addAll(models);
+      entries.addAll(current);
+    }
+    if (older.isNotEmpty) {
+      if (olderShown) {
+        entries
+          ..add(l10n.modelPickerOlder)
+          ..addAll(older);
+      } else {
+        entries.add(_OlderFold(count: older.length));
+      }
     }
     return ListView.builder(
       shrinkWrap: true,
@@ -195,13 +222,58 @@ class _ModelList extends StatelessWidget {
       itemBuilder: (context, index) {
         final entry = entries[index];
         if (entry is String) return _ProviderHeader(provider: entry);
+        if (entry is _OlderFold) {
+          return _OlderFoldTile(
+            count: entry.count,
+            onTap: () => setState(() => _olderOpen = true),
+          );
+        }
         final model = entry as AgentModel;
         return _ModelTile(
           model: model,
           grouped: grouped,
-          selected: model.id == current,
+          selected: model.id == widget.current,
         );
       },
+    );
+  }
+}
+
+/// The folded "Older models" row's place in the list.
+class _OlderFold {
+  const _OlderFold({required this.count});
+
+  final int count;
+}
+
+/// "Older models · N", which unfolds them in place.
+class _OlderFoldTile extends StatelessWidget {
+  const _OlderFoldTile({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return ListTile(
+      dense: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(UxnanRadius.md),
+      ),
+      title: Text(l10n.modelPickerOlder, style: textTheme.bodyMedium),
+      subtitle: Text(
+        l10n.modelPickerOlderCount(count),
+        style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+      ),
+      trailing: UxIcon(
+        UxIcons.expandMore,
+        size: 20,
+        color: colors.onSurfaceVariant,
+      ),
+      onTap: onTap,
     );
   }
 }
@@ -327,9 +399,10 @@ class _DefaultBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colors.onSecondaryContainer,
-            ),
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall
+            ?.copyWith(color: colors.onSecondaryContainer),
       ),
     );
   }

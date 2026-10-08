@@ -1381,6 +1381,20 @@ class AppLocalizationsEs extends AppLocalizations {
   String get modelPickerEmpty => 'Sin modelos coincidentes';
 
   @override
+  String get modelPickerOlder => 'Modelos anteriores';
+
+  @override
+  String modelPickerOlderCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count modelos',
+      one: '1 modelo',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get modelPickerDefault => 'Predeterminado';
 
   @override
@@ -2181,18 +2195,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsModelsSection => 'Modelos';
-
-  @override
-  String get settingsClaudeLatestTitle =>
-      'Mostrar modelos «latest» de Claude Code';
-
-  @override
-  String get settingsClaudeLatestSubtitle =>
-      'Muestra los alias «(latest)» de Fable, Opus, Sonnet y Haiku en el selector de modelos.';
-
-  @override
-  String get settingsClaudeLatestHint =>
-      'Los alias «(latest)» siempre usan la versión más reciente de cada nivel que tu cuenta puede utilizar, así no tienes que elegir una exacta. Desactívalo para ocultarlos y elegir solo versiones fijas y exactas. Las conversaciones que ya usan un alias siguen funcionando.';
 
   @override
   String get settingsAutonomousBannerTitle => 'Banner de modo autónomo';
@@ -3114,9 +3116,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsConversationAgentsGroup => 'Agentes';
-
-  @override
-  String get settingsConversationClaudeGroup => 'Claude';
 
   @override
   String get settingsConversationPiGroup => 'Agentes autónomos';

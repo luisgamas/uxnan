@@ -36,6 +36,21 @@ void main() {
       expect(pinned!.isLatestAlias, isFalse);
     });
 
+    test('parses the isLegacy flag when present', () {
+      final older = AgentModel.fromAny({
+        'id': 'claude-opus-4-8',
+        'displayName': 'Opus 4.8',
+        'isLegacy': true,
+      });
+      expect(older!.isLegacy, isTrue);
+      // A current model leaves it false.
+      final current = AgentModel.fromAny({
+        'id': 'claude-opus-5-5',
+        'displayName': 'Opus 5.5',
+      });
+      expect(current!.isLegacy, isFalse);
+    });
+
     test('accepts a bare id string (legacy bridge)', () {
       final model = AgentModel.fromAny('anthropic/claude-3-opus');
       expect(model, isNotNull);

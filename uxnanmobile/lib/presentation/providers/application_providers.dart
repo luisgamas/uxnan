@@ -1806,39 +1806,6 @@ class ConfirmBeforePr extends Notifier<bool> {
 final confirmBeforePrProvider =
     NotifierProvider<ConfirmBeforePr, bool>(ConfirmBeforePr.new);
 
-/// Whether Claude Code's moving-target "latest" alias models
-/// (`fable`/`opus`/`sonnet`/`haiku`, flagged `isLatestAlias`) appear in the
-/// model picker. Persisted; defaults to on. Purely a picker-display filter — a
-/// thread already running on an alias keeps working and keeps its run-option
-/// knobs.
-class ShowClaudeLatestModels extends Notifier<bool> {
-  @override
-  bool build() {
-    unawaited(_hydrate());
-    return true;
-  }
-
-  Future<void> _hydrate() async {
-    final stored = await ref
-        .read(conversationPreferencesStoreProvider)
-        .readShowClaudeLatest();
-    if (stored != null && stored != state) state = stored;
-  }
-
-  /// Persists and applies the show-latest-aliases preference.
-  Future<void> set({required bool value}) async {
-    if (value == state) return;
-    state = value;
-    await ref
-        .read(conversationPreferencesStoreProvider)
-        .writeShowClaudeLatest(value: value);
-  }
-}
-
-/// Whether Claude Code's "latest" alias models show in the picker (persisted).
-final showClaudeLatestModelsProvider =
-    NotifierProvider<ShowClaudeLatestModels, bool>(ShowClaudeLatestModels.new);
-
 /// How one level of the threads list is ordered ([SortLevel]): the projects,
 /// the folders inside a project, the conversations inside a folder, and the
 /// archive. Every level persists its choice the same way.

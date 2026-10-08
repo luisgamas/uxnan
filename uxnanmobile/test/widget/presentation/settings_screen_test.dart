@@ -147,36 +147,4 @@ void main() {
       expect(stored, ContextIndicatorMode.both.name);
     },
   );
-
-  testWidgets(
-    'Conversation section: Claude latest-models toggle defaults on and '
-    'persists off',
-    (tester) async {
-      tester.view.physicalSize = const Size(800, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await tester.pumpWidget(_wrap());
-      await tester.pumpAndSettle();
-      await _openSection(tester, 'Conversation');
-
-      final toggle = find.widgetWithText(
-        SwitchListTile,
-        'Show Claude Code “latest” models',
-      );
-      expect(toggle, findsOneWidget);
-      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
-
-      await tester.ensureVisible(toggle);
-      await tester.tap(toggle);
-      await tester.pumpAndSettle();
-
-      expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
-      final stored = await ConversationPreferencesStore(
-        preferences: SharedPreferences.getInstance(),
-      ).readShowClaudeLatest();
-      expect(stored, isFalse);
-    },
-  );
 }

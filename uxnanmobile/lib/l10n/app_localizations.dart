@@ -2408,6 +2408,18 @@ abstract class AppLocalizations {
   /// **'No matching models'**
   String get modelPickerEmpty;
 
+  /// No description provided for @modelPickerOlder.
+  ///
+  /// In en, this message translates to:
+  /// **'Older models'**
+  String get modelPickerOlder;
+
+  /// Under the folded 'Older models' row of the model picker: how many it holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 model} other{{count} models}}'**
+  String modelPickerOlderCount(int count);
+
   /// No description provided for @modelPickerDefault.
   ///
   /// In en, this message translates to:
@@ -3853,24 +3865,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Models'**
   String get settingsModelsSection;
-
-  /// Title of the toggle that shows/hides Claude Code's fable/opus/sonnet/haiku “latest” alias models in the model picker.
-  ///
-  /// In en, this message translates to:
-  /// **'Show Claude Code “latest” models'**
-  String get settingsClaudeLatestTitle;
-
-  /// Subtitle of the Claude Code latest-models toggle.
-  ///
-  /// In en, this message translates to:
-  /// **'List the Fable, Opus, Sonnet and Haiku “(latest)” aliases in the model picker.'**
-  String get settingsClaudeLatestSubtitle;
-
-  /// Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do.
-  ///
-  /// In en, this message translates to:
-  /// **'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.'**
-  String get settingsClaudeLatestHint;
 
   /// Title of the toggle controlling the autonomous-mode banner shown in conversations.
   ///
@@ -5485,12 +5479,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Agents'**
   String get settingsConversationAgentsGroup;
-
-  /// Conversation section sub-group for Claude model-picker options.
-  ///
-  /// In en, this message translates to:
-  /// **'Claude'**
-  String get settingsConversationClaudeGroup;
 
   /// Conversation section sub-group for agents that run without per-action approval — named for the behaviour rather than for one agent, since more than one behaves this way.
   ///
