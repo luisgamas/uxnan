@@ -162,8 +162,8 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 
 #### T3.3 - Navegador Embebido
 
-- [ ] Webview integrado para previsualizar aplicaciones web.
-- [ ] Tabs de navegador dentro del area central.
+- [x] Webview integrado para previsualizar aplicaciones web — implementado como
+  superficie del dock derecho; no es una pestaña central (`architecture/02a §4.2b`).
 
 #### T3.4 - Terminal Flotante
 

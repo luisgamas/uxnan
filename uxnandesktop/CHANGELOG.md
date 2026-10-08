@@ -4,6 +4,19 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Agent views in chat.** When an agent shows a view (the bridge's
+  `view_show`), the chat renders the page inline: fetched with `view/read` only
+  when its card nears the screen, served from a dedicated `uxnan-view` scheme
+  with its own no-network policy, and framed with `sandbox="allow-scripts"` alone
+  (an opaque origin that cannot reach the app or its IPC). It follows the app's
+  theme, reports its own height, opens links only after asking, and can be
+  expanded. **Annotate** picks an element in the page; the note goes to the
+  composer, like a message the page proposes — nothing is sent on its own. At
+  most four frames stay live. A block type the app does not know now shows a
+  one-line notice instead of nothing, as on the phone.
+
 ### Changed
 
 - **`chat/read` pages a long answer and says why a turn failed.** An answer

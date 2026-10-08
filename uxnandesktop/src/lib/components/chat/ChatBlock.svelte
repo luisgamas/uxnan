@@ -15,6 +15,7 @@
   import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
   import ChatActivity from "./ChatActivity.svelte";
   import ChatRequest from "./ChatRequest.svelte";
+  import ChatView from "./ChatView.svelte";
   import type { Conversation } from "$lib/bridge/conversation.svelte";
   import { isActivity } from "$lib/bridge/timeline";
   import { i18n } from "$lib/i18n";
@@ -45,6 +46,23 @@
       : ({} as Record<string, unknown>),
   );
   const type = $derived(typeof b.type === "string" ? b.type : "");
+  /** Every block type this client knows — including the ones it shows nothing
+   *  for on purpose (an empty plan, a notice without text, usage, thinking).
+   *  Only a type outside this list gets the "unsupported" line, as on the phone. */
+  const KNOWN_TYPES = new Set([
+    "approval",
+    "question",
+    "plan",
+    "system",
+    "code",
+    "image",
+    "compaction",
+    "view",
+    "text",
+    "thinking",
+    "usage",
+    "assistant_response_boundary",
+  ]);
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const req = $derived(
     b.request && typeof b.request === "object" ? (b.request as Record<string, unknown>) : b,
@@ -150,5 +168,11 @@
       {/snippet}
     </TooltipSimple>
     <span class="h-px flex-1 bg-border/70"></span>
+  </div>
+{:else if type === "view" && typeof b.viewId === "string" && /^[0-9a-f]{32}$/.test(b.viewId) && typeof b.title === "string"}
+  <ChatView block={b} />
+{:else if !KNOWN_TYPES.has(type)}
+  <div class="my-1 rounded-md border border-border/50 bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground" role="status">
+    {i18n.t("chat.unsupportedContent", { type: type ? ` (${type.slice(0, 60)})` : "" })}
   </div>
 {/if}

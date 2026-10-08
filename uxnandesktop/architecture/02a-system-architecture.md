@@ -3,7 +3,7 @@
 > Documento de arquitectura del sistema para el Uxnan Desktop ADE.
 > Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones, persistencia y diagnostico post-mortem (§7.3.1).
 > Derivado de las secciones 2, 3, 4, 6.3 y 7 del documento de arquitectura original.
-> Integrated browser (§4.2b): one page per workspace, a child webview of the main window (never floats over other apps), shown as one surface of the right dock — a single per-workspace panel with the surfaces the workspace has (Files · Git · GitHub · Browser).
+> Integrated browser (§4.2b): one page per workspace, a child webview of the main window (never floats over other apps), shown as one surface of the right dock — a single per-workspace panel with the surfaces the workspace has (Files · Git · GitHub · Browser). Agent views in chat use a separate sandboxed iframe on the dedicated `uxnan-view` scheme.
 
 ---
 
@@ -400,8 +400,12 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   app, y WebView2 no puede terminar de crear un controlador ahí. Todos los comandos
   que crean o tocan páginas son `async`. La versión intermedia (un `WebviewWindow`
   *owned* acoplado encima del panel) flotaba sobre todas las ventanas y
-  escritorios, y se retiró. Un `<iframe>` sigue descartado (`X-Frame-Options`, sin
-  DevTools).
+  escritorios, y se retiró. The integrated browser remains a native webview for
+  browsing external and development sites. Agent views in chat are a separate
+  surface: a sandboxed `<iframe sandbox="allow-scripts">` served by the dedicated
+  `uxnan-view` scheme, with an opaque origin, strict no-network CSP, and no
+  navigation, popup, or Tauri IPC permissions. They are not the external-site
+  browser and do not change its URL policy.
 - **Una página por workspace:** la sesión del navegador es por workspace (la
   clave de workspace del store de terminales: la ruta del worktree, `""` = Global):
   página, historial y zoom propios (si el dock lo muestra lo decide el dock). Solo se muestra la del

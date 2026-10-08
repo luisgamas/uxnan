@@ -135,7 +135,9 @@ available today are:
   the same conversation Uxnan Mobile shows, live in both. The **Bridge** window,
   one click from the sidebar, shows the bridge's state, updates it and draws the
   pairing QR; Settings → Bridge & mobile also installs it and lists every paired
-  phone to rename or unpair ([chat tabs & the bridge](./docs/chat.md)).
+  phone to rename or unpair. Agent views render inline in a lazy sandboxed frame
+  with annotations and draft insertion ([chat tabs & the bridge](./docs/chat.md),
+  [agent views](./docs/agent-views.md)).
 - **From a terminal to a chat, and back.** A terminal running an agent holds its
   session, so nothing else writes to it. *Continue as chat* on the tab closes the
   agent there and continues its session in a chat, *Open in terminal* on a chat
@@ -354,6 +356,7 @@ Detailed docs live in [`docs/`](./docs/):
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
 [chat tabs & the bridge connection](./docs/chat.md) ·
+[agent views in chat](./docs/agent-views.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·

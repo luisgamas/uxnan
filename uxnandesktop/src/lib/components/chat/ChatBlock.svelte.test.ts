@@ -4,7 +4,7 @@
  * phone) settles the card here too.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mount, mountWithProviders, until } from "../../../test/render";
 
 /** Whether a node sits inside a collapsed section (Bits UI may keep a closed
@@ -22,6 +22,18 @@ import ChatRequest from "./ChatRequest.svelte";
 import ChatBridgeGate from "./ChatBridgeGate.svelte";
 import ChatTurnView from "./ChatTurnView.svelte";
 import ChatWorkGroup from "./ChatWorkGroup.svelte";
+import ChatView from "./ChatView.svelte";
+
+class ImmediateIntersectionObserver {
+  constructor(private callback: IntersectionObserverCallback) {}
+  observe(target: Element) { this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+  disconnect() {}
+  unobserve() {}
+  takeRecords() { return []; }
+  root = null;
+  rootMargin = "240px";
+  thresholds = [0];
+}
 
 function conversation(): Conversation {
   return new Conversation("t1", async () => ({}) as never);
@@ -36,6 +48,28 @@ const approval = {
 };
 
 describe("ChatBlock", () => {
+  it("shows a labelled fallback for unknown content blocks", () => {
+    const { screen } = mount(ChatBlock, {
+      props: { block: { type: "future-kind" }, threadId: "t1", conversation: conversation() },
+    });
+    expect(screen.getByRole("status").textContent).toContain("Unsupported chat content (future-kind)");
+  });
+
+  it("renders an agent view in a lazy sandboxed frame", async () => {
+    vi.stubGlobal("IntersectionObserver", ImmediateIntersectionObserver);
+    const { screen } = mount(ChatView, {
+      props: { block: { type: "view", viewId: "0123456789abcdef0123456789abcdef", title: "Status", height: 240 } },
+      commands: {
+        bridge_call: () => ({ viewId: "0123456789abcdef0123456789abcdef", title: "Status", html: "<h1>Ready</h1>", bytes: 15 }),
+        view_stage: () => "uxnan-view://localhost/0123456789abcdef0123456789abcdef",
+      },
+    });
+    const iframe = await screen.findByTitle("Status");
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(iframe.hasAttribute("allow")).toBe(false);
+    expect(iframe.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(iframe.getAttribute("src")).toContain("uxnan-view://localhost/");
+  });
   it("answers an approval through the bridge and settles the card", async () => {
     // In the app the card's conversation IS the store's; answering settles it.
     const c = chat.conversation("t-approve");
@@ -173,11 +207,11 @@ describe("ChatBlock", () => {
     await until(() => screen.queryByText("Waiting for you") === null);
   });
 
-  it("renders nothing for a block type it does not know", () => {
+  it("labels a block type it does not know", () => {
     const { screen } = mount(ChatBlock, {
       props: { block: { type: "from-the-future" }, threadId: "t1", conversation: conversation() },
     });
-    expect(screen.container.textContent?.trim()).toBe("");
+    expect(screen.getByRole("status").textContent).toContain("Unsupported chat content (from-the-future)");
   });
 });
 

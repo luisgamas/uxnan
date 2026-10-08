@@ -66,6 +66,7 @@ mod state;
 // a mutation prepared for one machine from running on another.
 mod target;
 mod updater;
+mod views;
 mod which;
 mod winproc;
 mod worktreeclean;
@@ -91,6 +92,14 @@ pub fn run() {
     crate::path_env::enrich_for_gui_launch();
 
     tauri::Builder::default()
+        .manage(views::ViewStore::default())
+        .register_asynchronous_uri_scheme_protocol("uxnan-view", |_ctx, request, responder| {
+            let method = request.method().as_str().to_owned();
+            let path = request.uri().path().to_owned();
+            let store = _ctx.app_handle().state::<views::ViewStore>();
+            let response = views::response_for_uri(&method, &path, &store);
+            responder.respond(response);
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -648,6 +657,7 @@ pub fn run() {
             commands::open_in_editor,
             fonts::list_system_fonts,
             commands::open_url,
+            views::view_stage,
             commands::open_external,
             browser::host::browser_open,
             browser::host::browser_navigate,
