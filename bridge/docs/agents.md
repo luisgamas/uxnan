@@ -411,9 +411,16 @@ being asked:
 |---|---|---|---|
 | Claude Code (haiku 5.5) | 0/1 | 1/1 | — |
 | Codex (gpt-6-luna) | 0/1 | 0/3 | 3/3 |
-| OpenCode (`opencode/space-bunny-free`) | 0/1 | 4/6 | — (no system channel used: its config `instructions` list may replace the person's own when merged) |
+| OpenCode (`opencode/space-bunny-free`) | 0/1 | 4/6, then 3/4 | — (see below) |
 | pi (`openrouter/cohere/north-mini-code:free`) | — | 1/1 | — |
 | Grok | — | 1/1 | — |
+
+OpenCode 2 reaches its model with the tool's description only: asked whether
+its instructions mention Uxnan, it says no — it passes on neither an MCP
+server's `instructions` nor a `system` field on `POST /api/session/:id/prompt`
+(accepted, ignored; checked on 2.0.24), and its config `instructions` list
+could not be shown to reach the model with that free model either. So
+OpenCode shows a view most of the time, not always (`FOR-DEV.md`).
 
 The step becomes the view in **one place**, `views/convert-view-block.ts`, run
 by the `AgentManager` on every adapter's blocks: a finished, non-error tool

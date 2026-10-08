@@ -172,6 +172,10 @@ const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
  * conversation folder in `x-uxnan-cwd`. A changed list restarts an idle server.
  * Verified against opencode 2.0.16: the server connects once the folder loads
  * and sends both headers. Empty without MCP servers.
+ *
+ * FOR-DEV: the servers' `instructions` do not reach OpenCode's model (it drops
+ * them, and a prompt's `system` field); pass them through a channel it honors
+ * once one is verified (bridge/FOR-DEV.md, OpenCode views).
  */
 export function openCodeMcpEnv(
   servers: AgentMcpServer[] | undefined,
