@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.42-alpha.20261008+20261009] - 20261008
 ### Added
 
 - **Interactive agent views in chat.** Assistant `view` blocks fetch prepared,

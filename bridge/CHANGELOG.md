@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.50-alpha.20261008] - 20261008
 ### Added
 
 - **Agent views in chat.** Every run gets the bridge's loopback `uxnan` MCP

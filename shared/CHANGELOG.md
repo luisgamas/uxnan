@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.33-alpha.20261008] - 20261008
 ### Added
 
 - **`AgentModel.isLegacy`.** Marks a model the agent's CLI lists as an older
