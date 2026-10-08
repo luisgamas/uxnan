@@ -106,7 +106,7 @@
           title={knobLabel(option)}
         >
           <Icon icon={Brain01Icon} class={icon.status} />
-          <span class="truncate">{labelOf(option)}</span>
+          <span class={chat.pillLabelCompact}>{labelOf(option)}</span>
           <Icon icon={ArrowDown01Icon} class={cn(icon.status, "opacity-60")} />
         </Button>
       {/snippet}
@@ -149,7 +149,7 @@
           aria-label={i18n.t("runOptions.options")}
         >
           <Icon icon={Settings02Icon} class={icon.status} />
-          <span class="truncate">
+          <span class={chat.pillLabelCompact}>
             {togglesOn.length > 0 ? togglesOn.join(" · ") : i18n.t("runOptions.options")}
           </span>
           <Icon icon={ArrowDown01Icon} class={cn(icon.status, "opacity-60")} />

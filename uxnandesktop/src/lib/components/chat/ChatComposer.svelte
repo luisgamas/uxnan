@@ -523,6 +523,7 @@
        primitive's `has-disabled` would fade the whole composer for it). -->
   <InputGroup.Root
     class={cn(
+      chat.composer,
       "rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50",
       dragging && "ring-2 ring-ring/40",
     )}
@@ -580,7 +581,7 @@
       aria-label={i18n.t("chat.composerLabel")}
       class={cn("max-h-60 min-h-11 px-3 leading-5", text.body)}
     />
-    <InputGroup.Addon align="block-end" class="gap-0.5">
+    <InputGroup.Addon align="block-end" class="min-w-0 gap-0.5">
       <InputGroup.Button
         size="icon-sm"
         variant="ghost"

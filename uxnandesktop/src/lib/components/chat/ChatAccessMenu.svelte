@@ -75,7 +75,7 @@
         title={i18n.t(`chat.accessDesc.${value}`)}
       >
         <Icon icon={current.glyph} class={icon.status} />
-        <span class="truncate">{i18n.t(`chat.access.${value}`)}</span>
+        <span class={chat.pillLabelCompact}>{i18n.t(`chat.access.${value}`)}</span>
         <Icon icon={ArrowDown01Icon} class={cn(icon.status, "opacity-70")} />
       </Button>
     {/snippet}

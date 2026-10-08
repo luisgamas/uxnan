@@ -20,7 +20,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and PR-body pickers — open from the start when the chosen model is one of
   them, and searched like the rest.
 - **The composer attaches with a paperclip** instead of a plus.
-### Changed
 
 - **The Claude model pickers list what Claude Code offers.** *Settings → AI
   commit* and *Settings → GitHub → AI PR body* now ask the installed `claude`
@@ -30,6 +29,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   account can use — under Claude Code's own labels, so a new model appears
   without an app release. A `claude` that will not answer shows an error rather
   than an empty list. The bridge reads the same request for the phone.
+
+### Fixed
+
+- **The composer fits a narrow chat.** Its toolbar used to spill past the
+  composer's edge — the access mode and even the send button outside it —
+  when the chat was squeezed (the built-in browser opened wide beside it): a
+  toolbar pill could not shrink. Now the pills shrink and truncate; below
+  36rem of composer the effort and access-mode pills keep only their icon (the
+  mode keeps its colour, and both keep their tooltip), and below 24rem the
+  model pill keeps only the agent's logo.
 
 ## [0.0.78] - 20261007
 ### Added

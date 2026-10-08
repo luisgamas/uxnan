@@ -431,7 +431,9 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   and files back too (a queued one's are read back from the bridge,
   `turn/attachment`).
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
-  the round button stops it; the paperclip attaches files. Its toolbar holds
+  the round button stops it; the paperclip attaches files. A narrow chat keeps
+  the toolbar inside the composer: its pills shrink, then the effort and access
+  pills drop to their icon, then the model pill to the agent's logo. Its toolbar holds
   what can change mid-chat — the model, behind the agent's logo (every client
   sees the change; models the CLI calls older fold under *Older models*), the model's knobs beside it when it has
   any — one picker for every agent (`RunOptionsPicker`): the brain mark the
