@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -23,6 +24,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/streaming_markdown_split.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -78,6 +80,7 @@ class MessageContentView extends StatelessWidget {
       final SystemContent c => _SystemBanner(content: c),
       final DiffContent c => _DiffBlock(content: c),
       final ImageContent c => _ImageBlock(content: c),
+      final ViewContent c => ViewBlock(content: c, threadId: threadId),
       final AttachedFileContent c => FileChip(file: c),
       final ToolUseContent c =>
         _Placeholder(icon: UxIcons.build, label: 'Tool · ${c.toolName}'),

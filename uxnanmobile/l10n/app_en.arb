@@ -2174,5 +2174,18 @@
   "relaySetupDone": "Your relay is ready.",
   "@relaySetupDone": {"description": "Snackbar after a successful setup."},
   "pcRelaySameNetworkUnreachable": "On the same Wi-Fi, but the PC didn't answer directly (the network may isolate devices) — using your relay.",
-  "@pcRelaySameNetworkUnreachable": {"description": "One line under the route badge in PC details when the phone is on the relay although it saw the PC on its own Wi-Fi (mDNS) and none of the PC's addresses answered."}
+  "@pcRelaySameNetworkUnreachable": {"description": "One line under the route badge in PC details when the phone is on the relay although it saw the PC on its own Wi-Fi (mDNS) and none of the PC's addresses answered."},
+  "conversationViewAnnotate": "Annotate",
+  "conversationViewStopAnnotating": "Stop annotating",
+  "conversationViewExpand": "Expand view",
+  "conversationViewLinkTitle": "Open link?",
+  "conversationViewLinkCancel": "Cancel",
+  "conversationViewLinkOpen": "Open",
+  "conversationViewAddedToComposer": "Added to the conversation composer",
+  "conversationViewAnnotationFor": "Annotate {tag}",
+  "@conversationViewAnnotationFor": {"placeholders": {"tag": {"type": "String"}}},
+  "conversationViewAnnotationPrompt": "What should change?",
+  "conversationViewAnnotationAdd": "Add note",
+  "conversationViewCouldNotLoadRetry": "Could not load view · Retry",
+  "conversationViewLoadInteractive": "Load interactive view"
 }

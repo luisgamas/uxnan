@@ -85,6 +85,34 @@ void main() {
     await db.close();
   });
 
+  test('view text enters an empty composer without sending', () {
+    notifier().offerText('th1', 'view message');
+
+    expect(stateOf('th1').incoming?.text, 'view message');
+    expect(sent, isEmpty);
+  });
+
+  test('view text preserves pending handoffs and rescues the current draft',
+      () {
+    const image = ImageContent(mimeType: 'image/png', base64Data: 'AAEC');
+    container.read(composerHandoffsProvider.notifier).state = {
+      'th1': const ComposerHandoffState(
+        draft: 'existing draft',
+        incoming: ComposerIncoming(
+          text: 'prior offered text',
+          images: [image],
+        ),
+      ),
+    };
+
+    notifier().offerText('th1', 'view note');
+
+    expect(stateOf('th1').incoming?.text, 'prior offered text\n\nview note');
+    expect(stateOf('th1').incoming?.images, [image]);
+    expect(stateOf('th1').rescued.single.text, 'existing draft');
+    expect(sent, isEmpty);
+  });
+
   test('editing a queued message hands its text to an empty composer',
       () async {
     final outcome = await notifier().edit(

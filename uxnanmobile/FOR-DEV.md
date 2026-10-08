@@ -15,6 +15,13 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 **MVP wired — Android alpha-ready.** All core modules are implemented and
 connected to live bridge data, validated on-device against a real bridge.
 
+**Agent views:** `view` message blocks, `view/read` with an eight-page LRU,
+isolated lazy WebViews (maximum three live inline), host protocol validation,
+composer handoff, annotation notes, external-link confirmation and full-screen
+re-hosting are implemented. Automated mobile tests cover decoding, protocol,
+LRU and loading/error/retry states; native WebView behavior still needs an
+on-device pass.
+
 **Built (DONE):**
 
 - **Updating the PC's bridge** (architecture/02a §5.8.18). `BridgeReplica`
@@ -428,9 +435,9 @@ shipping.
       renders as highlighted source (the honest fallback); GitHub draws the
       diagram. Needs a pure-Dart renderer or an explicit diagram placeholder in
       `MarkdownCodeBlockBuilder`
-      (`presentation/screens/workspace/files/widgets/markdown_blocks.dart`);
-      deferred because the mobile stack deliberately carries no WebView
-      (`architecture/02a` §5.4.7).
+      (`presentation/screens/workspace/files/widgets/markdown_blocks.dart`).
+      Agent-view WebView support does not render Markdown diagrams; Mermaid
+      remains an independent renderer task (`architecture/02a` §5.4.7).
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
 - [ ] **OPTIONAL — a display buffer for streamed prose, decoupled from arrival.**

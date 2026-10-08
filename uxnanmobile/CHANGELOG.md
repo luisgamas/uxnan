@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Interactive agent views in chat.** Assistant `view` blocks fetch prepared,
+  bridge-owned pages through `view/read`, render lazily in an isolated WebView,
+  reserve and update their bounded height, and offer annotate, expand, retry,
+  page-to-composer messaging and confirmed external links. Pages are cached in
+  memory (eight entries); Android file/content access and zoom are disabled.
+
 ### Changed
 
 - **Older models fold away in the model picker.** Models the agent's CLI calls

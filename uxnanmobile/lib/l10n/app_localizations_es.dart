@@ -3659,4 +3659,44 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get pcRelaySameNetworkUnreachable =>
       'En la misma Wi-Fi, pero la PC no respondió directamente (la red puede aislar los dispositivos): usando tu relay.';
+
+  @override
+  String get conversationViewAnnotate => 'Anotar';
+
+  @override
+  String get conversationViewStopAnnotating => 'Dejar de anotar';
+
+  @override
+  String get conversationViewExpand => 'Expandir vista';
+
+  @override
+  String get conversationViewLinkTitle => '¿Abrir enlace?';
+
+  @override
+  String get conversationViewLinkCancel => 'Cancelar';
+
+  @override
+  String get conversationViewLinkOpen => 'Abrir';
+
+  @override
+  String get conversationViewAddedToComposer =>
+      'Se agregó al compositor de la conversación';
+
+  @override
+  String conversationViewAnnotationFor(String tag) {
+    return 'Anotar $tag';
+  }
+
+  @override
+  String get conversationViewAnnotationPrompt => '¿Qué debería cambiar?';
+
+  @override
+  String get conversationViewAnnotationAdd => 'Agregar nota';
+
+  @override
+  String get conversationViewCouldNotLoadRetry =>
+      'No se pudo cargar la vista · Reintentar';
+
+  @override
+  String get conversationViewLoadInteractive => 'Cargar vista interactiva';
 }
