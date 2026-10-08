@@ -97,6 +97,9 @@ export const overlay = {
   infoWidth: "w-72 max-w-[calc(100vw-1rem)]",
   formWidth: "w-80 max-w-[calc(100vw-1rem)]",
   commandWidth: "w-80 max-w-[calc(100vw-1rem)]",
+  /** A command list with a rail beside it (the composer's agent + model
+   *  picker): the command width plus the rail. */
+  railedCommandWidth: "w-[23rem] max-w-[calc(100vw-1rem)]",
   statusWidth: "w-96 max-w-[calc(100vw-1rem)]",
   /** Menu width roles keep labels and submenu affordances readable. */
   menuSimple: "min-w-44 max-w-[min(20rem,calc(100vw-1rem))]",

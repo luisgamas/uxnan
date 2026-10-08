@@ -75,10 +75,14 @@ export const en = {
   "runOptions.level.xhigh": "Extra high",
   "runOptions.level.max": "Max",
   "modelPicker.label": "Model",
+  "modelPicker.agentLabel": "Agent and model",
+  "modelPicker.agents": "Agents",
   "modelPicker.default": "Default model",
   "modelPicker.search": "Search models…",
   "modelPicker.loading": "Loading models…",
   "modelPicker.noMatch": "No model matches.",
+  "modelPicker.older": "Older models",
+  "modelPicker.olderCount": "{n} models",
   "common.search": "Search…",
 
   // Icon picker (project & branch icons)

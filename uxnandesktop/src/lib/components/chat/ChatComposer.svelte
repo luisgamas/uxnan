@@ -13,7 +13,7 @@
   // loaded as soon as the agent is known) and a `/name args` message is sent as
   // `turn/send { command }`; `@` browses and searches the project through the
   // bridge that owns its folder (`workspace/list`, `workspace/searchFiles`) —
-  // a folder drills in, a file is written as `@path`; images — from "+",
+  // a folder drills in, a file is written as `@path`; images — from the paperclip,
   // pasted or dropped, up to the phone's limit — ride along as `attachments`
   // when the agent takes them. A file dropped on it (from the OS or the file
   // tree, routed by `$lib/fileDrop`) is mentioned when it is one of the
@@ -28,7 +28,7 @@
   import { Icon } from "$lib/components/ui/icon";
   import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
-  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
   import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
   import File01Icon from "@hugeicons/core-free-icons/File01Icon";
   import { untrack, type ComponentProps, type Snippet } from "svelte";
@@ -354,7 +354,7 @@
     await addFiles(readyFiles);
   }
 
-  /** "+": any file, attached. */
+  /** The paperclip: any file, attached. */
   async function chooseAttachments() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -401,7 +401,7 @@
    *  file or folder, is mentioned, `@path`, exactly as picking it from `@`
    *  writes it (the agent opens it itself, nothing is copied); a folder from
    *  elsewhere — or the project's own — is written as its path, quoted when it
-   *  has spaces, as a terminal gets it; any other file is attached like "+". */
+   *  has spaces, as a terminal gets it; any other file is attached like the paperclip. */
   async function droppedAs(path: string): Promise<DroppedAs> {
     if (acceptsImages && isImageName(path.split(/[\\/]/).pop() ?? "")) return { attach: path };
     const mention = mentionRoot ? mentionFor(mentionRoot, path) : null;
@@ -590,7 +590,7 @@
         disabled={disabled || (images.length >= MAX_IMAGES && attachedFiles.length >= MAX_FILES)}
         onclick={() => void chooseAttachments()}
       >
-        <Icon icon={PlusIcon} class={icon.action} />
+        <Icon icon={Attachment01Icon} class={icon.action} />
       </InputGroup.Button>
       {#if leading}{@render leading()}{/if}
       {#if trailing}{@render trailing()}{/if}

@@ -299,7 +299,8 @@ message names the exact model that wrote it, and the picker offers
 
 There is no table to maintain: a new Claude model appears in the picker the
 moment the installed CLI lists it, for the accounts that can use it. The phone
-gets the same list from the bridge, with the aliases in front
+and the chat get the bridge's list, where those current models appear by their
+alias instead; in both, the older ids fold under *Older models*
 ([`../../bridge/docs/agents.md`](../../bridge/docs/agents.md) → *Claude Code
 models*). Whether a model takes `--effort` and its context window come from the
 CLI as well; only its **price** is hand-kept, in the bridge

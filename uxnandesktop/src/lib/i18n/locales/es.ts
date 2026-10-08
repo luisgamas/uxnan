@@ -72,10 +72,14 @@ export const es: Record<MessageKey, string> = {
   "runOptions.level.xhigh": "Muy alto",
   "runOptions.level.max": "Máximo",
   "modelPicker.label": "Modelo",
+  "modelPicker.agentLabel": "Agente y modelo",
+  "modelPicker.agents": "Agentes",
   "modelPicker.default": "Modelo por defecto",
   "modelPicker.search": "Buscar modelos…",
   "modelPicker.loading": "Cargando modelos…",
   "modelPicker.noMatch": "Ningún modelo coincide.",
+  "modelPicker.older": "Modelos anteriores",
+  "modelPicker.olderCount": "{n} modelos",
   "common.search": "Buscar…",
 
   // Selector de icono (proyecto y rama)

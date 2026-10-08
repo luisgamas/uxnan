@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Changed
 
+- **A new chat picks its access mode before the first message.** The composer
+  of a new chat carries the access-mode pill, in its colours, and the
+  conversation starts in the mode chosen there.
+- **The agent and its model are one pill.** Its menu puts a rail of the agents'
+  logos beside the chosen one's models: pointing at another agent shows its
+  models, and picking one picks that agent too. An agent that is not installed
+  stays on the rail, dimmed, with the reason in its tooltip. In a running
+  conversation the pill leads with the agent's logo.
+- **Older models fold away.** Models the agent's CLI calls older (today only
+  Claude Code's, which lists its newest models by alias) sit under one
+  *Older models* row at the end of the list — in the chat and in the AI commit
+  and PR-body pickers — open from the start when the chosen model is one of
+  them, and searched like the rest.
+- **The composer attaches with a paperclip** instead of a plus.
+### Changed
+
 - **The Claude model pickers list what Claude Code offers.** *Settings → AI
   commit* and *Settings → GitHub → AI PR body* now ask the installed `claude`
   for its models (its stream-json `initialize`, no turn and no tokens) instead of

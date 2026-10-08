@@ -274,11 +274,15 @@ for now (`bridge/docs/agents.md` → *Uxnan Desktop's tools*).
 ## A new chat
 
 A new chat opens on one question — *What should we build in <folder>?* — over
-the composer. Its toolbar carries the **agent** (it stays with the
-conversation, because another CLI cannot continue a native session) and,
-optionally, a **model** (*Default model* lets the agent decide). The first
-message starts the thread in the tab's folder; the thread is titled from that
-message until the agent writes a better name.
+the composer. Its toolbar carries the **agent and model** in one pill — its menu
+has a rail of the agents' logos beside the chosen one's models (an agent not
+installed stays there, dimmed; picking another agent's model picks that agent)
+— the agent stays with the conversation, because another CLI cannot continue a
+native session, and *Default model* lets the agent decide. Beside it, the
+model's knobs and the **access mode** the conversation will start in, chosen
+before the first message. The first message starts the thread in the tab's
+folder — in that mode — and the thread is titled from that message until the
+agent writes a better name.
 
 Below it, **Continue a conversation** lists every conversation the bridge holds
 for this folder, whichever app started it, and **Sessions in this folder**
@@ -427,8 +431,9 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   and files back too (a queued one's are read back from the bridge,
   `turn/attachment`).
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
-  the round button stops it. Its toolbar holds what can change mid-chat — the
-  model (every client sees the change), the model's knobs beside it when it has
+  the round button stops it; the paperclip attaches files. Its toolbar holds
+  what can change mid-chat — the model, behind the agent's logo (every client
+  sees the change; models the CLI calls older fold under *Older models*), the model's knobs beside it when it has
   any — one picker for every agent (`RunOptionsPicker`): the brain mark the
   phone uses for effort and the level's name, a menu of the model's own levels
   (one per line) with the one it runs at by
