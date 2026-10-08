@@ -428,6 +428,17 @@ most of them, not all — `opencode/space-bunny-free` and
 `opencode/mimo-v2.6-flash-free` each skip one now and then; a comparison of a
 few options is where every model hesitates most.
 
+**Bundled libraries, no network.** A page keeps its no-network policy, so it
+cannot load a library from a CDN; instead it names one the bridge ships —
+`<script src="uxnan:chart.js"></script>` — and the bridge puts the library's
+code in its place when it prepares the page (`views/view-libraries.ts`). The
+page works offline and over the relay, loads at once, and reaches nothing.
+The tool's description lists what there is. Today: Chart.js (MIT, ~200 KB,
+global `Chart`). A library is added only when it is permissively licensed,
+maintained and small enough to ride in each view that uses it — Mermaid, at
+122 MB unpacked, is not (`FOR-DEV.md`). The 512 KiB cap counts the agent's
+HTML, not the bundled code.
+
 The step becomes the view in **one place**, `views/convert-view-block.ts`, run
 by the `AgentManager` on every adapter's blocks: a finished, non-error tool
 block whose output carries the marker of a view this bridge just made becomes a

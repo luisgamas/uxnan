@@ -10,6 +10,7 @@ import {
   type ViewReadResult,
 } from '@uxnan/shared';
 import { resolveWithinRoot } from '../workspace/path-guard.js';
+import { inlineViewLibraries } from './view-libraries.js';
 
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'";
@@ -74,7 +75,7 @@ export class ViewStore {
       throw new Error(`View HTML is ${bytes} bytes; the limit is ${VIEW_MAX_HTML_BYTES} bytes.`);
     const title = Array.from(input.title).slice(0, VIEW_MAX_TITLE_LENGTH).join('');
     const height = input.height === undefined ? undefined : clampViewHeight(input.height);
-    const html = prepareViewHtml(source, this.bootstrap);
+    const html = prepareViewHtml(inlineViewLibraries(source).html, this.bootstrap);
     await mkdir(this.directory, { recursive: true });
     const viewId = randomBytes(16).toString('hex');
     const meta: ViewMeta = {

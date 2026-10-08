@@ -21,6 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   which hides MCP tools behind code mode and drops their instructions, gets
   them as each session's instruction entry (OpenCode 2) or the prompt's
   `system` (OpenCode 1), and shows a view on most such questions.
+  **Bundled libraries:** a page loads Chart.js with
+  `<script src="uxnan:chart.js"></script>`; the bridge puts the library's code
+  there when it prepares the page, so charts need no network.
 
 ### Fixed
 

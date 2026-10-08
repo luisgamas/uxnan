@@ -377,6 +377,19 @@ push validation (FOR-HUMAN).
       allowance for one MCP server. The same block keeps **agent views** off
       Zero (it cannot reach the bridge's `uxnan` server either). Marker:
       `src/adapters/zero-adapter.ts`.
+- [ ] **More bundled view libraries** — `src/views/view-libraries.ts` ships
+      Chart.js only. A diagram library is the obvious next one, but Mermaid
+      (122 MB unpacked) is too large to ride in the bridge package and in every
+      view that uses it. Unblocked by a small, permissively licensed diagram
+      renderer, or by serving shared libraries from the clients instead of
+      inlining them per view.
+- [ ] **Views that load from declared domains** — pages have no network at
+      all. The open MCP Apps standard lets a page declare the domains it loads
+      from (`_meta.ui.csp`) for the host to show and the person to approve;
+      that is needed anyway to host third-party MCP Apps. Build both together:
+      `src/views/` (CSP per view), the desktop's `uxnan-view` scheme and the
+      phone's WebView. Deferred by the maintainer's choice of no network by
+      default (2026-10-08).
 - [ ] **Agent views on Antigravity: run it live** — the proxy fronts the whole
       `UXNAN_MCP_SERVERS` list (unit-tested, `test/adapters/mcp-proxy.test.ts`),
       but `agy` reaches it through the ONE global entry, which belongs to the

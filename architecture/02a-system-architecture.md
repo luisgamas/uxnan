@@ -3382,7 +3382,10 @@ tambien: funciona con solo el telefono.
   sin red (`default-src 'none'`; scripts y estilos solo en linea; imagenes,
   fuentes y medios solo `data:`/`blob:`; `connect-src`, `frame-src`,
   `form-action` y `base-uri` cerrados) y el *bootstrap* de la vista — y la
-  guarda en `~/.uxnan/views/` (se poda lo mas viejo). La respuesta al modelo
+  guarda en `~/.uxnan/views/` (se poda lo mas viejo). Sin red, una pagina
+  no puede cargar bibliotecas de un CDN: nombra una que el bridge incluye
+  (`<script src="uxnan:chart.js"></script>`) y el bridge pone su codigo en ese
+  lugar al prepararla (hoy Chart.js, MIT). La respuesta al modelo
   lleva el marcador `uxnan-view:<viewId>`. La descripcion de la herramienta y
   las `instructions` del servidor son como el agente **sabe** que la tiene y
   cuando usarla: como **regla** (datos que comparar, una tendencia, un
