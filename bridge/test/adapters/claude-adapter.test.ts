@@ -690,21 +690,17 @@ function initializeSpawner(models: unknown[] = INITIALIZE_MODELS_2_1_293): {
   });
 }
 
-test('ClaudeCodeAdapter lists the models the CLI reports: aliases, what they run, then older ids', async () => {
+test('ClaudeCodeAdapter lists the models as the CLI does: current ones by alias, older ids after', async () => {
   const { spawnFn, calls } = initializeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const models = await adapter.listModels();
   assert.deepEqual(
     models.map((m) => [m.id, m.displayName]),
     [
-      ['opus', 'Opus 5.5 (latest)'],
-      ['fable', 'Fable 5.1 (latest)'],
-      ['sonnet', 'Sonnet 5.5 (latest)'],
-      ['haiku', 'Haiku 5.5 (latest)'],
-      ['claude-opus-5-5', 'Opus 5.5'],
-      ['claude-fable-5-1', 'Fable 5.1'],
-      ['claude-sonnet-5-5', 'Sonnet 5.5'],
-      ['claude-haiku-5-5', 'Haiku 5.5'],
+      ['opus', 'Opus 5.5'],
+      ['fable', 'Fable 5.1'],
+      ['sonnet', 'Sonnet 5.5'],
+      ['haiku', 'Haiku 5.5'],
       ['claude-haiku-4-5-20251001', 'Haiku 4.5'],
       ['claude-sonnet-5', 'Sonnet 5'],
       ['claude-opus-5', 'Opus 5'],
@@ -720,7 +716,25 @@ test('ClaudeCodeAdapter lists the models the CLI reports: aliases, what they run
   assert.equal(opus?.isLatestAlias, true);
   assert.equal(opus?.version, 'claude-opus-5-5');
   assert.equal(opus?.description, 'For complex work and everyday tasks');
-  assert.equal(models.find((m) => m.id === 'claude-opus-5-5')?.isLatestAlias, undefined);
+  // Each model once: the current ones only through their alias.
+  assert.equal(
+    models.some((m) => m.id === 'claude-opus-5-5'),
+    false,
+  );
+  // What no alias runs today is an older model; what an alias runs is current.
+  assert.deepEqual(
+    models.filter((m) => m.isLegacy).map((m) => m.id),
+    [
+      'claude-haiku-4-5-20251001',
+      'claude-sonnet-5',
+      'claude-opus-5',
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+    ],
+  );
   // The CLI's own `default` is what picking nothing runs, not a row.
   assert.equal(
     models.some((m) => m.id === 'default'),
@@ -760,7 +774,7 @@ test('ClaudeCodeAdapter offers each model exactly the effort levels it reports',
       ?.options?.find((o) => o.key === 'reasoning')
       ?.values?.map((v) => v.value);
   assert.deepEqual(levels('opus'), ['low', 'medium', 'high', 'xhigh', 'max']);
-  assert.deepEqual(levels('claude-haiku-5-5'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(levels('haiku'), ['low', 'medium', 'high', 'xhigh', 'max']);
   // Opus 4.6 and Sonnet 4.6 stop short of `xhigh`.
   assert.deepEqual(levels('claude-opus-4-6'), ['low', 'medium', 'high', 'max']);
   assert.deepEqual(levels('claude-sonnet-4-6'), ['low', 'medium', 'high', 'max']);
@@ -782,6 +796,8 @@ test('claudeModels leaves the default unset when the model offers no `high`', ()
     },
   ]);
   assert.equal(model?.options?.[0]?.default, undefined);
+  // With no alias to compare against, nothing is called older.
+  assert.equal(model?.isLegacy, undefined);
   assert.deepEqual(
     model?.options?.[0]?.values?.map((v) => v.value),
     ['low', 'medium'],
