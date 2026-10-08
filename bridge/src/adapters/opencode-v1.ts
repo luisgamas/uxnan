@@ -556,7 +556,14 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   }
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
-    await this.#promptAsync(sessionId, prompt.text, prompt.model, prompt.variant, prompt.agent);
+    await this.#promptAsync(
+      sessionId,
+      prompt.text,
+      prompt.model,
+      prompt.variant,
+      prompt.agent,
+      prompt.system,
+    );
   }
 
   /**
@@ -574,9 +581,12 @@ export class OpenCodeV1Server implements IOpenCodeServer {
     model?: OpenCodeModelRef,
     variant?: string,
     agent?: OpenCodeAgent,
+    system?: string,
   ): Promise<void> {
     await this.#serve.request('POST', `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       ...(model !== undefined ? { model } : {}),
+      // 1.x reads a prompt's `system` as instructions for that turn.
+      ...(system ? { system } : {}),
       ...(variant !== undefined ? { variant } : {}),
       // 1.x takes the agent per prompt (1.18.34 `prompt_async` body).
       ...(agent !== undefined ? { agent } : {}),

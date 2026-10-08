@@ -28,8 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   desktop's. `DESKTOP_CWD_HEADER` is renamed `UXNAN_CWD_HEADER` — both servers
   read the conversation's folder from it. `AgentMcpServer.instructions`
   carries a server's MCP `instructions` for a CLI that only reads a system
-  channel of its own, and `AgentMcpServer.skills` a folder of skills teaching
-  its tools, for a CLI that shows its model skills but not MCP tools.
+  channel of its own.
 
 ## [0.0.32-alpha.20261004] - 20261004
 ### Added

@@ -105,25 +105,3 @@ test("Codex gets the run's server instructions as the thread's developer instruc
     { developerInstructions: 'Show views.\n\nBe brief.' },
   );
 });
-
-test("OpenCode gets the servers' skills folders as extra skill paths", () => {
-  const env = openCodeMcpEnv(
-    [
-      { name: 'uxnan', url: 'http://127.0.0.1:1/mcp', token: 't', skills: '/state/agent-skills' },
-      { name: 'uxnan-browser', url: 'http://127.0.0.1:2/mcp', token: 'u' },
-    ],
-    '/work',
-  );
-  const config = JSON.parse(env['OPENCODE_CONFIG_CONTENT']!) as {
-    skills?: { paths: string[] };
-    mcp: Record<string, unknown>;
-  };
-  assert.deepEqual(config.skills, { paths: ['/state/agent-skills'] });
-  assert.deepEqual(Object.keys(config.mcp), ['uxnan', 'uxnan-browser']);
-  const none = JSON.parse(
-    openCodeMcpEnv([{ name: 'x', url: 'http://127.0.0.1:3/mcp', token: 'v' }], '/w')[
-      'OPENCODE_CONFIG_CONTENT'
-    ]!,
-  ) as { skills?: unknown };
-  assert.equal(none.skills, undefined);
-});

@@ -729,3 +729,53 @@ test('OpenCode 1: a command the server refuses ends the turn with its error', as
     await adapter.stop();
   }
 });
+
+test("OpenCode gets the run's instructions: a session entry on 2.x, the prompt's system on 1.x", async () => {
+  const fake2 = fakeOpenCode(2);
+  const v2 = new OpenCodeV2Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake2.spawnFn,
+  });
+  try {
+    await v2.start();
+    await v2.prompt('ses_1', { text: 'a', agent: 'build', system: 'Show views.' });
+    await v2.prompt('ses_1', { text: 'b', agent: 'build', system: 'Show views.' });
+    await v2.prompt('ses_1', { text: 'c', agent: 'build', system: 'Show views now.' });
+    await v2.prompt('ses_1', { text: 'd', agent: 'build' });
+    const entry = '/api/experimental/session/ses_1/instructions/entries/uxnan';
+    const calls = fake2
+      .requests()
+      .filter((r) => r.url === entry)
+      .map((r) => [r.method, r.body]);
+    // Sent when it changes only; gone when the run has none.
+    assert.deepEqual(calls, [
+      ['PUT', { value: 'Show views.' }],
+      ['PUT', { value: 'Show views now.' }],
+      ['DELETE', undefined],
+    ]);
+    const prompts = fake2.requests().filter((r) => r.url === '/api/session/ses_1/prompt');
+    assert.ok(
+      prompts.every((r) => !('system' in (r.body as object))),
+      '2.x ignores a system field',
+    );
+  } finally {
+    await v2.close();
+  }
+  const fake1 = fakeOpenCode(1);
+  const v1 = new OpenCodeV1Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake1.spawnFn,
+  });
+  try {
+    await v1.start();
+    await v1.prompt('ses_1', { text: 'a', agent: 'build', system: 'Show views.' });
+    const body = fake1.requests().find((r) => r.url === '/session/ses_1/prompt_async')?.body as {
+      system?: string;
+    };
+    assert.equal(body?.system, 'Show views.');
+  } finally {
+    await v1.close();
+  }
+});

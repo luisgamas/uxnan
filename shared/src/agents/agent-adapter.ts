@@ -95,16 +95,10 @@ export interface AgentMcpServer {
   /**
    * What the server tells an agent at MCP `initialize` (`instructions`), for
    * an adapter whose CLI does not read that field and offers a system channel
-   * of its own instead (Codex's `developerInstructions`). Absent: nothing to
-   * pass on.
+   * of its own instead (Codex's `developerInstructions`, OpenCode's session
+   * instructions). Absent: nothing to pass on.
    */
   instructions?: string;
-  /**
-   * A folder of skills (`<name>/SKILL.md`) that teach this server's tools, for
-   * an adapter whose CLI shows its model skills but not MCP tools or their
-   * instructions (OpenCode 2, whose MCP tools sit behind code mode).
-   */
-  skills?: string;
 }
 
 /** Input for {@link IAgentAdapter.generateTitle}. */

@@ -162,7 +162,7 @@ export class ServeProcess {
    * non-2xx status, naming the path and status.
    */
   async request<T = Record<string, unknown>>(
-    method: 'GET' | 'POST' | 'DELETE' | 'PATCH',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     path: string,
     body?: unknown,
   ): Promise<T> {

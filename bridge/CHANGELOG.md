@@ -18,9 +18,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   Codex — which does not read an MCP server's instructions — gets them as its
   thread's developer instructions. Measured on an ordinary question about
   numbers: Claude Code, Codex, pi and Grok showed one every time. OpenCode,
-  which hides MCP tools behind code mode and drops their instructions, learns
-  it from a `uxnan-views` skill the bridge writes in its own state folder and
-  adds to the run's skill paths (the person's skills stay).
+  which hides MCP tools behind code mode and drops their instructions, gets
+  them as each session's instruction entry (OpenCode 2) or the prompt's
+  `system` (OpenCode 1), and shows a view on most such questions.
 
 ### Fixed
 

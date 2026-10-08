@@ -172,10 +172,6 @@ const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
  * conversation folder in `x-uxnan-cwd`. A changed list restarts an idle server.
  * Verified against opencode 2.0.16: the server connects once the folder loads
  * and sends both headers. Empty without MCP servers.
- *
- * FOR-DEV: OpenCode drops the servers' `instructions` (and a prompt's `system`
- * field), so it learns them only through the servers' skills; a weak model
- * still skips them at times (bridge/FOR-DEV.md, OpenCode views).
  */
 export function openCodeMcpEnv(
   servers: AgentMcpServer[] | undefined,
@@ -202,22 +198,14 @@ export function openCodeMcpEnv(
       }),
     ),
   };
-  // OpenCode 2 hides MCP tools behind code mode and drops their servers'
-  // instructions, but lists skills to its model: the servers' skills folders.
-  const skills = [...new Set(servers.flatMap((server) => (server.skills ? [server.skills] : [])))];
-  return {
-    [OPENCODE_CONFIG_ENV]: JSON.stringify(
-      skills.length ? { ...config, skills: { paths: skills } } : config,
-    ),
-    ...tokens,
-  };
+  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(config), ...tokens };
 }
 
 /** What a folder's server was started with, to tell when it must restart. */
 function toolsFingerprint(servers: AgentMcpServer[] | undefined): string {
   if (!servers?.length) return '';
   return createHash('sha256')
-    .update(JSON.stringify(servers.map((s) => [s.name, s.url, s.token, s.skills ?? ''])))
+    .update(JSON.stringify(servers.map((s) => [s.name, s.url, s.token])))
     .digest('hex')
     .slice(0, 16);
 }
@@ -493,12 +481,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     );
 
     try {
+      // The run's servers' instructions: OpenCode reads them from neither the
+      // servers nor anywhere else the bridge controls but the prompt itself.
+      const system = (options.mcpServers ?? [])
+        .map((server) => server.instructions?.trim())
+        .filter((value): value is string => !!value)
+        .join('\n\n');
       if (options.command) {
         // The server runs its own commands and skills: it expands the template
         // (or loads the skill) itself, and the turn streams like a prompt.
         const { name } = options.command;
         const known = (await this.#commandsFor(cwd).catch(() => [])).find((c) => c.name === name);
         await server.runCommand(sessionId, {
+          ...(system ? { system } : {}),
           name,
           args: options.command.args?.trim() ?? '',
           skill: known?.skill ?? false,
@@ -510,6 +505,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } else {
         await server.prompt(sessionId, {
           text,
+          ...(system ? { system } : {}),
           agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),

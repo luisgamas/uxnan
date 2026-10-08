@@ -411,22 +411,22 @@ being asked:
 |---|---|---|---|
 | Claude Code (haiku 5.5) | 0/1 | 1/1 | — |
 | Codex (gpt-6-luna) | 0/1 | 0/3 | 3/3 |
-| OpenCode (`space-bunny-free` / `mimo-v2.6-flash-free`) | 0/1 | 7/10 (tool description only) | with the `uxnan-views` skill: mimo 3/3, space-bunny about half (see below) |
+| OpenCode (`space-bunny-free` / `mimo-v2.6-flash-free`) | 0/1 | 7/10 (tool description only) | with the session instruction entry: most, not all (see below) |
 | pi (`openrouter/cohere/north-mini-code:free`) | — | 1/1 | — |
 | Grok | — | 1/1 | — |
 
-**OpenCode 2 needs a skill.** Its model never sees an MCP tool directly — they
-sit behind its code-mode `execute` tool — and it is handed neither an MCP
-server's `instructions` nor a prompt's `system` field (accepted, ignored;
-asked, the model says it sees neither; opencode 2.0.24). It does list every
-skill, name and description, in its `skill` tool. So the bridge writes a skill
-of its own, `uxnan-views`, into its state folder
-(`<state>/agent-skills/uxnan-views/SKILL.md`, `views/view-skill.ts`) and hands
-OpenCode that folder as an extra skills path in the run's config
-(`AgentMcpServer.skills` → `skills.paths` in `OPENCODE_CONFIG_CONTENT`); the
-person's own skills stay listed beside it. Measured: `opencode/mimo-v2.6-flash-free`
-3/3, `opencode/space-bunny-free` about half — that model follows instructions
-loosely (`FOR-DEV.md`).
+**OpenCode gets them per session.** OpenCode 2 never shows its model an MCP
+tool directly (they sit behind its code-mode `execute` tool) and drops both an
+MCP server's `instructions` and a prompt's `system` field (accepted, ignored —
+asked, the model says it sees neither; opencode 2.0.24). It does read a
+session **instruction entry**: the bridge keeps the run's servers'
+instructions as the `uxnan` entry of each session
+(`PUT /api/experimental/session/:id/instructions/entries/uxnan`, sent only when
+it changes, removed when the run has none). OpenCode 1 takes them as the
+prompt's `system`. Measured with free models on ordinary questions: a view on
+most of them, not all — `opencode/space-bunny-free` and
+`opencode/mimo-v2.6-flash-free` each skip one now and then; a comparison of a
+few options is where every model hesitates most.
 
 The step becomes the view in **one place**, `views/convert-view-block.ts`, run
 by the `AgentManager` on every adapter's blocks: a finished, non-error tool
