@@ -194,6 +194,14 @@ export interface AgentModel {
    * versions only, without hardcoding ids.
    */
   isLatestAlias?: boolean;
+  /**
+   * The CLI itself lists this model as an older one — a previous generation it
+   * still offers, superseded by one of its current models. Clients may fold
+   * such models under an "Older models" section. Set only from what the CLI
+   * reports (Claude Code: a concrete id no alias runs today), never from a
+   * hand-kept list; absent on current models.
+   */
+  isLegacy?: boolean;
 }
 
 /**
