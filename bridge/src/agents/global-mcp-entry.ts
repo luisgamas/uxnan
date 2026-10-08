@@ -5,8 +5,8 @@
  *
  * The entry names a command, nothing else: `<node> <bridge cli.js> mcp-proxy`.
  * No token and no port are ever written — the proxy reads them from the
- * environment the bridge gives the agent process, only while Uxnan Desktop is
- * attached (`adapters/mcp-proxy.ts`), and answers as a server with no tools
+ * environment the bridge gives the agent process for the current run
+ * (`adapters/mcp-proxy.ts`), and answers as a server with no tools
  * anywhere else. That is what makes a global entry acceptable here, where the
  * desktop refuses one for its terminals: outside a bridge run it exposes
  * nothing and fails nowhere.
@@ -20,9 +20,8 @@
  * Zero is deliberately NOT given one: it runs stdio MCP servers inside its
  * macOS sandbox with the network denied — loopback HTTP and Unix sockets alike
  * fail with `EPERM` (verified on zero 0.9.0) — so the entry would sit in the
- * user's config and never work. Zero gets the tools when it honors ACP
- * `mcpServers` (the bridge already sends them the moment it advertises HTTP
- * MCP support, `adapters/acp-mcp.ts`).
+ * user's config and never work. Agent views remain unavailable on Zero until
+ * its ACP accepts HTTP MCP and the sandbox permits loopback.
  */
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';

@@ -1558,7 +1558,7 @@ test('the adapter advertises steering', () => {
   assert.equal(adapter.capabilities.steering, true);
 });
 
-test('desktop tools add one MCP server for the run, with the token only in the env', async () => {
+test('MCP servers are registered for the run, with tokens only in the env', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collect(adapter);
@@ -1567,7 +1567,14 @@ test('desktop tools add one MCP server for the run, with the token only in the e
     turnId: 'u1',
     text: 'hi',
     cwd: '/work/repo',
-    desktopTools: { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'desktop-token-0123456789' },
+    mcpServers: [
+      { name: 'uxnan', url: 'http://127.0.0.1:51233/mcp', token: 'bridge-token-0123456789' },
+      {
+        name: 'uxnan-browser',
+        url: 'http://127.0.0.1:51234/mcp',
+        token: 'desktop-token-0123456789',
+      },
+    ],
   });
   last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
   await done;
@@ -1576,14 +1583,28 @@ test('desktop tools add one MCP server for the run, with the token only in the e
   const config = JSON.parse(args[args.indexOf('--mcp-config') + 1] ?? '{}') as {
     mcpServers: Record<string, { type: string; url: string; headers: Record<string, string> }>;
   };
-  assert.deepEqual(config.mcpServers['uxnan-browser'], {
-    type: 'http',
-    url: 'http://127.0.0.1:51234/mcp',
-    headers: { Authorization: 'Bearer ${UXNAN_MCP_TOKEN}', 'x-uxnan-cwd': '${UXNAN_THREAD_CWD}' },
+  assert.deepEqual(config.mcpServers, {
+    uxnan: {
+      type: 'http',
+      url: 'http://127.0.0.1:51233/mcp',
+      headers: {
+        Authorization: 'Bearer ${UXNAN_MCP_TOKEN_0}',
+        'x-uxnan-cwd': '${UXNAN_THREAD_CWD}',
+      },
+    },
+    'uxnan-browser': {
+      type: 'http',
+      url: 'http://127.0.0.1:51234/mcp',
+      headers: {
+        Authorization: 'Bearer ${UXNAN_MCP_TOKEN_1}',
+        'x-uxnan-cwd': '${UXNAN_THREAD_CWD}',
+      },
+    },
   });
   // The credential is never in argv; the run's env carries it and the cwd.
   assert.equal(args.join(' ').includes('desktop-token-0123456789'), false);
-  assert.equal(last().env?.UXNAN_MCP_TOKEN, 'desktop-token-0123456789');
+  assert.equal(last().env?.UXNAN_MCP_TOKEN_0, 'bridge-token-0123456789');
+  assert.equal(last().env?.UXNAN_MCP_TOKEN_1, 'desktop-token-0123456789');
   assert.equal(last().env?.UXNAN_THREAD_CWD, encodeURIComponent('/work/repo'));
 });
 

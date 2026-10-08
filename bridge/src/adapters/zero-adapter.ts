@@ -63,8 +63,7 @@ import type {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
-import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
-import { proxyLaunchEnv } from './mcp-proxy.js';
+import type { AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn, type SpawnedProcess } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
@@ -266,11 +265,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
   /** Discovered model list, cached for the process lifetime (probing is costly). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
-  /** The ACP process advertised HTTP MCP servers (`initialize`) — Zero 0.9 does not (it ignores `mcpServers` and keeps its own config), so its sessions get the tools the day it does. */
-  #mcpHttp = false;
+  /** The ACP process advertised HTTP MCP servers (`initialize`). */
   #init: Promise<NdjsonRpc> | null = null;
-  /** Which desktop attachment the running `zero acp` was started with (`proxyLaunchEnv`). */
-  #acpDesktopKey = '';
   /** Ends the running `zero acp` process (closing the RPC alone leaves it alive). */
   #killAcp: (() => void) | undefined;
   #defaultCwd = process.cwd();
@@ -440,19 +436,11 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
 
-    // Uxnan Desktop's tools reach Zero through its global `uxnan-browser` entry
-    // (`mcp-proxy.ts`), which reads the endpoint from this process's
-    // environment — so an idle process started with another attachment is
-    // restarted first. Its sessions reload (`session/load`); each one's proxy
-    // starts in that conversation's folder.
-    const desktop = proxyLaunchEnv(options.desktopTools);
-    if (this.#rpc && desktop.key !== this.#acpDesktopKey && this.#active.size === 0) {
-      await this.#restartAcp();
-    }
-
+    // FOR-DEV: Zero agent views are blocked because this ACP ignores MCP server
+    // advertisements and its sandbox denies loopback; bridge/FOR-DEV.md names the unblock.
     let rpc: NdjsonRpc;
     try {
-      rpc = await this.#ensureAcp(desktop);
+      rpc = await this.#ensureAcp();
     } catch (err) {
       return this.#failTurn(threadId, turnId, `failed to start zero acp: ${errorMessage(err)}`);
     }
@@ -460,12 +448,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
     // Resolve the ACP session for this thread (new, or load a persisted one).
     let sessionId: string;
     try {
-      sessionId = await this.#ensureSession(
-        rpc,
-        threadId,
-        cwd,
-        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
-      );
+      sessionId = await this.#ensureSession(rpc, threadId, cwd, []);
     } catch (err) {
       return this.#failTurn(threadId, turnId, `zero session failed: ${errorMessage(err)}`);
     }
@@ -575,26 +558,11 @@ export class ZeroAdapter extends BaseAgentAdapter {
       .slice(0, MAX_LISTED);
   }
 
-  /** Close the running `zero acp` so the next turn starts a fresh one. */
-  async #restartAcp(): Promise<void> {
-    const rpc = this.#rpc;
-    this.#rpc = null;
-    this.#init = null;
-    this.#modeBySession.clear();
-    this.#modelBySession.clear();
-    rpc?.close();
-    this.#killAcp?.();
-    this.#killAcp = undefined;
-  }
-
   /** Lazy ACP lifecycle: spawn `zero acp` → initialize → return the RPC client. */
-  #ensureAcp(
-    desktop: { env: Record<string, string>; key: string } = { env: {}, key: '' },
-  ): Promise<NdjsonRpc> {
+  #ensureAcp(): Promise<NdjsonRpc> {
     if (this.#init) return this.#init;
-    this.#acpDesktopKey = desktop.key;
     this.#init = (async () => {
-      const streams = this.#spawnAcp(desktop.env);
+      const streams = this.#spawnAcp();
       this.#killAcp = () => streams.kill();
       const rpc = new NdjsonRpc(
         { stdin: streams.stdin, stdout: streams.stdout, onClose: () => this.#handleAcpClose() },
@@ -605,7 +573,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
       );
       streams.onClose((code) => rpc.onProcessClose(code));
       try {
-        const init = await rpc.request<unknown>('initialize', {
+        await rpc.request<unknown>('initialize', {
           protocolVersion: 1,
           clientCapabilities: {
             fs: { readTextFile: false, writeTextFile: false },
@@ -613,7 +581,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
           },
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
-        this.#mcpHttp = acpSupportsHttpMcp(init);
       } catch (err) {
         rpc.close();
         streams.kill();

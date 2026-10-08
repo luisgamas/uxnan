@@ -24,6 +24,7 @@ import type { BridgeSettingsStore } from './settings/bridge-settings.js';
 import type { PresenceRegistry } from './presence/presence-registry.js';
 import type { BridgeHost, PairingCode, PairingPayload } from '@uxnan/shared';
 import type { AgentInstalls } from './agents/agent-installs.js';
+import type { ViewStore } from './views/view-store.js';
 
 export interface BridgeContext {
   readonly version: string;
@@ -46,6 +47,8 @@ export interface BridgeContext {
   readonly sessionHistory: SessionHistoryReader;
   /** Agent turn orchestration. */
   readonly agentManager: AgentManager;
+  /** Prepared pages shown by agents (`view/read`). */
+  readonly viewStore: ViewStore;
   /** Which agent sessions a desktop terminal holds right now (§5.8.19). */
   readonly sessionHolds: SessionHolds;
   /** Which agent CLIs are installed, kept true while the bridge runs. */

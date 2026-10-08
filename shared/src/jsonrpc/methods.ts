@@ -163,6 +163,19 @@ export interface TurnAttachmentData {
   /** Base64 payload (no `data:` URI prefix). */
   base64Data: string;
 }
+/** `view/read`: the prepared page of a view an agent showed (`ViewContentBlock`). */
+export interface ViewReadParams {
+  viewId: string;
+}
+/** The page, ready to render sandboxed: the agent's HTML with the bridge's
+ *  Content-Security-Policy and view bootstrap already injected. */
+export interface ViewReadResult {
+  viewId: string;
+  title: string;
+  html: string;
+  /** Size of the agent's HTML, in bytes. */
+  bytes: number;
+}
 export interface TurnSendParams {
   threadId: string;
   /**
@@ -511,6 +524,7 @@ export interface JsonRpcMethodRegistry {
   'turn/cancel': { params: { threadId: string; turnId: string }; result: void };
   /** The bytes of an image a user message carries (`Message.attachments`). */
   'turn/attachment': { params: TurnAttachmentParams; result: TurnAttachmentData };
+  'view/read': { params: ViewReadParams; result: ViewReadResult };
   // Message queue (follow-ups sent while a turn is in flight)
   /** Resumes draining after a stop/failure held the queue. */
   'queue/resume': { params: { threadId: string }; result: QueueStateResult };

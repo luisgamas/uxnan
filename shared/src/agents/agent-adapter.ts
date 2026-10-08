@@ -75,19 +75,22 @@ export interface SendTurnOptions {
    */
   command?: AgentCommandInvocation;
   /**
-   * Uxnan Desktop's tools, when the desktop attached them (`desktop/attach`):
-   * its MCP endpoint and the bearer token for bridge-run agents. An adapter that
-   * can register an MCP server for one run does so under
-   * {@link DESKTOP_MCP_SERVER_NAME}, passing the token only through the
-   * environment and the conversation's `cwd` in {@link DESKTOP_CWD_HEADER}.
-   * Absent when no desktop is attached.
+   * The MCP servers this run gets, in order: the bridge's own
+   * ({@link BRIDGE_MCP_SERVER_NAME}, always) and Uxnan Desktop's
+   * ({@link DESKTOP_MCP_SERVER_NAME}, while a desktop is attached through
+   * `desktop/attach`). An adapter registers each one for this run only, under
+   * its `name`, passing the token only through the environment or the
+   * agent's stdin and the conversation's `cwd` in {@link UXNAN_CWD_HEADER}.
+   * Absent or empty: the run gets none.
    */
-  desktopTools?: DesktopTools;
+  mcpServers?: AgentMcpServer[];
 }
 
-/** What `desktop/attach` gave the bridge (see {@link SendTurnOptions.desktopTools}). */
-export interface DesktopTools {
-  mcpUrl: string;
+/** One MCP server a bridge-run agent gets (see {@link SendTurnOptions.mcpServers}):
+ *  a loopback Streamable HTTP endpoint and its bearer token. */
+export interface AgentMcpServer {
+  name: string;
+  url: string;
   token: string;
 }
 

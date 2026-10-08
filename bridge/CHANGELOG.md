@@ -4,6 +4,17 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Agent views in chat.** Every run gets the bridge's loopback `uxnan` MCP
+  server with `view_show`. The bridge prepares pages with a strict no-network
+  CSP, stores them under `~/.uxnan/views/`, and replaces completed tool blocks
+  with compact view references; clients read the prepared page through
+  `view/read`. The step becomes the view whatever the agent calls the tool
+  (OpenCode reaches it from its code-mode `execute`, Grok through `UseTool`);
+  run live with Claude Code, Codex, OpenCode, pi and Grok. Not on Zero, and
+  not yet run live on Antigravity (`FOR-DEV.md`).
+
 ### Fixed
 
 - **Grok's MCP tool results were empty.** Grok reports an MCP tool's answer
@@ -12,6 +23,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   showed no output. The bridge reads `rawOutput` when `content` has no text.
 
 ### Changed
+
+- **One MCP server list per run.** The bridge's view server and an attached
+  desktop server now travel together through each adapter, with attachment
+  changes invalidating resident sessions. Antigravity's stdio proxy fronts the
+  whole list (and still the desktop's own server for an `agy` the desktop
+  launches in a terminal). Zero remains unreachable because its ACP ignores MCP
+  servers and its sandbox blocks loopback.
 
 - **Claude Code's picker lists each model once, as the CLI does.** Its current
   models come through their alias only, under the CLI's own label (`Opus 5.5`,

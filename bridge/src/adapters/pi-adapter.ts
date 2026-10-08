@@ -10,8 +10,9 @@
  *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
  *      [--thinking <level>] [--session-id <id>] [-e <pi-desktop-extension.js>]
  *
- * `-e` loads Uxnan Desktop's tools while the desktop is attached (see
- * {@link piDesktopLaunch}); pi has no MCP client, so the bridge ships one.
+ * `-e` loads tools from the run's MCP server list (see {@link piMcpLaunch});
+ * the bridge extension uses per-run credentials and does not write pi's
+ * user-global MCP configuration.
  *
  * Why `--mode rpc` and not `-p --mode json`: print mode reads ALL of stdin as the
  * initial prompt and has no input channel while it works; RPC mode leaves stdin
@@ -78,7 +79,7 @@ import {
   type AgentModel,
   type AgentModelOption,
   type CompactionReason,
-  type DesktopTools,
+  type AgentMcpServer,
   type GenerateTitleOptions,
   type NativeSessionInfo,
   type SendTurnOptions,
@@ -99,33 +100,31 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
  */
 export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
-/** The extension that gives pi Uxnan Desktop's tools (compiled next to this file). */
-export const PI_DESKTOP_EXTENSION = fileURLToPath(
+/** The extension that registers the run's MCP tools (compiled beside this file). */
+export const PI_MCP_EXTENSION = fileURLToPath(
   new URL('./pi-desktop-extension.js', import.meta.url),
 );
 
 /**
- * How a pi process is handed Uxnan Desktop's tools: the extension on `-e`, and
+ * How a pi process is handed its MCP server list: the extension on `-e`, and
  * the endpoint, token and folder in its environment — never argv or a file.
- * Nothing in the read-only posture: its `--tools` allowlist is strict (it would
- * hide the extension's tools anyway), and the desktop's tools act — they open
- * terminals and message other agents. `key` tells a live process whether it was
- * started with the same attachment (a recycle compares it).
+ * `key` tells a resident process whether its server list changed.
  */
-export function piDesktopLaunch(
-  desktop: DesktopTools | undefined,
+export function piMcpLaunch(
+  servers: AgentMcpServer[] | undefined,
   cwd: string,
-  permissionMode: PiPermissionMode,
 ): { args: string[]; env: Record<string, string>; key: string } {
-  if (!desktop || permissionMode === 'default') return { args: [], env: {}, key: '' };
+  if (!servers?.length) return { args: [], env: {}, key: '' };
   return {
-    args: ['-e', PI_DESKTOP_EXTENSION],
+    args: ['-e', PI_MCP_EXTENSION],
     env: {
-      UXNAN_MCP_URL: desktop.mcpUrl,
-      UXNAN_MCP_TOKEN: desktop.token,
+      UXNAN_MCP_SERVERS: JSON.stringify(servers),
       UXNAN_THREAD_CWD: encodeCwdHeader(cwd),
     },
-    key: `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`,
+    key: createHash('sha256')
+      .update(JSON.stringify(servers.map((s) => [s.name, s.url, s.token])))
+      .digest('hex')
+      .slice(0, 16),
   };
 }
 
@@ -358,8 +357,8 @@ interface ActiveSession {
   model?: string;
   effort?: string;
   permissionMode: PiPermissionMode;
-  /** Which desktop attachment the process was started with (`piDesktopLaunch`). */
-  desktopKey: string;
+  /** Which MCP server list the process was started with (`piMcpLaunch`). */
+  mcpKey: string;
   idleTimer?: NodeJS.Timeout;
   activeTurn?: ActiveTurn;
   exited: boolean;
@@ -749,7 +748,7 @@ export class PiAdapter extends BaseAgentAdapter {
   /**
    * The thread's resident process, spawning one when there is none or when the
    * live one was started with a different cwd / model / effort / posture /
-   * desktop attachment — those are process arguments, so honouring a change
+   * MCP server list — those are process arguments, so honouring a change
    * means a new process. The new one resumes the same session via
    * `--session-id`.
    */
@@ -759,9 +758,9 @@ export class PiAdapter extends BaseAgentAdapter {
     model: string | undefined,
     effort: string | undefined,
     permissionMode: PiPermissionMode,
-    desktopTools: DesktopTools | undefined,
+    mcpServers: AgentMcpServer[] | undefined,
   ): ActiveSession {
-    const desktop = piDesktopLaunch(desktopTools, cwd, permissionMode);
+    const mcpLaunch = piMcpLaunch(mcpServers, cwd);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
@@ -770,7 +769,7 @@ export class PiAdapter extends BaseAgentAdapter {
       existing.model === model &&
       existing.effort === effort &&
       existing.permissionMode === permissionMode &&
-      existing.desktopKey === desktop.key
+      existing.mcpKey === mcpLaunch.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -789,11 +788,11 @@ export class PiAdapter extends BaseAgentAdapter {
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh|max>`.
     if (effort) args.push('--thinking', effort);
     if (sessionId) args.push('--session-id', sessionId);
-    args.push(...desktop.args);
+    args.push(...mcpLaunch.args);
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
-      ...(desktop.key ? { env: desktop.env } : {}),
+      ...(mcpLaunch.key ? { env: mcpLaunch.env } : {}),
     });
 
     const send = (command: Record<string, unknown>): boolean => {
@@ -815,7 +814,7 @@ export class PiAdapter extends BaseAgentAdapter {
       model,
       effort,
       permissionMode,
-      desktopKey: desktop.key,
+      mcpKey: mcpLaunch.key,
       exited: false,
       send,
       steerAcks: [],
@@ -1011,7 +1010,7 @@ export class PiAdapter extends BaseAgentAdapter {
         model,
         effort,
         permissionMode,
-        options.desktopTools,
+        options.mcpServers,
       );
     } catch (err) {
       this.emit({

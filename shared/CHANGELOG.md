@@ -9,6 +9,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`AgentModel.isLegacy`.** Marks a model the agent's CLI lists as an older
   one — a previous generation it still offers. Clients fold such models under
   "Older models". Set only from what the CLI reports, never from a list.
+- **Agent views.** `ViewContentBlock` (`{ type: 'view', viewId, title,
+  height?, bytes }`), the page an agent showed in a chat; `view/read { viewId }`
+  → `ViewReadResult { viewId, title, html, bytes }` (103 methods); the bridge's
+  MCP server and tool names (`BRIDGE_MCP_SERVER_NAME`, `VIEW_TOOL_NAME`), the
+  page limits (`VIEW_MAX_HTML_BYTES`, height range, `clampViewHeight`) and the
+  helpers `isViewId`, `isViewToolName`, `viewIdInOutput`. The page ↔ host
+  protocol, a subset of the open MCP Apps host protocol plus annotations:
+  `VIEW_METHODS`, `VIEW_HOST_METHODS`, `ViewHostContext`,
+  `VIEW_THEME_VARIABLES`, `ViewAnnotation`, `isViewAnnotation`,
+  `formatViewAnnotations`, `VIEW_CHANNEL`, `VIEW_RECEIVE_FUNCTION`.
+
+### Changed
+
+- **One list of MCP servers per agent run.** `SendTurnOptions.mcpServers:
+  AgentMcpServer[]` (`{ name, url, token }`) replaces `desktopTools`
+  (`DesktopTools` is gone): the bridge's own server and, while attached, the
+  desktop's. `DESKTOP_CWD_HEADER` is renamed `UXNAN_CWD_HEADER` — both servers
+  read the conversation's folder from it.
 
 ## [0.0.32-alpha.20261004] - 20261004
 ### Added

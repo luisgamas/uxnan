@@ -85,7 +85,7 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
-  DesktopTools,
+  AgentMcpServer,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
@@ -565,8 +565,8 @@ interface ActiveSession {
   cwd: string;
   model: string | undefined;
   mode: AntigravityPermissionMode;
-  /** Which desktop attachment the process was started with (`proxyLaunchEnv`). */
-  desktopKey: string;
+  /** MCP server list fingerprint the process was started with (`proxyLaunchEnv`). */
+  mcpKey: string;
   child: SpawnedProcess;
   idleTimer?: NodeJS.Timeout;
   /** Fallback for a tool block id when a step has no `step_index`. */
@@ -770,12 +770,11 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     cwd: string,
     model: string | undefined,
     mode: AntigravityPermissionMode,
-    desktopTools?: DesktopTools,
+    mcpServers?: AgentMcpServer[],
   ): ActiveSession {
-    // Uxnan Desktop's tools reach `agy` through its global `uxnan-browser`
-    // entry (`mcp-proxy.ts`), which reads the endpoint from this process's
-    // environment — so a change of attachment restarts the process too.
-    const desktop = proxyLaunchEnv(desktopTools, cwd);
+    // Each MCP server reaches `agy` through a process-local proxy entry
+    // (`mcp-proxy.ts`); a changed list restarts the process with new endpoints.
+    const mcp = proxyLaunchEnv(mcpServers, cwd);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
@@ -783,7 +782,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       existing.cwd === cwd &&
       existing.model === model &&
       existing.mode === mode &&
-      existing.desktopKey === desktop.key
+      existing.mcpKey === mcp.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -812,7 +811,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
-      ...(desktop.key ? { env: desktop.env } : {}),
+      ...(mcp.key ? { env: mcp.env } : {}),
     });
 
     const session: ActiveSession = {
@@ -821,7 +820,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       cwd,
       model,
       mode,
-      desktopKey: desktop.key,
+      mcpKey: mcp.key,
       child,
       toolSequence: 0,
       fileText: new Map(),
@@ -962,7 +961,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     let session: ActiveSession;
     try {
-      session = this.#getOrCreateSession(threadId, cwd, model, mode, options.desktopTools);
+      session = this.#getOrCreateSession(threadId, cwd, model, mode, options.mcpServers);
     } catch (err) {
       this.emit({
         type: 'turn_error',

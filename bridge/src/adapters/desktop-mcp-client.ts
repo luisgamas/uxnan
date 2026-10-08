@@ -1,10 +1,10 @@
 /**
- * A minimal MCP client for Uxnan Desktop's control server — Streamable HTTP,
+ * A minimal MCP client for the bridge and desktop control servers — Streamable HTTP,
  * reduced to what a client that initializes, lists and calls tools needs:
  * JSON-RPC over POST, a JSON or an SSE answer, and the `Mcp-Session-Id` the
  * server may hand out at `initialize`.
  *
- * Shared by the two places the bridge hands the desktop's tools to an agent
+ * Shared by the two places the bridge hands MCP servers to an agent
  * that cannot reach an HTTP MCP server itself: the pi extension
  * (`pi-desktop-extension.ts`) and the stdio proxy Zero and Antigravity start
  * (`mcp-proxy.ts`). It imports nothing, because pi loads the extension — and so

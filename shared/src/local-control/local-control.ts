@@ -158,10 +158,11 @@ export interface DesktopAttachResult {
   attached: boolean;
 }
 
-/** The header a bridge-run agent's MCP requests carry: the conversation's
- *  working directory, which scopes what the desktop lets it touch to the
- *  project that folder belongs to. */
-export const DESKTOP_CWD_HEADER = 'x-uxnan-cwd';
+/** The header a bridge-run agent's MCP requests carry, to the desktop's server
+ *  and the bridge's own alike: the conversation's working directory, which
+ *  scopes what the desktop lets it touch to the project that folder belongs
+ *  to, and is the folder a view's `path` is read from. */
+export const UXNAN_CWD_HEADER = 'x-uxnan-cwd';
 
 /** The `x-uxnan-cwd` value for a folder: percent-encoded, so a path with
  *  non-ASCII characters (`…/Año`) survives as an HTTP header; the desktop

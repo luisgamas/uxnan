@@ -16,7 +16,7 @@ import {
   effectiveAccessMode,
   makeNotification,
   type AccessMode,
-  type DesktopTools,
+  type AgentMcpServer,
   type ThreadLiveState,
   type AgentCommand,
   type AgentCommandInvocation,
@@ -49,6 +49,8 @@ import {
   withProjectPaths,
 } from '../adapters/content-blocks.js';
 import type { QuestionItem } from '@uxnan/shared';
+import type { ViewStore } from '../views/view-store.js';
+import { convertViewToolBlock } from '../views/convert-view-block.js';
 
 /** How long a tool approval waits for the user before defaulting to deny. */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -114,6 +116,8 @@ export interface AgentManagerOptions {
   now: () => number;
   logger: Logger;
   defaultAgent: AgentId;
+  mcpServers?: AgentMcpServer[];
+  viewStore?: ViewStore;
   /** Optional hook fired when a turn completes or errors (e.g. push notifications). */
   onTurnEnd?: (info: TurnEndInfo) => void;
   /**
@@ -344,6 +348,8 @@ export class AgentManager {
 
   constructor(options: AgentManagerOptions) {
     this.#options = options;
+    this.#mcpServers = options.mcpServers ?? [];
+    this.#viewStore = options.viewStore;
     this.#isPhoneConnected = options.isPhoneConnected ?? (() => true);
     this.#approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
   }
@@ -963,10 +969,7 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...accessModeFor(adapter, options.accessMode),
       ...(options.command !== undefined ? { command: options.command } : {}),
-      // FOR-DEV: every adapter registers these except Zero, whose sandbox
-      // blocks its MCP servers' network (bridge/FOR-DEV.md → "Uxnan Desktop's
-      // tools for Zero").
-      ...this.#desktopToolsFor(options.desktopClient),
+      mcpServers: this.#mcpServersFor(options.desktopClient),
     });
   }
 
@@ -1342,34 +1345,36 @@ export class AgentManager {
     });
   }
 
-  /** Uxnan Desktop's tools for the agents this bridge runs, per local client
-   *  that attached them (`desktop/attach`), in the order they attached. More
+  /** Uxnan Desktop's MCP server entry per local client that attached it
+   *  (`desktop/attach`), in attachment order. More
    *  than one desktop profile may be connected at once (the installed app and a
    *  development build); each keeps its own, and none takes another's. Turns
    *  started from now on carry them; one already running keeps what it started
    *  with. */
-  readonly #desktopTools = new Map<string, DesktopTools>();
+  readonly #desktopServers = new Map<string, AgentMcpServer>();
+  readonly #mcpServers: AgentMcpServer[];
+  readonly #viewStore: ViewStore | undefined;
 
-  setDesktopTools(tools: DesktopTools, clientId: string): void {
-    this.#desktopTools.set(clientId, tools);
+  setDesktopMcpServer(server: AgentMcpServer, clientId: string): void {
+    this.#desktopServers.set(clientId, server);
   }
 
   /** Forget a desktop's tools — asked by that desktop, or because it went away
    *  (its token is not good any more). Other desktops' tools stay. */
-  clearDesktopTools(clientId: string): void {
-    this.#desktopTools.delete(clientId);
+  clearDesktopMcpServer(clientId: string): void {
+    this.#desktopServers.delete(clientId);
   }
 
-  get desktopToolsAttached(): boolean {
-    return this.#desktopTools.size > 0;
+  get desktopMcpServerAttached(): boolean {
+    return this.#desktopServers.size > 0;
   }
 
   /** The tools a turn runs with: the sending desktop's, else the one attached
    *  longest (a phone's turn, or a desktop that attached none). */
-  #desktopToolsFor(clientId: string | undefined): { desktopTools?: DesktopTools } {
-    const own = clientId !== undefined ? this.#desktopTools.get(clientId) : undefined;
-    const tools = own ?? this.#desktopTools.values().next().value;
-    return tools ? { desktopTools: tools } : {};
+  #mcpServersFor(clientId: string | undefined): AgentMcpServer[] {
+    const own = clientId !== undefined ? this.#desktopServers.get(clientId) : undefined;
+    const desktopServer = own ?? this.#desktopServers.values().next().value;
+    return desktopServer ? [...this.#mcpServers, desktopServer] : [...this.#mcpServers];
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
@@ -1821,10 +1826,8 @@ export class AgentManager {
           break;
         }
         case 'block': {
-          const content = withProjectPaths(
-            readContent(event.data),
-            this.#cwdByThread.get(threadId),
-          );
+          const rawContent = convertViewToolBlock(readContent(event.data), this.#viewStore);
+          const content = withProjectPaths(rawContent, this.#cwdByThread.get(threadId));
           // A step that started before a hand-off settles where it was shown,
           // quietly: that turn has ended for every client, and a second row
           // under the new message would repeat it.

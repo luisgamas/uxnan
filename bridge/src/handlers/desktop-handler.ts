@@ -11,13 +11,14 @@
  * Only a client on the local control channel may attach: the endpoint is a
  * loopback URL and the token a credential, and a phone must never be able to
  * point this machine's agents at a server of its choosing. The bridge forgets
- * both when that client disconnects (`AgentManager.clearDesktopTools`).
+ * both when that client disconnects (`AgentManager.clearDesktopMcpServer`).
  */
 import {
   JsonRpcErrorCode,
   RpcError,
   isDesktopToken,
   isLoopbackMcpUrl,
+  DESKTOP_MCP_SERVER_NAME,
   type DesktopAttachResult,
 } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
@@ -45,13 +46,16 @@ export function registerDesktopHandlers(router: HandlerRouter): void {
       );
     }
     if (!isDesktopToken(token)) throw RpcError.invalidParams('token is not a desktop token');
-    ctx.agentManager.setDesktopTools({ mcpUrl, token }, clientId);
-    ctx.logger.info(`desktop tools attached by local client ${clientId}`);
+    ctx.agentManager.setDesktopMcpServer(
+      { name: DESKTOP_MCP_SERVER_NAME, url: mcpUrl, token },
+      clientId,
+    );
+    ctx.logger.info(`desktop MCP server attached by local client ${clientId}`);
     return { attached: true };
   });
   router.register('desktop/detach', (_p, ctx: BridgeContext, session): DesktopAttachResult => {
     const clientId = requireLocal(session);
-    ctx.agentManager.clearDesktopTools(clientId);
-    return { attached: ctx.agentManager.desktopToolsAttached };
+    ctx.agentManager.clearDesktopMcpServer(clientId);
+    return { attached: ctx.agentManager.desktopMcpServerAttached };
   });
 }

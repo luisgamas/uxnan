@@ -262,7 +262,10 @@ test('GrokAdapter stop ends the grok process it started, even one only asked for
 });
 
 test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MCP servers', async () => {
-  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
+  const mcpServers = [
+    { name: 'uxnan', url: 'http://127.0.0.1:51233/mcp', token: 'b'.repeat(43) },
+    { name: 'uxnan-browser', url: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) },
+  ];
   for (const http of [true, false]) {
     const { adapter, server } = setup();
     if (http) server.agentCapabilities = { mcpCapabilities: { http: true } };
@@ -275,7 +278,7 @@ test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MC
       turnId: 'u1',
       text: 'hi',
       cwd: '/w/a b',
-      desktopTools,
+      mcpServers: mcpServers,
     });
     await done;
     const created = server.sent.find((m) => m.method === 'session/new');
@@ -283,10 +286,19 @@ test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MC
       assert.deepEqual(created.params.mcpServers, [
         {
           type: 'http',
-          name: 'uxnan-browser',
-          url: desktopTools.mcpUrl,
+          name: 'uxnan',
+          url: mcpServers[0]!.url,
           headers: [
-            { name: 'Authorization', value: `Bearer ${desktopTools.token}` },
+            { name: 'Authorization', value: `Bearer ${mcpServers[0]!.token}` },
+            { name: 'x-uxnan-cwd', value: '%2Fw%2Fa%20b' },
+          ],
+        },
+        {
+          type: 'http',
+          name: 'uxnan-browser',
+          url: mcpServers[1]!.url,
+          headers: [
+            { name: 'Authorization', value: `Bearer ${mcpServers[1]!.token}` },
             { name: 'x-uxnan-cwd', value: '%2Fw%2Fa%20b' },
           ],
         },

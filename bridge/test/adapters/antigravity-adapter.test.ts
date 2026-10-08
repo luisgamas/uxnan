@@ -74,6 +74,7 @@ function resultEvent(response: string, usage?: AntigravityUsage, error?: string)
 interface FakeSpawn {
   args: string[];
   cwd: string;
+  env?: Record<string, string>;
   pipedStdin: boolean;
   readonly stdinData: string;
   /** Write stream lines to STDOUT, then close. */
@@ -108,6 +109,7 @@ function fakeSpawner(): {
     const record: FakeSpawn = {
       args,
       cwd,
+      ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       get stdinData() {
         return stdinData;
@@ -336,6 +338,43 @@ test('AntigravityAdapter maintains persistent session across multiple turns with
   assert.equal(spawns.length, 1);
   assert.match(last().stdinData, /"text":"turn one"/);
   assert.match(last().stdinData, /"text":"turn two"/);
+});
+
+test('Antigravity receives every run MCP server through the proxy environment and refreshes on change', async () => {
+  const { spawnFn, last, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const servers = [
+    { name: 'uxnan', url: 'http://127.0.0.1:1/mcp', token: 'bridge-token' },
+    { name: 'uxnan-browser', url: 'http://127.0.0.1:2/mcp', token: 'desktop-token' },
+  ];
+  const first = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'first',
+    cwd: '/p',
+    mcpServers: servers,
+  });
+  assert.deepEqual(JSON.parse(last().env?.UXNAN_MCP_SERVERS ?? '[]'), servers);
+  assert.ok(
+    !last().args.some((arg) => arg.includes('bridge-token') || arg.includes('desktop-token')),
+  );
+  last().feedOpen([initEvent('c1'), resultEvent('ok')]);
+  await first.done;
+
+  const changed = [{ ...servers[0]!, token: 'new-bridge-token' }, servers[1]!];
+  const second = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    text: 'second',
+    cwd: '/p',
+    mcpServers: changed,
+  });
+  assert.equal(spawns.length, 2);
+  assert.deepEqual(JSON.parse(last().env?.UXNAN_MCP_SERVERS ?? '[]'), changed);
+  last().feed([initEvent('c1'), resultEvent('ok')]);
+  await second.done;
 });
 
 test('AntigravityAdapter recycles session when workspace cwd changes', async () => {

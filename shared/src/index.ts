@@ -52,6 +52,10 @@ export * from './models/usage.js';
 export * from './models/metrics.js';
 export * from './models/agent-session.js';
 export * from './models/relay.js';
+export * from './models/view.js';
+
+// Agent views: the page <-> host protocol
+export * from './views/view-protocol.js';
 
 // Validators
 export * from './validators/validate.js';

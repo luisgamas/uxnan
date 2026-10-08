@@ -21,6 +21,7 @@ import { registerNotificationHandlers } from './notifications-handler.js';
 import { registerDesktopHandlers } from './desktop-handler.js';
 import { registerBridgeControlHandlers } from './bridge-control-handler.js';
 import { registerRelayHandlers } from './relay-handler.js';
+import { registerViewHandlers } from './view-handler.js';
 
 export function registerAllHandlers(router: HandlerRouter): void {
   registerThreadHandlers(router);
@@ -36,6 +37,7 @@ export function registerAllHandlers(router: HandlerRouter): void {
   registerNotificationHandlers(router);
   registerDesktopHandlers(router);
   registerRelayHandlers(router);
+  registerViewHandlers(router);
   // Real implementations last so they win over any earlier stub of the same name.
   registerBridgeControlHandlers(router);
 }

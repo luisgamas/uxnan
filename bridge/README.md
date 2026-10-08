@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-101_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-103_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -20,6 +20,8 @@ Cloudflare account (`uxnan-bridge relay setup`) — optional, off until you set 
 up. Background push notifications are sent
 **by the bridge itself** (FCM HTTP v1) over any transport, so the phone keeps
 receiving them whether it reached the bridge directly or through a relay.
+Agents can also call `view_show` to place a self-contained interactive page in
+the chat; clients fetch the stored, network-restricted HTML through `view/read`.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
 > bridge-direct push), with **seven active real agents wired**. The detailed breakdown of
@@ -231,7 +233,7 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **102 JSON-RPC methods +
+  E2EE types and runtime validators. The bridge exposes **103 JSON-RPC methods +
   25 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —

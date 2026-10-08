@@ -63,7 +63,7 @@ import type {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { listGrokSessions } from './native-sessions.js';
-import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
+import { acpMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
@@ -484,7 +484,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         rpc,
         threadId,
         cwd,
-        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
+        acpMcpServers(options.mcpServers, cwd, this.#mcpHttp),
       );
     } catch (err) {
       return this.#failTurn(threadId, turnId, `grok session failed: ${errorMessage(err)}`);
