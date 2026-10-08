@@ -285,17 +285,27 @@ output** for the phone's picker
 ([`../../bridge/docs/agents.md`](../../bridge/docs/agents.md)), so re-capture the
 real output and fix both apps in the same change set.
 
-**Claude Code cannot** enumerate its models, so the ADE ships a
-hand-kept table — `CLAUDE_MODELS` in
-[`src-tauri/crates/workspace-engine/src/agentcli.rs`](../src-tauri/crates/workspace-engine/src/agentcli.rs) — that fills the model
-pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
+**Claude Code lists its models itself**, on the stream-json `initialize`
+control request — the same one the bridge asks — answered without running a
+turn or spending a token (verified on claude 2.1.293).
+`aicommit::claude_models` asks it and
+[`parse_claude_initialize_models`](../src-tauri/crates/workspace-engine/src/agentcli.rs)
+keeps the **concrete** models for the pickers in **Settings → AI commit** and
+**Settings → GitHub → AI PR body**: the model each alias (`opus`, `fable`, …)
+runs today, then the concrete ids the CLI lists, under the CLI's own labels.
+The aliases themselves and the CLI's `default` entry are left out — a commit
+message names the exact model that wrote it, and the picker offers
+**Default** itself. A CLI that never answers is an error, not an empty list.
 
-**That table has a twin in the bridge, and both are maintained by hand.** When
-Anthropic ships or retires a model, update **both** sides in the same change set —
-updating one leaves the other surface a version behind:
+There is no table to maintain: a new Claude model appears in the picker the
+moment the installed CLI lists it, for the accounts that can use it. The phone
+gets the same list from the bridge, with the aliases in front
+([`../../bridge/docs/agents.md`](../../bridge/docs/agents.md) → *Claude Code
+models*). Whether a model takes `--effort` and its context window come from the
+CLI as well; only its **price** is hand-kept, in the bridge
+(`bridge/src/usage/usage-prices.ts` → `CLAUDE_PRICES`).
 
-| Model list | Where | Feeds |
-|---|---|---|
+---|---|---|
 | Desktop Claude | `uxnandesktop/src-tauri/crates/workspace-engine/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
 | Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
 

@@ -595,11 +595,13 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   que cada CLI prefiere (`agentcli::prompt_delivery`): **stdin** para Claude,
   Codex y OpenCode, **archivo de prompt** para Grok, y `argv` (acotado) para
   Antigravity, que no admite otro. Importa porque el prompt lleva un diff y la
-  línea de comandos es el único canal que el SO limita (~32 KiB en Windows). Los modelos se descubren por agente: estáticos
-  para Claude (versiones concretas exactas, p. ej. `claude-opus-4-8`, mantenidas
-  en `agentcli.rs::CLAUDE_MODELS` con una guía de actualización — sin alias
-  "latest"), o en vivo para OpenCode (`opencode models`), Antigravity
-  (`agy models`), Grok (`grok models`) y Codex (`codex app-server` `model/list`);
+  línea de comandos es el único canal que el SO limita (~32 KiB en Windows). Los modelos se descubren en vivo por agente:
+  Claude con la petición de control `initialize` de stream-json (las versiones
+  concretas exactas que la cuenta puede usar, p. ej. `claude-opus-4-8` — el
+  modelo al que apunta cada alias y los ids concretos que lista, sin los alias
+  "latest"; `agentcli::parse_claude_initialize_models`), OpenCode
+  (`opencode models`), Antigravity (`agy models`), Grok (`grok models`) y Codex
+  (`codex app-server` `model/list`);
   siempre con una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
   **buscable, con scroll y agrupado por proveedor** (`ModelPicker.svelte`, el
   unico selector de modelos de la app, el mismo del chat) porque algunos agentes

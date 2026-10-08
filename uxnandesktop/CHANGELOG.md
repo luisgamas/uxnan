@@ -4,6 +4,16 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The Claude model pickers list what Claude Code offers.** *Settings → AI
+  commit* and *Settings → GitHub → AI PR body* now ask the installed `claude`
+  for its models (its stream-json `initialize`, no turn and no tokens) instead of
+  reading the hand-kept `CLAUDE_MODELS` table, which is gone. They keep showing
+  exact versions — the model each alias runs today, then the older ids the
+  account can use — under Claude Code's own labels, so a new model appears
+  without an app release. A `claude` that will not answer shows an error rather
+  than an empty list. The bridge reads the same request for the phone.
 
 ## [0.0.78] - 20261007
 ### Added

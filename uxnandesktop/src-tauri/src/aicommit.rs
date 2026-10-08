@@ -47,9 +47,10 @@ pub fn available_agents() -> Vec<String> {
         .collect()
 }
 
-/// The models offered by `agent_id`: a static set for Claude, or a live
-/// query for OpenCode (`opencode models`), Pi (`pi --list-models`) and Codex
-/// (`codex app-server` `model/list`).
+/// The models offered by `agent_id`, each asked of its own CLI: Claude
+/// (a stream-json `initialize`), OpenCode (`opencode models`), Pi
+/// (`pi --list-models`), Codex (`codex app-server` `model/list`), Antigravity
+/// (`agy models`) and Grok (`grok models`).
 ///
 /// A discovery **failure is surfaced**, not flattened to an empty list: the two
 /// mean different things to the user ("this CLI is broken / not signed in" vs
@@ -63,7 +64,7 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
         )));
     };
     let models = match agent_id {
-        "claude" => agentcli::static_models(agent_id),
+        "claude" => claude_models(&resolved).await?,
         "opencode" => {
             // stderr included so a broken install's own complaint reaches the user.
             let out = run_list(&resolved, &["models"], false).await?;
@@ -294,6 +295,64 @@ async fn run_list(
         s.push_str(&stderr);
     }
     Ok(s)
+}
+
+/// Ask Claude Code for its models: the stream-json `initialize` control
+/// request, answered without running a turn or spending a token (the same one
+/// the bridge asks — verified on claude 2.1.293). See
+/// [`agentcli::parse_claude_initialize_models`] for which entries are kept.
+///
+/// Unlike [`codex_models`], a CLI that never answers is an **error**: Claude
+/// has no other list to fall back on, and "it would not say" must not reach
+/// the user as "it has no models".
+async fn claude_models(resolved: &agentcli::Resolved) -> Result<Vec<AgentModel>, AppError> {
+    let mut child = crate::winproc::command(&resolved.program)
+        .args(&resolved.prepend)
+        .args([
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| AppError::Agent(format!("{} could not be started: {e}", resolved.program)))?;
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        return Err(AppError::Agent(
+            "Claude Code's pipes could not be opened".to_string(),
+        ));
+    };
+
+    let work = async {
+        let request = r#"{"type":"control_request","request_id":"uxnan-models","request":{"subtype":"initialize"}}"#;
+        stdin.write_all(request.as_bytes()).await.ok()?;
+        stdin.write_all(b"\n").await.ok()?;
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Some(models) = agentcli::parse_claude_initialize_models(&line) {
+                return Some(models);
+            }
+        }
+        None
+    };
+
+    let result = tokio::time::timeout(LIST_TIMEOUT, work).await;
+    let _ = child.kill().await;
+    match result {
+        Ok(Some(models)) => Ok(models),
+        Ok(None) => Err(AppError::Agent(
+            "Claude Code exited without listing its models".to_string(),
+        )),
+        Err(_) => Err(AppError::Agent(format!(
+            "listing models timed out after {}s",
+            LIST_TIMEOUT.as_secs()
+        ))),
+    }
 }
 
 /// Query Codex's models via a minimal `codex app-server` JSON-RPC handshake

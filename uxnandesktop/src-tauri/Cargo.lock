@@ -6955,7 +6955,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-control-client"
-version = "0.0.75"
+version = "0.0.78"
 dependencies = [
  "serde_json",
  "sysinfo",
@@ -7034,7 +7034,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host"
-version = "0.0.75"
+version = "0.0.78"
 dependencies = [
  "getrandom 0.3.4",
  "libc",
@@ -7050,7 +7050,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-host-protocol"
-version = "0.0.75"
+version = "0.0.78"
 dependencies = [
  "serde",
  "serde_json",
@@ -7059,7 +7059,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-workspace-engine"
-version = "0.0.75"
+version = "0.0.78"
 dependencies = [
  "base64 0.22.1",
  "git2",
