@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
+  BRIDGE_MCP_SERVER_NAME,
   LOCAL_CONTROL_FILE,
   directRoute,
   StreamNotification,
@@ -39,7 +40,7 @@ import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
 import { VIEW_BOOTSTRAP } from './views/view-bootstrap.js';
-import { startViewMcpServer } from './views/mcp-server.js';
+import { VIEW_SERVER_INSTRUCTIONS, startViewMcpServer } from './views/mcp-server.js';
 import { ViewStore } from './views/view-store.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile } from './lock-file.js';
@@ -395,7 +396,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     defaultAgent: config.defaultAgent,
     // FOR-DEV: complete live view_show probes for Claude, Codex, OpenCode, pi,
     // Antigravity, and Grok with isolated authenticated CLI homes; bridge/FOR-DEV.md.
-    mcpServers: [{ name: 'uxnan', url: viewMcp.url, token: viewMcp.token }],
+    mcpServers: [
+      {
+        name: BRIDGE_MCP_SERVER_NAME,
+        url: viewMcp.url,
+        token: viewMcp.token,
+        instructions: VIEW_SERVER_INSTRUCTIONS,
+      },
+    ],
     viewStore,
     onTurnEnd: (info) => pushService.onTurnEnd(info),
     // Pause the approval auto-reject countdown while no phone is connected, so an

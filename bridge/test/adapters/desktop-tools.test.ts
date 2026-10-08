@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { acpMcpServers, acpSupportsHttpMcp } from '../../src/adapters/acp-mcp.js';
-import { codexMcpConfig } from '../../src/adapters/codex-adapter.js';
+import { codexDeveloperInstructions, codexMcpConfig } from '../../src/adapters/codex-adapter.js';
 import { openCodeMcpEnv } from '../../src/adapters/opencode-adapter.js';
 
 // How each agent is handed Uxnan Desktop's MCP server (architecture/02a
@@ -87,4 +87,21 @@ test('OpenCode gets the server in its config env, the token only by reference', 
       },
     },
   });
+});
+
+test("Codex gets the run's server instructions as the thread's developer instructions", () => {
+  assert.deepEqual(codexDeveloperInstructions(undefined), {});
+  assert.deepEqual(
+    codexDeveloperInstructions([
+      { name: 'uxnan-browser', url: 'http://127.0.0.1:1/mcp', token: 't' },
+    ]),
+    {},
+  );
+  assert.deepEqual(
+    codexDeveloperInstructions([
+      { name: 'uxnan', url: 'http://127.0.0.1:1/mcp', token: 't', instructions: ' Show views. ' },
+      { name: 'other', url: 'http://127.0.0.1:2/mcp', token: 'u', instructions: 'Be brief.' },
+    ]),
+    { developerInstructions: 'Show views.\n\nBe brief.' },
+  );
 });

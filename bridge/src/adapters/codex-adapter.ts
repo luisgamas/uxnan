@@ -442,6 +442,25 @@ export function codexMcpConfig(
   };
 }
 
+/**
+ * The run's MCP servers' `instructions`, as the thread's
+ * `developerInstructions`. Codex does not put an MCP server's `instructions`
+ * in front of the model (measured 2026-10-08 on codex-cli 0.161.0: with them
+ * only, Codex never showed a view on an ordinary question about numbers; with
+ * them as developer instructions it did), so they travel on the channel Codex
+ * does read — set on `thread/start` and `thread/resume`, never in the person's
+ * message.
+ */
+export function codexDeveloperInstructions(servers: AgentMcpServer[] | undefined): {
+  developerInstructions?: string;
+} {
+  const text = (servers ?? [])
+    .map((server) => server.instructions?.trim())
+    .filter((value): value is string => !!value)
+    .join('\n\n');
+  return text ? { developerInstructions: text } : {};
+}
+
 function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
   return () => {
     const child = spawnPiped(binaryPath, [...prependArgs, 'app-server']);
@@ -637,6 +656,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           sandbox,
           ...(typeof model === 'string' ? { model } : {}),
           ...codexMcpConfig(options.mcpServers, cwd),
+          ...codexDeveloperInstructions(options.mcpServers),
         });
         this.#loadedThreads.add(codexThreadId);
       } catch (err) {
@@ -680,6 +700,7 @@ export class CodexAdapter extends BaseAgentAdapter {
             threadSource: 'user',
             ...(typeof effort === 'string' ? { effort } : {}),
             ...codexMcpConfig(options.mcpServers, cwd),
+            ...codexDeveloperInstructions(options.mcpServers),
           },
         );
         codexThreadId = started.thread.id;

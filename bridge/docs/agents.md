@@ -395,6 +395,26 @@ and the view bootstrap put first, before anything the agent wrote — a `<meta>`
 policy only governs what follows it) and stored in `~/.uxnan/views/` (newest
 500 / 256 MiB kept). The answer carries `uxnan-view:<viewId>`.
 
+**How an agent knows to show one.** The person never names the tool, so the
+tool's description and the server's `instructions` state the rule — numbers to
+compare, a trend, a breakdown, a ranking, a schedule, a diagram or a mockup go
+in a view, on the agent's own initiative — rather than allowing it as an
+option. Codex does not put an MCP server's `instructions` in front of its model,
+so for Codex they travel as the thread's `developerInstructions` on
+`thread/start` / `thread/resume` (`AgentMcpServer.instructions`,
+`codexDeveloperInstructions`); nothing is ever added to the person's message.
+Measured on 2026-10-08 with an ordinary question ("this week I spent these
+tokens per day: …; how does my week look? compare them"), a view shown without
+being asked:
+
+| Agent (model) | Optional wording | Rule, MCP channel only | Rule + Codex developer instructions |
+|---|---|---|---|
+| Claude Code (haiku 5.5) | 0/1 | 1/1 | — |
+| Codex (gpt-6-luna) | 0/1 | 0/3 | 3/3 |
+| OpenCode (`opencode/space-bunny-free`) | 0/1 | 4/6 | — (no system channel used: its config `instructions` list may replace the person's own when merged) |
+| pi (`openrouter/cohere/north-mini-code:free`) | — | 1/1 | — |
+| Grok | — | 1/1 | — |
+
 The step becomes the view in **one place**, `views/convert-view-block.ts`, run
 by the `AgentManager` on every adapter's blocks: a finished, non-error tool
 block whose output carries the marker of a view this bridge just made becomes a

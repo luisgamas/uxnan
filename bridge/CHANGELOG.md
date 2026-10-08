@@ -13,7 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `view/read`. The step becomes the view whatever the agent calls the tool
   (OpenCode reaches it from its code-mode `execute`, Grok through `UseTool`);
   run live with Claude Code, Codex, OpenCode, pi and Grok. Not on Zero, and
-  not yet run live on Antigravity (`FOR-DEV.md`).
+  not yet run live on Antigravity (`FOR-DEV.md`). Agents show a view on their
+  own: the tool's description and the server's instructions state when, and
+  Codex — which does not read an MCP server's instructions — gets them as its
+  thread's developer instructions. Measured on an ordinary question about
+  numbers: Claude Code, Codex, pi and Grok showed one every time, OpenCode with
+  a free model four times in six.
 
 ### Fixed
 

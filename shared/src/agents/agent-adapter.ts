@@ -92,6 +92,13 @@ export interface AgentMcpServer {
   name: string;
   url: string;
   token: string;
+  /**
+   * What the server tells an agent at MCP `initialize` (`instructions`), for
+   * an adapter whose CLI does not read that field and offers a system channel
+   * of its own instead (Codex's `developerInstructions`). Absent: nothing to
+   * pass on.
+   */
+  instructions?: string;
 }
 
 /** Input for {@link IAgentAdapter.generateTitle}. */

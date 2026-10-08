@@ -3385,8 +3385,13 @@ tambien: funciona con solo el telefono.
   guarda en `~/.uxnan/views/` (se poda lo mas viejo). La respuesta al modelo
   lleva el marcador `uxnan-view:<viewId>`. La descripcion de la herramienta y
   las `instructions` del servidor son como el agente **sabe** que la tiene y
-  como usarla (cuando conviene, autocontenida, sin red, ligera, variables de
-  tema).
+  cuando usarla: como **regla** (datos que comparar, una tendencia, un
+  desglose, un diagrama o una maqueta van en una vista, por iniciativa propia;
+  la persona nunca nombra la herramienta), no como opcion — medido: redactadas
+  como opcion, ningun agente mostro una vista ante una pregunta normal. Codex no
+  lee las `instructions` de un servidor MCP, asi que las recibe como
+  `developerInstructions` de su hilo (`AgentMcpServer.instructions`); nada se
+  agrega jamas al mensaje de la persona.
 - **Un solo punto de conversion**: el `AgentManager`, por donde pasan los
   bloques de todos los adapters, convierte el bloque `tool` terminado de
   `view_show` con un marcador valido en un `ViewContentBlock`
