@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.43-alpha.20261009+20261010] - 20261009
 ### Fixed
 
 - **Scrolling past an agent view no longer jumps back.** A view scrolled off
