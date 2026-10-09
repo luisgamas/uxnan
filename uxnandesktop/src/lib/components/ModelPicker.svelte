@@ -50,7 +50,7 @@
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
   import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
-  import { groupModels, modelName, type PickerModel } from "$lib/models";
+  import { groupModels, modelFor, modelName, type PickerModel } from "$lib/models";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -110,7 +110,7 @@
   const listLoading = $derived(browsingOther && showing ? (loadingOf?.(showing) ?? false) : loading);
   const shownAgent = $derived(agents?.find((a) => a.id === showing));
 
-  const current = $derived(models.find((m) => m.id === value));
+  const current = $derived(value ? modelFor(models, value) : undefined);
   /** The models the CLI calls older, folded at the end of the list. */
   const older = $derived(listed.filter((m) => m.isLegacy));
   const groups = $derived(groupModels(listed.filter((m) => !m.isLegacy)));

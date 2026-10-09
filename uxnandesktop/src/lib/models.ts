@@ -20,6 +20,15 @@ export interface PickerModel {
   options?: AgentModelOption[];
   /** The CLI lists it as an older model: folded at the end of the picker. */
   isLegacy?: boolean;
+  /** The concrete model an alias runs today. */
+  version?: string;
+}
+
+/** The entry a thread on `id` runs: that id, else the alias whose `version` it
+ *  is (a thread on `claude-opus-5-5` reads as `opus`'s "Opus 5.5", with its
+ *  knobs). The bridge and the phone apply the same rule. */
+export function modelFor<M extends PickerModel>(models: readonly M[], id: string): M | undefined {
+  return models.find((m) => m.id === id) ?? models.find((m) => m.version === id);
 }
 
 export interface ModelGroup<M extends PickerModel = PickerModel> {

@@ -4,6 +4,11 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A chat on a concrete Claude model reads as its alias.** A conversation
+  picked as `claude-opus-5-5` before the picker moved to aliases shows
+  *Opus 5.5* and its effort knob, instead of the raw id with no knob.
 
 ## [0.0.79] - 20261008
 ### Added
