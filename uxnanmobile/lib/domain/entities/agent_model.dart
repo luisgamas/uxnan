@@ -233,3 +233,17 @@ String providerOfModel(AgentModel model) {
   final description = model.description;
   return description != null && description.isNotEmpty ? description : 'Other';
 }
+
+/// The entry of [models] a thread on [id] runs: the one with that id, else the
+/// alias that runs that model today (its [AgentModel.version]) — a thread
+/// pinned to `claude-opus-5-5` reads as `opus`'s "Opus 5.5", with its knobs.
+/// The bridge and the desktop apply the same rule.
+AgentModel? modelFor(Iterable<AgentModel> models, String id) {
+  for (final model in models) {
+    if (model.id == id) return model;
+  }
+  for (final model in models) {
+    if (model.version == id) return model;
+  }
+  return null;
+}

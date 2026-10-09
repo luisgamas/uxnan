@@ -15,6 +15,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   before the WebView has its width, resizes once its page settles, waits for a
   scroll to stop, and keeps the screen still when the card that changes is
   above it.
+- **A conversation on a concrete Claude model reads as its alias.** One picked
+  as `claude-opus-5-5` shows *Opus 5.5* and its effort options instead of the
+  raw id.
 
 ## [0.0.42-alpha.20261008+20261009] - 20261008
 ### Added
