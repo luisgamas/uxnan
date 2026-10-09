@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.51-alpha.20261009] - 20261009
 ### Fixed
 
 - **Claude Code's picker no longer repeats models after an upgrade.** Bridges
