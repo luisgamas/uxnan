@@ -19,7 +19,7 @@ test('a user models list is kept as written', () => {
     agents: {
       'claude-code': {
         permissionMode: 'bypassPermissions',
-        models: ['claude-opus-4-5', { id: 'claude-sonnet-4-5', displayName: 'Sonnet 4.5' }],
+        models: ['claude-opus-4-5', { id: 'claude-opus-4-1', displayName: 'Opus 4.1' }],
       },
     },
   });
@@ -27,7 +27,43 @@ test('a user models list is kept as written', () => {
   assert.equal(claude?.permissionMode, 'bypassPermissions');
   assert.deepEqual(claude?.models, [
     'claude-opus-4-5',
-    { id: 'claude-sonnet-4-5', displayName: 'Sonnet 4.5' },
+    { id: 'claude-opus-4-1', displayName: 'Opus 4.1' },
+  ]);
+});
+
+test("a frozen copy of the retired Claude seed is dropped, the user's own pins kept", () => {
+  // What a bridge before 0.0.49 wrote to disk with any config save: the seed
+  // it merged in from code, now indistinguishable from pins unless dropped.
+  const frozen = resolveDaemonConfig({
+    agents: {
+      'claude-code': {
+        models: [
+          { id: 'claude-fable-5-1', displayName: 'Fable 5.1' },
+          { id: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+          { id: 'claude-opus-4-5', displayName: 'Opus 4.5' },
+          { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
+        ],
+      },
+    },
+  });
+  assert.equal(frozen.agents['claude-code']?.models, undefined);
+
+  const mixed = resolveDaemonConfig({
+    agents: {
+      'claude-code': {
+        models: [
+          { id: 'claude-opus-4-5', displayName: 'Opus 4.5' },
+          'claude-opus-4-5',
+          { id: 'claude-sonnet-4-5', displayName: 'My Sonnet' },
+          { id: 'claude-opus-4-8', displayName: 'Opus 4.8', description: 'pinned for a repo' },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(mixed.agents['claude-code']?.models, [
+    'claude-opus-4-5',
+    { id: 'claude-sonnet-4-5', displayName: 'My Sonnet' },
+    { id: 'claude-opus-4-8', displayName: 'Opus 4.8', description: 'pinned for a repo' },
   ]);
 });
 

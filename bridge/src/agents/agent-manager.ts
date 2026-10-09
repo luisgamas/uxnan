@@ -454,7 +454,7 @@ export class AgentManager {
     const fresh = seen && this.#options.now() - seen.at < MODELS_SEEN_TTL_MS;
     const models = fresh ? seen.models : await this.getModels(agentId);
     const model =
-      models.find((m) => m.id === options.service) ??
+      (options.service !== undefined ? modelFor(models, options.service) : undefined) ??
       (options.service === undefined ? models.find((m) => m.isDefault) : undefined);
     const chosen = { ...(options.options ?? {}) };
     let filled = false;
@@ -2193,6 +2193,17 @@ function readOptionalText(data: unknown): string | undefined {
     if (typeof text === 'string') return text;
   }
   return undefined;
+}
+
+/**
+ * The entry of `models` a thread on `id` runs: the one with that id, else the
+ * alias that runs that model today (its `version`) — a thread pinned to
+ * `claude-opus-5-5` gets the knobs of `opus`, which Claude Code lists that
+ * model under. The desktop (`modelFor` in `$lib/models`) and the phone
+ * (`modelFor` in `agent_model.dart`) apply the same rule.
+ */
+export function modelFor(models: readonly AgentModel[], id: string): AgentModel | undefined {
+  return models.find((m) => m.id === id) ?? models.find((m) => m.version === id);
 }
 
 /** Extract `{ tokens, contextWindow? }` from a turn_completed event's data. */

@@ -186,6 +186,43 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   agents: {},
 };
 
+/**
+ * Every Claude Code model the bridge used to seed into `agents.claude-code.models`
+ * from code, exactly as it wrote them. Upgrade-only cleanup: a bridge before
+ * 0.0.49 merged that seed into the config it read, so any later `writeConfig`
+ * froze it to disk, where it now reads as models the user pinned — duplicating
+ * what Claude Code's own `initialize` lists. An entry identical to one of these
+ * (same id, same label, nothing else) was written by Uxnan and is dropped; a
+ * model the user pinned themselves (a bare id, another label, a description)
+ * is kept. Never extended: models come from the CLI now.
+ */
+const RETIRED_CLAUDE_SEED: ReadonlyMap<string, string> = new Map([
+  ['claude-fable-5-1', 'Fable 5.1'],
+  ['claude-fable-5', 'Fable 5'],
+  ['claude-opus-5-5', 'Opus 5.5'],
+  ['claude-opus-5', 'Opus 5'],
+  ['claude-opus-4-8', 'Opus 4.8'],
+  ['claude-opus-4-7', 'Opus 4.7'],
+  ['claude-opus-4-6', 'Opus 4.6'],
+  ['claude-opus-4-5', 'Opus 4.5'],
+  ['claude-sonnet-5-5', 'Sonnet 5.5'],
+  ['claude-sonnet-5', 'Sonnet 5'],
+  ['claude-sonnet-4-6', 'Sonnet 4.6'],
+  ['claude-sonnet-4-5', 'Sonnet 4.5'],
+  ['claude-haiku-5-5', 'Haiku 5.5'],
+  ['claude-haiku-4-5', 'Haiku 4.5'],
+]);
+
+/** Whether a `models` entry is a frozen copy of the retired seed (see above). */
+function isRetiredSeedEntry(entry: string | AgentModelSpec): boolean {
+  if (typeof entry === 'string') return false;
+  const fields = Object.entries(entry).filter(([, value]) => value !== undefined);
+  return (
+    fields.every(([key]) => key === 'id' || key === 'displayName') &&
+    RETIRED_CLAUDE_SEED.get(entry.id) === entry.displayName
+  );
+}
+
 /** Merge a partial (e.g. loaded from disk) over the defaults. */
 export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): DaemonConfig {
   // Treat persisted configuration as untrusted input: older releases could
@@ -223,7 +260,16 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
   const agents: Partial<Record<AgentId, AgentSettings>> = {};
   for (const id of ids) {
     const key = id as AgentId;
-    agents[key] = { ...DEFAULT_DAEMON_CONFIG.agents[key], ...(raw.agents?.[key] ?? {}) };
+    const settings: AgentSettings = {
+      ...DEFAULT_DAEMON_CONFIG.agents[key],
+      ...(raw.agents?.[key] ?? {}),
+    };
+    if (key === 'claude-code' && settings.models) {
+      const kept = settings.models.filter((entry) => !isRetiredSeedEntry(entry));
+      if (kept.length > 0) settings.models = kept;
+      else delete settings.models;
+    }
+    agents[key] = settings;
   }
   merged.agents = agents;
   return merged;

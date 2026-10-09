@@ -1615,7 +1615,10 @@ const CLAUDE_DEFAULT_VALUE = 'default';
  *    them, but no alias runs any of them today — a newer model of their tier
  *    took its place. (With no alias at all nothing can be told apart, and
  *    nothing is flagged.)
- *  - **Pinned models** from config not already listed.
+ *  - **Pinned models** from config the CLI does not already offer — not as an
+ *    entry, not as the model an alias runs (`claude-opus-5-5` is `opus`), and
+ *    not under a dated snapshot id (`claude-haiku-4-5` is
+ *    `claude-haiku-4-5-20251001`): one model, one row.
  *
  * The CLI's own `default` entry is not a model to pick: picking nothing runs
  * it, and every client already offers that. It decides `isDefault` instead —
@@ -1676,9 +1679,14 @@ export function claudeModels(
       m.value,
     );
   }
+  // What the CLI already offers, by every id that names it.
+  const offered = new Set(entries.map((e) => e.runs));
+  const offeredUndated = new Set(
+    [...offered].map((id) => id.replace(/-\d{8}$/, '')).filter((id) => !offered.has(id)),
+  );
   for (const spec of options.pinned ?? []) {
     const id = spec.id.trim();
-    if (!id) continue;
+    if (!id || offered.has(id) || offeredUndated.has(id)) continue;
     add(
       {
         id,

@@ -815,6 +815,9 @@ test('ClaudeCodeAdapter appends pinned models the CLI does not list', async () =
       { id: 'claude-sonnet-4-5' },
       // already listed by the CLI → its entry wins
       { id: 'claude-opus-4-8', displayName: 'My Opus' },
+      // what an alias runs (`opus`) and a dated snapshot's bare id: offered already
+      { id: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+      { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
       { id: '   ' }, // blank → skipped
     ],
   });
@@ -827,6 +830,15 @@ test('ClaudeCodeAdapter appends pinned models the CLI does not list', async () =
     ],
   );
   assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.displayName, 'Opus 4.8');
+  // One model, one row: no pin repeats what the CLI offers under another id.
+  assert.equal(
+    models.some((m) => m.id === 'claude-opus-5-5'),
+    false,
+  );
+  assert.equal(
+    models.some((m) => m.id === 'claude-haiku-4-5'),
+    false,
+  );
   assert.equal(models.find((m) => m.id === 'claude-opus-4-5')?.isDefault, true);
   // Nothing is known of a pinned model's effort, so none is offered.
   assert.equal(models.find((m) => m.id === 'claude-opus-4-5')?.options, undefined);

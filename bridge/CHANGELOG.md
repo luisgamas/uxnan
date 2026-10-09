@@ -4,6 +4,20 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Claude Code's picker no longer repeats models after an upgrade.** Bridges
+  before 0.0.49 froze their built-in Claude list into
+  `agents.claude-code.models` every time they saved the config, and since that
+  list left the code it read as the user's own pins — `Opus 5.5`, `Fable 5.1`
+  and the rest of that list showed a second time, `Opus 4.5` among them though
+  the CLI no longer offers it. An entry identical to that old list is now dropped when the
+  config is read (the user's own pins — a bare id, another label — are kept),
+  and no pin repeats a model the CLI already offers under another id: the
+  model an alias runs, or a dated snapshot's bare id.
+- **A thread on a concrete Claude id keeps its effort default.** One picked as
+  `claude-opus-5-5` matches the `opus` alias that runs it, so the turn still
+  gets the alias's default effort.
 
 ## [0.0.50-alpha.20261008] - 20261008
 ### Added
