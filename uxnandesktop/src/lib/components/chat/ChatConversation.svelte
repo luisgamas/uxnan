@@ -38,6 +38,7 @@
   import type { Turn } from "$shared/models/thread";
   import ModelPicker, { type PickerAgent } from "$lib/components/ModelPicker.svelte";
   import { Separator } from "$lib/components/ui/separator";
+  import { modelFor } from "$lib/models";
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
@@ -241,7 +242,7 @@
   /** The thread's model; before it has one, the agent's default — the one
    *  its turns run on (the phone reads the same). */
   const model = $derived(
-    models.find((m) => m.id === thread?.model) ??
+    (thread?.model ? modelFor(models, thread.model) : undefined) ??
       (thread?.model ? undefined : models.find((m) => m.isDefault)),
   );
   let optionValues = $state<Record<string, string | boolean>>({});

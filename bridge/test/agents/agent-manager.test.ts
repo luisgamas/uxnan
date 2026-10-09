@@ -22,6 +22,7 @@ import {
   ThreadStore,
   createLogger,
 } from '../../src/index.js';
+import { modelFor } from '../../src/agents/agent-manager.js';
 import { rmrf } from '../helpers/fs.js';
 
 /** Caps for the controllable test adapter (streaming, no approvals/images). */
@@ -1249,4 +1250,15 @@ baseTest('releasing a conversation’s process waits for no turn and cancels non
   await manager.releaseThreadProcess(thread.id);
   assert.deepEqual(adapter.closed, [thread.id]);
   await rmrf(baseDir);
+});
+
+test('modelFor finds a model by id, else the alias that runs it', () => {
+  const models = [
+    { id: 'opus', displayName: 'Opus 5.5', version: 'claude-opus-5-5' },
+    { id: 'claude-opus-4-8', displayName: 'Opus 4.8', isLegacy: true },
+  ];
+  assert.equal(modelFor(models, 'claude-opus-4-8')?.displayName, 'Opus 4.8');
+  // A thread pinned to the concrete model an alias runs gets that alias's knobs.
+  assert.equal(modelFor(models, 'claude-opus-5-5')?.id, 'opus');
+  assert.equal(modelFor(models, 'claude-sonnet-5'), undefined);
 });

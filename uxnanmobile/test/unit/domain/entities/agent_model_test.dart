@@ -128,4 +128,25 @@ void main() {
       expect(model.options.first.values, isEmpty);
     });
   });
+
+  group('modelFor', () {
+    const models = [
+      AgentModel(
+        id: 'opus',
+        displayName: 'Opus 5.5',
+        version: 'claude-opus-5-5',
+      ),
+      AgentModel(
+        id: 'claude-opus-4-8',
+        displayName: 'Opus 4.8',
+        isLegacy: true,
+      ),
+    ];
+    test('finds a model by its id, else the alias that runs it', () {
+      expect(modelFor(models, 'claude-opus-4-8')?.displayName, 'Opus 4.8');
+      // A thread pinned to the concrete id an alias runs reads as that alias.
+      expect(modelFor(models, 'claude-opus-5-5')?.id, 'opus');
+      expect(modelFor(models, 'claude-sonnet-5'), isNull);
+    });
+  });
 }

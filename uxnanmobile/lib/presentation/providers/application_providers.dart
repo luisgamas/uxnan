@@ -1472,15 +1472,11 @@ final activeModelOptionsProvider =
   if (thread == null) return const [];
   final models = ref.watch(agentModelsProvider(thread.agentId)).value;
   if (models == null || models.isEmpty) return const [];
-  AgentModel? match;
-  for (final model in models) {
-    if (model.id == thread.model) {
-      match = model;
-      break;
-    }
-    if (match == null && model.isDefault) match = model;
-  }
-  return (match ?? models.first).options;
+  final current = thread.model;
+  final match =
+      current != null && current.isNotEmpty ? modelFor(models, current) : null;
+  final fallback = models.where((m) => m.isDefault).firstOrNull;
+  return (match ?? fallback ?? models.first).options;
 });
 
 /// The human-readable name of a thread's model — the `displayName` the bridge
@@ -1501,10 +1497,7 @@ final threadModelLabelProvider = Provider.family<String?, String>((
   if (thread == null || modelId == null || modelId.isEmpty) return null;
   final models = ref.watch(agentModelsProvider(thread.agentId)).value;
   if (models == null) return modelId;
-  for (final model in models) {
-    if (model.id == modelId) return model.displayName;
-  }
-  return modelId;
+  return modelFor(models, modelId)?.displayName ?? modelId;
 });
 
 /// Map of threadId → the concrete model id the agent resolved most recently

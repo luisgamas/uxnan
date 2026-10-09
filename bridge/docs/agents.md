@@ -1097,7 +1097,16 @@ only what this account can use. The bridge keeps no table of its own;
    *Older models*. No other wired CLI marks its models this way (checked
    2026-10-08: Codex's `hidden` hides internal models, OpenCode only dates
    them), so only Claude's list folds.
-3. **Pinned models** from `agents.claude-code.models` the CLI did not list.
+3. **Pinned models** from `agents.claude-code.models` the CLI does not already
+   offer — not as an entry, not as the model an alias runs, not under a dated
+   snapshot id. Bridges before 0.0.49 froze their old built-in list into that
+   key whenever they saved the config; an entry identical to one of it is
+   dropped when the config is read, so it never reads as the user's pin.
+
+A thread on a concrete id an alias runs (`claude-opus-5-5`, picked before the
+list moved to aliases) reads as that alias (`Opus 5.5`) and gets its effort
+knob — `modelFor()` in `src/agents/agent-manager.ts`; the desktop and the phone
+apply the same rule.
 
 The CLI's own `default` entry is not a row: picking nothing runs it, and every
 client already offers that. It marks `isDefault` instead, on the first entry
