@@ -71,11 +71,14 @@ class ViewHostSession {
         if (isRequest) return;
         final height = fields['height'];
         final width = fields['width'];
+        // A size measured at zero width is not the page's: the WebView lays
+        // the page out before it has its width, and the heights it reports
+        // then (0, or several screens) would resize the card for nothing.
         if (height is num &&
             height.isFinite &&
             width is num &&
             width.isFinite &&
-            width >= 0 &&
+            width > 0 &&
             width <= 100000) {
           sizeChanged(clampViewHeight(height).toDouble());
         }

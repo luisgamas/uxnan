@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uxnan/domain/entities/agent_view_page.dart';
@@ -31,6 +33,65 @@ class ViewBlock extends ConsumerStatefulWidget {
   ConsumerState<ViewBlock> createState() => _ViewBlockState();
 }
 
+/// The height each view last reported, by view id, for the life of the app.
+///
+/// The conversation list builds a message only while it is near the screen,
+/// so a view leaving it loses its state — and coming back, it used to start
+/// again from the agent's guess and jump to its real height once the page
+/// reported it. Mid-scroll, that jump pushed the view off the screen, which
+/// unmounted it, which shrank it back, which pulled it in again: the list
+/// flickered and returned to where it was. Remembering the measured height
+/// makes a view come back at the size it had.
+@visibleForTesting
+abstract final class ViewHeights {
+  static const int _capacity = 256;
+  static final Map<String, int> _heights = {};
+
+  /// The height [viewId] last reported, if it has.
+  static int? of(String viewId) => _heights[viewId];
+
+  /// Remember [height] for [viewId], keeping the most recent [_capacity].
+  static void remember(String viewId, int height) {
+    _heights
+      ..remove(viewId)
+      ..[viewId] = height;
+    if (_heights.length > _capacity) _heights.remove(_heights.keys.first);
+  }
+
+  /// Forget every height (tests).
+  @visibleForTesting
+  static void clear() => _heights.clear();
+}
+
+/// Keeps what the reader sees still while [box] — a card in [position]'s
+/// list — is about to grow or shrink by [delta]: when the card's top is above
+/// the screen, the change would push everything on screen, so the scroll
+/// offset moves by the same amount. A card on or below the screen's top grows
+/// downwards, which moves nothing above it.
+///
+/// Call it just before the resize, while the list is not scrolling: the
+/// offset is corrected in place (no scroll notification, no new activity),
+/// and the next layout uses it.
+@visibleForTesting
+void keepScreenStill(RenderObject box, ScrollPosition position, int delta) {
+  if (!box.attached) return;
+  final viewport = RenderAbstractViewport.maybeOf(box);
+  if (viewport == null) return;
+  final top = viewport.getOffsetToReveal(box, 0).offset;
+  if (top >= position.pixels) return;
+  final target = math.max(position.minScrollExtent, position.pixels + delta);
+  position.correctBy(target - position.pixels);
+}
+
+/// How much a reported height must differ from the shown one to relayout —
+/// a page settling by a pixel or two must not shift the conversation.
+const int _heightDeadband = 4;
+
+/// How long size reports are gathered before the card resizes: a page with
+/// images grows in several steps as they decode, and one resize at the end
+/// moves the list once instead of at every step.
+const Duration _heightSettle = Duration(milliseconds: 150);
+
 class _ViewBlockState extends ConsumerState<ViewBlock> {
   static final Set<_ViewBlockState> _liveInline = {};
   static const int _maxLiveInline = 3;
@@ -42,6 +103,8 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
   bool _busy = false;
   bool _creating = false;
   ViewHostSession? _session;
+  Timer? _heightTimer;
+  ScrollPosition? _scrolling;
   late final ValueNotifier<ViewAnnotationNotes> _notes;
   Map<String, Object?>? _lastContext;
 
@@ -50,7 +113,8 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
     super.initState();
     _notes = ValueNotifier(const ViewAnnotationNotes());
     _notes.addListener(_syncInlineMarks);
-    _height = clampViewHeight(widget.content.height);
+    _height = ViewHeights.of(widget.content.viewId) ??
+        clampViewHeight(widget.content.height);
     _load();
   }
 
@@ -80,6 +144,8 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
 
   @override
   void dispose() {
+    _heightTimer?.cancel();
+    _stopWaitingForScrollEnd();
     _release();
     _notes
       ..removeListener(_syncInlineMarks)
@@ -197,12 +263,54 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
       },
       hostContext: _hostContext(context, fullscreen: false),
       confirmOpenLink: _confirmOpenLink,
-      sizeChanged: (height) {
-        if (mounted && !_annotating) {
-          setState(() => _height = clampViewHeight(height));
-        }
-      },
+      sizeChanged: _onPageHeight,
     );
+  }
+
+  /// The page reported its height: remember it at once (so a later mount
+  /// starts there) and resize the card once the reports settle.
+  void _onPageHeight(double reported) {
+    ViewHeights.remember(widget.content.viewId, clampViewHeight(reported));
+    _heightTimer?.cancel();
+    _heightTimer = Timer(_heightSettle, _applyHeight);
+  }
+
+  /// Resizes the card to the page's settled height, unless the change is
+  /// within [_heightDeadband]. While the conversation is scrolling it waits
+  /// for the scroll to stop: a fling moves the list to positions computed
+  /// when it started, so the correction [keepScreenStill] makes would be
+  /// undone by the fling's next frame and the screen would jump.
+  void _applyHeight() {
+    if (!mounted || _annotating) return;
+    final latest = ViewHeights.of(widget.content.viewId);
+    if (latest == null || (latest - _height).abs() < _heightDeadband) return;
+    final position = Scrollable.maybeOf(context, axis: Axis.vertical)?.position;
+    if (position != null && position.isScrollingNotifier.value) {
+      _waitForScrollEnd(position);
+      return;
+    }
+    final box = context.findRenderObject();
+    if (position != null && box != null) {
+      keepScreenStill(box, position, latest - _height);
+    }
+    setState(() => _height = latest);
+  }
+
+  void _waitForScrollEnd(ScrollPosition position) {
+    if (identical(_scrolling, position)) return;
+    _stopWaitingForScrollEnd();
+    _scrolling = position..isScrollingNotifier.addListener(_onScrollingChanged);
+  }
+
+  void _onScrollingChanged() {
+    if (_scrolling?.isScrollingNotifier.value ?? true) return;
+    _stopWaitingForScrollEnd();
+    _applyHeight();
+  }
+
+  void _stopWaitingForScrollEnd() {
+    _scrolling?.isScrollingNotifier.removeListener(_onScrollingChanged);
+    _scrolling = null;
   }
 
   Future<bool> _confirmOpenLink(Uri uri) async {

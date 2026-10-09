@@ -8,7 +8,21 @@ displaying the prepared HTML.
 ## Rendering and isolation
 
 `ViewBlock` reserves the agent-provided height (or 320 px) clamped to 80–1600
-CSS px. A valid `ui/notifications/size-changed` message updates that height.
+CSS px. A valid `ui/notifications/size-changed` message updates that height,
+so that the conversation never jumps under the reader's finger:
+
+- A size measured at zero width is ignored: Android lays the page out before
+  the WebView has its width, and the heights it reports then (0, or several
+  screens) are not the page's.
+- Reports are gathered for 150 ms and a change under 4 px is ignored, so a page
+  whose images decode in steps resizes the card once.
+- The last reported height of each view is remembered for the life of the app
+  (`ViewHeights`, 256 views). The conversation list builds a message only near
+  the screen, so a view scrolled away is rebuilt when it comes back; it starts
+  at the height it had instead of the agent's hint.
+- While the conversation is scrolling, a resize waits for the scroll to stop,
+  and a card whose top is above the screen moves the scroll offset by the same
+  amount it grows (`keepScreenStill`), so what the reader sees stays still.
 The WebView is created only when its message widget enters the built viewport;
 up to three inline instances stay live. When all three slots are occupied, the
 card offers a tap to load. Prepared pages use `loadHtmlString` without a base
