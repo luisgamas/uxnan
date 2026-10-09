@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Scrolling past an agent view no longer jumps back.** A view scrolled off
+  and back used to start again from the agent's height hint and resize once its
+  page reported, which pushed it off the screen, rebuilt it and resized it
+  again: the conversation flickered and returned to where it was. A view now
+  comes back at the height it last had, ignores the sizes Android reports
+  before the WebView has its width, resizes once its page settles, waits for a
+  scroll to stop, and keeps the screen still when the card that changes is
+  above it.
 
 ## [0.0.42-alpha.20261008+20261009] - 20261008
 ### Added

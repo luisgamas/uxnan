@@ -113,6 +113,21 @@ void main() {
         'params': {'height': 5000, 'width': 400},
       }),
     );
+    // Measured before the WebView had its width: not the page's height.
+    await handle(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'method': 'ui/notifications/size-changed',
+        'params': {'height': 0, 'width': 0},
+      }),
+    );
+    await handle(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'method': 'ui/notifications/size-changed',
+        'params': {'height': 4053, 'width': 0},
+      }),
+    );
     expect(annotationCount, 0);
     expect(sizes, [1600]);
   });
