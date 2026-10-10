@@ -4,6 +4,14 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A bridge update reaches the model pickers without restarting the app.**
+  The desktop kept each agent's model list for its whole session, so after the
+  bridge updated itself (or was updated) the chat still offered the old list —
+  Claude Code's duplicated models among them. Every reconnect now asks again
+  for the lists already shown, replacing each when the answer arrives and
+  keeping it if the bridge cannot answer; slash commands are asked again too.
 
 ## [0.0.80] - 20261009
 ### Fixed
