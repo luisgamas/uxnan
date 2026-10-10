@@ -167,13 +167,18 @@ export class ChatStore {
     return () => this.#replicaListeners.delete(listener);
   }
 
-  /** After (re)connecting: catch up on everything, reload the agents and
-   *  every open thread. */
+  /** After (re)connecting: catch up on everything, reload the agents, the
+   *  models already shown and every open thread. The bridge on the other end
+   *  may be a newer one (it updated itself, or the user did) whose agents
+   *  list other models, so what was cached is asked again — replaced when the
+   *  answer comes, never emptied meanwhile — and the commands are dropped. */
   async resync(): Promise<void> {
+    this.#commands.clear();
     await Promise.allSettled([
       this.sync(),
       this.loadAgents(),
       this.loadHolds(),
+      ...[...this.#models.keys()].map((id) => this.modelsFor(id, { fresh: true })),
       ...[...this.#conversations.values()].map((c) => c.load()),
     ]);
   }
@@ -330,10 +335,11 @@ export class ChatStore {
   }
 
   /** The models an agent's CLI reports (cached per agent; concurrent asks for
-   *  the same agent share one request). */
-  modelsFor(agentId: string): Promise<AgentModel[]> {
+   *  the same agent share one request). `fresh` asks the bridge again even
+   *  with a cached list, which stays until the answer replaces it. */
+  modelsFor(agentId: string, { fresh = false }: { fresh?: boolean } = {}): Promise<AgentModel[]> {
     const cached = this.#models.get(agentId);
-    if (cached) return Promise.resolve(cached);
+    if (cached && !fresh) return Promise.resolve(cached);
     const inFlight = this.#modelRequests.get(agentId);
     if (inFlight) return inFlight;
     const request = this.#client
@@ -343,7 +349,7 @@ export class ChatStore {
         this.#models.set(agentId, models);
         return models;
       })
-      .catch(() => [] as AgentModel[])
+      .catch(() => cached ?? ([] as AgentModel[]))
       .finally(() => this.#modelRequests.delete(agentId));
     this.#modelRequests.set(agentId, request);
     return request;

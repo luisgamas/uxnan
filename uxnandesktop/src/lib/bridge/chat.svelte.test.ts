@@ -417,6 +417,27 @@ describe('ChatStore', () => {
     expect(calls.filter((c) => c.method === 'agent/models')).toHaveLength(1);
     expect(store.cachedModels('claude-code').map((m) => m.id)).toEqual(['opus']);
   });
+
+  it('asks again for the cached models after a reconnect, keeping them until answered', async () => {
+    // The bridge on the other end of a reconnect may be a newer one listing
+    // other models (a bridge update): the cached list must not outlive it.
+    let answer: unknown = {
+      models: [
+        { id: 'opus', displayName: 'Opus 5.5' },
+        { id: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+      ],
+    };
+    const { store, calls } = harness({ 'agent/models': () => answer });
+    await store.modelsFor('claude-code');
+    answer = { models: [{ id: 'opus', displayName: 'Opus 5.5' }] };
+    await store.resync();
+    expect(calls.filter((c) => c.method === 'agent/models')).toHaveLength(2);
+    expect(store.cachedModels('claude-code').map((m) => m.id)).toEqual(['opus']);
+    // A bridge that cannot answer leaves the last list in place.
+    answer = Promise.reject(new Error('gone'));
+    await store.resync();
+    expect(store.cachedModels('claude-code').map((m) => m.id)).toEqual(['opus']);
+  });
 });
 
 describe('agent sessions (architecture/02a §5.8.19)', () => {

@@ -270,7 +270,7 @@ can't be told an id — is in [`agent-hooks.md`](agent-hooks.md#reference).
 
 ---
 
-## Curated model lists (Claude)
+## Model lists (Claude): asked of the CLI
 
 Most agent CLIs enumerate their own models and the ADE asks them directly
 (`opencode models`, `agy models`, `grok models`, `pi --list-models`,
