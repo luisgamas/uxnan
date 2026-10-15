@@ -36,6 +36,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `generate_image` row naming the saved file; a `writeStdin` approval says it
   writes to a running command's input and shows no input text.
 
+- **Charts, tables and lists drawn by the bridge.** `view_show` and `view_check`
+  take `blocks`: up to 16 typed blocks (`text`, `stats`, `bar-chart`,
+  `line-chart`, `breakdown`, `table`, `list`, `callout`, `compare`, `choices`)
+  that the bridge draws into one page in its own design, so every agent's
+  charts look alike and follow light and dark mode on both clients. Exactly
+  one of `blocks`, `html` or `path` is accepted; a JSON string of the array is
+  accepted too. An invalid block comes back as a tool error naming the path and
+  the rule (`parseViewBlocks` in `@uxnan/shared`). Bar and line charts have
+  hover readouts, a line chart a crosshair, and numbers follow the locale the
+  host reports; `choices` buttons fill the person's composer through
+  `window.uxnan.sendMessage`. The estimated height is the view's first frame
+  height. Clients need no change: a blocks view is an ordinary view.
+- **A base stylesheet in every page** (`src/views/view-base-css.ts`), placed
+  after the metas and before the bootstrap. It gives every theme variable a
+  light and a dark value (dark by `data-uxnan-theme`, or by the system before a
+  host answers), styles text, headings, lists, code, tables, buttons, inputs and
+  the helper classes `.num`, `.muted` and `.tag[data-tone]`, and defines the
+  status colors and the chart palette (`--color-chart-1` to `-6`, `-muted`,
+  `-grid`) on every client alike. Every rule is in `:where()`, so any rule the
+  agent writes wins.
+- **The bootstrap announces the theme.** It sets `data-uxnan-theme` on `:root`
+  and dispatches the `uxnan-theme` window event on each host context, so a
+  canvas chart can redraw.
+- **`view_check` findings** for fixed colors written as literals (hex, `rgb()`,
+  `hsl()`, `oklch()` outside a `var(--x, …)` fallback) and for heights in `vh`
+  or `height: 100%` on `html`/`body`, which keep the frame growing.
+  A thick border on one edge of a box (a colored stripe) is reported too: the
+  app separates with hairlines.
+- **Blocks look like the app.** Neutral surfaces and 1px hairlines; color only
+  on data marks and small status icons — no stripe along a card's edge, no
+  tinted panels. A `text` block that carries a Markdown table or `#` heading is
+  refused with the block to use instead, since it would show raw.
+
 ### Changed
 
 - **Claude Code asks over its own stream-json channel.** Every turn runs with
@@ -65,6 +98,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Approvals time out in one place.** The Codex adapter's own 5-minute timer
   is gone: it answered Codex but left the card open, and it ran while no phone
   could see the card.
+
+- **The tool description and server instructions are rewritten** for blocks: the
+  agent is told to prefer `blocks` for charts, numbers, tables, lists and
+  comparisons, given the layout the page sits in (a card under its title, already
+  padded and in the app's font: no repeated title, no outer card, no `100vh`,
+  it must work at 340 px), the color variables and the chart rules. `height` is
+  described for `html` and `path` only. The description also asks HTML pages for the
+  same clean look, and `view_show`'s answer tells the agent the person already
+  sees the page, so the reply should not repeat its figures.
+- **The tool step keeps `blockCount` in place of `blocks`**, as `htmlBytes`
+  stands in for `html`, so a blocks view never rides the stream or the thread
+  store.
 
 ### Fixed
 
@@ -98,6 +143,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `#runTurn` no longer passes a turn's `cwd` to `adapter.start`, and Codex
   resolves a turn's file changes (and the `git diff` behind them) against that
   turn's own folder.
+
 
 ## [0.0.51-alpha.20261009] - 20261009
 ### Fixed

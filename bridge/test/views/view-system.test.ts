@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, access, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ViewStore, prepareViewHtml } from '../../src/views/view-store.js';
@@ -9,7 +9,14 @@ import { startViewMcpServer } from '../../src/views/mcp-server.js';
 import { convertViewToolBlock } from '../../src/views/convert-view-block.js';
 import { HandlerRouter } from '../../src/handler-router.js';
 import { registerViewHandlers } from '../../src/handlers/view-handler.js';
-import { makeRequest, JsonRpcErrorCode } from '@uxnan/shared';
+import {
+  makeRequest,
+  JsonRpcErrorCode,
+  VIEW_PAGE_VARIABLES,
+  VIEW_THEME_EVENT,
+  VIEW_THEME_VARIABLES,
+} from '@uxnan/shared';
+import { VIEW_BASE_CSS, VIEW_BASE_VARIABLES } from '../../src/views/view-base-css.js';
 
 test('view preparation puts the CSP before anything the agent wrote', () => {
   for (const source of [
@@ -250,4 +257,82 @@ test('ViewStore prunes oldest views after the 500 view cap', async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('every prepared page carries the base stylesheet, before the bootstrap and the agent', () => {
+  const html = prepareViewHtml('<style>body{padding:0}</style><p>x</p>', 'window.boot=true');
+  const base = html.indexOf('<style id="uxnan-base">');
+  assert.ok(base > html.indexOf('viewport') && base < html.indexOf('<script>window.boot'));
+  assert.ok(html.indexOf('<style>body{padding:0}</style>') > html.indexOf('</script>'));
+  // Every variable a page may use has a light and a dark value.
+  for (const name of [...VIEW_THEME_VARIABLES, ...VIEW_PAGE_VARIABLES]) {
+    assert.ok(VIEW_BASE_VARIABLES.includes(name), `${name} has a default`);
+  }
+  for (const name of ['--color-chart-1', '--color-text-success', '--color-background-primary']) {
+    assert.equal(VIEW_BASE_CSS.split(`${name}:`).length - 1, 3, `${name}: light, dark and OS-dark`);
+  }
+  // Specificity zero: everything is inside :where(), so the agent's own rules win.
+  for (const rule of VIEW_BASE_CSS.split('\n')) {
+    const selector = rule.replace(/^@media[^{]*\{/, '');
+    assert.ok(selector.startsWith(':where('), rule.slice(0, 60));
+  }
+});
+
+test('the bootstrap marks the theme on :root and announces it with uxnan-theme', () => {
+  assert.ok(VIEW_BOOTSTRAP.includes("root.setAttribute('data-uxnan-theme', c.theme)"));
+  assert.ok(VIEW_BOOTSTRAP.includes(`new CustomEvent('${VIEW_THEME_EVENT}'`));
+  assert.ok(VIEW_BASE_CSS.includes(':where(:root[data-uxnan-theme=dark])'));
+});
+
+test('view_show draws blocks, sizes them, and returns a block error the agent can fix', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'uxnan-view-blocks-'));
+  const store = new ViewStore({ directory: root, bootstrap: VIEW_BOOTSTRAP });
+  try {
+    const blocks = [
+      { type: 'stats', items: [{ label: 'Total', value: '18,000' }] },
+      {
+        type: 'breakdown',
+        unit: 'MXN',
+        items: [
+          { label: 'Renta', value: 8500 },
+          { label: 'Comida', value: 4200 },
+        ],
+      },
+    ];
+    const { viewId, meta } = await store.create({ title: 'Gasto', blocks });
+    assert.ok(meta.height !== undefined && meta.height >= 80);
+    const page = await readFile(join(root, `${viewId}.html`), 'utf8');
+    assert.ok(page.includes('ux-breakdown') && page.includes('<style id="uxnan-base">'));
+    // A CLI that sends the array as text gets the same page.
+    const again = await store.prepare({ blocks: JSON.stringify(blocks) });
+    assert.ok(again.html.includes('ux-breakdown'));
+    await assert.rejects(
+      store.create({ title: 'x', blocks: [{ type: 'pie', items: [] }] }),
+      /Invalid blocks: blocks\[0\]\.type/,
+    );
+    await assert.rejects(
+      store.prepare({ blocks, html: '<p>x</p>' }),
+      /exactly one of blocks, html or path/,
+    );
+    await assert.rejects(store.prepare({ blocks: 'not json' }), /array of block objects/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('view tool conversion keeps blocks off the stream', () => {
+  const converted = convertViewToolBlock({
+    type: 'tool',
+    toolName: 'mcp__uxnan__view_show',
+    input: {
+      title: 't',
+      blocks: [
+        { type: 'text', text: 'a' },
+        { type: 'text', text: 'b' },
+      ],
+    },
+    status: 'running',
+  }) as { input: Record<string, unknown> };
+  assert.equal(converted.input['blocks'], undefined);
+  assert.equal(converted.input['blockCount'], 2);
 });

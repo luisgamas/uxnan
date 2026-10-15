@@ -17,13 +17,17 @@ function isViewCall(block: Record<string, unknown>, input: Record<string, unknow
 }
 
 /** The arguments without the page: `html` (top level or in a wrapper's
- *  `tool_input`) becomes `htmlBytes`, so a 512 KiB page never rides the stream
- *  or the thread store. */
+ *  `tool_input`) becomes `htmlBytes` and `blocks` becomes `blockCount`, so a
+ *  512 KiB page never rides the stream or the thread store. */
 function withoutHtml(input: Record<string, unknown>): Record<string, unknown> {
   const out = { ...input };
   if (typeof out['html'] === 'string') {
     out['htmlBytes'] = Buffer.byteLength(out['html'], 'utf8');
     delete out['html'];
+  }
+  if (out['blocks'] !== undefined) {
+    out['blockCount'] = Array.isArray(out['blocks']) ? out['blocks'].length : 0;
+    delete out['blocks'];
   }
   const inner = out['tool_input'];
   if (inner && typeof inner === 'object' && !Array.isArray(inner)) {

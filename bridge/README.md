@@ -20,8 +20,10 @@ Cloudflare account (`uxnan-bridge relay setup`) — optional, off until you set 
 up. Background push notifications are sent
 **by the bridge itself** (FCM HTTP v1) over any transport, so the phone keeps
 receiving them whether it reached the bridge directly or through a relay.
-Agents can also call `view_show` to place a self-contained interactive page in
-the chat; clients fetch the stored, network-restricted HTML through `view/read`.
+Agents can also call `view_show` to place a chart, table, list or comparison in
+the chat — sent as typed blocks that the bridge draws in one design, or as a
+self-contained interactive page. Clients fetch the stored, network-restricted
+page through `view/read`.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
 > bridge-direct push), with **seven active real agents wired**. The detailed breakdown of

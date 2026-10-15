@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import { ViewStore } from '../../src/views/view-store.js';
 import { VIEW_BOOTSTRAP } from '../../src/views/view-bootstrap.js';
 import { startViewMcpServer } from '../../src/views/mcp-server.js';
-import { viewCheckReport, viewFindings, type ViewRender } from '../../src/views/view-check.js';
+import {
+  fixedColors,
+  viewCheckReport,
+  viewFindings,
+  type ViewRender,
+} from '../../src/views/view-check.js';
 
 test('viewFindings names what the no-network policy blocks, and a page off the theme', () => {
   const page = `<img src="https://x.test/a.png"><a href="https://docs.test">docs</a>
@@ -96,4 +101,42 @@ test('view_check over MCP prepares the page, renders it when it can, and stores 
     await server.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('viewFindings names fixed colors and heights that keep growing, and spares fallbacks', () => {
+  const page = `<style>.a{color:#1b1c1e;background:rgb(10, 20, 30)}.b{fill:var(--color-chart-1, #2a78d6)}
+    html,body{height:100%}</style><p>PR #357 and <a href="#abc123">a link</a></p>
+    <svg><rect fill="#e11d48"/></svg><img src="data:image/svg+xml,%3Csvg fill='%23ffffff'/%3E">`;
+  const findings = viewFindings(page);
+  const colors = findings.find((f) => f.startsWith('Colors:'));
+  assert.ok(colors);
+  assert.match(colors, /3 fixed colors/);
+  assert.ok(
+    colors.includes('#1b1c1e') && colors.includes('#e11d48') && colors.includes('rgb(10, 20, 30)'),
+  );
+  assert.ok(!colors.includes('#2a78d6'), 'a var() fallback is fine');
+  assert.ok(findings.some((f) => f.startsWith('Height:')));
+  assert.ok(
+    viewFindings('<div style="min-height: 100vh; color: var(--color-text-primary)">').some((f) =>
+      f.startsWith('Height:'),
+    ),
+  );
+  assert.equal(fixedColors('<p>Issue #123, see <a href="#fff">x</a></p>').length, 0);
+});
+
+test('viewFindings flags a colored stripe on one edge of a box, not a hairline', () => {
+  assert.ok(
+    viewFindings('<div style="border-left: 3px solid var(--color-chart-1)">x</div>').some((f) =>
+      f.startsWith('Design:'),
+    ),
+  );
+  assert.ok(
+    viewFindings('<style>.c{border-top-width:4px}</style>').some((f) => f.startsWith('Design:')),
+  );
+  assert.equal(
+    viewFindings('<div style="border-bottom:1px solid var(--color-border-primary)">x</div>').some(
+      (f) => f.startsWith('Design:'),
+    ),
+    false,
+  );
 });

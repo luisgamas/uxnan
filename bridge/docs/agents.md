@@ -391,16 +391,65 @@ desktop scopes it like any agent it launched.
 
 ### Agent views (`view_show`)
 
-`view_show { title, html? | path?, height? }` lets an agent show a
-self-contained HTML page — a chart, table, diagram, comparison, mockup or small
-tool — inline in the chat, on the desktop and on the phone. The tool's
-description and the server's `instructions` are how the agent learns it has it
-and how to use it (self-contained, no network, light, the theme variables).
-`path` is read from the conversation's folder with the workspace path guard;
-pages are capped at 512 KiB, prepared (the no-network CSP, charset, viewport
-and the view bootstrap put first, before anything the agent wrote — a `<meta>`
-policy only governs what follows it) and stored in `~/.uxnan/views/` (newest
-500 / 256 MiB kept). The answer carries `uxnan-view:<viewId>`.
+`view_show { title, blocks? | html? | path?, height? }` lets an agent show a
+chart, table, list, comparison or other page inline in the chat, on the desktop
+and on the phone. Exactly one of `blocks`, `html` or `path` is given. The
+tool's description and the server's `instructions` are how the agent learns it
+has it and how to use it. `path` is read from the conversation's folder with
+the workspace path guard; HTML pages are capped at 512 KiB, prepared (the
+no-network CSP, charset, viewport, base stylesheet and the view bootstrap put
+first, before anything the agent wrote — a `<meta>` policy only governs what
+follows it) and stored in `~/.uxnan/views/` (newest 500 / 256 MiB kept). The
+answer carries `uxnan-view:<viewId>`.
+
+**Blocks (`src/views/blocks/`).** The agent describes the content as data and
+the bridge draws it into one page with one design, so every agent's charts look
+alike and follow light and dark mode on every client. The ten types are
+`text`, `stats`, `bar-chart`, `line-chart`, `breakdown`, `table`, `list`,
+`callout`, `compare` and `choices` (`VIEW_BLOCK_TYPES` in `@uxnan/shared`); a
+view takes 1 to 16 blocks (`VIEW_MAX_BLOCKS`) and at most 64 KiB of JSON
+(`VIEW_MAX_BLOCKS_BYTES`). `parseViewBlocks` validates them on the bridge, and
+its error names the path and the rule (`blocks[2].items[0].value must be a
+finite number, …`), which goes back to the agent as the tool error; unknown
+fields are dropped. A JSON string of the array is accepted, for a CLI that
+passes nested arguments as text. The drawn page uses only the theme variables
+and carries its own script for hover readouts, a line-chart crosshair, `choices`
+buttons (`window.uxnan.sendMessage`, which only fills the composer) and number
+formatting in the host's locale. Its estimated height, clamped to 80–1600 px,
+is the first frame height; the page then measures itself as any view does. The
+tool step keeps `blockCount` instead of `blocks`, so the blocks never ride the
+stream or the thread store.
+
+**The page's theme.** A host sends only what its own theme owns: the surface
+the page sits on (`--color-background-primary`), its text, border, focus ring,
+fonts and corners — `VIEW_THEME_VARIABLES`, 11 names. The bridge's base
+stylesheet (`src/views/view-base-css.ts`) defines every variable a page may use
+with a light and a dark value, and alone owns the status colors
+(`--color-background-{info,success,warning,danger}` and
+`--color-text-{info,success,warning,danger}`) and the chart palette
+(`--color-chart-1` to `-6`, `--color-chart-muted`, `--color-chart-grid`):
+`VIEW_PAGE_VARIABLES`, the same on every client. Its rules sit in `:where()`,
+so the agent's own rules win. The bootstrap sets `data-uxnan-theme` on `:root`
+and dispatches the `uxnan-theme` event on every host context, so a canvas
+chart can redraw.
+
+**Blocks, measured live (2026-10-15).** Five ordinary questions about numbers
+(a 14-day trend, four plans to choose from, a month's spending, before/after
+build times, three products' monthly sales), asked of a scratch bridge with each
+agent's real CLI, on the release before blocks and then with them:
+
+| Agent (model) | Views before | Views with blocks | Of them as `blocks` |
+|---|---|---|---|
+| Claude Code (`haiku`) | 5/5, all HTML | 5/5 | 5 |
+| Codex (`gpt-6-luna`) | 3/5, all HTML | 4/5 | 4 |
+| OpenCode (`opencode/nemotron-3-ultra-free`) | 5/5, all HTML | 5/5 | 5 |
+| pi (`openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`) | 1/2, HTML | 2/2 | 2 |
+| Grok (default) | 1/2, HTML | 2/2 | 2 |
+
+Ten of the fifteen HTML pages before wrote fixed colors; none of the blocks
+views can. Antigravity showed none either time (see `FOR-DEV.md`). One free
+model put a Markdown table inside a `text` block; `parseViewBlocks` now refuses
+that with the block to use instead (not yet re-measured).
 
 **How an agent knows to show one.** The person never names the tool, so the
 tool's description and the server's `instructions` state the rule — numbers to
@@ -410,7 +459,7 @@ option. Codex does not put an MCP server's `instructions` in front of its model,
 so for Codex they travel as the thread's `developerInstructions` on
 `thread/start` / `thread/resume` (`AgentMcpServer.instructions`,
 `codexDeveloperInstructions`); nothing is ever added to the person's message.
-Measured on 2026-10-08 with an ordinary question ("this week I spent these
+Measured on 2026-10-08 (for `html` pages) with an ordinary question ("this week I spent these
 tokens per day: …; how does my week look? compare them"), a view shown without
 being asked:
 
@@ -435,11 +484,14 @@ most of them, not all — `opencode/space-bunny-free` and
 `opencode/mimo-v2.6-flash-free` each skip one now and then; a comparison of a
 few options is where every model hesitates most.
 
-**Checking a page first: `view_check`.** Same `html` / `path` as `view_show`,
-nothing stored or shown. It prepares the page exactly as `view_show` would and
-answers with what will go wrong — what the no-network policy blocks (remote
-scripts, styles, images, fonts; `fetch` and friends), whether the page follows
-the theme — and, while a desktop is attached, how it renders: the bridge sends
+**Checking a page first: `view_check`.** Same `blocks` / `html` / `path` as
+`view_show`, nothing stored or shown. It prepares the page exactly as `view_show`
+would and answers with what will go wrong — what the no-network policy blocks
+(remote scripts, styles, images, fonts; `fetch` and friends), whether the page
+follows the theme (any theme variable at all; fixed colors written as literals,
+hex, `rgb()`, `hsl()`, `oklch()` outside a `var(--x, …)` fallback, are reported),
+and whether its height can keep growing (`vh` units, or `height: 100%` on
+`html`/`body`) — and, while a desktop is attached, how it renders: the bridge sends
 the prepared page to the desktop's `view_render` (control catalog
 `view/render`, through its MCP server) and returns its screenshot as an image,
 its console errors and its content height (`views/view-check.ts`). With no
@@ -465,8 +517,8 @@ reach it under their own names and wrappers (`mcp__uxnan__view_show`, Codex's
 `view_show`, OpenCode's code-mode `execute`, Grok's `UseTool`). Each view is
 claimed once, so a later step that merely prints an old marker stays a step. A
 `view_show` step that is running, failed or names no live view stays a tool
-step, with its `html` replaced by `htmlBytes`. Clients fetch the page with
-`view/read`.
+step, with its `html` replaced by `htmlBytes` and its `blocks` by `blockCount`.
+Clients fetch the page with `view/read`.
 
 The probe that verified the table above (2026-10-08) is a scratch bridge from
 `bridge/dist` (`startBridge({ baseDir: <tmp>, secretStore: new

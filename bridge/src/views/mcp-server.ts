@@ -3,7 +3,9 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   BRIDGE_MCP_SERVER_NAME,
   UXNAN_CWD_HEADER,
+  VIEW_BLOCK_TYPES,
   VIEW_CHECK_TOOL_NAME,
+  VIEW_MAX_BLOCKS,
   VIEW_MAX_HEIGHT,
   VIEW_MIN_HEIGHT,
   VIEW_TOOL_NAME,
@@ -21,11 +23,49 @@ const BODY_LIMIT = 1536 * 1024;
  * Claude Code, Codex or OpenCode on an ordinary question about numbers, and
  * the person will never ask for the tool by name.
  */
-export const VIEW_TOOL_DESCRIPTION = `Show the person an interactive page inline in this chat — on their desktop and on their phone. Use it, without being asked, whenever your answer compares options, plans, prices or products, or contains numbers to compare, a trend over time, a breakdown or proportion, a ranking, a schedule, a diagram or flow, a UI mockup, or anything you would otherwise put in a Markdown table: show it here instead of the table, and keep your text to a sentence or two about what it means. The person will not ask for it by name. Give a short title and exactly one of html (one self-contained HTML document) or path (an HTML file in the working folder — better for long pages you will revise). The page has no network: no CDNs, fetch, remote fonts or images; inline everything (data: URIs are fine). Keep it light: inline SVG or a bundled library for charts, <canvas> for thousands of points, small DOMs. Bundled libraries load with no network: ${describeViewLibraries()}. Style it with the host's theme variables so it matches light and dark mode, always with a fallback, e.g. color: var(--color-text-primary, #222): --color-background-primary, --color-background-secondary, --color-text-primary, --color-text-secondary, --color-border-primary, --color-ring-primary, --color-background-info, --color-background-danger, --color-background-success, --color-background-warning, --font-sans, --font-mono, --border-radius-sm, --border-radius-md, --border-radius-lg. Set height to the expected height in CSS pixels. The person can point at elements and send you notes about them; a button in the page can propose a message with window.uxnan.sendMessage(text), which only fills their composer.`;
+export const VIEW_TOOL_DESCRIPTION = `Show the person an interactive page inline in this chat — on their desktop and on their phone. Use it, without being asked, whenever your answer compares options, plans, prices or products, or contains numbers to compare, a trend over time, a breakdown or proportion, a ranking, a schedule, a diagram or flow, a UI mockup, or anything you would otherwise put in a Markdown table: show it here instead of the table. The person sees the page, so keep your text to a sentence or two about what it means; do not describe the page or say where it is. A short list or a few sentences read fine as text and need no page. The person will not ask for it by name.
 
-export const VIEW_CHECK_DESCRIPTION = `See a page before you show it: the same html or path you would give view_show (no title). Returns what would go wrong — what its no-network policy blocks, whether it follows the host theme — and, when the person's desktop is connected, a screenshot of how it renders, its console errors and its height. Use it for anything beyond a simple page, fix what it reports, then call view_show. Nothing is shown to the person.`;
+Give a short title (the app shows it above the page) and exactly one of blocks, html or path.
 
-export const VIEW_SERVER_INSTRUCTIONS = `You are talking to a person through Uxnan, which shows your replies in a chat on their desktop and their phone. Uxnan can show interactive pages inside that chat with the view_show tool. Whenever your answer compares options, plans, prices or products, or contains numbers to compare, a trend, a breakdown, a ranking, a schedule, a diagram or a mockup — anything you would otherwise write as a Markdown table, a list of figures or ASCII art — show it with view_show instead, and keep the surrounding text short. Do this on your own: the person does not know the tool exists and will not ask for it by name. Pages are self-contained HTML with no network access, styled with the host's theme variables (see the tool's description). For anything beyond a simple page, check it first with view_check, which shows you how it renders.`;
+blocks (preferred for charts, numbers, tables, lists and comparisons): the content as data; Uxnan draws it in its own design, the same on every device and theme, so you only choose what to show. A list in reading order, the answer first (field? is optional):
+- text {text}: short prose; **bold** and \`code\` only — no Markdown tables or # headings (use table, and a block's title).
+- stats {items:[{label, value, detail?, trend?: up|down|flat, tone?}]}: 1-6 headline numbers.
+- bar-chart {title?, unit?, items:[{label, value, baseline?, highlight?}], sort?: none|desc|asc, baselineLabel?, valueLabel?, better?: higher|lower}: horizontal bars to compare or rank; highlight the one that matters. For before/after give the old value as baseline, name both with baselineLabel/valueLabel and set better.
+- line-chart {title?, unit?, labels:[x labels], series:[{name, values:[number or null, one per label]}]}: a trend over time, 1-6 series.
+- breakdown {title?, unit?, items:[{label, value}]}: 2-6 parts of a whole, instead of a pie.
+- table {title?, columns:[{label, format?: text|number|percent}], rows:[[one cell per column]], highlightRow?}: exact values.
+- list {title?, style?: bullets|numbered|steps|checklist, items:[{title, detail?, status?: done|current|pending|failed}]}: steps, a plan, a schedule.
+- callout {tone?: info|success|warning|danger, title?, text}: one important note.
+- compare {options:[{title, subtitle?, highlight?, points:[{label, value}]}]}: 2-4 options side by side with the same point labels; highlight the recommended one.
+- choices {prompt?, options:[{label, message?}]}: 1-6 follow-ups; a tap puts message (or label) in the person's composer.
+tone is neutral, accent, success, warning or danger. Put units in unit, not in every value; keep labels short.
+
+html or path: only for what blocks cannot draw — a diagram, a mockup, a custom interactive view. One self-contained HTML document (path: an HTML file in the working folder, better for long pages you will revise). The page has no network: no CDNs, fetch, remote fonts or images; inline everything (data: URIs are fine). Bundled libraries load with no network: ${describeViewLibraries()} — prefer inline SVG and HTML, which follow the theme by themselves; a canvas library only for thousands of points.
+Layout: the page sits in a card under its title, as wide as the chat column (about 700px on a desktop, 340px on a phone), and already has the app's font at 14px, its background, 16px padding, and styled h1-h4, p, table, code, button and input. So do not repeat the title as a heading or banner, do not wrap the page in another card, border or background, use fluid widths and fixed pixel heights for charts, never 100vh, and make it work at 340px.
+Colors: always var(--…), so it follows light and dark mode and matches the app; never invent hex colors. --color-background-primary, --color-background-secondary, --color-text-primary, --color-text-secondary, --color-border-primary, --color-ring-primary; status --color-background-info|success|warning|danger (soft fills) with --color-text-info|success|warning|danger (text and icons); data --color-chart-1 to --color-chart-6 (series in that order; 1 is the accent), --color-chart-muted, --color-chart-grid; --font-sans, --font-mono, --border-radius-sm|md|lg.
+Charts: one accent (--color-chart-1) on what matters and --color-chart-muted for the rest; text and numbers in the text colors, never in a series color; 1px gridlines in --color-chart-grid; a legend for 2+ series; text at least 11px; no pie or 3D charts. A canvas chart reads its colors with getComputedStyle and redraws on the window event "uxnan-theme", sent when the theme changes.
+Design, like the app around it: neutral surfaces separated by 1px hairlines (--color-border-primary), color only on data marks and small status icons; no colored stripe along one edge of a box, no tinted or gradient panels, no shadows, no emoji as icons, no uppercase headings.
+Helpers: class num right-aligns tabular numbers; muted is secondary text; tag with data-tone="info|success|warning|danger" is a status pill.
+Set height (html or path only) to the expected height in CSS pixels; blocks size themselves. The person can point at elements and send you notes about them; a button can propose a message with window.uxnan.sendMessage(text), which only fills their composer.`;
+
+export const VIEW_CHECK_DESCRIPTION = `See a page before you show it: the same blocks, html or path you would give view_show (no title). Returns what would go wrong — what its no-network policy blocks, fixed colors that ignore the theme, heights that keep growing — and, when the person's desktop is connected, a screenshot of how it renders, its console errors and its height. Use it for any html page beyond a simple one, at width 360 too (a phone), fix what it reports, then call view_show. Nothing is shown to the person.`;
+
+export const VIEW_SERVER_INSTRUCTIONS = `You are talking to a person through Uxnan, which shows your replies in a chat on their desktop and their phone. Uxnan can show interactive pages inside that chat with the view_show tool. Whenever your answer compares options, plans, prices or products, or contains numbers to compare, a trend, a breakdown, a ranking, a schedule, a diagram or a mockup — anything you would otherwise write as a Markdown table, a list of figures or ASCII art — show it with view_show instead, and keep the surrounding text short. Do this on your own: the person does not know the tool exists and will not ask for it by name. Send charts, figures, tables, lists and comparisons as blocks, which Uxnan draws in its own design; write HTML only for diagrams, mockups and custom views, styled with the host's theme variables (see the tool's description), and check those first with view_check, which shows you how they render.`;
+
+/** `blocks` as both tools declare it. Each item's fields are in the tool's
+ *  description and checked by `parseViewBlocks` on the call: a full schema
+ *  per block type needs `oneOf`, which several agent CLIs drop or reject. */
+const BLOCKS_SCHEMA = {
+  type: 'array',
+  minItems: 1,
+  maxItems: VIEW_MAX_BLOCKS,
+  description: 'The content as blocks Uxnan draws (see the tool description), in reading order.',
+  items: {
+    type: 'object',
+    properties: { type: { type: 'string', enum: [...VIEW_BLOCK_TYPES] } },
+    required: ['type'],
+  },
+} as const;
 
 export interface ViewMcpHandle {
   url: string;
@@ -124,7 +164,12 @@ async function handle(
                     type: 'string',
                     description: 'Short title shown above the inline page.',
                   },
-                  html: { type: 'string', description: 'Self-contained HTML document.' },
+                  blocks: BLOCKS_SCHEMA,
+                  html: {
+                    type: 'string',
+                    description:
+                      'Only for what blocks cannot draw: one self-contained HTML document.',
+                  },
                   path: {
                     type: 'string',
                     description: 'HTML file path relative to the conversation working folder.',
@@ -133,10 +178,10 @@ async function handle(
                     type: 'integer',
                     minimum: VIEW_MIN_HEIGHT,
                     maximum: VIEW_MAX_HEIGHT,
-                    description: 'Expected inline height in CSS pixels.',
+                    description: 'html or path only: expected inline height in CSS pixels.',
                   },
                 },
-                // Exactly one of html/path is checked when the tool is called:
+                // Exactly one of blocks/html/path is checked when the tool is called:
                 // `oneOf`/`not` are keywords several agent CLIs drop or reject
                 // when they translate an MCP schema for their model.
                 required: ['title'],
@@ -148,6 +193,7 @@ async function handle(
               inputSchema: {
                 type: 'object',
                 properties: {
+                  blocks: BLOCKS_SCHEMA,
                   html: {
                     type: 'string',
                     description: 'The self-contained HTML document to check.',
@@ -205,13 +251,15 @@ async function callTool(
   renderer?: ViewRenderer,
 ): Promise<unknown> {
   if (!params || typeof params !== 'object')
-    throw new Error('Invalid tool parameters. Provide title and exactly one of html or path.');
+    throw new Error(
+      'Invalid tool parameters. Provide title and exactly one of blocks, html or path.',
+    );
   const p = params as Record<string, unknown>;
   if (p.name === VIEW_CHECK_TOOL_NAME) return checkView(p.arguments, req, store, renderer);
   if (p.name !== VIEW_TOOL_NAME) throw new Error(`Unknown tool: ${String(p.name)}`);
   const a = p.arguments;
   if (!a || typeof a !== 'object')
-    throw new Error('Provide title and exactly one of html or path.');
+    throw new Error('Provide title and exactly one of blocks, html or path.');
   const arg = a as Record<string, unknown>;
   if (
     typeof arg.title !== 'string' ||
@@ -227,6 +275,7 @@ async function callTool(
     title: arg.title,
     ...(arg.html !== undefined ? { html: arg.html } : {}),
     ...(arg.path !== undefined ? { path: arg.path } : {}),
+    ...(arg.blocks !== undefined ? { blocks: arg.blocks } : {}),
     ...(arg.height !== undefined ? { height: arg.height as number } : {}),
     ...(cwd ? { cwd } : {}),
   });
@@ -234,7 +283,7 @@ async function callTool(
     content: [
       {
         type: 'text',
-        text: `Shown to the person inline in the chat as "${meta.title}" — on the desktop and on the phone. uxnan-view:${viewId}`,
+        text: `Shown to the person inline in the chat as "${meta.title}" — on the desktop and on the phone. They see it now: reply with only what it does not already say, in a sentence or two; do not repeat its figures or say where it is. uxnan-view:${viewId}`,
       },
     ],
   };
@@ -271,6 +320,7 @@ async function checkView(
   const prepared = await store.prepare({
     ...(arg.html !== undefined ? { html: arg.html as string } : {}),
     ...(arg.path !== undefined ? { path: arg.path as string } : {}),
+    ...(arg.blocks !== undefined ? { blocks: arg.blocks } : {}),
     ...(cwd ? { cwd } : {}),
   });
   const width = Math.min(1600, Math.max(240, (arg.width as number | undefined) ?? 720));

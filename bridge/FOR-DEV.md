@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1152, shared 65, relay
+standalone). It builds clean and the suite is green (bridge 1193, shared 92, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -33,6 +33,17 @@ push validation (FOR-HUMAN).
   pi and Grok (`docs/agents.md` → *MCP servers for every run*); that run also
   fixed Grok's MCP results arriving empty (they come in ACP `rawOutput`).
   Antigravity and Zero: see *Pending*.
+  **Declarative blocks** (`src/views/blocks/`, `parseViewBlocks` in `shared`):
+  `view_show` / `view_check` take `blocks` — ten typed block types drawn by the
+  bridge into one page in its own design (hover readouts, choices that fill the
+  composer, numbers in the host's locale), validated with errors that name the
+  path and rule. **Page theme**: `src/views/view-base-css.ts` gives every page a
+  light and a dark value for each variable and alone owns the status colors and
+  the chart palette (`VIEW_PAGE_VARIABLES`); the bootstrap announces the theme
+  with the `uxnan-theme` event. `view_check` reports fixed colors and `vh`
+  heights. Unit-tested (`test/views/view-blocks.test.ts`, `view-system.test.ts`,
+  `view-check.test.ts`) and measured live with Claude Code, Codex, OpenCode, pi
+  and Grok (`docs/agents.md` → *Agent views*).
 
 - **The bridge updates itself** (architecture/02a §5.8.18, `self-update.ts`):
   it checks the registry hourly while it runs, tells every client
@@ -371,6 +382,10 @@ push validation (FOR-HUMAN).
       allowance for one MCP server. The same block keeps **agent views** off
       Zero (it cannot reach the bridge's `uxnan` server either). Marker:
       `src/adapters/zero-adapter.ts`.
+- [ ] **Blocks, seen in the real apps** — measured live through a scratch
+      bridge and drawn in a desktop-host emulation (`docs/agents.md` → *Agent
+      views*), but not yet looked at in the installed desktop app or on a
+      phone. Unblocked by the maintainer's review on a device.
 - [ ] **More bundled view libraries** — `src/views/view-libraries.ts` ships
       Chart.js only. A diagram library is the obvious next one, but Mermaid
       (122 MB unpacked) is too large to ride in the bridge package and in every
