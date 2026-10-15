@@ -4,6 +4,24 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`QuestionItem.custom`.** The agent takes an answer the person types
+  instead of (or, on a `multiple` question, besides) the options. The typed
+  text comes back in `QuestionResponse.answers` like a label; an entry that
+  matches no label is that text. A `custom` question may carry no options at
+  all. Claude Code's `AskUserQuestion`, Codex's `requestUserInput` (`isOther`)
+  and OpenCode's forms (`custom`) all ask for it.
+
+### Changed
+
+- **`AgentLocation.npmEntry` → `npmEntries`, newest first.** A CLI that renamed
+  its npm package or moved its entry keeps resolving: Zero is published as
+  `@twigpine/zero` since 0.10.0 (`@gitlawb/zero` before), pi's entry moved to
+  `dist/bundle/cli.js`. Each entry is tried under every npm root before the
+  next entry, so the newest wins wherever it is installed. pi's managed
+  installer (`~/.pi/agent/bin/pi`) is now a native candidate, checked before
+  the npm package it leaves behind empty.
 
 ## [0.0.33-alpha.20261008] - 20261008
 ### Added

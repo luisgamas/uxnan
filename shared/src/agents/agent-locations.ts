@@ -22,8 +22,13 @@ export interface AgentLocation {
   command: string;
   /** Native executables, checked first, by platform family. */
   native?: { posix: string[]; win32: string[] };
-  /** The npm package's JS entry, relative to an npm root (run as `node <entry>`). */
-  npmEntry?: string;
+  /**
+   * The npm package's JS entries, relative to an npm root (run as
+   * `node <entry>`), **newest first**: a CLI that renamed its package or moved
+   * its entry keeps resolving, and the earlier entry wins wherever the roots
+   * carry it.
+   */
+  npmEntries?: string[];
 }
 
 export interface AgentLocationTable {
@@ -140,14 +145,17 @@ export function locateAgent(
     checked.push(path);
     if (isFile(path)) return { binaryPath: path, prependArgs: [], available: true, checked };
   }
-  if (location.npmEntry) {
+  // Each entry (newest first) under every npm root: an entry that was renamed or
+  // moved keeps resolving from the older one, and the newest entry wins wherever
+  // the roots carry it.
+  for (const entry of location.npmEntries ?? []) {
     for (const raw of where.npmRoots ?? agentLocationTable().npmRoots[family]) {
       const root = expandLocation(raw, where);
       if (!root) continue;
-      const entry = join(root, location.npmEntry);
-      checked.push(entry);
-      if (isFile(entry)) {
-        return { binaryPath: where.nodePath, prependArgs: [entry], available: true, checked };
+      const script = join(root, entry);
+      checked.push(script);
+      if (isFile(script)) {
+        return { binaryPath: where.nodePath, prependArgs: [script], available: true, checked };
       }
     }
   }

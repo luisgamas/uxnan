@@ -9,8 +9,8 @@
  * sees every turn any client starts and is caught up after a reconnect the same
  * way a phone is.
  *
- * The trust model is the one `POST /agent-hook/approval` already uses: a local
- * route guarded by a token that only processes of the same user can read. The
+ * The trust model: a local route guarded by a token that only processes of the
+ * same user can read. The
  * E2EE protocol is untouched — this is not a cryptographic variant, it is a
  * loopback route.
  *
