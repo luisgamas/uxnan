@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.52-alpha.20261015] - 20261015
 ### Added
 
 - **Questions from every agent whose CLI can ask.** Claude Code's
