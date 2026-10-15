@@ -7,10 +7,8 @@ export const VIEW_MAX_HEIGHT = 1600;
 export const VIEW_DEFAULT_HEIGHT = 320;
 export const VIEW_THEME_VARIABLES = [
   '--color-background-primary', '--color-background-secondary', '--color-text-primary',
-  '--color-text-secondary', '--color-border-primary', '--color-ring-primary',
-  '--color-background-info', '--color-background-danger', '--color-background-success',
-  '--color-background-warning', '--font-sans', '--font-mono', '--border-radius-sm',
-  '--border-radius-md', '--border-radius-lg',
+  '--color-text-secondary', '--color-border-primary', '--color-ring-primary', '--font-sans',
+  '--font-mono', '--border-radius-sm', '--border-radius-md', '--border-radius-lg',
 ] as const;
 export const VIEW_METHODS = {
   initialize: 'ui/initialize', initialized: 'ui/notifications/initialized',

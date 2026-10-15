@@ -322,7 +322,7 @@ class _ViewBlockState extends ConsumerState<ViewBlock> {
     BuildContext context, {
     required bool fullscreen,
   }) =>
-      _viewHostContext(context, fullscreen: fullscreen);
+      viewHostContext(context, fullscreen: fullscreen);
 
   Future<void> _sendHostMessage(Map<String, Object?>? message) async {
     if (message == null) return;
@@ -608,7 +608,7 @@ class _FullscreenViewState extends ConsumerState<_FullscreenView> {
   }
 
   Map<String, Object?> _fullscreenContext(BuildContext context) =>
-      _viewHostContext(context, fullscreen: true);
+      viewHostContext(context, fullscreen: true);
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -800,12 +800,22 @@ Future<void> _sendAnnotations(
   );
 }
 
-Map<String, Object?> _viewHostContext(
+/// The host context a view page applies. The page is drawn on the surface
+/// behind it: the inline card ([ViewBlock]) or the fullscreen screen's
+/// scaffold. The bridge owns the status colors and the chart palette, so none
+/// are sent. Top-level so a test can read it from a themed context.
+@visibleForTesting
+Map<String, Object?> viewHostContext(
   BuildContext context, {
   required bool fullscreen,
 }) {
   final colors = Theme.of(context).colorScheme;
   final dark = Theme.of(context).brightness == Brightness.dark;
+  // The inline card is `surfaceContainerLow`; the fullscreen screen's scaffold
+  // is the theme's `scaffoldBackgroundColor`, which the app sets to `surface`.
+  final background = fullscreen
+      ? Theme.of(context).scaffoldBackgroundColor
+      : colors.surfaceContainerLow;
   String hex(Color color) =>
       '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
   return {
@@ -815,18 +825,18 @@ Map<String, Object?> _viewHostContext(
     'locale': Localizations.localeOf(context).toLanguageTag(),
     'styles': {
       'variables': {
-        '--color-background-primary': hex(colors.surface),
-        '--color-background-secondary': hex(colors.surfaceContainer),
+        '--color-background-primary': hex(background),
+        '--color-background-secondary': hex(colors.surfaceContainerHigh),
         '--color-text-primary': hex(colors.onSurface),
         '--color-text-secondary': hex(colors.onSurfaceVariant),
         '--color-border-primary': hex(colors.outlineVariant),
         '--color-ring-primary': hex(colors.primary),
-        '--color-background-info': hex(colors.secondaryContainer),
-        '--color-background-danger': hex(colors.errorContainer),
-        '--color-background-success': hex(colors.tertiaryContainer),
-        '--color-background-warning': hex(colors.tertiaryContainer),
-        '--font-sans': UxnanTypography.fontFamily,
-        '--font-mono': UxnanTypography.monoFontFamily,
+        // The WebView cannot load the bundled Inter or JetBrains Mono, so the
+        // stacks end in the system faces the page can use.
+        '--font-sans': '${UxnanTypography.fontFamily}, -apple-system, '
+            'BlinkMacSystemFont, Roboto, "Segoe UI", system-ui, sans-serif',
+        '--font-mono': '${UxnanTypography.monoFontFamily}, ui-monospace, '
+            '"SF Mono", Menlo, Consolas, monospace',
         '--border-radius-sm': '8px',
         '--border-radius-md': '14px',
         '--border-radius-lg': '20px',

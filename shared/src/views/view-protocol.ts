@@ -87,7 +87,12 @@ export interface ViewHostContext {
 }
 
 /** The theme variables a host passes — the open standard's names, so a page
- *  styled with them follows the app's colors and fonts. */
+ *  styled with them follows the app's colors and fonts. Only what the host's
+ *  own theme owns: the surface the page sits on (the card that frames it),
+ *  its text, border, focus ring, fonts and corners. Every one of them, and
+ *  every {@link VIEW_PAGE_VARIABLES} entry, also has a light and a dark
+ *  default in the base stylesheet the bridge puts in each page, so a page
+ *  rendered with no host at all still looks right. */
 export const VIEW_THEME_VARIABLES = [
   '--color-background-primary',
   '--color-background-secondary',
@@ -95,10 +100,6 @@ export const VIEW_THEME_VARIABLES = [
   '--color-text-secondary',
   '--color-border-primary',
   '--color-ring-primary',
-  '--color-background-info',
-  '--color-background-danger',
-  '--color-background-success',
-  '--color-background-warning',
   '--font-sans',
   '--font-mono',
   '--border-radius-sm',
@@ -106,6 +107,38 @@ export const VIEW_THEME_VARIABLES = [
   '--border-radius-lg',
 ] as const;
 export type ViewThemeVariable = (typeof VIEW_THEME_VARIABLES)[number];
+
+/** The variables the bridge's base stylesheet alone defines, the same on every
+ *  client: status colors (a soft fill and a readable text color each) and the
+ *  data palette. Neither app has success/warning/info colors or a series
+ *  palette of its own, and a chart must read the same on the desktop and the
+ *  phone — so one owner, not one mapping per host. `--color-chart-1..6` are a
+ *  categorical palette checked for color-vision deficiency in fixed order
+ *  (1 is the accent); `--color-chart-muted` is for the marks that are not the
+ *  point; `--color-chart-grid` for gridlines and axes. */
+export const VIEW_PAGE_VARIABLES = [
+  '--color-background-info',
+  '--color-background-success',
+  '--color-background-warning',
+  '--color-background-danger',
+  '--color-text-info',
+  '--color-text-success',
+  '--color-text-warning',
+  '--color-text-danger',
+  '--color-chart-1',
+  '--color-chart-2',
+  '--color-chart-3',
+  '--color-chart-4',
+  '--color-chart-5',
+  '--color-chart-6',
+  '--color-chart-muted',
+  '--color-chart-grid',
+] as const;
+
+/** The event the bootstrap dispatches on `window` each time it applies a host
+ *  context, `detail: { theme, locale? }`: a page that paints colors itself (a
+ *  canvas chart) redraws on it, since CSS variables only restyle CSS and SVG. */
+export const VIEW_THEME_EVENT = 'uxnan-theme';
 
 /** The bounds of what one annotation may carry, so a page cannot flood the
  *  composer: the bootstrap cuts to them, and hosts check them again. */

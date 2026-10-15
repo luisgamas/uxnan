@@ -44,6 +44,23 @@ the view until the user adds them to the message; neither path sends a turn
 automatically. Existing composer text is rescued using the app's composer
 handoff state.
 
+## Theme and colors
+
+`viewHostContext` (`view_block.dart`) sends the variables the app owns: the
+background the page sits on — the inline card's `surfaceContainerLow`, or the
+full-screen scaffold's background — as `--color-background-primary`,
+`surfaceContainerHigh` as the secondary background, `onSurface` and
+`onSurfaceVariant` for text, `outlineVariant` for the border, `primary` for the
+focus ring, the corner radii, and the font stacks with system faces appended,
+because the WebView cannot load the bundled Inter or JetBrains Mono. Status
+colors and the chart palette are not sent: the bridge's base stylesheet defines
+them, the same on the desktop and the phone, so success and warning no longer
+share a color. A theme change arrives as `ui/notifications/host-context-changed`,
+and the page's `uxnan-theme` event tells a canvas chart to redraw.
+
+A view can also be typed blocks the bridge draws (charts, tables, lists,
+comparisons, choices). The phone shows them as any other view.
+
 ## Notes and markers
 
 Theme changes send `ui/notifications/host-context-changed`. Annotate toggles

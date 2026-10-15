@@ -56,6 +56,7 @@ export * from './models/view.js';
 
 // Agent views: the page <-> host protocol
 export * from './views/view-protocol.js';
+export * from './views/view-blocks.js';
 
 // Validators
 export * from './validators/validate.js';

@@ -21,6 +21,11 @@ composer handoff, annotation notes, external-link confirmation and full-screen
 re-hosting are implemented. Automated mobile tests cover decoding, protocol,
 LRU and loading/error/retry states; native WebView behavior still needs an
 on-device pass.
+The bridge's typed blocks (charts, tables, lists) arrive as ordinary views, and
+the page's colors are now split: the phone sends only its own theme variables,
+and the bridge's base stylesheet supplies the status colors and the chart
+palette. Whether they read correctly on a device is part of the same on-device
+pass.
 
 **Built (DONE):**
 

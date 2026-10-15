@@ -11,6 +11,8 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -291,5 +293,59 @@ void main() {
 
       expect(controller.offset, 0);
     });
+  });
+
+  testWidgets('the host context sends the page surfaces, not status colors',
+      (tester) async {
+    late Map<String, Object?> inline;
+    late Map<String, Object?> fullscreen;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildUxnanTheme(
+          brightness: Brightness.light,
+          themeSource: ThemeSource.brand,
+        ),
+        home: Builder(
+          builder: (context) {
+            inline = viewHostContext(context, fullscreen: false);
+            fullscreen = viewHostContext(context, fullscreen: true);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    final colors = Theme.of(tester.element(find.byType(SizedBox))).colorScheme;
+    String hex(Color color) =>
+        '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+    Map<String, Object?> variables(Map<String, Object?> context) =>
+        (context['styles']! as Map<String, Object?>)['variables']!
+            as Map<String, Object?>;
+
+    final inlineVariables = variables(inline);
+    expect(inlineVariables.keys, unorderedEquals(viewThemeVariables));
+    expect(
+      inlineVariables['--color-background-primary'],
+      hex(colors.surfaceContainerLow),
+    );
+    expect(
+      inlineVariables['--color-background-secondary'],
+      hex(colors.surfaceContainerHigh),
+    );
+    expect(
+      variables(fullscreen)['--color-background-primary'],
+      hex(colors.surface),
+    );
+    expect(
+      inlineVariables['--font-sans'],
+      startsWith(UxnanTypography.fontFamily),
+    );
+    expect(inlineVariables['--font-sans'], endsWith('sans-serif'));
+    expect(inlineVariables['--font-mono'], endsWith('monospace'));
+    for (final variable in inlineVariables.keys) {
+      expect(variable, isNot(startsWith('--color-background-info')));
+      expect(variable, isNot(startsWith('--color-background-success')));
+      expect(variable, isNot(startsWith('--color-background-warning')));
+      expect(variable, isNot(startsWith('--color-background-danger')));
+    }
   });
 }

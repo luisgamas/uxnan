@@ -1,11 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.7.1
+> **Version:** 1.7.2
 > **Fecha:** 2026-10-15
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.7.2):** an agent view can be **typed blocks** instead of
+> HTML: `view_show` and `view_check` take `blocks` (ten types: `text`, `stats`,
+> `bar-chart`, `line-chart`, `breakdown`, `table`, `list`, `callout`, `compare`,
+> `choices`), and the bridge draws them into one page in its own design, so
+> charts look alike on every agent and client and follow the theme. The theme is
+> split: a host sends only its surface, text, border, ring, fonts and corners;
+> the bridge's base stylesheet alone owns the status colors and the chart
+> palette, and the `uxnan-theme` window event tells a page when the theme
+> changes. No JSON-RPC method was added.
+>
 > **Executive summary (1.7.1):** the bridge survives the CLIs changing under it.
 > Every adapter's agent-wide folder is the user's home, never the first turn's
 > (a renamed project emptied the model picker); an agent whose CLI moves is
@@ -17,7 +27,7 @@
 > approvals ride its stream-json `can_use_tool` requests — the `PreToolUse` hook
 > and `POST /agent-hook/approval` are gone. Antigravity folds effort tiers into
 > one model with a knob and names conversations from its listing.
-
+>
 > **Executive summary (1.7.0):** agents can **show interactive views** in a
 > chat — a chart, table, diagram, mockup or small tool as one self-contained HTML
 > page — on the desktop **and** on the phone, with or without the desktop. The
@@ -3391,7 +3401,25 @@ tambien: funciona con solo el telefono.
   junto al del desktop (§5.8.15), por el mismo mecanismo de cada adapter.
   **Zero** no lo alcanza (su `acp` ignora `mcpServers` y su sandbox bloquea
   loopback): `FOR-DEV` en `bridge/FOR-DEV.md`.
-- **Herramienta `view_show { title, html? | path?, height? }`**: `path` se lee
+- **Blocks (2026-10).** `view_show` and `view_check` take `blocks` in place of
+  `html` or `path` (exactly one of the three): 1 to `VIEW_MAX_BLOCKS` (16)
+  typed blocks, at most `VIEW_MAX_BLOCKS_BYTES` (64 KiB) of JSON, drawn by the
+  bridge into one page (`bridge/src/views/blocks/`). `parseViewBlocks`
+  (`shared/src/views/view-blocks.ts`) validates them; an error names the path
+  and the rule and goes back to the agent as the tool error. The tool step keeps
+  `blockCount`, never the blocks. Clients need no change: the page is an
+  ordinary `view` block.
+- **Theme (2026-10).** A host sends `VIEW_THEME_VARIABLES` only (11 names: the
+  surface, text, border, ring, fonts and corners). `VIEW_PAGE_VARIABLES` (16
+  names: `--color-background-{info,success,warning,danger}`,
+  `--color-text-{info,success,warning,danger}`, `--color-chart-1` to `-6`,
+  `--color-chart-muted`, `--color-chart-grid`) are defined by the bridge alone,
+  in `bridge/src/views/view-base-css.ts`: a `<style id="uxnan-base">` placed after
+  the metas and before the bootstrap, with a light and a dark value for every
+  variable, all rules in `:where()`. The bootstrap sets `data-uxnan-theme` on
+  `:root` and dispatches `VIEW_THEME_EVENT` (`uxnan-theme`, `detail: { theme,
+  locale? }`) on each host context, so a canvas chart can redraw.
+- **Herramienta `view_show { title, blocks? | html? | path?, height? }`** (*blocks*, 2026-10: ver arriba): `path` se lee
   de la carpeta de la conversacion (`x-uxnan-cwd`) con el guardia de rutas del
   workspace. Tope `VIEW_MAX_HTML_BYTES` (512 KiB, cabe en un frame E2EE del
   relay). El bridge **prepara** la pagina — inserta primero en `<head>` una CSP
@@ -3403,7 +3431,8 @@ tambien: funciona con solo el telefono.
   (`<script src="uxnan:chart.js"></script>`) y el bridge pone su codigo en ese
   lugar al prepararla (hoy Chart.js, MIT). **`view_check`** (mismos
   `html`/`path`, nada se guarda ni se muestra) le dice al agente que bloqueara
-  la politica sin red y si sigue el tema y, con un desktop adjunto, como se ve:
+  la politica sin red, si sigue el tema (variables de tema, o colores fijos
+  escritos como literales) y si su altura puede crecer sin fin (`vh`), y, con un desktop adjunto, como se ve:
   el bridge le pasa la pagina preparada al `view/render` del desktop (por su
   servidor MCP) y devuelve la captura, los errores de consola y la altura. La respuesta al modelo
   lleva el marcador `uxnan-view:<viewId>`. La descripcion de la herramienta y

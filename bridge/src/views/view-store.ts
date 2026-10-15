@@ -7,10 +7,13 @@ import {
   VIEW_MAX_TITLE_LENGTH,
   clampViewHeight,
   isViewId,
+  parseViewBlocks,
   type ViewReadResult,
 } from '@uxnan/shared';
 import { resolveWithinRoot } from '../workspace/path-guard.js';
 import { inlineViewLibraries } from './view-libraries.js';
+import { VIEW_BASE_CSS } from './view-base-css.js';
+import { renderViewBlocks } from './blocks/render-blocks.js';
 
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'";
@@ -39,19 +42,26 @@ export class ViewStore {
 
   /**
    * The page as clients would get it, without storing it: the agent's HTML
-   * (inline or read from [input.path] in [input.cwd]) checked, its bundled
-   * libraries put in, and the CSP and bootstrap added. `view_show` stores it;
-   * `view_check` renders it.
+   * (inline or read from [input.path] in [input.cwd]) — or the page the
+   * bridge draws from [input.blocks] — checked, its bundled libraries put
+   * in, and the CSP, base stylesheet and bootstrap added. `view_show` stores
+   * it; `view_check` renders it. [height] is the drawn page's estimate.
    */
   async prepare(input: {
     html?: string;
     path?: string;
+    blocks?: unknown;
     cwd?: string;
-  }): Promise<{ source: string; html: string; bytes: number }> {
-    if ((typeof input.html === 'string') === (typeof input.path === 'string'))
-      throw new Error('Provide exactly one of html or path.');
+  }): Promise<{ source: string; html: string; bytes: number; height?: number }> {
+    const given = [input.html, input.path, input.blocks].filter((v) => v !== undefined).length;
+    if (given !== 1) throw new Error('Provide exactly one of blocks, html or path.');
     let source: string;
-    if (input.html !== undefined) source = input.html;
+    let height: number | undefined;
+    if (input.blocks !== undefined) {
+      const parsed = parseViewBlocks(blocksValue(input.blocks));
+      if (!parsed.ok) throw new Error(`Invalid blocks: ${parsed.error}`);
+      ({ html: source, height } = renderViewBlocks(parsed.blocks));
+    } else if (input.html !== undefined) source = input.html;
     else {
       if (!input.cwd)
         throw new Error('A working folder is required to use path; provide html instead.');
@@ -78,19 +88,22 @@ export class ViewStore {
     if (bytes > VIEW_MAX_HTML_BYTES)
       throw new Error(`View HTML is ${bytes} bytes; the limit is ${VIEW_MAX_HTML_BYTES} bytes.`);
     const html = prepareViewHtml(inlineViewLibraries(source).html, this.bootstrap);
-    return { source, html, bytes };
+    return { source, html, bytes, ...(height !== undefined ? { height } : {}) };
   }
 
   async create(input: {
     title: string;
     html?: string;
     path?: string;
+    blocks?: unknown;
     height?: number;
     cwd?: string;
   }): Promise<{ viewId: string; meta: ViewMeta }> {
-    const { html, bytes } = await this.prepare(input);
+    const prepared = await this.prepare(input);
+    const { html, bytes } = prepared;
     const title = Array.from(input.title).slice(0, VIEW_MAX_TITLE_LENGTH).join('');
-    const height = input.height === undefined ? undefined : clampViewHeight(input.height);
+    const wanted = input.height ?? prepared.height;
+    const height = wanted === undefined ? undefined : clampViewHeight(wanted);
     await mkdir(this.directory, { recursive: true });
     const viewId = randomBytes(16).toString('hex');
     const meta: ViewMeta = {
@@ -177,9 +190,21 @@ export class ViewStore {
   }
 }
 
+/** Blocks as the agent sent them: an array, or — from a CLI that passes
+ *  nested arguments as text — the same array as JSON. */
+function blocksValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new Error('Invalid blocks: send an array of block objects, not text.');
+  }
+}
+
 /**
  * The page a client renders: the agent's HTML with the no-network CSP, the
- * charset, the viewport and the view bootstrap put FIRST — right after a
+ * charset, the viewport, the base stylesheet (`view-base-css.ts`) and the
+ * view bootstrap put FIRST — right after a
  * doctype, before anything the agent wrote. A `<meta>` policy only governs
  * what follows it, so placing it inside the agent's `<head>` would let a
  * script written before that `<head>` run unrestricted (the phone has no
@@ -192,5 +217,5 @@ export function prepareViewHtml(source: string, bootstrap: string): string {
   const doctype = /^\s*<!doctype[^>]*>/i.exec(body);
   const rest = doctype ? body.slice(doctype[0].length) : body;
   const security = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`;
-  return `<!doctype html>${security}<script>${bootstrap}</script>${rest}`;
+  return `<!doctype html>${security}<style id="uxnan-base">${VIEW_BASE_CSS}</style><script>${bootstrap}</script>${rest}`;
 }

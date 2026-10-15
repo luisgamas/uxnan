@@ -1,6 +1,16 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.3.1 | **Fecha:** 2026-10-15 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.3.2 | **Fecha:** 2026-10-15 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.3.2):** agent views can carry **typed blocks**. The
+> bridge's `view_show` and `view_check` accept `blocks` (ten types, validated by
+> `parseViewBlocks` in `shared`) in place of `html` or `path`; the bridge draws
+> them into a page, so the content block and `view/read` are unchanged. The
+> theme contract is split: `VIEW_THEME_VARIABLES` is what a host sends (11
+> names), `VIEW_PAGE_VARIABLES` (16 names: status colors and the chart palette)
+> is defined by the bridge's base stylesheet alone, and `VIEW_THEME_EVENT`
+> (`uxnan-theme`) tells the page when the theme changes. No JSON-RPC method was
+> added: still **103 methods**, 25 notifications.
 >
 > **Executive summary (1.3.1):** `QuestionItem.custom` — the agent also takes an
 > answer the person types (returned in `answers` like a label; such a question
@@ -998,6 +1008,13 @@ interface ApprovalRequestBlock {
   finished tool step in place (same `blockId`); the page itself is fetched with
   `view/read` and rendered sandboxed, and talks to its host through
   `shared/src/views/view-protocol.ts` (`ViewContentBlock`, 02a §5.8.20)
+
+**Agent view tool and theme contract** (not JSON-RPC: the bridge's own MCP tool
+and the page ↔ host protocol, 02a §5.8.20):
+
+- `view_show { title, blocks? | html? | path?, height? }` and `view_check { blocks? | html? | path? }`: exactly one of `blocks`, `html`, `path`. `blocks` is an array of 1 to `VIEW_MAX_BLOCKS` (16) typed blocks, at most `VIEW_MAX_BLOCKS_BYTES` (64 KiB) of JSON, validated by `parseViewBlocks` (`shared/src/views/view-blocks.ts`); an invalid one is a tool error that names the path and the rule. `height` applies to `html` and `path` only. The tool step in a thread stores `blockCount` in place of `blocks`, as it stores `htmlBytes` for `html`.
+- Theme variables: a host sends `VIEW_THEME_VARIABLES` (11 names: `--color-background-primary|secondary`, `--color-text-primary|secondary`, `--color-border-primary`, `--color-ring-primary`, `--font-sans`, `--font-mono`, `--border-radius-sm|md|lg`). `VIEW_PAGE_VARIABLES` (16 names: `--color-background-{info,success,warning,danger}`, `--color-text-{info,success,warning,danger}`, `--color-chart-1` to `--color-chart-6`, `--color-chart-muted`, `--color-chart-grid`) are never sent: the bridge's base stylesheet (`bridge/src/views/view-base-css.ts`, `<style id="uxnan-base">`) defines them, light and dark, on every client.
+- `VIEW_THEME_EVENT` (`uxnan-theme`): a window event the page's bootstrap dispatches each time it applies a host context, with `detail: { theme, locale? }`.
 
 ### 1.6 Protocolo de control del relay
 

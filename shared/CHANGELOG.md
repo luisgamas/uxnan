@@ -13,6 +13,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   all. Claude Code's `AskUserQuestion`, Codex's `requestUserInput` (`isOther`)
   and OpenCode's forms (`custom`) all ask for it.
 
+- **Declarative view blocks.** `ViewBlock` and `VIEW_BLOCK_TYPES` (`text`,
+  `stats`, `bar-chart`, `line-chart`, `breakdown`, `table`, `list`, `callout`,
+  `compare`, `choices`): the content an agent sends instead of raw HTML, drawn
+  by the bridge. `parseViewBlocks` validates the `blocks` argument of `view_show`
+  and `view_check` — 1 to `VIEW_MAX_BLOCKS` (16) blocks, at most
+  `VIEW_MAX_BLOCKS_BYTES` (64 KiB) of JSON — and its errors name the path and
+  the rule that failed. Unknown fields are dropped, never rejected
+  (`src/views/view-blocks.ts`).
+- **`VIEW_PAGE_VARIABLES`**: the variables only the bridge's base stylesheet
+  defines, the same on every client — status colors (`--color-background-info`,
+  `-success`, `-warning`, `-danger` and `--color-text-info`, `-success`,
+  `-warning`, `-danger`), the categorical chart palette `--color-chart-1` to
+  `--color-chart-6`, `--color-chart-muted` and `--color-chart-grid` (16 names).
+- **`VIEW_THEME_EVENT`** (`'uxnan-theme'`): the window event the view bootstrap
+  dispatches each time it applies a host context, `detail: { theme, locale? }`,
+  so a canvas chart can redraw.
+
 ### Changed
 
 - **`AgentLocation.npmEntry` → `npmEntries`, newest first.** A CLI that renamed
@@ -22,6 +39,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   next entry, so the newest wins wherever it is installed. pi's managed
   installer (`~/.pi/agent/bin/pi`) is now a native candidate, checked before
   the npm package it leaves behind empty.
+
+- **`VIEW_THEME_VARIABLES` is only what a host sends** — the surface, text,
+  border, focus ring, fonts and corners (11 names). The four status variables
+  moved to `VIEW_PAGE_VARIABLES`: neither app owns a success, warning or info
+  color, so a host no longer maps one to them.
+
 
 ## [0.0.33-alpha.20261008] - 20261008
 ### Added

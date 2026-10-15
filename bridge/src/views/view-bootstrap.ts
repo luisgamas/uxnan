@@ -5,6 +5,8 @@
  * - Transport: the phone's `UxnanView` channel when present, else the parent
  *   frame; the host talks back through `window.__uxnanHost` (phone) or a
  *   `message` event whose source must be the parent (desktop).
+ * - Theme: the host context's variables go on `:root`, its theme as
+ *   `data-uxnan-theme`, then a `uxnan-theme` event tells the page.
  * - Size: the document's own box, not `scrollHeight` — that never drops below
  *   the frame it is shown in, so a page could grow but never shrink.
  * - Links never navigate the page: they become `ui/open-link` requests.
@@ -78,16 +80,26 @@ addEventListener('error', (e) => forward('error', [e.message || 'Uncaught error'
 addEventListener('unhandledrejection', (e) => forward('error', ['Unhandled rejection', e.reason]));
 window.addEventListener('message', (e) => { if (e.source === window.parent) receive(e.data); });
 
+// The theme goes on :root as data-uxnan-theme (the base stylesheet's dark
+// values key on it) and is announced with a 'uxnan-theme' event, so a page
+// that paints its own colors (a canvas chart) can redraw.
+let locale;
 function applyContext(c) {
   if (!c || typeof c !== 'object') return;
   const root = document.documentElement;
-  if (c.theme === 'dark' || c.theme === 'light') root.style.colorScheme = c.theme;
+  if (c.theme === 'dark' || c.theme === 'light') {
+    root.style.colorScheme = c.theme;
+    root.setAttribute('data-uxnan-theme', c.theme);
+  }
+  if (typeof c.locale === 'string' && /^[A-Za-z0-9-]{2,35}$/.test(c.locale)) locale = c.locale;
   const vars = c.styles && c.styles.variables;
   if (vars && typeof vars === 'object') {
     for (const [k, v] of Object.entries(vars)) {
       if (/^--[a-z0-9-]+$/.test(k) && typeof v === 'string' && v.length < 256) root.style.setProperty(k, v);
     }
   }
+  const theme = root.getAttribute('data-uxnan-theme') === 'dark' ? 'dark' : 'light';
+  try { dispatchEvent(new CustomEvent('uxnan-theme', { detail: locale ? { theme, locale } : { theme } })); } catch {}
 }
 
 window.uxnan = {

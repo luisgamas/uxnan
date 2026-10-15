@@ -24,9 +24,12 @@ const NETWORK_CALL =
 
 /**
  * What can be told about a page without drawing it: what its no-network policy
- * will block (remote scripts, styles, images, fonts; `fetch` and friends) and
- * whether it follows the host's theme. Links (`<a href>`) are fine — they open
- * outside the page, after asking.
+ * will block (remote scripts, styles, images, fonts; `fetch` and friends),
+ * whether it follows the host's theme (any theme variable at all; colors
+ * written as literals), whether it draws a colored stripe on one edge of a box
+ * (the app separates with hairlines) and whether its height can keep growing
+ * (`vh`).
+ * Links (`<a href>`) are fine — they open outside the page, after asking.
  */
 export function viewFindings(source: string): string[] {
   const findings: string[] = [];
@@ -54,10 +57,56 @@ export function viewFindings(source: string): string[] {
   }
   if (!/var\(\s*--(color|font|border-radius)-/.test(source)) {
     findings.push(
-      'Theme: the page uses none of the host theme variables, so it will not follow light/dark mode — style it with var(--color-text-primary, …) and the others.',
+      'Theme: the page uses none of the host theme variables, so it will not follow light/dark mode — style it with var(--color-text-primary), var(--color-chart-1) and the others.',
+    );
+  }
+  const fixed = fixedColors(source);
+  if (fixed.length > 0) {
+    findings.push(
+      `Colors: ${fixed.length} fixed color${fixed.length === 1 ? '' : 's'} (${fixed.slice(0, 4).join(', ')}${fixed.length > 4 ? ', …' : ''}) will not follow the theme or match the app — use the variables: --color-chart-1 to 6 for series, --color-chart-muted, --color-text-*, --color-background-*.`,
+    );
+  }
+  if (EDGE_STRIPE.test(source)) {
+    findings.push(
+      'Design: a thick border on one edge of a box (a colored stripe) does not match the app — separate with 1px hairlines in --color-border-primary and put color on the data or a small icon.',
+    );
+  }
+  if (VIEWPORT_HEIGHT.test(source)) {
+    findings.push(
+      'Height: the frame grows to fit the page, so a height in vh (or height:100% on html/body) makes it grow again and again — give charts fixed pixel heights and let content set the rest.',
     );
   }
   return findings;
+}
+
+const EDGE_STRIPE =
+  /\bborder-(left|right|top|bottom|inline-start|inline-end|block-start)(-width)?\s*:\s*([2-9]|\d{2,})(\.\d+)?px/i;
+
+const VIEWPORT_HEIGHT =
+  /\b(min-|max-)?height\s*:\s*\d+(\.\d+)?(vh|dvh|svh|lvh)\b|(html|body)\s*(,[^{]*)?\{[^}]*\bheight\s*:\s*100%/i;
+
+/**
+ * The colors a page writes as literals instead of theme variables: hex,
+ * rgb()/hsl() and the like, in its styles, scripts and SVG. A literal inside
+ * a `var(--x, …)` fallback is fine — the variable is what the page uses — and
+ * so is anything inside a `data:` URI. Distinct values, in order.
+ */
+export function fixedColors(source: string): string[] {
+  const stripped = source
+    .replace(/<script\b[^>]*\bsrc\s*=\s*["']uxnan:[^"']*["'][^>]*>\s*<\/script\s*>/gi, '')
+    .replace(/data:[^"')\s]+/gi, '')
+    .replace(/var\(\s*--[\w-]+\s*,[^()]*(\([^()]*\)[^()]*)*\)/g, '');
+  const found = new Set<string>();
+  for (const match of stripped.matchAll(
+    /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|\b(?:rgba?|hsla?|oklch|oklab)\([^)]*\)/gi,
+  )) {
+    // A color is a value: right after `:`, `=`, `(`, `,` or a quote. That
+    // leaves out prose ("PR #357") and fragment links (`href="#a1b2c3"`).
+    const before = stripped.slice(Math.max(0, (match.index ?? 0) - 8), match.index);
+    if (!/[:=(,'"]\s*$/.test(before) || /href\s*=\s*["']$/i.test(before)) continue;
+    found.add(match[0].toLowerCase());
+  }
+  return [...found];
 }
 
 /**

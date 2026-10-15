@@ -22,6 +22,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   multiple one, and a question with no options is answered by typing alone.
   Enter moves on, and sends on the last question.
 
+- **Charts, tables and lists in chat.** An agent can now send a view as typed
+  blocks — stats, bar and line charts, tables, lists, comparisons, choices —
+  that the bridge draws in one design. The desktop shows them as any other view
+  and needed no change for it.
+
 ### Fixed
 
 - **Antigravity names conversations again.** The title run asked for a pinned
@@ -37,14 +42,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **pi and Zero are found where they now install.** pi's managed installer
   (`~/.pi/agent/bin/pi`) and Zero's renamed npm package (`@twigpine/zero`) are
   in the shared install table (`shared/agent-locations.json`).
-### Fixed
-
 - **A bridge update reaches the model pickers without restarting the app.**
   The desktop kept each agent's model list for its whole session, so after the
   bridge updated itself (or was updated) the chat still offered the old list —
   Claude Code's duplicated models among them. Every reconnect now asks again
   for the lists already shown, replacing each when the answer arrives and
   keeping it if the bridge cannot answer; slash commands are asked again too.
+- **Agent views match the app's colors.** A view sits on the chat card (or the
+  dialog when fullscreen), its text, border, focus ring, fonts and corners follow
+  the theme, and its status colors and chart palette come from the bridge. The
+  view had been reading chart variables the theme does not define, and its fonts
+  and corners were never sent. The font stacks end in system faces the sandboxed
+  page can load.
 
 ## [0.0.80] - 20261009
 ### Fixed
