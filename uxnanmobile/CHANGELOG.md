@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.44-alpha.20261015+20261015] - 20261015
 ### Changed
 
 - **A finished answer reads like the desktop's.** Once a turn settles, the work
