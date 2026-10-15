@@ -21,6 +21,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   options: what you type replaces a single choice or joins the picks of a
   multiple one, and a question with no options is answered by typing alone.
 
+- **Charts, tables and lists in chat.** An agent can now send a view as typed
+  blocks — stats, bar and line charts, tables, lists, comparisons, choices —
+  that the bridge draws in one design. The phone shows them as any other view,
+  and they follow the app's light and dark theme.
+
+### Fixed
+
+- **Agent views match the app's colors.** A view's background now sits on the
+  card or screen it is shown in, and its status colors (info, success, warning,
+  danger) come from the bridge, so success and warning no longer look the same.
+  Fonts fall back to system faces the view can load.
+
+
 ## [0.0.43-alpha.20261009+20261010] - 20261009
 ### Fixed
 
