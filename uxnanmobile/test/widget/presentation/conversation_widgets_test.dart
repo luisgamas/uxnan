@@ -88,7 +88,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pump();
 
     expect(find.byType(MessageContentView), findsNWidgets(2));
@@ -465,7 +466,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pump();
 
     expect(find.text('Needs approval'), findsOneWidget);
@@ -521,7 +523,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pump();
 
     // One plan card: the earlier resend is a past state of the same list.
@@ -567,7 +570,8 @@ void main() {
         createdAt: DateTime(2026),
       );
 
-      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      await tester
+          .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
       // Two pumps: one to build, one to let the provider's async hydrate()
       // resolve and the widget rebuild with the persisted resolved state.
       await tester.pump();
@@ -619,7 +623,8 @@ void main() {
         createdAt: DateTime(2026),
       );
 
-      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      await tester
+          .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
       await tester.pump();
       await tester.pump();
       // Hydrate completes → resolved view.
@@ -658,7 +663,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pump();
 
     expect(find.text('Needs your answer'), findsOneWidget);
@@ -680,6 +686,56 @@ void main() {
     final submitAfter = tester
         .widget<FilledButton>(find.widgetWithText(FilledButton, 'Submit'));
     expect(submitAfter.onPressed, isNotNull, reason: 'enabled once chosen');
+  });
+
+  testWidgets("a question that takes the user's own answer has a field",
+      (tester) async {
+    final message = Message(
+      id: 'm-question-own',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        QuestionContent(
+          QuestionRequest(
+            questionId: 'q-own',
+            questions: [
+              QuestionItem(
+                question: 'Which licence?',
+                options: [QuestionOption(label: 'MIT')],
+                custom: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
+    await tester.pump();
+
+    expect(find.text('Or type your own answer'), findsOneWidget);
+    FilledButton submit() => tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Submit'));
+    expect(submit().onPressed, isNull);
+
+    // Typing answers the question on its own.
+    await tester.enterText(find.byType(TextField), 'BSD-3');
+    await tester.pump();
+    expect(submit().onPressed, isNotNull);
+
+    // Picking an option replaces what was typed.
+    await tester.tap(find.text('MIT'));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    expect(submit().onPressed, isNotNull);
   });
 
   testWidgets('several questions are asked one at a time', (tester) async {
@@ -716,7 +772,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pump();
 
     expect(find.text('1 of 2'), findsOneWidget);
@@ -787,7 +844,8 @@ void main() {
         createdAt: DateTime(2026),
       );
 
-      await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+      await tester
+          .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
       // Two pumps: build, then let hydrate() resolve and rebuild resolved.
       await tester.pump();
       await tester.pump();
@@ -831,7 +889,9 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: message, running: true)),
+    );
     await tester.pump();
 
     // Header, totals and the copy action are visible.
@@ -902,7 +962,9 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: message, running: true)),
+    );
     await tester.pumpAndSettle();
 
     // Two separate work logs (one before each response), not one on top.
@@ -954,10 +1016,125 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('1 previous message'), findsOneWidget);
+    expect(find.text('Show the work'), findsOneWidget);
     expect(find.textContaining('Let me chart it.'), findsNothing);
     expect(find.byType(ViewBlock), findsOneWidget);
     expect(find.textContaining('Friday was the busiest day.'), findsOneWidget);
+  });
+
+  group("splitAnswer (the desktop's rule)", () {
+    const ls = CommandExecutionContent(
+      command: 'ls',
+      status: CommandStatus.completed,
+    );
+    const view = ViewContent(
+      viewId: '0123456789abcdef0123456789abcdef',
+      title: 'Chart',
+      bytes: 10,
+    );
+    const boundary = AssistantResponseBoundaryContent(
+      phase: AssistantResponsePhase.commentary,
+      itemId: 'b',
+    );
+
+    test('the text after the last block is the answer; views join it', () {
+      final split = splitAnswer(const [
+        TextContent('plan'),
+        ls,
+        view,
+        TextContent('It works.'),
+      ]);
+      expect(split.work, const [TextContent('plan'), ls]);
+      expect(split.answer, const [view, TextContent('It works.')]);
+    });
+
+    test('several responses: the last one is the answer', () {
+      final split = splitAnswer(const [
+        TextContent('Looking.'),
+        boundary,
+        TextContent('Found it.'),
+        boundary,
+      ]);
+      expect(split.work, const [TextContent('Looking.')]);
+      expect(split.answer, const [TextContent('Found it.')]);
+    });
+
+    test('no blocks is all answer; ending on a block is all work', () {
+      expect(splitAnswer(const [TextContent('just text')]).work, isEmpty);
+      expect(
+        splitAnswer(const [TextContent('a'), ls]).answer,
+        isEmpty,
+      );
+    });
+
+    test('a closing notice stays with the answer, alone it is not one', () {
+      const notice = SystemContent('A background task was interrupted.');
+      final split = splitAnswer(const [
+        ls,
+        TextContent('Phase 1 is done.'),
+        boundary,
+        notice,
+      ]);
+      expect(split.work, const [ls]);
+      expect(split.answer, const [TextContent('Phase 1 is done.'), notice]);
+      expect(splitAnswer(const [ls, notice]).answer, isEmpty);
+    });
+  });
+
+  testWidgets('a settled turn folds its work and keeps its answer and views',
+      (tester) async {
+    final message = Message(
+      id: 'm-fold',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('Let me look.'),
+        CommandExecutionContent(command: 'ls', status: CommandStatus.completed),
+        ViewContent(
+          viewId: '0123456789abcdef0123456789abcdef',
+          title: 'Tokens by day',
+          bytes: 10,
+        ),
+        TextContent('Friday was the busiest day.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+      turnDuration: const Duration(minutes: 1, seconds: 3),
+    );
+
+    Widget app({required bool running}) => ProviderScope(
+          overrides: [
+            agentViewRepositoryProvider.overrideWithValue(_PendingViews()),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MessageBubble(message: message, running: running),
+            ),
+          ),
+        );
+
+    // While its turn runs, everything is in view.
+    await tester.pumpWidget(app(running: true));
+    await tester.pump();
+    expect(find.textContaining('Let me look.'), findsOneWidget);
+    expect(find.textContaining('Worked for'), findsNothing);
+
+    // Settled: the work folds, the answer and the view stay.
+    await tester.pumpWidget(app(running: false));
+    await tester.pump();
+    expect(find.text('Worked for 1m 3s'), findsOneWidget);
+    expect(find.textContaining('Let me look.'), findsNothing);
+    expect(find.byType(ViewBlock), findsOneWidget);
+    expect(find.textContaining('Friday was the busiest day.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('previous-responses-toggle')));
+    // The pending view keeps animating: wait out the reveal, not the view.
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.textContaining('Let me look.'), findsOneWidget);
   });
 
   testWidgets('settled assistant turn collapses earlier native responses',
@@ -992,7 +1169,7 @@ void main() {
     await tester.pumpWidget(_wrap(MessageBubble(message: message)));
     await tester.pumpAndSettle();
 
-    expect(find.text('2 previous messages'), findsOneWidget);
+    expect(find.text('Show the work'), findsOneWidget);
     expect(find.textContaining('First progress update.'), findsNothing);
     expect(find.textContaining('Second progress update.'), findsNothing);
     expect(find.textContaining('Final answer.'), findsOneWidget);
@@ -1097,17 +1274,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Worked for 5m 52s'), findsOneWidget);
-    expect(find.text('2 previous messages'), findsNothing);
+    expect(find.text('Show the work'), findsNothing);
   });
 
-  testWidgets('without a known duration the fold counts the responses',
+  testWidgets('without a known duration the fold offers to show the work',
       (tester) async {
     await tester.pumpWidget(
       _wrap(MessageBubble(message: previousResponsesWithWork())),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('2 previous messages'), findsOneWidget);
+    expect(find.text('Show the work'), findsOneWidget);
     expect(find.textContaining('Worked for'), findsNothing);
   });
 
@@ -1205,7 +1382,8 @@ void main() {
       createdAt: DateTime(2026),
     );
 
-    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester
+        .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Thinking'));

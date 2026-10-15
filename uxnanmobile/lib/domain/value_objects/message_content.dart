@@ -870,6 +870,7 @@ class QuestionItem extends Equatable {
     this.header,
     this.options = const [],
     this.multiple = false,
+    this.custom = false,
   });
 
   /// Decodes a [QuestionItem].
@@ -882,6 +883,7 @@ class QuestionItem extends Equatable {
               QuestionOption.fromJson(raw.cast<String, dynamic>()),
         ],
         multiple: json['multiple'] as bool? ?? false,
+        custom: json['custom'] as bool? ?? false,
       );
 
   /// The question text.
@@ -898,16 +900,21 @@ class QuestionItem extends Equatable {
   /// (radio).
   final bool multiple;
 
+  /// Whether the agent takes an answer the user types instead of (or, on a
+  /// [multiple] question, besides) the options.
+  final bool custom;
+
   /// Serializes this question.
   Map<String, dynamic> toJson() => {
         'question': question,
         if (header != null) 'header': header,
         'options': [for (final option in options) option.toJson()],
         'multiple': multiple,
+        if (custom) 'custom': custom,
       };
 
   @override
-  List<Object?> get props => [question, header, options, multiple];
+  List<Object?> get props => [question, header, options, multiple, custom];
 }
 
 /// A multiple-choice question set the agent asks before continuing (spec 02a

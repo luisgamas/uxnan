@@ -3,7 +3,8 @@
   // "Edited", "Read", "Searched", or the tool's name), the detail (the command,
   // the file, what the tool acted on) and its state — a pulsing dot while it
   // runs, red when it failed. A step with something to show (a command's
-  // output, a file's diff, a tool's result, a subagent's report) opens in place.
+  // output, a file's diff, a tool's result) opens in place. A subagent is its
+  // own card (`ChatSubagent`), not a row.
   //
   // The bridge classifies every agent's tools into one vocabulary (`kind`, with
   // a ready-to-show `target`, shared/models/tool.ts), so this row never learns
@@ -14,7 +15,6 @@
   import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
   import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
   import Wrench01Icon from "@hugeicons/core-free-icons/Wrench01Icon";
-  import UserMultipleIcon from "@hugeicons/core-free-icons/UserMultipleIcon";
   import FileViewIcon from "@hugeicons/core-free-icons/FileViewIcon";
   import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
   import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
@@ -48,9 +48,6 @@
   const type = $derived(str(block.type));
   const running = $derived(live && activityRunning(block));
   const failed = $derived(activityFailed(block));
-  const sub = $derived(
-    block.state && typeof block.state === "object" ? (block.state as Record<string, unknown>) : {},
-  );
 
   /** How each kind of tool call reads, and the icon it takes. */
   const TOOL_VIEWS: Record<string, { glyph: typeof Wrench01Icon; verb: MessageKey }> = {
@@ -78,7 +75,8 @@
         };
       case "diff":
         return { glyph: FileEditIcon, verb: i18n.t("chat.verbEdited"), detail: str(block.filename), mono: true };
-      case "tool": {
+      default: {
+        // A tool call.
         const kind = str(block.kind);
         const known = TOOL_VIEWS[kind];
         const name = str(block.toolName);
@@ -97,19 +95,10 @@
           mono: true,
         };
       }
-      default:
-        return {
-          glyph: UserMultipleIcon,
-          verb: i18n.t("chat.subagent"),
-          detail: str(sub.name),
-          mono: false,
-        };
     }
   });
 
-  const output = $derived(
-    type === "diff" ? "" : type === "subagent" ? str(sub.output) : str(block.output),
-  );
+  const output = $derived(type === "diff" ? "" : str(block.output));
   const patch = $derived(type === "diff" ? toUnifiedPatch(str(block.filename), str(block.diff)) : null);
   const expandable = $derived(!!output || !!patch);
   const exit = $derived(num(block.exitCode));

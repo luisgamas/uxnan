@@ -141,10 +141,10 @@ export {
 export {
   PiAdapter,
   parsePiLine,
-  parsePiModelList,
+  parsePiModels,
+  piSupportedThinkingLevels,
   readPiThinkingDefaults,
   parsePiUsageTokens,
-  parsePiContextWindow,
   DEFAULT_PI_IDLE_TIMEOUT_MS,
   type PiAdapterOptions,
   type PiEvent,

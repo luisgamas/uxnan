@@ -39,7 +39,6 @@ import type {
   AgentId,
   AgentModel,
   ApprovalDecision,
-  QuestionItem,
   AgentMcpServer,
   GenerateTitleOptions,
   NativeSessionInfo,
@@ -47,6 +46,8 @@ import type {
 } from '@uxnan/shared';
 import { UXNAN_CWD_HEADER, encodeCwdHeader } from '@uxnan/shared';
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
+import type { ApprovalRequester, QuestionRequester } from './user-input.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
@@ -120,16 +121,13 @@ export interface OpenCodeAdapterOptions {
    * Returns the user's {@link ApprovalDecision} (or `reject` after the bridge's
    * approval timeout). Absent → the request is rejected (fail-safe).
    */
-  onApprovalRequest?: (
-    threadId: string,
-    info: { toolName: string; input: Record<string, unknown> },
-  ) => Promise<ApprovalDecision>;
+  onApprovalRequest?: ApprovalRequester;
   /**
    * Surfaces a question (the agent's `question` tool) to the bridge so the phone
    * can answer it. Returns one array of chosen option labels per question (or
    * `[]` to skip, which dismisses it so the turn unblocks). Absent → dismissed.
    */
-  onQuestionRequest?: (threadId: string, questions: QuestionItem[]) => Promise<string[][]>;
+  onQuestionRequest?: QuestionRequester;
   /**
    * Injected server factory (tests). Given a cwd, returns an {@link IOpenCodeServer}.
    * The default reads the installed version and starts the matching server.
@@ -301,7 +299,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #contextWindowByModel = new Map<string, number>();
   /** The context-window load in flight, or settled with at least one window. */
   #windowsLoad: Promise<void> | undefined;
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
   /** When set (`UXNAN_OPENCODE_DEBUG=1`), log the turn/event flow to stderr. */
   readonly #debug: boolean;
 
@@ -345,11 +346,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
-    // Warm the per-model context-window cache so the first turn can already emit
-    // `usage.contextWindow` (a percentage on the phone).
-    void this.loadContextWindows();
+  start(_config: AgentConfig): Promise<void> {
+    // Nothing to warm here: the context windows load with a turn's own server
+    // (`sendTurn`), so no server starts for a folder no turn runs in.
     return Promise.resolve();
   }
 
@@ -374,7 +373,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const modelRef = model !== undefined ? splitOpenCodeModel(model) : undefined;
     const variant = reasoningValue(options);
-    void this.loadContextWindows();
+    void this.loadContextWindows(cwd);
 
     // A folder's server carries the MCP servers it was started with; when
     // they changed (attached, detached, a new token) and nothing runs there,
@@ -972,8 +971,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
 
   /**
    * Route a question through the bridge's question round-trip. With no run, no
-   * callback, nothing to choose from, or no answer, it is dismissed so the turn
-   * goes on instead of hanging on a question nobody can see.
+   * callback, nothing to answer with, or no answer, it is dismissed so the turn
+   * goes on instead of hanging on a question nobody can see. A reply the server
+   * refuses is dismissed the same way, so the turn never waits on it.
    */
   #onQuestion(event: Extract<OpenCodeEvent, { kind: 'question' }>, server: IOpenCodeServer): void {
     const run = this.#runBySession.get(event.sessionId);
@@ -981,9 +981,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       `question ${event.requestId} run=${!!run} cb=${!!this.#onQuestionRequest} ` +
         `questions=${event.questions.length}`,
     );
-    const answer = (answers: string[][]): Promise<void> =>
-      server.answerQuestion(event.sessionId, event.requestId, answers).catch(() => undefined);
-    const usable = event.questions.some((q) => q.options.length > 0);
+    const answer = async (answers: string[][]): Promise<void> => {
+      try {
+        await server.answerQuestion(event.sessionId, event.requestId, answers);
+      } catch (err) {
+        this.#log(`question ${event.requestId} reply refused: ${errorMessage(err)}`);
+        if (!answers.some((a) => a.length > 0)) return;
+        this.#log(`question ${event.requestId} dismissed`);
+        await server.answerQuestion(event.sessionId, event.requestId, []).catch(() => undefined);
+      }
+    };
+    const usable = event.questions.some((q) => q.options.length > 0 || q.custom === true);
     if (!run || !this.#onQuestionRequest || !usable) {
       void answer([]);
       return;
@@ -1007,9 +1015,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return undefined;
   }
 
-  /** The models OpenCode offers, remembering each one's context window. */
-  async #models(): Promise<OpenCodeModel[]> {
-    const server = await this.#serverFor(this.#defaultCwd);
+  /** The models OpenCode offers in [cwd], remembering each one's context window. */
+  async #models(cwd: string = this.#defaultCwd): Promise<OpenCodeModel[]> {
+    const server = await this.#serverFor(cwd);
     const models = await server.models();
     for (const m of models) {
       if (m.contextWindow !== undefined) this.#contextWindowByModel.set(m.id, m.contextWindow);
@@ -1023,11 +1031,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * window at all — OpenCode 1's first `opencode models` on a fresh install
    * prints nothing while it downloads its catalog, and settling on that empty
    * answer would leave the phone without a context percentage for the session.
-   * One load at a time, so turns never pile up catalog reads.
+   * One load at a time, so turns never pile up catalog reads. A turn loads it
+   * from its own folder's server ([cwd]), the one it already runs on.
    */
-  loadContextWindows(): Promise<void> {
+  loadContextWindows(cwd: string = this.#defaultCwd): Promise<void> {
     if (this.#windowsLoad) return this.#windowsLoad;
-    const load: Promise<void> = this.#models()
+    const load: Promise<void> = this.#models(cwd)
       .then((models) => models.some((m) => m.contextWindow !== undefined))
       .catch(() => false)
       .then((found) => {
@@ -1045,8 +1054,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         (m) =>
           ({
             id: m.id,
-            displayName: m.id,
+            displayName: m.displayName ?? m.id,
             isDefault: def === m.id,
+            ...(m.isLegacy ? { isLegacy: true } : {}),
             // Its reasoning variants, sent as the turn's `variant`; no default is
             // named, so an untouched turn runs at the provider's own.
             ...(m.variants ? { options: [reasoningOption(effortValues(m.variants))] } : {}),

@@ -1627,6 +1627,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get questionAnsweredAt => 'Respondido';
 
   @override
+  String get questionTypeOther => 'O escribe tu propia respuesta';
+
+  @override
+  String get questionTypeAnswer => 'Tu respuesta';
+
+  @override
   String get questionHeaderFallback => 'Pregunta';
 
   @override
@@ -3161,15 +3167,7 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String conversationPreviousMessages(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count mensajes anteriores',
-      one: '1 mensaje anterior',
-    );
-    return '$_temp0';
-  }
+  String get conversationShowWork => 'Ver el trabajo';
 
   @override
   String conversationWorkedFor(String time) {

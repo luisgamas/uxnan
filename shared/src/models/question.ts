@@ -25,10 +25,16 @@ export interface QuestionItem {
   question: string;
   /** Optional short label/category for the question. */
   header?: string;
-  /** The choices the user may pick from. */
+  /** The choices the user may pick from (empty for a question only {@link custom} answers). */
   options: QuestionOption[];
   /** Whether more than one option may be selected (defaults to single-select). */
   multiple?: boolean;
+  /**
+   * Whether the user may type an answer of their own instead of (or, for a
+   * `multiple` question, besides) the options — the agent asked for it. The
+   * typed text is returned in {@link QuestionResponse.answers} like a label.
+   */
+  custom?: boolean;
 }
 
 /**
@@ -51,7 +57,8 @@ export interface QuestionRequestBlock {
  * The user's reply to a pending question, carried on `turn/send`. `answers` is
  * one entry per question (in order), each an array of the chosen option
  * `label`s (one for single-select, several for a `multiple` question, empty when
- * the user skipped that question).
+ * the user skipped that question). On a {@link QuestionItem.custom} question an
+ * entry that matches no label is the text the user typed.
  */
 export interface QuestionResponse {
   /** The id from the question request the user is answering. */

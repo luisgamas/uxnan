@@ -2840,6 +2840,18 @@ abstract class AppLocalizations {
   /// **'Answered'**
   String get questionAnsweredAt;
 
+  /// Label of the field under a question's options where the user may type an answer of their own.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type your own answer'**
+  String get questionTypeOther;
+
+  /// Label of the field a question with no options is answered in.
+  ///
+  /// In en, this message translates to:
+  /// **'Your answer'**
+  String get questionTypeAnswer;
+
   /// Fallback badge label above a question when the agent did not provide a header.
   ///
   /// In en, this message translates to:
@@ -5552,13 +5564,13 @@ abstract class AppLocalizations {
   /// **'Context reduced from {before} to about {after} tokens.'**
   String conversationCompactionTokens(String before, String after);
 
-  /// Disclosure label for earlier assistant responses produced within the same turn.
+  /// Label of a settled turn's fold of the work behind its final answer when the turn's duration is unknown.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 previous message} other{{count} previous messages}}'**
-  String conversationPreviousMessages(int count);
+  /// **'Show the work'**
+  String get conversationShowWork;
 
-  /// Label of a settled turn's fold of earlier responses when the turn's duration is known, e.g. 'Worked for 5m 52s'.
+  /// Label of a settled turn's fold of the work behind its final answer when the turn's duration is known, e.g. 'Worked for 5m 52s'.
   ///
   /// In en, this message translates to:
   /// **'Worked for {time}'**

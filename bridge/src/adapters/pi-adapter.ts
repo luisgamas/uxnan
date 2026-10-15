@@ -4,7 +4,7 @@
  * pi does NOT speak the generic bridge agent IPC. The bridge keeps ONE resident
  * `pi --mode rpc` process per thread and drives it over JSON-RPC-style commands
  * on stdin (`prompt`, `steer`, `get_state`), reading its newline-JSON event
- * stream on stdout. Validated live against `pi` 0.85.1.
+ * stream on stdout. Validated live against `pi` 1.2.0.
  *
  * Process shape (spawned on a thread's first turn, reused by the next ones):
  *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
@@ -41,7 +41,7 @@
  * Captured `--mode rpc` event shapes (one JSON object per line):
  *   { "type":"response", "command":"get_state", "success":true,
  *       "data":{ "sessionId":"019…", "sessionFile":"…", "model":{ "contextWindow":200000, … }, … } }
- *   { "type":"response", "command":"prompt", "success":true }
+ *   { "type":"response", "command":"prompt", "success":true, "data":{ "disposition":"started" } }
  *   { "type":"message_update", "assistantMessageEvent":{ "type":"text_delta", "delta":"…" } }
  *   { "type":"message_end", "message":{ "role":"assistant", "content":[{ "type":"text","text":"…" }],
  *       "usage":{ "input":…, "output":…, "cacheRead":…, "totalTokens":… },
@@ -61,14 +61,21 @@
  * really was the last. A rejected `prompt` (`response … success:false`) still
  * ends the turn at once: no run started, so nothing else will arrive.
  *
+ * A `prompt` answered with `data.disposition: "handled"` (pi 1.2.0: a typed
+ * command the CLI resolved itself, such as `/mcp`) starts no run either, so it
+ * ends the turn at that response. `started` and `queued` leave the turn open.
+ * Older pi sends no disposition, and its turns end as before.
+ *
+ * Stdout is split into records on `\n` alone (`json-lines.ts`): pi's RPC
+ * framing, not Node's `readline`, which also breaks on U+2028/U+2029.
+ *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
-import type { Readable } from 'node:stream';
+import { onLines } from '../json-lines.js';
 import { fileURLToPath } from 'node:url';
 import {
   encodeCwdHeader,
@@ -128,7 +135,7 @@ export function piMcpLaunch(
   };
 }
 
-/** Hard cap on the `--list-models` spawn before giving up. */
+/** Hard cap on the `get_available_models` ask before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
 /** How long a folder's command list is reused before pi is asked again. */
@@ -286,9 +293,12 @@ export function readPiThinkingDefaults(
   }
 }
 
-/** The `reasoning` knob of a pi model that thinks, with the level it runs at by default. */
-function piReasoningOption(defaultLevel: string): AgentModelOption {
-  return reasoningOption(effortValues(PI_THINKING_LEVELS), defaultLevel);
+/**
+ * The `reasoning` knob of a pi model that thinks: the levels it accepts, with
+ * the level it runs at by default.
+ */
+function piReasoningOption(levels: string[], defaultLevel: string): AgentModelOption {
+  return reasoningOption(effortValues(levels), defaultLevel);
 }
 
 /**
@@ -389,6 +399,8 @@ export interface PiEvent {
     | 'end'
     /** `agent_settled`: pi is idle — the turn is over. */
     | 'settled'
+    /** A `prompt` answered `disposition: "handled"`: pi resolved it itself, no run starts. */
+    | 'handled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
     /** An RPC `steer` pi accepted. */
@@ -442,22 +454,6 @@ export function parsePiUsageTokens(usage: unknown): number | undefined {
     typeof usage[key] === 'number' ? (usage[key] as number) : 0;
   const total = num('totalTokens') > 0 ? num('totalTokens') : num('input') + num('output');
   return total > 0 ? total : undefined;
-}
-
-/**
- * Parse a pi `--list-models` `context` cell into a token count: `"1.0M"` →
- * 1_000_000, `"384K"` → 384_000, a bare `"200000"` → 200000. Returns undefined
- * for an unparseable / non-positive cell (so the model just omits its window).
- */
-export function parsePiContextWindow(cell: string | undefined): number | undefined {
-  if (!cell) return undefined;
-  const match = cell.trim().match(/^([\d.]+)\s*([KMkm]?)$/);
-  if (!match) return undefined;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value) || value <= 0) return undefined;
-  const unit = match[2]?.toUpperCase();
-  const multiplier = unit === 'M' ? 1_000_000 : unit === 'K' ? 1_000 : 1;
-  return Math.round(value * multiplier);
 }
 
 /** Parse one `pi --mode rpc` (or `-p --mode json`) line, or null if it isn't JSON. */
@@ -562,6 +558,9 @@ export function parsePiLine(line: string): PiEvent | null {
     case 'response': {
       if (parsed['success'] !== false) {
         if (parsed['command'] === 'steer') return { kind: 'steer_accepted' };
+        if (parsed['command'] === 'prompt' && isRecord(parsed['data'])) {
+          if (parsed['data']['disposition'] === 'handled') return { kind: 'handled' };
+        }
         if (parsed['command'] !== 'get_state') return { kind: 'other' };
         const data = isRecord(parsed['data']) ? parsed['data'] : undefined;
         const sessionId = typeof data?.['sessionId'] === 'string' ? data['sessionId'] : undefined;
@@ -589,44 +588,104 @@ export function parsePiLine(line: string): PiEvent | null {
 }
 
 /**
- * Parse the `pi --list-models` table into {@link AgentModel}s. Each row is
- * `provider model context max-out thinking images` (whitespace-separated, no
- * field contains spaces). `id` is `provider/model` (the `--model` routing key);
- * models whose `thinking` column is `yes` advertise the reasoning knob.
+ * The thinking levels a pi model accepts, by pi's own rule
+ * (`getSupportedThinkingLevels` in pi-ai): the five standard levels
+ * (`off` … `high`) unless the model's `thinkingLevelMap` maps one to `null`;
+ * `xhigh` and `max` only when the map names them with a value. A model with no
+ * map (an older pi) takes the five standard levels.
  */
-export function parsePiModelList(
-  output: string,
+export function piSupportedThinkingLevels(
+  thinkingLevelMap: Record<string, unknown> | undefined,
+): string[] {
+  return PI_THINKING_LEVELS.filter((level) => {
+    const mapped = thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === 'xhigh' || level === 'max') return mapped !== undefined;
+    return true;
+  });
+}
+
+/**
+ * `level` when the model accepts it; otherwise the nearest level above it that
+ * it accepts, then the nearest below, as pi's `clampThinkingLevel` picks one.
+ */
+function clampPiThinkingLevel(supported: string[], level: string): string {
+  if (supported.includes(level)) return level;
+  const at = PI_THINKING_LEVELS.indexOf(level as (typeof PI_THINKING_LEVELS)[number]);
+  if (at === -1) return supported[0] ?? 'off';
+  const above = PI_THINKING_LEVELS.slice(at).find((l) => supported.includes(l));
+  const below = PI_THINKING_LEVELS.slice(0, at)
+    .reverse()
+    .find((l) => supported.includes(l));
+  return above ?? below ?? supported[0] ?? 'off';
+}
+
+/**
+ * The models in a `get_available_models` response line, or `undefined` for any
+ * other line (pi 1.2.0: `{ type:"response", command:"get_available_models",
+ * success, data:{ models:[{ id, name, provider, reasoning, contextWindow,
+ * thinkingLevelMap? }] } }`). Only the providers the account can use are
+ * listed. `id` is `provider/id` (the `--model` routing key), `name` is the
+ * display name and `provider` the description; `contextWindow` is exact.
+ *
+ * A reasoning model advertises the reasoning knob with the levels
+ * {@link piSupportedThinkingLevels} allows, defaulting to the level pi itself
+ * would use (`thinking`, see {@link readPiThinkingDefaults}) clamped to one of
+ * those. A non-reasoning model has no knob.
+ */
+export function parsePiModels(
+  line: string,
   defaultModel?: string,
   thinking: PiThinkingDefaults = { byModel: {}, fallback: PI_DEFAULT_THINKING },
-): AgentModel[] {
-  const out: AgentModel[] = [];
-  const seen = new Set<string>();
-  for (const raw of output.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    const cols = line.split(/\s+/);
-    if (cols.length < 6) continue;
-    const provider = cols[0]!;
-    const model = cols[1]!;
-    const context = cols[2]!;
-    const thinks = cols[4]!;
-    if (provider === 'provider') continue; // header row
-    const id = `${provider}/${model}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const contextWindow = parsePiContextWindow(context);
-    out.push({
+): AgentModel[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(parsed) ||
+    parsed['type'] !== 'response' ||
+    parsed['command'] !== 'get_available_models'
+  ) {
+    return undefined;
+  }
+  const data = parsed['data'];
+  if (parsed['success'] !== true || !isRecord(data) || !Array.isArray(data['models'])) return [];
+  const models: AgentModel[] = [];
+  for (const entry of data['models']) {
+    if (!isRecord(entry)) continue;
+    const provider = entry['provider'];
+    const modelId = entry['id'];
+    if (typeof provider !== 'string' || typeof modelId !== 'string') continue;
+    const name = entry['name'];
+    const id = `${provider}/${modelId}`;
+    const map = entry['thinkingLevelMap'];
+    const levels =
+      entry['reasoning'] === true ? piSupportedThinkingLevels(isRecord(map) ? map : undefined) : [];
+    const windowTokens = entry['contextWindow'];
+    models.push({
       id,
-      displayName: model,
+      displayName: typeof name === 'string' && name.length > 0 ? name : modelId,
       description: provider,
       isDefault: id === defaultModel,
-      ...(thinks === 'yes'
-        ? { options: [piReasoningOption(thinking.byModel[id] ?? thinking.fallback)] }
+      ...(levels.length > 0
+        ? {
+            options: [
+              piReasoningOption(
+                levels,
+                clampPiThinkingLevel(levels, thinking.byModel[id] ?? thinking.fallback),
+              ),
+            ],
+          }
         : {}),
-      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(typeof windowTokens === 'number' && windowTokens > 0
+        ? { contextWindow: Math.round(windowTokens) }
+        : {}),
     });
   }
-  return out;
+  return models;
 }
 
 export class PiAdapter extends BaseAgentAdapter {
@@ -642,11 +701,14 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #agentDir: string;
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
-  /** model id → context-window tokens, cached from `--list-models` for `usage`. */
+  /** model id → context-window tokens, cached from `get_available_models` for `usage`. */
   readonly #contextWindowByModel = new Map<string, number>();
   /** The folder's command list, briefly reused (see listCommands). */
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -688,8 +750,7 @@ export class PiAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
@@ -820,8 +881,7 @@ export class PiAdapter extends BaseAgentAdapter {
       steerAcks: [],
     };
 
-    const reader = createInterface({ input: child.stdout as unknown as Readable });
-    reader.on('line', (line) => {
+    onLines(child.stdout, (line) => {
       const event = parsePiLine(line);
       if (!event) {
         const trimmed = line.trim();
@@ -941,7 +1001,9 @@ export class PiAdapter extends BaseAgentAdapter {
         // The run ended, but the turn only ends once pi settles (see the
         // header); a run pi will retry keeps the turn open with its state intact.
         return;
-      } else if (event.kind === 'settled') {
+      } else if (event.kind === 'settled' || event.kind === 'handled') {
+        // `handled` is a prompt pi resolved itself: no run starts, so there is
+        // no `agent_settled` to wait for.
         active.finish();
       }
     });
@@ -959,7 +1021,6 @@ export class PiAdapter extends BaseAgentAdapter {
       for (const ack of session.steerAcks.splice(0)) ack(false);
     };
     child.on('error', (err: Error) => {
-      reader.close();
       session.exited = true;
       dropSteerAcks();
       this.#sessions.delete(threadId);
@@ -978,7 +1039,6 @@ export class PiAdapter extends BaseAgentAdapter {
 
     child.on('close', () => {
       dropSteerAcks();
-      reader.close();
       session.exited = true;
       this.#sessions.delete(threadId);
       const active = session.activeTurn;
@@ -1058,7 +1118,7 @@ export class PiAdapter extends BaseAgentAdapter {
           });
           return;
         }
-        // The window pi reported for this very session wins; the `--list-models`
+        // The window pi reported for this very session wins; the model-list
         // cache covers a process that never answered `get_state`.
         const contextWindow =
           session.contextWindow ??
@@ -1172,63 +1232,29 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * List the models pi reports via `pi --list-models` (account-aware: only
-   * providers the user has configured appear). The output is a table, parsed by
-   * {@link parsePiModelList}. Resolves to `[]` if the spawn fails or times out.
-   *
-   * Note: pi prints the `--list-models` table to STDERR, not stdout (verified
-   * against pi 0.79.1), so we accumulate BOTH streams. Without this the phone's
-   * model picker shows no models for the pi agent.
+   * List the models pi reports via its `get_available_models` RPC command
+   * (account-aware: only providers the user has configured appear), asked of a
+   * short-lived `pi --mode rpc --no-session` in the agent's own folder. Each
+   * model carries its exact context window and the thinking levels it accepts
+   * (see {@link parsePiModels}). Resolves to `[]` if pi does not answer — a
+   * spawn that fails, or a pi too old to know the command.
    */
-  listModels(): Promise<AgentModel[]> {
-    return new Promise((resolve) => {
-      let settled = false;
-      let output = '';
-      let child: SpawnedProcess;
-      const finish = (models: AgentModel[]): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        try {
-          child.kill();
-        } catch {
-          /* already gone */
-        }
-        resolve(models);
-      };
-
-      try {
-        child = this.#spawn(
-          this.#binaryPath,
-          [...this.#prependArgs, '--list-models'],
-          this.#defaultCwd,
-        );
-      } catch {
-        resolve([]);
-        return;
-      }
-
-      const timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
-      // pi emits the table on stderr; read stdout too so we stay correct if a
-      // future version moves it. Parse the combined output on close.
-      const collect = (chunk: unknown): void => {
-        output += String(chunk);
-      };
-      child.stdout.on('data', collect);
-      child.stderr?.on('data', collect);
-      child.on('error', () => finish([]));
-      child.on('close', () => {
-        const models = parsePiModelList(output, this.#defaultModel, readPiThinkingDefaults());
-        // Cache each model's context window so `sendTurn` can emit `usage`
-        // with a window (→ percentage on the phone) without re-listing.
-        for (const m of models) {
-          if (m.contextWindow !== undefined) {
-            this.#contextWindowByModel.set(m.id, m.contextWindow);
-          }
-        }
-        finish(models);
-      });
-    });
+  async listModels(): Promise<AgentModel[]> {
+    const thinking = readPiThinkingDefaults();
+    const models = await this.#askPi(
+      this.#defaultCwd,
+      [],
+      { type: 'get_available_models' },
+      MODEL_LIST_TIMEOUT_MS,
+      (line) => parsePiModels(line, this.#defaultModel, thinking),
+    );
+    if (models === undefined) return [];
+    // Cache each model's context window so `sendTurn` can emit `usage`
+    // with a window (→ percentage on the phone) without re-listing.
+    for (const m of models) {
+      if (m.contextWindow !== undefined) this.#contextWindowByModel.set(m.id, m.contextWindow);
+    }
+    return models;
   }
 
   /**
@@ -1259,19 +1285,43 @@ export class PiAdapter extends BaseAgentAdapter {
 
   /** Ask pi in [cwd] for its commands; `undefined` if it will not say. */
   #askCommands(cwd: string): Promise<PiReportedCommand[] | undefined> {
+    return this.#askPi(
+      cwd,
+      piPostureArgs(this.#permissionMode),
+      { type: 'get_commands' },
+      COMMANDS_TIMEOUT_MS,
+      parsePiCommands,
+    );
+  }
+
+  /**
+   * Ask a short-lived `pi --mode rpc --no-session` in [cwd] one RPC command and
+   * read its answer with [parse]. `undefined` when pi will not say: no answer
+   * within [timeoutMs], the process gone, or it could not start. The process is
+   * ended as soon as it has answered (or given up).
+   */
+  #askPi<T>(
+    cwd: string,
+    extraArgs: string[],
+    request: Record<string, unknown>,
+    timeoutMs: number,
+    parse: (line: string) => T | undefined,
+  ): Promise<T | undefined> {
     return new Promise((resolve) => {
-      const args = ['--mode', 'rpc', '--no-session', ...piPostureArgs(this.#permissionMode)];
       let child: SpawnedProcess;
       try {
-        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
-          stdin: 'pipe',
-        });
+        child = this.#spawn(
+          this.#binaryPath,
+          [...this.#prependArgs, '--mode', 'rpc', '--no-session', ...extraArgs],
+          cwd,
+          { stdin: 'pipe' },
+        );
       } catch {
         resolve(undefined);
         return;
       }
       let settled = false;
-      const finish = (commands: PiReportedCommand[] | undefined): void => {
+      const finish = (answer: T | undefined): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -1281,17 +1331,16 @@ export class PiAdapter extends BaseAgentAdapter {
         } catch {
           /* already gone */
         }
-        resolve(commands);
+        resolve(answer);
       };
-      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
-      const reader = createInterface({ input: child.stdout as unknown as Readable });
-      reader.on('line', (line) => {
-        const commands = parsePiCommands(line);
-        if (commands) finish(commands);
+      const timer = setTimeout(() => finish(undefined), timeoutMs);
+      onLines(child.stdout, (line) => {
+        const answer = parse(line);
+        if (answer !== undefined) finish(answer);
       });
       child.on('close', () => finish(undefined));
       child.on('error', () => finish(undefined));
-      child.stdin?.write(`${JSON.stringify({ type: 'get_commands' })}\n`);
+      child.stdin?.write(`${JSON.stringify(request)}\n`);
     });
   }
 }

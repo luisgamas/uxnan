@@ -135,7 +135,9 @@ struct AgentLocation {
     desktop_id: String,
     command: String,
     native: Option<Family>,
-    npm_entry: Option<String>,
+    /// The npm entries, newest first (empty when the CLI ships no npm package).
+    #[serde(default)]
+    npm_entries: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -202,10 +204,22 @@ fn runnable_native(path: &std::path::Path) -> bool {
     path.is_file() && (!cfg!(windows) || exe_runnable(path))
 }
 
-/// Find `agent_id` with the shared rule: native installs, then the npm entry
-/// under each npm root (run as `node <entry>`), then the command on `PATH` — on
-/// Windows only a real `.exe`/`.com` there, since npm's `.cmd` shim needs a
-/// shell.
+/// The npm entry of [location] to run: each of its entries — newest first —
+/// under every one of [roots]. A CLI that renamed its package or moved its
+/// entry (Zero, pi) therefore keeps resolving, and the newest entry wins
+/// wherever the roots carry it.
+fn npm_entry_script(location: &AgentLocation, roots: &[String]) -> Option<PathBuf> {
+    location.npm_entries.iter().find_map(|entry| {
+        roots.iter().find_map(|raw| {
+            let script = expand_location(raw)?.join(entry);
+            script.is_file().then_some(script)
+        })
+    })
+}
+
+/// Find `agent_id` with the shared rule: native installs, then the npm entries
+/// (run as `node <entry>`), then the command on `PATH` — on Windows only a real
+/// `.exe`/`.com` there, since npm's `.cmd` shim needs a shell.
 fn locate(agent_id: &str) -> Option<Resolved> {
     let table = location_table();
     let location = table.agents.iter().find(|a| a.desktop_id == agent_id)?;
@@ -219,19 +233,11 @@ fn locate(agent_id: &str) -> Option<Resolved> {
             }
         }
     }
-    if let Some(entry) = &location.npm_entry {
-        for raw in table.npm_roots.here() {
-            let Some(root) = expand_location(raw) else {
-                continue;
-            };
-            let script = root.join(entry);
-            if script.is_file() {
-                return Some(Resolved {
-                    program: node()?,
-                    prepend: vec![script.to_string_lossy().to_string()],
-                });
-            }
-        }
+    if let Some(script) = npm_entry_script(location, table.npm_roots.here()) {
+        return Some(Resolved {
+            program: node()?,
+            prepend: vec![script.to_string_lossy().to_string()],
+        });
     }
     let found = crate::which::resolve(&location.command)?;
     if cfg!(windows) {
@@ -766,9 +772,11 @@ pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
 /// gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
 /// ```
 ///
-/// The **id** (first column) is the `--model` routing key and already carries
-/// its reasoning tier, so a tier-less id is refused ("requires --effort"); the
-/// label is for humans. `agy` 1.1.4 printed the bare id alone, which is still
+/// The **id** (first column) is the `--model` routing key and carries its
+/// reasoning tier (`-low` / `-medium` / `-high`), so each tier stays its own
+/// entry: the desktop's pickers have no reasoning knob, the tier IS the choice
+/// (the bridge folds them into one model with a knob for its chat). The label
+/// is for humans. `agy` 1.1.4 printed the bare id alone, which is still
 /// accepted — it then doubles as the display name.
 ///
 /// Anything that is not one of those two shapes is dropped: the progress line
@@ -901,6 +909,86 @@ mod tests {
             );
         }
         assert!(!location_table().npm_roots.here().is_empty());
+    }
+
+    #[test]
+    fn the_newest_npm_entry_wins_across_every_root() {
+        // Zero renamed its package and pi moved its entry into a bundle, so the
+        // table lists both. The newest one has to win even from a later root,
+        // and the older one still has to resolve when the newer is absent —
+        // otherwise upgrading the CLI (or renaming the package back) silently
+        // reads an agent as not installed.
+        let tmp = tempfile::tempdir().unwrap();
+        let first = tmp.path().join("first");
+        let second = tmp.path().join("second");
+        let location = |entries: &[&str]| AgentLocation {
+            desktop_id: "zero".to_string(),
+            command: "zero".to_string(),
+            native: None,
+            npm_entries: entries.iter().map(|e| e.to_string()).collect(),
+        };
+        let write = |root: &std::path::Path, entry: &str| {
+            let path = root.join(entry);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "").unwrap();
+            path
+        };
+        let roots = vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ];
+
+        // The newest entry, in the *second* root, beats the older one in the
+        // first: entries are tried before roots, not the other way round.
+        let old = write(&first, "pkg-old/bin/zero.js");
+        let new = write(&second, "pkg-new/bin/zero.js");
+        let zero = location(&["pkg-new/bin/zero.js", "pkg-old/bin/zero.js"]);
+        assert_eq!(npm_entry_script(&zero, &roots).as_deref(), Some(&*new));
+
+        // Remove the newest: the older install is then the one to run.
+        std::fs::remove_file(&new).unwrap();
+        assert_eq!(npm_entry_script(&zero, &roots).as_deref(), Some(&*old));
+
+        // A CLI with no npm package resolves nothing at all.
+        assert_eq!(npm_entry_script(&location(&[]), &roots), None);
+    }
+
+    #[test]
+    fn the_table_carries_the_installs_pi_and_zero_now_use() {
+        let table = location_table();
+        let agent = |id: &str| {
+            table
+                .agents
+                .iter()
+                .find(|a| a.desktop_id == id)
+                .unwrap_or_else(|| panic!("{id} missing from shared/agent-locations.json"))
+        };
+        // pi 1.2.0 installs itself under `~/.pi/agent`, which its npm package
+        // may leave behind empty — so the managed launcher is what resolves.
+        let pi = agent("pi");
+        assert_eq!(
+            pi.native.as_ref().unwrap().posix,
+            vec!["~/.pi/agent/bin/pi".to_string()]
+        );
+        assert_eq!(
+            pi.npm_entries
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                "@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+                "@earendil-works/pi-coding-agent/dist/cli.js"
+            ]
+        );
+        // Zero 0.10.0 is `@twigpine/zero`; `@gitlawb/zero` is the older name.
+        assert_eq!(
+            agent("zero")
+                .npm_entries
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["@twigpine/zero/bin/zero.js", "@gitlawb/zero/bin/zero.js"]
+        );
     }
 
     #[test]

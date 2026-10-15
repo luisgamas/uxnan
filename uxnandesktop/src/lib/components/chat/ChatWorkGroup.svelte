@@ -31,7 +31,6 @@
       summary.commands && i18n.plural(summary.commands, "chat.workCommandsOne", "chat.workCommands"),
       summary.edits && i18n.plural(summary.edits, "chat.workEditsOne", "chat.workEdits"),
       summary.tools && i18n.plural(summary.tools, "chat.workToolsOne", "chat.workTools"),
-      summary.agents && i18n.plural(summary.agents, "chat.workAgentsOne", "chat.workAgents"),
     ].filter((p): p is string => typeof p === "string"),
   );
 </script>

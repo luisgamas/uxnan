@@ -10,6 +10,8 @@
  * (at most every {@link REFRESH_TTL_MS}), its adapter is created then with the
  * path it was actually found at, and every client hears about it
  * (`stream/agents/updated`). An agent that disappears is reported unavailable.
+ * A CLI that *moves* while the bridge runs gets its adapter rebuilt at the new
+ * path (the availability did not change, so nothing is announced).
  */
 import {
   agentLocation,
@@ -90,6 +92,21 @@ export class AgentInstalls {
    * Re-check every agent (at most every {@link REFRESH_TTL_MS} unless
    * [force]). Returns `true` when any availability changed, after telling the
    * {@link onChange} listeners (which announce it to the clients).
+   *
+   * The adapter is rebuilt whenever the command it must spawn differs from the
+   * one it was built with — the CLI appeared, or moved elsewhere (npm global →
+   * `~/.local/bin`, a launcher → the bare name) — so no adapter keeps spawning
+   * a path that is gone. A move alone announces nothing and does not return
+   * `true`: the agent list the clients hold (which agents are installed) did
+   * not change, only the path behind one of them, and they read that path from
+   * {@link located} / `agent/doctor` on their next request. Only an
+   * availability flip notifies and returns `true`.
+   *
+   * Nothing is swapped while the agent has a turn running
+   * ({@link AgentManager.hasActiveWork}): the adapter running that turn keeps
+   * serving it, and `entry.located` still holds the command that adapter was
+   * built with — it is only written once the rebuild happened — so the next
+   * refresh sees the same difference again and retries until the turn is done.
    */
   refresh(force = false): boolean {
     const now = this.#now();
@@ -99,23 +116,34 @@ export class AgentInstalls {
     for (const entry of this.#entries.values()) {
       const located = this.#locate(entry.spec.agentId, entry.spec.configuredPath);
       const was = entry.located;
-      entry.located = located;
-      if (located.available === was.available) continue;
-      changed = true;
-      if (located.available && !this.#manager.hasActiveWork(entry.spec.agentId)) {
-        // Installed since the adapter was built: build it again where the CLI
-        // really is (an npm entry is run through node, not the bare name).
-        this.#manager.register(entry.spec.create(located), {
-          displayName: entry.spec.displayName,
-          available: true,
-          ...(entry.spec.defaultModel !== undefined
-            ? { defaultModel: entry.spec.defaultModel }
-            : {}),
-        });
-      } else {
-        this.#manager.setAvailable(entry.spec.agentId, located.available);
+      const availabilityChanged = located.available !== was.available;
+      const moved =
+        located.binaryPath !== was.binaryPath ||
+        located.prependArgs.join('\0') !== was.prependArgs.join('\0');
+      // Nothing to do: still the same availability, and either the same
+      // command or a CLI nobody can run anyway.
+      if (!availabilityChanged && !(moved && located.available)) continue;
+      if (!located.available) {
+        // Gone: there is no adapter to build. A running turn keeps its own
+        // process, and every client hears that the agent became unavailable.
+        this.#manager.setAvailable(entry.spec.agentId, false);
+        entry.located = located;
+        changed = true;
+        continue;
       }
-      if (located.available) entry.spec.whenAvailable?.(located);
+      // Installed or moved: built for where the CLI really is (an npm entry is
+      // run through node, not the bare name) — unless a turn is running on the
+      // adapter it would replace, in which case nothing is recorded and the
+      // next refresh retries.
+      if (this.#manager.hasActiveWork(entry.spec.agentId)) continue;
+      this.#manager.register(entry.spec.create(located), {
+        displayName: entry.spec.displayName,
+        available: true,
+        ...(entry.spec.defaultModel !== undefined ? { defaultModel: entry.spec.defaultModel } : {}),
+      });
+      entry.located = located;
+      if (availabilityChanged) changed = true;
+      entry.spec.whenAvailable?.(located);
     }
     if (changed) {
       for (const listener of this.#listeners) {

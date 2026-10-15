@@ -14,14 +14,14 @@
  *   - `item/fileChange/requestApproval`        (v2)
  *   - `item/permissions/requestApproval`       (v2)
  *   - `mcpServer/elicitation/request`          (v2 MCP servers)
- *   - `item/tool/requestUserInput`             (v2, EXPERIMENTAL)
  *   - `execCommandApproval`                    (v1, legacy)
  *   - `applyPatchApproval`                     (v1, legacy)
  *
  * All of these are routed to the bridge's existing `requestApproval` flow
- * (the same `approval` content block the Claude `PreToolUse` hook uses), so
+ * (the same `approval` content block every agent's approvals use), so
  * the phone's approval card just works. See `codex-approval.ts` for the
- * per-kind mapping.
+ * per-kind mapping. `item/tool/requestUserInput` is a question, not an
+ * approval: it goes to the bridge's `requestQuestion` flow instead.
  *
  * ## Process model — the app-server lives for the turn, not for the session
  *
@@ -89,7 +89,6 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
-  ApprovalDecision,
   AgentMcpServer,
   GenerateTitleOptions,
   NativeSessionInfo,
@@ -109,10 +108,12 @@ import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
   approvalReply,
   describeServerRequest,
-  type ApprovalKind,
+  describeUserInputRequest,
+  questionReply,
   type PendingCodexApproval,
+  type PendingCodexQuestions,
 } from './codex-approval.js';
-import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
+import { CodexAppServerRpc, RpcError, type RpcId } from './codex-app-server.js';
 import {
   codexItemStartBlock,
   codexReasoningText,
@@ -126,12 +127,14 @@ import {
   extractPlanSteps,
   fileChangeBlock,
   planBlock,
+  toolBlock,
   unifiedDiffBlock,
   unwrapShellCommand,
   withBlockId,
   writeDiffBlock,
 } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import type { ApprovalRequester, QuestionRequester } from './user-input.js';
 
 /**
  * Model used to name a conversation: the cheapest one, never the thread's own.
@@ -243,6 +246,10 @@ const CODEX_POLICIES: Record<
 /** Hard cap on the app-server handshake before falling back to config.toml. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
+/** `model/list` is read a page at a time; these bound the pages asked for. */
+const MODEL_LIST_PAGE_SIZE = 50;
+const MODEL_LIST_MAX_PAGES = 10;
+
 /** How long a folder's skill list is reused before the app-server is asked again. */
 const COMMANDS_TTL_MS = 60_000;
 
@@ -298,9 +305,6 @@ export function parseCodexSkills(result: unknown): CodexSkill[] | undefined {
   return skills;
 }
 
-/** Hard cap on the lifecycle of a single approval round-trip (matches Claude hook). */
-const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
-
 /**
  * Reasoning-effort knob for Codex models discovered without an effort list
  * (the `~/.codex/config.toml` fallback path). The app-server `model/list`
@@ -324,10 +328,14 @@ export interface CodexAdapterOptions {
    * `'reject'` after the 5-min timeout). Wired by the bridge during adapter
    * registration. Optional in tests.
    */
-  onApprovalRequest?: (
-    threadId: string,
-    info: { toolName: string; input: Record<string, unknown> },
-  ) => Promise<ApprovalDecision>;
+  onApprovalRequest?: ApprovalRequester;
+  /**
+   * Callback that puts a Codex `item/tool/requestUserInput` question to the
+   * person. Resolves with one answer list per question (chosen labels, or
+   * the typed text); empty when skipped or after the 5-min timeout. Without
+   * it the questions are answered with nothing, so Codex carries on.
+   */
+  onQuestionRequest?: QuestionRequester;
   /**
    * Injected `app-server` spawner (tests). Should return the child's stdin
    * (writable), stdout (readable) and an `onClose` callback the adapter
@@ -355,6 +363,10 @@ interface ActiveRun {
   /** The Codex thread the turn runs on. One app-server serves every thread at
    *  once, so this is how its notifications find their turn. */
   codexThreadId: string;
+  /** The folder this turn runs in — a file change is made relative to it and
+   *  `git diff` runs in it, so it is the thread's own, never the agent-wide
+   *  default. */
+  cwd: string;
   /** Context tokens from `thread/tokenUsage/updated` (NOT on turn/completed). */
   tokens?: number;
   /** Context window the same notification reports for the running model. */
@@ -489,7 +501,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #binaryPath: string;
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
-  readonly #onApprovalRequest: CodexAdapterOptions['onApprovalRequest'];
+  readonly #onApprovalRequest: ApprovalRequester | undefined;
+  readonly #onQuestionRequest: QuestionRequester | undefined;
   readonly #spawnAppServer: () => SpawnedAppServer;
   /**
    * Codex thread ids loaded in the CURRENT app-server process (i.e. whose
@@ -503,7 +516,10 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** model id → context-window tokens, from `~/.codex/models_cache.json`. */
   readonly #contextWindowByModel = new Map<string, number>();
   #windowsLoaded = false;
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -520,10 +536,12 @@ export class CodexAdapter extends BaseAgentAdapter {
   #appServerInit: Promise<CodexAppServerRpc> | null = null;
   /** The live process handle, kept so the idle release can end it. */
   #appServerStreams: SpawnedAppServer | null = null;
-  /** Pending approvals keyed by the bridge's `approvalId`; the server request id
-   * is captured so the reply is shaped with the right `ReviewDecision` kind. */
-  #pendingApprovals = new Map<string, { kind: ApprovalKind; serverRequestId: number | string }>();
-  #approvalSeq = 0;
+  /**
+   * Codex's requests waiting on the person (an approval or questions), keyed by
+   * the JSON-RPC id Codex asked with: aborting one withdraws its card — when
+   * Codex settles it itself (`serverRequest/resolved`) or its process is gone.
+   */
+  readonly #pendingRequests = new Map<RpcId, AbortController>();
 
   /**
    * Mirror the conversation's name onto the Codex thread, so the phone's
@@ -591,6 +609,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#prependArgs = options.prependArgs ?? [];
     this.#defaultModel = options.defaultModel;
     this.#onApprovalRequest = options.onApprovalRequest;
+    this.#onQuestionRequest = options.onQuestionRequest;
     this.#spawnAppServer =
       options.spawnAppServer ?? defaultSpawnAppServer(this.#binaryPath, this.#prependArgs);
     this.#spawnOneShot = options.spawnFn ?? defaultSpawn;
@@ -600,8 +619,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
@@ -724,6 +742,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       bridgeTurnId: turnId,
       codexTurnId: null,
       codexThreadId,
+      cwd,
       threadId,
       agentTextByItem: new Map(),
       allAgentText: '',
@@ -892,7 +911,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         },
         {
           onNotification: (method, params) => this.#onNotification(method, params),
-          onServerRequest: (method, params) => this.#onServerRequest(method, params),
+          onServerRequest: (method, params, id) => this.#onServerRequest(method, params, id),
         },
       );
       streams.onClose((code) => {
@@ -926,7 +945,7 @@ export class CodexAdapter extends BaseAgentAdapter {
    * in flight.
    */
   #releaseAppServerIfIdle(): void {
-    if (this.#active.size > 0 || this.#pendingApprovals.size > 0) return;
+    if (this.#active.size > 0 || this.#pendingRequests.size > 0) return;
     this.#closeAppServer();
   }
 
@@ -962,10 +981,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       });
     }
     this.#active.clear();
-    for (const approvalId of [...this.#pendingApprovals.keys()]) {
-      // Drop local state; the bridge's 5-min timer covers the round-trip.
-      this.#pendingApprovals.delete(approvalId);
-    }
+    // Nobody is left to answer: every card still open is withdrawn.
+    for (const pending of this.#pendingRequests.values()) pending.abort();
+    this.#pendingRequests.clear();
   }
 
   /**
@@ -975,6 +993,15 @@ export class CodexAdapter extends BaseAgentAdapter {
   async #onNotification(method: string, params: unknown): Promise<void> {
     const p = isRecord(params) ? params : {};
     switch (method) {
+      case 'serverRequest/resolved': {
+        // Codex settled one of its own requests (another client answered it,
+        // or the turn moved on): the person's card for it is withdrawn.
+        const id = p['requestId'];
+        if (typeof id === 'string' || typeof id === 'number') {
+          this.#pendingRequests.get(id)?.abort();
+        }
+        return;
+      }
       case 'thread/tokenUsage/updated': {
         // Usage does NOT ride on `turn/completed` — verified against a live
         // `codex app-server`, whose completed turn carries only
@@ -1179,7 +1206,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           : [];
         for (const change of changes) {
           const name = isAbsolutePath(change.path)
-            ? relative(this.#defaultCwd, change.path) || change.path
+            ? relative(run.cwd, change.path) || change.path
             : change.path;
           // The app-server attaches the change: a unified diff for an update,
           // the new file's content for an add. Without it, ask git, then read
@@ -1191,12 +1218,7 @@ export class CodexAdapter extends BaseAgentAdapter {
             content = unifiedDiffBlock(name, change.diff);
           } else if (change.kind !== 'delete') {
             try {
-              const { stdout } = await runGit(this.#defaultCwd, [
-                'diff',
-                'HEAD',
-                '--',
-                change.path,
-              ]);
+              const { stdout } = await runGit(run.cwd, ['diff', 'HEAD', '--', change.path]);
               if (stdout.trim().length > 0) content = unifiedDiffBlock(name, stdout);
             } catch {
               /* not a git repo / no HEAD */
@@ -1235,12 +1257,43 @@ export class CodexAdapter extends BaseAgentAdapter {
         }
         return;
       }
+      case 'imageGeneration': {
+        // The image is written to `savedPath`; its row names that file, as an
+        // image view's does. The base64 `result` is the image itself and is
+        // never shown. A generation that failed without a file shows why.
+        const id = str(item['id']);
+        const path = str(item['savedPath']);
+        const failure = isRecord(item['failure']) ? str(item['failure']['type']) : '';
+        if (!path && !failure) return;
+        const row = toolBlock(
+          'generate_image',
+          id,
+          path ? { path } : {},
+          failure ? `image generation failed (${failure})` : '',
+          failure !== '',
+          { kind: 'other' },
+        );
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: withBlockId(row, id) },
+        });
+        return;
+      }
       case 'plan':
       case 'userMessage':
       case 'enteredReviewMode':
       case 'exitedReviewMode':
         // The plan's steps arrive as `turn/plan/updated`; the rest is text
         // the conversation already shows.
+        return;
+      // Item types with nothing for the person to read, named so a new one is
+      // a conscious choice rather than a silent drop:
+      case 'sleep': // a timed pause the model took.
+      case 'hookPrompt': // text a Codex hook fed into the prompt, not work the agent did.
+      case 'functionCallOutput': // the raw result of a function call the model made.
+      case 'subAgentActivity': // a subagent's lifecycle; its spawn shows as collabAgentToolCall.
         return;
       case 'contextCompaction':
         this.emit({
@@ -1345,23 +1398,37 @@ export class CodexAdapter extends BaseAgentAdapter {
   /**
    * Handle a server-initiated request. Approval-shaped requests (see
    * {@link describeServerRequest}) are routed to the bridge's approval
+   * round-trip, a question (`item/tool/requestUserInput`) to its question
    * round-trip; the rest are auto-rejected with a clear error so the
    * app-server doesn't hang.
    */
-  async #onServerRequest(method: string, params: unknown): Promise<unknown> {
-    const approval = describeServerRequest(method, params, -1);
-    if (!approval) {
+  async #onServerRequest(method: string, params: unknown, id: RpcId): Promise<unknown> {
+    const run = this.#runFor(isRecord(params) ? params : {});
+    const approval =
+      method === 'item/tool/requestUserInput'
+        ? undefined
+        : describeServerRequest(method, params, id);
+    if (method !== 'item/tool/requestUserInput' && !approval) {
       // Unknown / unsupported elicitation: auto-reject so the app-server
       // doesn't block waiting on a response we'd never send.
       throw new RpcError(-32000, `codex: unhandled server request '${method}' (auto-rejected)`);
     }
-    return this.#routeApproval(approval, this.#runFor(isRecord(params) ? params : {}));
+    const pending = new AbortController();
+    this.#pendingRequests.set(id, pending);
+    try {
+      return approval
+        ? await this.#routeApproval(approval, run, pending.signal)
+        : await this.#routeQuestion(describeUserInputRequest(params), run, pending.signal);
+    } finally {
+      this.#pendingRequests.delete(id);
+    }
   }
 
   /** Run a Codex approval through the bridge's approval round-trip. */
   async #routeApproval(
-    draft: Omit<PendingCodexApproval, 'serverRequestId'> & { serverRequestId: number | string },
+    draft: PendingCodexApproval,
     run: ActiveRun | null,
+    signal: AbortSignal,
   ): Promise<unknown> {
     if (!this.#onApprovalRequest) {
       // No bridge callback wired (unit test, or a caller that didn't pass
@@ -1371,22 +1438,25 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!run) {
       return approvalReply(draft, 'reject');
     }
-    const approvalId = `codex-${run.bridgeTurnId}-${(this.#approvalSeq += 1)}`;
-    this.#pendingApprovals.set(approvalId, {
-      kind: draft.kind,
-      serverRequestId: draft.serverRequestId,
-    });
-    try {
-      const decision = await Promise.race([
-        this.#onApprovalRequest(run.threadId, draft.descriptor),
-        new Promise<ApprovalDecision>((resolve) =>
-          setTimeout(() => resolve('reject'), APPROVAL_TIMEOUT_MS),
-        ),
-      ]);
-      return approvalReply(draft, decision);
-    } finally {
-      this.#pendingApprovals.delete(approvalId);
-    }
+    // The wait is the bridge's (it times out only while someone can see the
+    // card); withdrawn when Codex settles the request itself.
+    const decision = await this.#onApprovalRequest(run.threadId, draft.descriptor, signal);
+    return approvalReply(draft, decision);
+  }
+
+  /**
+   * Put Codex's questions to the person and file their answers under Codex's
+   * ids. With no callback, outside a run, or with no question that can be
+   * answered, the questions go unanswered and Codex carries on without them.
+   */
+  async #routeQuestion(
+    questions: PendingCodexQuestions,
+    run: ActiveRun | null,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const ask = this.#onQuestionRequest;
+    if (!ask || !run || questions.ids.length === 0) return questionReply(questions, []);
+    return questionReply(questions, await ask(run.threadId, questions.questions, signal));
   }
 
   /**
@@ -1404,11 +1474,25 @@ export class CodexAdapter extends BaseAgentAdapter {
   listModels(): Promise<AgentModel[]> {
     // parseCodexModelList already attaches each model's REAL per-model
     // reasoning efforts; the config fallback gets a generic effort knob.
-    return this.#withShortLivedAppServer(
-      async (rpc) =>
-        parseCodexModelList((await rpc.request<{ data: unknown }>('model/list', {})).data),
-      [] as AgentModel[],
-    ).then((models) => (models.length > 0 ? models : this.#modelsFromConfig()));
+    return this.#withShortLivedAppServer(async (rpc) => {
+      // `model/list` is paged: the visible models come a page at a time, each
+      // reply naming the cursor of the next (null on the last page).
+      const listed: unknown[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < MODEL_LIST_MAX_PAGES; page += 1) {
+        const reply: { data?: unknown; nextCursor?: string | null } = await rpc.request(
+          'model/list',
+          { cursor, limit: MODEL_LIST_PAGE_SIZE, includeHidden: false },
+        );
+        if (Array.isArray(reply.data)) listed.push(...reply.data);
+        cursor =
+          typeof reply.nextCursor === 'string' && reply.nextCursor !== '' ? reply.nextCursor : null;
+        if (cursor === null) break;
+      }
+      return parseCodexModelList(listed);
+    }, [] as AgentModel[]).then((models) =>
+      models.length > 0 ? models : this.#modelsFromConfig(),
+    );
   }
 
   /**

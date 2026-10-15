@@ -244,8 +244,8 @@ async function cmdStart(): Promise<void> {
     throw err;
   }
 
-  // Always: with the LAN off it listens on 127.0.0.1 only, for the agents'
-  // approval hook, and is published nowhere.
+  // Always: with the LAN off it listens on 127.0.0.1 only, for pairing from
+  // this machine, and is published nowhere.
   try {
     const { port } = await bridge.startLan();
     process.stdout.write(

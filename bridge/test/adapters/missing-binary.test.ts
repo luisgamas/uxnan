@@ -42,7 +42,11 @@ test('the shared locator checks native paths, then npm entries, then PATH — an
     const missing = locateAgent(zero, undefined, where(binDir));
     assert.equal(missing.available, false);
     assert.equal(missing.binaryPath, 'zero');
-    assert.ok(missing.checked.includes(join(prefix, 'lib', 'node_modules', zero.npmEntry!)));
+    // Every npm entry is tried (Zero renamed its package, so the table lists
+    // both names), and each under the root before PATH.
+    for (const entry of zero.npmEntries!) {
+      assert.ok(missing.checked.includes(join(prefix, 'lib', 'node_modules', entry)), entry);
+    }
     assert.ok(missing.checked.includes(`PATH:${binDir}`));
 
     // On PATH: found there. A directory of the same name never counts.
@@ -53,12 +57,27 @@ test('the shared locator checks native paths, then npm entries, then PATH — an
 
     // An npm entry under the running node's own prefix (nvm, Homebrew, fnm…)
     // wins over PATH and runs through that node.
-    const entry = join(prefix, 'lib', 'node_modules', zero.npmEntry!);
+    const newest = zero.npmEntries![0]!;
+    const older = zero.npmEntries![1]!;
+    const entry = join(prefix, 'lib', 'node_modules', newest);
     await mkdir(join(entry, '..'), { recursive: true });
     await writeFile(entry, '');
     const viaNpm = locateAgent(zero, undefined, where(binDir));
     assert.equal(viaNpm.binaryPath, join(prefix, 'bin', 'node'));
     assert.deepEqual(viaNpm.prependArgs, [entry]);
+
+    // The newest entry wins wherever the roots carry it — even next to an older
+    // install of the same CLI in an earlier root.
+    const npmRoot = join(prefix, 'lib', 'node_modules');
+    const staleRoot = join(dir, 'older-node', 'lib', 'node_modules');
+    const olderEntry = join(staleRoot, older);
+    await mkdir(join(olderEntry, '..'), { recursive: true });
+    await writeFile(olderEntry, '');
+    const roots = { ...where(binDir), npmRoots: [staleRoot, npmRoot] };
+    assert.deepEqual(locateAgent(zero, undefined, roots).prependArgs, [entry]);
+    // Remove the newest and the older install is the one that runs.
+    await rm(entry);
+    assert.deepEqual(locateAgent(zero, undefined, roots).prependArgs, [olderEntry]);
 
     // A native install beats both; a configured path beats everything.
     const grokNative = join(home, '.grok', 'bin', 'grok');
@@ -70,6 +89,39 @@ test('the shared locator checks native paths, then npm entries, then PATH — an
     );
     const configured = locateAgent(zero, '/nope/zero', where(binDir));
     assert.deepEqual([configured.binaryPath, configured.available], ['/nope/zero', false]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('pi resolves its managed installer, not the npm package it leaves behind', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'uxnan-pi-locate-'));
+  try {
+    const home = join(dir, 'home');
+    const prefix = join(dir, 'node');
+    await mkdir(join(prefix, 'bin'), { recursive: true });
+    const where = (): LocateEnvironment => ({
+      platform: 'linux',
+      env: { PATH: join(dir, 'bin') },
+      home,
+      nodePath: join(prefix, 'bin', 'node'),
+      npmRoots: [],
+    });
+    const pi = agentLocation('pi-agent')!;
+
+    // pi 1.2.0's managed install: a launcher under `~/.pi/agent`, and the npm
+    // package left behind as an empty folder the entry check must not count.
+    const launcher = join(home, '.pi', 'agent', 'bin', 'pi');
+    const empty = join(dir, 'empty-pkg', pi.npmEntries![0]!);
+    await mkdir(empty, { recursive: true });
+    assert.equal(
+      locateAgent(pi, undefined, { ...where(), npmRoots: [join(dir, 'empty-pkg')] }).available,
+      false,
+    );
+    await mkdir(join(launcher, '..'), { recursive: true });
+    await writeFile(launcher, '#!/bin/sh\n');
+    const found = locateAgent(pi, undefined, where());
+    assert.deepEqual([found.binaryPath, found.prependArgs], [launcher, []]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

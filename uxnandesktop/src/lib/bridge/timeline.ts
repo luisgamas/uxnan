@@ -2,8 +2,9 @@
 // list of text runs and structured blocks (`segments`), and the timeline reads
 // better grouped than flat —
 //
-//  - consecutive activity (commands, edits, tool calls, subagents) becomes one
-//    work group, open while the turn runs and summarized once it settles;
+//  - consecutive activity (commands, edits, tool calls) becomes one work
+//    group, open while the turn runs and summarized once it settles; a
+//    subagent is not a step of the log but its own card between them;
 //  - a settled turn folds everything before its closing answer behind one
 //    "Worked for 1m 3s" line, so a long session reads as its conclusions;
 //  - the files a turn changed are gathered into one card at its end.
@@ -12,10 +13,12 @@
 // read defensively and an unknown shape is passed through as a lone block.
 
 /** Block types that are a step of the agent's work rather than something to read or answer. */
-const ACTIVITY_TYPES = new Set(["command_execution", "diff", "tool", "subagent"]);
+const ACTIVITY_TYPES = new Set(["command_execution", "diff", "tool"]);
 
 export type TimelineItem =
-  | { kind: "text"; text: string }
+  /** [opens]: the first text of one of the agent's own responses after an
+   *  earlier one ended (an `assistant_response_boundary` came before it). */
+  | { kind: "text"; text: string; opens?: boolean }
   | { kind: "work"; blocks: Record<string, unknown>[] }
   | { kind: "block"; block: unknown };
 
@@ -23,7 +26,6 @@ export interface WorkSummary {
   commands: number;
   edits: number;
   tools: number;
-  agents: number;
   failed: number;
 }
 
@@ -50,13 +52,14 @@ export function textOf(part: unknown): string | null {
   return p && p.type === "text" && typeof p.text === "string" ? p.text : null;
 }
 
-/** Whether a block is one step of the agent's work (a command, an edit, a tool call, a subagent). */
+/** Whether a block is one step of the agent's work (a command, an edit, a tool call). */
 export function isActivity(part: unknown): boolean {
   return ACTIVITY_TYPES.has(typeOf(part));
 }
 
 /** Groups a turn's parts: runs of activity become one `work` item; blank text
- *  and the zero-text response boundaries disappear; and of the plans the turn
+ *  and the zero-text response boundaries disappear — a boundary only marks the
+ *  text after it as opening a new response (`opens`); and of the plans the turn
  *  carries, only the latest stays — an agent resends its whole to-do list on
  *  every change, so each earlier one is a past state of the same list. */
 export function groupParts(parts: readonly unknown[]): TimelineItem[] {
@@ -65,17 +68,25 @@ export function groupParts(parts: readonly unknown[]): TimelineItem[] {
   parts.forEach((part, i) => {
     if (typeOf(part) === "plan") lastPlan = i;
   });
+  let ended = false;
   for (const [i, part] of parts.entries()) {
     if (typeOf(part) === "plan" && i !== lastPlan) continue;
     // Where one of the agent's own responses ends: metadata, nothing to show.
     // Taken for a block, it made every answer that closes with one (Claude,
     // Codex and pi close each response so) fold away as work.
-    if (typeOf(part) === "assistant_response_boundary") continue;
-    const text = textOf(part);
-    if (text !== null) {
-      if (text.trim()) items.push({ kind: "text", text });
+    if (typeOf(part) === "assistant_response_boundary") {
+      ended = items.length > 0;
       continue;
     }
+    const text = textOf(part);
+    if (text !== null) {
+      if (text.trim()) {
+        items.push(ended ? { kind: "text", text, opens: true } : { kind: "text", text });
+        ended = false;
+      }
+      continue;
+    }
+    ended = false;
     if (isActivity(part)) {
       const last = items[items.length - 1];
       const block = record(part) as Record<string, unknown>;
@@ -95,8 +106,10 @@ function isNotice(item: TimelineItem): boolean {
 }
 
 /** Splits a settled turn into the work that led to the answer and the answer
- *  itself: the text after the last block, with any notices that follow it. A
- *  turn with no blocks is all answer. A notice closing the turn used to count
+ *  itself: the text after the last block — or of the agent's last response,
+ *  when it answered in several (Codex's commentary, then its final answer) —
+ *  with any notices that follow it. A turn with no blocks, in one response, is
+ *  all answer. A notice closing the turn used to count
  *  as its last block, which folded the whole answer away behind it.
  *
  *  A view the agent showed is part of the answer, never of the work: it is
@@ -108,7 +121,12 @@ export function splitAnswer(items: readonly TimelineItem[]): {
   answer: TimelineItem[];
 } {
   let cut = items.length;
-  while (cut > 0 && (items[cut - 1].kind === "text" || isNotice(items[cut - 1]))) cut -= 1;
+  while (cut > 0 && (items[cut - 1].kind === "text" || isNotice(items[cut - 1]))) {
+    cut -= 1;
+    const item = items[cut];
+    // The last response began here: what came before is the work toward it.
+    if (item.kind === "text" && item.opens) break;
+  }
   // Notices alone are not an answer: they stay where they are, after the work.
   if (!items.slice(cut).some((i) => i.kind === "text")) cut = items.length;
   const isView = (i: TimelineItem) => i.kind === "block" && typeOf(i.block) === "view";
@@ -135,7 +153,7 @@ export function activityRunning(block: Record<string, unknown>): boolean {
 
 /** What a run of activity amounts to, for its settled header ("Ran 3 commands · 2 edits"). */
 export function summarizeWork(blocks: readonly Record<string, unknown>[]): WorkSummary {
-  const summary: WorkSummary = { commands: 0, edits: 0, tools: 0, agents: 0, failed: 0 };
+  const summary: WorkSummary = { commands: 0, edits: 0, tools: 0, failed: 0 };
   for (const block of blocks) {
     switch (block.type) {
       case "command_execution":
@@ -146,9 +164,6 @@ export function summarizeWork(blocks: readonly Record<string, unknown>[]): WorkS
         break;
       case "tool":
         summary.tools += 1;
-        break;
-      case "subagent":
-        summary.agents += 1;
         break;
     }
     if (activityFailed(block)) summary.failed += 1;

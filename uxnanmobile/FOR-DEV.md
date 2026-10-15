@@ -355,13 +355,15 @@ on-device pass.
   auto-refresh on app resume.
 - **Interactive approval** (Approve / Reject / "always allow this session") with a
   spring `AnimatedSize` morph; validated end-to-end against Echo, Claude Code
-  (`PreToolUse` hook), Codex (`app-server`) and
+  (stream-json `can_use_tool`), Codex (`app-server`) and
   OpenCode (`opencode serve` `permission.asked`). Only pi has no pre-tool channel
   (it runs autonomously).
-- **Interactive question** (the agent's multiple-choice `question` tool) —
-  single/multi-select option card that morphs to a resolved summary, persisted
-  per `questionId`; answered via `turn/send { questionResponse }`. Validated
-  end-to-end against OpenCode's `question` tool.
+- **Interactive question** (the agent's "ask the user" tool) — single/multi-
+  select option card, plus a field for the user's own answer when the question
+  is `custom`, that morphs to a resolved summary, persisted per `questionId`;
+  answered via `turn/send { questionResponse }`. The bridge routes OpenCode's
+  `question` tool, Claude Code's `AskUserQuestion`, Grok's `ask_user_question`
+  and Codex's `requestUserInput` here; validated end-to-end against OpenCode.
 - **Composer** — focus-responsive floating pill (narrower/shorter idle,
   expanded and subtly elevated while active, without a focus outline);
   **independent voice → text**

@@ -59,6 +59,19 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * A subagent's result is `<subagent sessionID="…" state="completed">report</subagent>`
+ * (OpenCode 2; 1.x sends the bare report). Returns the report, and whether the
+ * subagent ended badly: a state other than `completed`, or the tool's error flag.
+ */
+function subagentResult(output: string, isError: boolean): { report: string; isError: boolean } {
+  const tagged = /^<subagent\b[^>]*\bstate="([^"]*)"[^>]*>([\s\S]*)<\/subagent>$/.exec(
+    output.trim(),
+  );
+  if (!tagged) return { report: output, isError };
+  return { report: (tagged[2] ?? '').trim(), isError: isError || tagged[1] !== 'completed' };
+}
+
 /** Builds the MessageContent JSON for an OpenCode tool part. */
 export function opencodeToolBlock(
   toolName: string,
@@ -94,14 +107,18 @@ export function opencodeToolBlock(
       if (steps.length > 0) return planBlock(steps);
       return toolBlock(toolName, partId, input, output, isError);
     }
-    // A subagent: `{ description, prompt, subagent_type }`, its report as output.
+    // A subagent: `{ description, prompt, subagent_type }` (1.x `task`), or
+    // `{ agent, description, prompt }` (2.x `subagent`); its report as output.
     case 'task':
+    case 'subagent': {
+      const result = subagentResult(output, isError);
       return subagentBlock(
         partId,
         str(input['description']) || str(input['prompt']),
-        output,
-        isError,
+        result.report,
+        result.isError,
       );
+    }
     default:
       return toolBlock(toolName, partId, input, output, isError);
   }
@@ -128,6 +145,7 @@ export function opencodeToolStartBlock(
     case 'shell':
       return runningBlock(commandBlock(str(input['command']), '', false), partId);
     case 'task':
+    case 'subagent':
       return runningBlock(
         subagentBlock(partId, str(input['description']) || str(input['prompt']), '', false),
         partId,

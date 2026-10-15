@@ -28,11 +28,9 @@ import type { ChildLedger } from './child-ledger.js';
  * and report to the ADE as if it *were* that terminal: an agent card on a
  * terminal nobody launched an agent in, with a session stamped on the tab.
  *
- * `UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID` are on the list even though the
- * bridge uses those names itself, for its approval hook: it **sets** them per
- * turn (see the Claude adapter), and a value it sets wins over the scrub. What
- * must not survive is a value inherited from someone else, which would point the
- * hook at another process's server.
+ * The bridge sets none of these itself, so every one is scrubbed from what a
+ * child inherits. `UXNAN_HOOK_URL` / `_TOKEN` in particular would point an agent
+ * at another process's hook server.
  */
 export const DESKTOP_TERMINAL_ENV_KEYS = [
   'UXNAN_AGENT_ID',
@@ -54,8 +52,7 @@ export const DESKTOP_TERMINAL_ENV_KEYS = [
 /**
  * The environment an agent CLI should run with: the bridge's own, minus the
  * inherited terminal identity ({@link DESKTOP_TERMINAL_ENV_KEYS}), plus whatever
- * the caller sets deliberately — which wins, so the approval hook's own
- * coordinates still reach the agent.
+ * the caller sets deliberately — which wins.
  */
 export function agentEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -67,9 +64,8 @@ export function agentEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
 export interface SpawnedProcess {
   stdout: NodeJS.ReadableStream;
   /**
-   * Optional stderr stream. Most adapters read JSON from stdout, but some CLI
-   * sub-commands (e.g. `pi --list-models`) print their human-facing table to
-   * stderr, so adapters that need it read from here too.
+   * Optional stderr stream. Adapters read JSON from stdout; stderr carries a
+   * CLI's diagnostics (the tail of a failed run is quoted in its error).
    */
   stderr?: NodeJS.ReadableStream;
   /**
@@ -83,7 +79,7 @@ export interface SpawnedProcess {
   kill(signal?: NodeJS.Signals): unknown;
 }
 
-/** Extra spawn options some adapters need (e.g. per-turn env for the approval hook). */
+/** Extra spawn options some adapters need (e.g. a per-turn environment). */
 export interface SpawnExtra {
   /** Additional environment variables, merged over the bridge's own `process.env`. */
   env?: Record<string, string>;

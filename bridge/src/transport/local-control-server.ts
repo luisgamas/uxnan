@@ -6,8 +6,7 @@
  *
  * Why no E2EE here: the pairing handshake exists for a phone on the far side of
  * a network nobody controls. On loopback it removes no threat that the
- * owner-only permissions on the discovery file do not already cover, which is
- * the trust model `POST /agent-hook/approval` has always used.
+ * owner-only permissions on the discovery file do not already cover.
  *
  * Every connection is authorized BEFORE the upgrade completes:
  *  - the peer must be a loopback address (the listener is bound to `127.0.0.1`

@@ -123,6 +123,44 @@ describe("ChatBlock", () => {
     });
   });
 
+  it("sends what the person typed on a question that takes their own answer", async () => {
+    const c = conversation();
+    const { screen, backend, user } = mount(ChatBlock, {
+      props: {
+        block: {
+          type: "question",
+          questionId: "q-own",
+          questions: [
+            { question: "Which licence?", options: [{ label: "MIT" }, { label: "Apache-2.0" }], custom: true },
+            { question: "Which toppings?", options: [{ label: "Cheese" }], multiple: true, custom: true },
+            { question: "Project name?", options: [], custom: true },
+          ],
+        },
+        threadId: "t1",
+        conversation: c,
+      },
+      commands: { bridge_call: () => ({ turnId: "" }) },
+    });
+    // A typed answer replaces a single pick.
+    await user.click(screen.getByRole("button", { name: "MIT" }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.type(screen.getByRole("textbox", { name: "Type your answer…" }), "BSD-3");
+    await user.keyboard("{Enter}");
+    // On a multiple question it joins the picks.
+    await user.click(screen.getByRole("button", { name: "Cheese" }));
+    await user.type(screen.getByRole("textbox", { name: "Type your answer…" }), "Olives{Enter}");
+    // A question with no options is answered by typing alone.
+    await user.type(screen.getByRole("textbox", { name: "Type your answer…" }), "Uxnan{Enter}");
+    await until(() => backend.called("bridge_call"));
+    expect(backend.lastCallTo("bridge_call")?.args).toEqual({
+      method: "turn/send",
+      params: {
+        threadId: "t1",
+        questionResponse: { questionId: "q-own", answers: [["BSD-3"], ["Cheese", "Olives"], ["Uxnan"]] },
+      },
+    });
+  });
+
   it("asks several questions one at a time, and 1–9 pick an option", async () => {
     const c = conversation();
     const { screen, backend, user } = mount(ChatRequest, {
@@ -269,19 +307,35 @@ describe("ChatActivity", () => {
     expect(settled.screen.queryByRole("status")).toBeNull();
   });
 
-  it("opens a subagent's report and marks one that failed", async () => {
+  it("draws a subagent as its own card that opens its report, and marks one that failed", async () => {
     const block = {
       type: "subagent",
       state: { id: "s1", name: "Count lines", status: "completed", output: "Three lines." },
     };
-    const { screen, user } = mount(ChatActivity, { props: { block } });
+    const { screen, user } = mount(ChatBlock, { props: { block, threadId: "t1", conversation: conversation() } });
+    expect(screen.getByText("Subagent")).toBeTruthy();
     await user.click(screen.getByText("Count lines"));
     await until(() => !folded(screen.queryByText("Three lines.")));
     screen.unmount();
-    const failed = mount(ChatActivity, {
-      props: { block: { type: "subagent", state: { id: "s2", name: "Audit", status: "error" } } },
+    const failed = mount(ChatBlock, {
+      props: {
+        block: { type: "subagent", state: { id: "s2", name: "Audit", status: "error" } },
+        threadId: "t1",
+        conversation: conversation(),
+      },
     });
     expect(failed.screen.getByText("failed")).toBeTruthy();
+    failed.screen.unmount();
+    // A running subagent of a turn that has ended does not keep working.
+    const settled = mount(ChatBlock, {
+      props: {
+        block: { type: "subagent", state: { id: "s3", name: "Scan", status: "running" } },
+        threadId: "t1",
+        conversation: conversation(),
+        live: false,
+      },
+    });
+    expect(settled.screen.queryByRole("status")).toBeNull();
   });
 });
 

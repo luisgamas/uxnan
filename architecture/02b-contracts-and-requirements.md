@@ -1,6 +1,16 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.3.0 | **Fecha:** 2026-10-08 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.3.1 | **Fecha:** 2026-10-15 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.3.1):** `QuestionItem.custom` — the agent also takes an
+> answer the person types (returned in `answers` like a label; such a question
+> may carry no options). Questions now come from every agent whose CLI can ask
+> headless — OpenCode, Claude Code (`AskUserQuestion`), Grok
+> (`_x.ai/ask_user_question`) and Codex (`item/tool/requestUserInput`, no longer
+> treated as an approval) — and Claude Code's approvals ride its own stream-json
+> channel (`--permission-prompt-tool stdio` → `can_use_tool`) instead of a
+> `PreToolUse` hook calling `POST /agent-hook/approval`, which is gone. Method
+> and notification counts unchanged (**103 methods**, 25 notifications).
 >
 > **Executive summary (1.3.0):** agent views. `view/read { viewId }` →
 > `ViewReadResult { viewId, title, html, bytes }`, the page an agent showed with
@@ -744,18 +754,36 @@ interface TurnSendParams {
 **`QuestionResponse`** / **`QuestionRequestBlock`** (el `question` tool interactivo):
 ```typescript
 interface QuestionOption { label: string; description?: string }
-interface QuestionItem { question: string; header?: string; options: QuestionOption[]; multiple?: boolean }
+interface QuestionItem { question: string; header?: string; options: QuestionOption[]; multiple?: boolean; custom?: boolean /* tambien acepta texto escrito */ }
 // content block que el bridge emite (stream/content/block) cuando el agente pregunta:
 interface QuestionRequestBlock { type: 'question'; questionId: string; questions: QuestionItem[]; blockId?: string /* = questionId */ }
 // respuesta del telefono en turn/send: answers[i] = labels elegidas para questions[i]
+// (en una pregunta `custom`, una entrada que no es ninguna label es el texto escrito)
 interface QuestionResponse { questionId: string; answers: string[][] }
 ```
-Flujo (espejo de approvals, §6.2): el agente OpenCode usa su tool `question` → el
+Flujo (espejo de approvals, §6.2): el agente usa su tool de preguntar → el
 adapter lo enruta por `AgentManager.requestQuestion` → el bridge emite un bloque
-`question` → el telefono muestra una card con opciones → responde
-`turn/send { questionResponse }` → `respondQuestion` resuelve → el adapter contesta
-a `/question/{id}/reply` y el agente continua con la eleccion (o se rechaza para
-desbloquear si el usuario omite / expira).
+`question` → el telefono (y el desktop) muestran una card con opciones (y un campo
+de texto si es `custom`) → responde `turn/send { questionResponse }` →
+`respondQuestion` resuelve → el adapter contesta en la forma de su CLI y el agente
+continua (o se omite para desbloquear si el usuario omite / expira):
+
+- **OpenCode** — tool `question`: 1.x `/question/{id}/reply` (o `/reject`); 2.x un
+  **form** (`form.created`; `multiselect` para varias, `custom` para texto)
+  contestado con el `value` de cada opcion en `/api/session/:id/form/:id/reply`
+  (o `DELETE`).
+- **Claude Code** — `AskUserQuestion` como control request `can_use_tool`;
+  `control_response` allow con `updatedInput.answers` por texto de pregunta.
+- **Grok** — server request `_x.ai/ask_user_question`; `{ outcome: "accepted",
+  answers }` o `{ outcome: "skip_interview" }`.
+- **Codex** — `item/tool/requestUserInput` (`isOther` → `custom`);
+  `{ answers: { <id>: { answers } } }`.
+- **Zero, Antigravity, pi** — sus CLIs no exponen la pregunta al cliente headless.
+
+Un adapter puede **retirar** una peticion pendiente (aprobacion o pregunta) con un
+`AbortSignal` (`requestApproval`/`requestQuestion(threadId, …, signal)`): se
+resuelve sola y cada cliente cierra su card (`stream/approval|question/resolved`).
+Codex lo usa con `serverRequest/resolved`; Claude cuando su proceso termina.
 
 **`TurnAttachment`** (adjunto inline en `turn/send`: una imagen o cualquier
 archivo, hasta `MAX_ATTACHMENT_BYTES` = 20 MB decodificado cada uno; uno mayor
@@ -783,15 +811,21 @@ compartido (en `AgentManager`) que el `AgentManager.requestApproval()`
 popula y `AgentManager.respondApproval()` resuelve. El transporte
 concreto depende del adaptador:
 
-- **Claude Code** — `--settings` inyecta un hook `PreToolUse` que
-  hace `POST /agent-hook/approval` a la LAN server del bridge; el
-  bridge reenvía al teléfono por el canal central.
+- **Claude Code** — `--permission-prompt-tool stdio`: el CLI pide cada
+  herramienta con un control request `can_use_tool` en su stdout
+  stream-json y el adapter contesta un `control_response` (allow / deny;
+  "permitir en la sesion" devuelve sus `permission_suggestions` como
+  `updatedPermissions`) en su stdin. No depende de la LAN ni de un
+  endpoint HTTP.
 - **Codex** — protocolo JSON-RPC `codex app-server` (un proceso por
   turno; ver 02a §5.8.8):
   elicitaciones `item/commandExecution|fileChange|permissions/
   requestApproval`, `mcpServer/elicitation/request`,
-  `item/tool/requestUserInput` (+ legacy `applyPatchApproval`,
-  `execCommandApproval`).
+  (+ legacy `applyPatchApproval`, `execCommandApproval`).
+  `item/tool/requestUserInput` es una **pregunta**, no una aprobacion
+  (ver *QuestionResponse*).
+- **Grok / Zero** — ACP `session/request_permission`. Grok ademas pide
+  salir de su modo plan con `_x.ai/exit_plan_mode`.
 - **Echo (dev)** — el adaptador directamente llama a
   `requestApproval` cuando el texto es `approval-demo` y pausa el
   turno hasta que el usuario responde.
@@ -802,9 +836,13 @@ vivo**. Si el teléfono está en background/desconectado, la aprobación **esper
 (su `approval` content block se reenvía vía el outbound log al reconectar), de
 modo que un turno que pide aprobación con la app cerrada nunca cae al `reject`
 por una tarjeta que el usuario no vio. Una reconexión otorga una ventana nueva;
-la última desconexión pausa la cuenta atrás. Para que el propio CLI no aborte el
-hook antes de que el usuario regrese, el hook `PreToolUse` (Claude) fija un
-`timeout` amplio (1800 s), por encima del default ~60 s del CLI.
+la última desconexión pausa la cuenta atrás. El temporizador es solo el del
+bridge: ningun adapter lleva uno propio.
+
+**Salir del modo plan** (Claude `ExitPlanMode`, Grok `_x.ai/exit_plan_mode`): el
+plan se muestra como texto del turno; en *Plan only* se rechaza, en *Full
+access* / *Approve for me* sigue solo, y en *Request approval* se pide con una
+card cuyo texto es "Start implementing this plan" (`ApprovalRequestInfo.action`).
 
 
 **`AgentModel`** (item de `agent/models`):
@@ -816,7 +854,7 @@ interface AgentModel {
   version?: string;                           // version concreta para ids no-alias
   isDefault?: boolean;
   options?: AgentModelOption[];               // per-model run-option knobs
-  contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi --list-models)
+  contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi get_available_models)
   isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude fable/opus/sonnet/haiku); ausente en versiones fijas
   isLegacy?: boolean;                         // el CLI lo lista como modelo anterior (Claude: id concreto que ningun alias corre hoy); los clientes lo pliegan en "Modelos anteriores"
 }

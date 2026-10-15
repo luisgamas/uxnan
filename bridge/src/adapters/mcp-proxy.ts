@@ -25,8 +25,8 @@
  * nothing is exposed, and nothing warns. MCP stdio framing: one JSON-RPC message
  * per line on stdin, one per line on stdout.
  */
+import { readLines } from '../json-lines.js';
 import { createHash } from 'node:crypto';
-import { createInterface } from 'node:readline';
 import { DESKTOP_MCP_SERVER_NAME, encodeCwdHeader, type AgentMcpServer } from '@uxnan/shared';
 import {
   DesktopMcpClient,
@@ -132,7 +132,7 @@ export async function runMcpProxy(options: McpProxyOptions): Promise<void> {
     options.output.write(`${JSON.stringify(answer)}\n`);
   };
 
-  const lines = createInterface({ input: options.input });
+  const lines = readLines(options.input);
   // Answer in order: the agent may pipeline requests.
   let chain = Promise.resolve();
   for await (const line of lines) {

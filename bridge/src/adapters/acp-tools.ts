@@ -97,8 +97,9 @@ export function acpToolBlock(tc: AcpToolCall): Record<string, unknown> | null {
     const task = str(input['description']) || str(input['prompt']) || tc.title;
     return subagentBlock(tc.toolCallId, task, output, isError);
   }
-  // `ask_user`: an ACP agent cannot ask through this channel (it continues
-  // with its best assumption), so the questions it had are shown legibly.
+  // `ask_user`: shown legibly with its questions; the note stands in for the
+  // answer only when none came back (an agent that cannot ask continues on
+  // its best assumption).
   const asked = formatAskUser(input);
   if (asked) {
     const note =
@@ -148,6 +149,18 @@ function diffBlock(path: string, oldText: string, newText: string): Record<strin
 }
 
 /**
+ * One `ask_user` option as text: a plain string, or Grok's `{ label, description }`
+ * (the description in parentheses). Empty when there is no label.
+ */
+function askOptionText(option: unknown): string {
+  if (typeof option === 'string') return option;
+  if (!isRecord(option)) return '';
+  const label = str(option['label']);
+  const description = str(option['description']);
+  return label && description ? `${label} (${description})` : label;
+}
+
+/**
  * Render an `ask_user` `rawInput` (`{ header?, questions:[{question, options?,
  * recommended?}] }`) as a readable prompt. Undefined when the args are not
  * that shape, so the caller falls back to the generic block.
@@ -164,7 +177,10 @@ function formatAskUser(input: Record<string, unknown>): string | undefined {
     if (text) lines.push(`• ${text}`);
     const options = q['options'];
     if (Array.isArray(options) && options.length > 0) {
-      const opts = options.filter((o) => typeof o === 'string').join(' · ');
+      const opts = options
+        .map(askOptionText)
+        .filter((o) => o.length > 0)
+        .join(' · ');
       const rec = str(q['recommended']);
       if (opts) lines.push(`   ${opts}${rec ? ` (suggested: ${rec})` : ''}`);
     }

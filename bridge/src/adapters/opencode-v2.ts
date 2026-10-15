@@ -78,10 +78,16 @@ const COMMANDS_POLL_MS = 400;
 /** Upper bound on history pages read for one session. */
 const MAX_HISTORY_PAGES = 50;
 
-/** A form field, as `form.created` announces it and a reply must key it. */
+/**
+ * A form field, as `form.created` announces it and a reply must key it. Each
+ * choice is sent as its `value` (its `label` is what the person reads, and the
+ * two may differ); `custom` lets the person's own text stand in for a choice.
+ */
 interface FormField {
   key: string;
   multiple: boolean;
+  custom: boolean;
+  options: { value: string; label: string }[];
 }
 
 /** Turns V2 events into neutral {@link OpenCodeEvent}s. Pure but stateful. */
@@ -280,22 +286,29 @@ export class OpenCodeV2Translator {
       if (!isRecord(field)) continue;
       const key = str(field['key']);
       if (!key) continue;
-      const multiple = field['type'] === 'array' || field['multiple'] === true;
-      fields.push({ key, multiple });
+      // `multiselect` since 2.0.2x; earlier 2.x releases said `array` / `multiple`.
+      const multiple =
+        field['type'] === 'multiselect' || field['type'] === 'array' || field['multiple'] === true;
+      const custom = field['custom'] === true;
       const options: QuestionOption[] = [];
+      const choices: FormField['options'] = [];
       for (const o of Array.isArray(field['options']) ? field['options'] : []) {
         if (!isRecord(o)) continue;
         const label = str(o['label']) || str(o['value']);
         if (!label) continue;
+        const value = str(o['value']) || label;
+        choices.push({ value, label });
         const description = str(o['description']);
         options.push({ label, ...(description ? { description } : {}) });
       }
+      fields.push({ key, multiple, custom, options: choices });
       const title = str(field['title']);
       questions.push({
         question: str(field['description']) || title || str(form['title']),
         ...(title ? { header: title } : {}),
         options,
         ...(multiple ? { multiple: true } : {}),
+        ...(custom ? { custom: true } : {}),
       });
     }
     this.#forms.set(requestId, fields);
@@ -411,8 +424,11 @@ export function openCodeV2Models(data: unknown): OpenCodeModel[] {
     const variants = (Array.isArray(m['variants']) ? m['variants'] : [])
       .map((v) => (isRecord(v) ? str(v['id']) : undefined))
       .filter((v): v is string => typeof v === 'string' && v.length > 0);
+    const displayName = str(m['name']);
     out.push({
       id,
+      ...(displayName ? { displayName } : {}),
+      ...(m['status'] === 'deprecated' ? { isLegacy: true } : {}),
       ...(context > 0 ? { contextWindow: context } : {}),
       ...(variants.length > 0 ? { variants } : {}),
     });
@@ -420,16 +436,26 @@ export function openCodeV2Models(data: unknown): OpenCodeModel[] {
   return out;
 }
 
-/** The form reply body: each answered question under its field's key. */
+/**
+ * The form reply body: each answered question under its field's key. An
+ * answer is a chosen label, mapped to that choice's `value`; text that matches
+ * no label is the person's own answer, sent as typed, and only on a field that
+ * allows one (`custom`). Anything else the server would refuse, so it is dropped.
+ */
 export function formAnswer(
   fields: readonly FormField[],
   answers: readonly string[][],
 ): Record<string, string | string[]> {
   const answer: Record<string, string | string[]> = {};
   fields.forEach((field, i) => {
-    const chosen = answers[i] ?? [];
-    if (chosen.length === 0) return;
-    answer[field.key] = field.multiple ? [...chosen] : (chosen[0] as string);
+    const values: string[] = [];
+    for (const label of answers[i] ?? []) {
+      const choice = field.options.find((o) => o.label === label);
+      if (choice) values.push(choice.value);
+      else if (field.custom) values.push(label);
+    }
+    if (values.length === 0) return;
+    answer[field.key] = field.multiple ? values : (values[0] as string);
   });
   return answer;
 }

@@ -14,7 +14,7 @@
  * Source: architecture/02a-system-architecture.md §5.8.2.
  */
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createInterface, type Interface } from 'node:readline';
+import { onLines, type LineReader } from '../json-lines.js';
 import type {
   AgentCapabilities,
   AgentConfig,
@@ -40,7 +40,7 @@ export class ProcessAgentAdapter extends BaseAgentAdapter {
   readonly #binaryPath: string;
   readonly #args: string[];
   #child: ChildProcessWithoutNullStreams | undefined;
-  #reader: Interface | undefined;
+  #reader: LineReader | undefined;
 
   constructor(options: ProcessAdapterOptions) {
     super();
@@ -54,8 +54,7 @@ export class ProcessAgentAdapter extends BaseAgentAdapter {
     if (this.#child) return Promise.resolve();
     const child = spawnPiped(this.#binaryPath, this.#args, { cwd: config.cwd ?? process.cwd() });
     this.#child = child;
-    this.#reader = createInterface({ input: child.stdout });
-    this.#reader.on('line', (line) => {
+    this.#reader = onLines(child.stdout, (line) => {
       const event = this.parseLine(line);
       if (event) this.emit(event);
     });

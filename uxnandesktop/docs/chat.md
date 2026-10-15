@@ -330,8 +330,11 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - **Header**: the conversation's name, its agent (fixed), and *Rename* (renames
   the thread, so the phone shows the same name) / *Archive*.
 - **Timeline, while a turn runs**: everything in view, in the order the agent
-  produced it — prose, and between it the steps it takes. Consecutive steps
-  (commands, edits, tool calls, subagents) form one **work group**: a compact
+  produced it — prose, and between it the steps it takes. A **subagent** the
+  agent delegated to is its own card, as on the phone — what it was asked to
+  do, still working or failed, and its report, which opens in place
+  (`ChatSubagent.svelte`). Consecutive steps (commands, edits, tool calls) form
+  one **work group**: a compact
   row per step (icon, verb, detail; while it runs its verb carries a soft
   sweep of light and the working spinner sits where the state goes, red when it
   failed), each one opening to its output or diff. A *Working for 12s* line —
@@ -356,8 +359,9 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   first. A place you left in history (and saved across a restart) gets the
   whole loaded page, so it reopens exactly where it was
   (`src/lib/components/chat/chatWindow.ts`).
-- **Timeline, once a turn settles**: the work that led to the answer folds
-  behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
+- **Timeline, once a turn settles**: the work that led to the answer — and,
+  when the agent answered in several responses (Codex's commentary before its
+  final answer), its earlier responses — folds behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary
   (*Ran 3 commands · 2 edits*, and how many failed). The closing answer stays
   open — with any notice the bridge added after it (a background task cut

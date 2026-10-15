@@ -567,13 +567,18 @@ and composed in `application_providers.dart`. The important ones:
 7. The UI watches the derived stream providers and rebuilds reactively. Partial
    assistant prose and settled prose both pass through the shared
    `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch
-   from visible source syntax when a turn completes. During streaming every
-   assistant response stays visible; after completion, earlier progress
-   responses fold under one quiet line — **Worked for 5m 52s** when the turn's
-   duration is known (`Turn.completedAt − createdAt` from `turn/list` /
-   `turn/read`, kept on the assistant message as `Message.turnDuration`), else
-   **N previous messages** — and open through the same segment builder as the
-   answer (`_responseSegments`: prose + collapsed work-log groups).
+   from visible source syntax when a turn completes. While its turn runs
+   (the timeline's `streamingTurnId`) everything stays visible; once it
+   settles, the work that led to the answer — the steps, and the earlier
+   responses when the agent answered in several — folds under one quiet line,
+   the desktop's rule (`splitAnswer`, the same in `uxnandesktop/src/lib/bridge/
+   timeline.ts`): the answer is the text after the last block or after the
+   agent's last response boundary, and the views it showed stay with it. The
+   line reads **Worked for 5m 52s** when the turn's duration is known
+   (`Turn.completedAt − createdAt` from `turn/list` / `turn/read`, kept on the
+   assistant message as `Message.turnDuration`), else **Show the work**, and
+   opens through the same segment builder as the answer (`_responseSegments`:
+   prose + collapsed work-log groups).
 8. Assistant prose sends explicit Markdown links, detected bare local paths and
    inline-code paths through one callback. `FileBrowserManager` asks the bridge
    to resolve the citation on the PC, then opens `FileViewerScreen` with the

@@ -1373,6 +1373,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                               final bubble = MessageBubble(
                                 key: key,
                                 message: message,
+                                running:
+                                    message.turnId == snapshot.streamingTurnId,
                                 steered: message.role == MessageRole.user &&
                                     steeredTurnIds.contains(message.turnId),
                                 onTapLink: (href) =>

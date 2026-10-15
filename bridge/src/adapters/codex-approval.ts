@@ -1,39 +1,38 @@
 /**
- * Maps the various Codex app-server approval-elicitation shapes onto the
- * bridge's generic approval tool descriptor (`{ toolName, input }`), so the
- * caller can use a single `agentManager.requestApproval(...)` call regardless
- * of which approval type the server sent.
+ * Maps the Codex app-server approval-elicitation shapes onto the bridge's
+ * generic approval request (`ApprovalRequestInfo`), so the caller can use a
+ * single `requestApproval(...)` call regardless of which approval type the
+ * server sent.
  *
- * Codex has accumulated several approval channel names over the codebasex-cli
+ * Codex has accumulated several approval channel names over the codex-cli
  * versions, and the app-server protocol surfaces BOTH the new `v2` names and
- * the legacy ones. Every one of them is routed through this module:
+ * the legacy ones. Every approval channel is routed through this module:
  *
  *  v2 (current):
- *    - `item/commandExecution/requestApproval` (params: { command (a string), cwd, ... })
+ *    - `item/commandExecution/requestApproval` (params: { command (a string, or null),
+ *                                                kind: 'command' | 'writeStdin', cwd, ... })
  *    - `item/fileChange/requestApproval`        (params: { itemId, reason?, grantRoot? } —
  *                                                the changes ride on the item itself)
  *    - `item/permissions/requestApproval`       (params: { reason, permissions })
  *    - `mcpServer/elicitation/request`           (params: { serverName, message, ... })
- *    - `item/tool/requestUserInput`             (params: { toolName, question, ... })
  *
  *  v1 (legacy, still emitted by older `codex-cli` releases):
  *    - `execCommandApproval`                    (params: { command, parsedCmd, ... })
  *    - `applyPatchApproval`                     (params: { fileChanges, grantRoot?, reason? })
  *
- * See `/tmp/codex-schema/ServerRequest.json` for the full schema. The bridge
- * treats them all as a tool to gate; the user replies with one of
+ * The bridge treats them all as a tool to gate; the user replies with one of
  * `approve | reject | approveSession` and the caller maps it back to the
  * right JSON-RPC decision shape for THIS method.
+ *
+ * `item/tool/requestUserInput` is not an approval: it is a question Codex asks
+ * the person, mapped by {@link describeUserInputRequest} and answered by
+ * {@link questionReply}.
  */
-import type { ApprovalDecision } from '@uxnan/shared';
+import type { ApprovalDecision, QuestionItem, QuestionOption } from '@uxnan/shared';
+import type { ApprovalRequestInfo } from './user-input.js';
 
-/** The bridge's tool descriptor for `AgentManager.requestApproval`. */
-export interface ApprovalDescriptor {
-  toolName: string;
-  input: Record<string, unknown>;
-  /** Optional human-readable one-liner shown as the card's "action" subtitle. */
-  detail?: string;
-}
+/** The bridge's approval request for `AgentManager.requestApproval`. */
+export type ApprovalDescriptor = ApprovalRequestInfo;
 
 /** Identify the elicitation shape so the reply can be shaped correctly. */
 export type ApprovalKind =
@@ -45,8 +44,6 @@ export type ApprovalKind =
   | 'permissions'
   /** `mcpServer/elicitation/request` (v2 MCP server). */
   | 'mcpElicitation'
-  /** `item/tool/requestUserInput` (v2, EXPERIMENTAL — treat as approval). */
-  | 'toolUserInput'
   /** Legacy `execCommandApproval` (v1). */
   | 'legacyExecCommand'
   /** Legacy `applyPatchApproval` (v1). */
@@ -78,8 +75,6 @@ export function describeServerRequest(
       return describePermissions(params, id);
     case 'mcpServer/elicitation/request':
       return describeMcpElicitation(params, id);
-    case 'item/tool/requestUserInput':
-      return describeToolUserInput(params, id);
     case 'execCommandApproval':
       return describeLegacyExecCommand(params, id);
     case 'applyPatchApproval':
@@ -118,9 +113,6 @@ export function approvalReply(
         : { permissions: {} };
     case 'mcpElicitation':
       return { action: approve ? 'accept' : 'decline', content: null };
-    case 'toolUserInput':
-      // Nothing to answer with but the person's yes or no: an empty answer set.
-      return { answers: {} };
     case 'legacyExecCommand':
     case 'legacyApplyPatch':
       return { decision: forSession ? 'approved_for_session' : approve ? 'approved' : 'denied' };
@@ -129,6 +121,20 @@ export function approvalReply(
 
 function describeCommandExecution(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
+  if (p['kind'] === 'writeStdin') {
+    // Text typed into a command that is already running, not a new command.
+    // The schema carries no stdin text, and what is typed can be a secret
+    // (a password prompt), so the card names the action and shows nothing else.
+    return {
+      kind: 'commandExecution',
+      serverRequestId: id,
+      descriptor: {
+        toolName: 'codex.writeStdin',
+        input: {},
+        action: "Codex wants to write to a running command's input",
+      },
+    };
+  }
   // A string on the v2 protocol (codex-cli 0.157.1); argv on older builds.
   const command =
     typeof p['command'] === 'string'
@@ -136,9 +142,6 @@ function describeCommandExecution(params: unknown, id: number | string): Pending
       : Array.isArray(p['command'])
         ? (p['command'] as unknown[]).filter((c): c is string => typeof c === 'string').join(' ')
         : '';
-  const detail =
-    command ||
-    (typeof p['reason'] === 'string' ? (p['reason'] as string) : 'codex wants to run a command');
   return {
     kind: 'commandExecution',
     serverRequestId: id,
@@ -149,7 +152,6 @@ function describeCommandExecution(params: unknown, id: number | string): Pending
         ...(Array.isArray(p['parsedCmd']) ? { parsedCmd: p['parsedCmd'] } : {}),
         ...(typeof p['cwd'] === 'string' ? { cwd: p['cwd'] } : {}),
       },
-      detail,
     },
   };
 }
@@ -158,20 +160,12 @@ function describeFileChange(params: unknown, id: number | string): PendingCodexA
   const p = asRecord(params) ?? {};
   // v2 names only the item and why; the legacy shape listed the files.
   const fileChanges = asRecord(p['fileChanges']) ?? {};
-  const paths = Object.keys(fileChanges);
-  const reason = typeof p['reason'] === 'string' ? p['reason'] : undefined;
-  const grantRoot = typeof p['grantRoot'] === 'string' ? p['grantRoot'] : undefined;
-  const detail =
-    paths.length > 0
-      ? paths.join(', ')
-      : (reason ?? (grantRoot ? `write under ${grantRoot}` : 'codex wants to edit files'));
   return {
     kind: 'fileChange',
     serverRequestId: id,
     descriptor: {
       toolName: 'codex.applyPatch',
       input: { fileChanges, ...(typeof p['reason'] === 'string' ? { reason: p['reason'] } : {}) },
-      detail,
     },
   };
 }
@@ -186,7 +180,6 @@ function describePermissions(params: unknown, id: number | string): PendingCodex
     descriptor: {
       toolName: 'codex.permissions',
       input: { reason, permissions: p['permissions'] },
-      detail: reason,
     },
   };
 }
@@ -194,33 +187,75 @@ function describePermissions(params: unknown, id: number | string): PendingCodex
 function describeMcpElicitation(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const serverName = typeof p['serverName'] === 'string' ? (p['serverName'] as string) : 'mcp';
-  const message =
-    typeof p['message'] === 'string' ? (p['message'] as string) : 'mcp server needs input';
   return {
     kind: 'mcpElicitation',
     serverRequestId: id,
     descriptor: {
       toolName: `mcp.${serverName}`,
       input: p,
-      detail: message,
     },
   };
 }
 
-function describeToolUserInput(params: unknown, id: number | string): PendingCodexApproval {
+/** Codex's questions for the person (`item/tool/requestUserInput`), in the order asked. */
+export interface PendingCodexQuestions {
+  /** Codex's id per question: the key its answer is filed under. */
+  ids: string[];
+  /** The same questions, as the bridge's question card shows them. */
+  questions: QuestionItem[];
+}
+
+/**
+ * Read an `item/tool/requestUserInput` request (a question, not an approval).
+ * A question without an id or text cannot be answered, so it is left out. A
+ * question with no choices is answered in the person's own words. `isSecret`
+ * questions are still asked; the bridge never logs what is answered.
+ */
+export function describeUserInputRequest(params: unknown): PendingCodexQuestions {
   const p = asRecord(params) ?? {};
-  const toolName = typeof p['toolName'] === 'string' ? (p['toolName'] as string) : 'codex tool';
-  const question =
-    typeof p['question'] === 'string' ? (p['question'] as string) : 'codex needs input';
-  return {
-    kind: 'toolUserInput',
-    serverRequestId: id,
-    descriptor: {
-      toolName: `codex.${toolName}`,
-      input: p,
-      detail: question,
-    },
-  };
+  const ids: string[] = [];
+  const questions: QuestionItem[] = [];
+  for (const raw of Array.isArray(p['questions']) ? p['questions'] : []) {
+    const q = asRecord(raw);
+    if (!q || typeof q['id'] !== 'string' || typeof q['question'] !== 'string') continue;
+    const options: QuestionOption[] = [];
+    for (const rawOption of Array.isArray(q['options']) ? q['options'] : []) {
+      const option = asRecord(rawOption);
+      if (!option || typeof option['label'] !== 'string' || option['label'] === '') continue;
+      const description = typeof option['description'] === 'string' ? option['description'] : '';
+      options.push({
+        label: option['label'],
+        ...(description !== '' ? { description } : {}),
+      });
+    }
+    const header = typeof q['header'] === 'string' && q['header'] !== '' ? q['header'] : undefined;
+    ids.push(q['id']);
+    questions.push({
+      question: q['question'],
+      ...(header !== undefined ? { header } : {}),
+      options,
+      custom: q['isOther'] === true || options.length === 0,
+    });
+  }
+  return { ids, questions };
+}
+
+/**
+ * The JSON-RPC `result` answering `item/tool/requestUserInput`: each answered
+ * question's chosen labels (or the text the person typed) filed under Codex's
+ * id for it. A skipped question has no entry, so Codex sees no answer for it;
+ * an answer set with no entries at all means the person skipped everything.
+ */
+export function questionReply(
+  questions: PendingCodexQuestions,
+  answers: string[][],
+): { answers: Record<string, { answers: string[] }> } {
+  const filed: Record<string, { answers: string[] }> = {};
+  questions.ids.forEach((id, index) => {
+    const chosen = (answers[index] ?? []).filter((answer) => answer !== '');
+    if (chosen.length > 0) filed[id] = { answers: chosen };
+  });
+  return { answers: filed };
 }
 
 function describeLegacyExecCommand(params: unknown, id: number | string): PendingCodexApproval {
@@ -234,7 +269,6 @@ function describeLegacyExecCommand(params: unknown, id: number | string): Pendin
     descriptor: {
       toolName: 'codex.command',
       input: { command, ...(typeof p['cwd'] === 'string' ? { cwd: p['cwd'] } : {}) },
-      detail: command || 'codex wants to run a command',
     },
   };
 }
@@ -242,14 +276,12 @@ function describeLegacyExecCommand(params: unknown, id: number | string): Pendin
 function describeLegacyApplyPatch(params: unknown, id: number | string): PendingCodexApproval {
   const p = asRecord(params) ?? {};
   const fileChanges = asRecord(p['fileChanges']) ?? {};
-  const paths = Object.keys(fileChanges);
   return {
     kind: 'legacyApplyPatch',
     serverRequestId: id,
     descriptor: {
       toolName: 'codex.applyPatch',
       input: { fileChanges, ...(typeof p['reason'] === 'string' ? { reason: p['reason'] } : {}) },
-      detail: paths.length > 0 ? paths.join(', ') : 'codex wants to edit files',
     },
   };
 }

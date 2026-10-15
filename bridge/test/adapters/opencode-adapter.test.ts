@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   OpenCodeAdapter,
   OpenCodeV1Translator,
@@ -45,6 +47,8 @@ class FakeServer implements IOpenCodeServer {
   readonly replies: { id: string; reply: PermissionReply }[] = [];
   readonly rejectedQuestions: string[] = [];
   readonly questionReplies: { id: string; answers: string[][] }[] = [];
+  /** When set, the server refuses every answer (as a form it rejects would) but not a dismissal. */
+  refuseQuestionReplies = false;
   history: OpenCodeHistoryMessage[] = [];
   catalog: OpenCodeModel[] = [];
   commandList: OpenCodeCommand[] = [];
@@ -126,8 +130,10 @@ class FakeServer implements IOpenCodeServer {
     return Promise.resolve();
   }
   answerQuestion(_sessionId: string, id: string, answers: string[][]): Promise<void> {
-    if (answers.some((a) => a.length > 0)) this.questionReplies.push({ id, answers });
-    else this.rejectedQuestions.push(id);
+    if (answers.some((a) => a.length > 0)) {
+      if (this.refuseQuestionReplies) return Promise.reject(new Error('Expected string'));
+      this.questionReplies.push({ id, answers });
+    } else this.rejectedQuestions.push(id);
     return Promise.resolve();
   }
   messages(): Promise<OpenCodeHistoryMessage[]> {
@@ -824,6 +830,50 @@ test('OpenCodeAdapter rejects a question when the user skips (empty answers)', a
   assert.deepEqual(server.questionReplies, []);
 });
 
+test('OpenCodeAdapter routes a free-text form (custom, no options) to the person', async () => {
+  const server = new FakeServer(2);
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    spawnFn: immediateSpawn() as never,
+    serverFactory: () => server,
+    onQuestionRequest: () => Promise.resolve([['my-project']]),
+  });
+  collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'ask me' });
+  server.emitV2('form.created', {
+    form: {
+      id: 'frm_4',
+      sessionID: 'ses_1',
+      title: 'Questions',
+      fields: [{ key: 'q0', description: 'Name it?', type: 'string', options: [], custom: true }],
+    },
+  });
+  await tick();
+  assert.deepEqual(server.questionReplies, [{ id: 'frm_4', answers: [['my-project']] }]);
+  assert.deepEqual(server.rejectedQuestions, []);
+});
+
+test('OpenCodeAdapter dismisses a question whose reply the server refuses, so the turn goes on', async () => {
+  const server = new FakeServer();
+  server.refuseQuestionReplies = true;
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    spawnFn: immediateSpawn() as never,
+    serverFactory: () => server,
+    onQuestionRequest: () => Promise.resolve([['Python']]),
+  });
+  collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'ask me' });
+  server.emit('question.asked', {
+    id: 'qst_5',
+    sessionID: 'ses_1',
+    questions: [{ question: 'Which language?', options: [{ label: 'Python' }] }],
+  });
+  await tick();
+  assert.deepEqual(server.questionReplies, []);
+  assert.deepEqual(server.rejectedQuestions, ['qst_5']);
+});
+
 test('OpenCodeAdapter works inside the project and asks beyond it for approveForMe', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server);
@@ -1396,6 +1446,41 @@ test('context windows are retried until a load brings one', async () => {
     tokens: 15,
     contextWindow: 1000,
   });
+});
+
+test('listModels reads the catalog in the agent’s folder, never a turn’s', async () => {
+  const turnFolder = join(tmpdir(), 'uxnan-oc-turn-folder');
+  const cwds: string[] = [];
+  const home = new FakeServer();
+  home.catalog = [{ id: 'agent/wide', contextWindow: 1000 }];
+  const inTurn = new FakeServer();
+  inTurn.catalog = [{ id: 'turn/folder', contextWindow: 1 }];
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    spawnFn: immediateSpawn() as never,
+    serverFactory: (cwd) => {
+      cwds.push(cwd);
+      return cwd === turnFolder ? inTurn : home;
+    },
+  });
+  // A turn's folder reaches `start` and the turn itself; neither may move the
+  // agent's own folder, or a renamed project folder would kill the picker.
+  await adapter.start({ agentId: 'opencode', cwd: turnFolder });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: turnFolder });
+  assert.ok(cwds.includes(turnFolder), 'the turn ran in the folder it asked for');
+
+  const models = await adapter.listModels();
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['agent/wide'],
+    'the catalog comes from the agent’s own folder, not the turn’s',
+  );
+  assert.ok(cwds.includes(homedir()), 'the catalog server is keyed at the agent-wide folder');
+  assert.deepEqual(
+    cwds.filter((cwd) => cwd !== turnFolder && cwd !== homedir()),
+    [],
+    'no server was ever keyed anywhere else',
+  );
 });
 
 test('a picked command runs on the server, as a skill when the server lists it as one', async () => {

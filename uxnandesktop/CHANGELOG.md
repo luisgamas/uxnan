@@ -4,6 +4,39 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A subagent is its own card.** What the agent delegated to — its task, still
+  working or failed, and its report, which opens in place — sits between the
+  work groups instead of being one more row of the log, as on the phone.
+- **A turn that answered in several responses folds the earlier ones too.** The
+  answer is the text after the last block or after the agent's last response
+  (Codex's commentary before its final answer folds with the work) — the same
+  rule as the phone.
+
+### Added
+
+- **A question can be answered in your own words.** When the agent allows it
+  (Claude Code, Codex, OpenCode), the chat's question card has a field under
+  its options: what you type replaces a single choice or joins the picks of a
+  multiple one, and a question with no options is answered by typing alone.
+  Enter moves on, and sends on the last question.
+
+### Fixed
+
+- **Antigravity names conversations again.** The title run asked for a pinned
+  `gemini-3.6-flash-low`, which `agy` 1.3.x no longer lists, so every name
+  failed. The model is now read from `agy models`: the lowest tier of a flash
+  family, else any `-low` id, else agy's own default — the same rule as the
+  bridge.
+- **Codex models past the first page are listed.** `model/list` is paged
+  (`nextCursor`); the listing now follows it.
+- **OpenCode 2's model list no longer comes back empty.** In a folder its
+  background service had not seen, `opencode models` printed nothing the first
+  time; OpenCode 2 is now asked with `--standalone`.
+- **pi and Zero are found where they now install.** pi's managed installer
+  (`~/.pi/agent/bin/pi`) and Zero's renamed npm package (`@twigpine/zero`) are
+  in the shared install table (`shared/agent-locations.json`).
 ### Fixed
 
 - **A bridge update reaches the model pickers without restarting the app.**

@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   AntigravityAdapter,
   antigravityPermissionMode,
@@ -16,7 +19,15 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { SpawnExtra } from '../../src/adapters/spawn.js';
-import { parseAntigravitySkills } from '../../src/adapters/antigravity-adapter.js';
+import {
+  antigravityRunModel,
+  chooseAntigravityTitleModel,
+  expandAntigravityModels,
+  groupAntigravityModels,
+  parseAntigravityAccountModel,
+  parseAntigravityChecklist,
+  parseAntigravitySkills,
+} from '../../src/adapters/antigravity-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // Fixtures mirror `agy` 1.2.7's stream-json, captured live (see the adapter header).
@@ -151,7 +162,7 @@ function collect(adapter: AntigravityAdapter): { done: Promise<AgentStreamEvent[
   return { done };
 }
 
-test('parseAntigravityModelList splits id + label, marks a default, skips dupes', () => {
+test('parseAntigravityModelList splits id + label and skips dupes, marking no default', () => {
   // Captured verbatim from `agy models` (1.1.13) on a signed-in machine: a
   // progress line, then `<id>⟨TAB⟩<label>` rows.
   const output = [
@@ -169,10 +180,13 @@ test('parseAntigravityModelList splits id + label, marks a default, skips dupes'
     models.map((m) => m.id),
     ['gemini-3.7-flash-high', 'gemini-3.7-flash-low', 'claude-opus-4-6-thinking'],
   );
-  // The id is the routing key; the label is what the phone shows.
+  // The id is the routing key; the label is what the phone shows. The first row
+  // is NOT the default: the account's own default comes from `agy -p /model`.
   assert.equal(models[0]?.displayName, 'Gemini 3.7 Flash (High)');
-  assert.equal(models[0]?.isDefault, true);
-  assert.equal(models[1]?.isDefault, undefined);
+  assert.equal(
+    models.some((m) => m.isDefault),
+    false,
+  );
 });
 
 test('parseAntigravityModelList keeps bare ids and drops prose', () => {
@@ -188,12 +202,160 @@ test('parseAntigravityModelList keeps bare ids and drops prose', () => {
   assert.equal(models[0]?.displayName, 'gemini-3.1-pro-high');
 });
 
-test('parseAntigravityModelList marks a configured default when it matches', () => {
-  const output =
-    'gemini-3.5-flash-medium\tGemini 3.5 Flash (Medium)\ngemini-3.1-pro-high\tGemini 3.1 Pro (High)';
-  const models = parseAntigravityModelList(output, 'gemini-3.1-pro-high');
-  assert.equal(models[0]?.isDefault, undefined);
+/** The real `agy models` listing of `agy` 1.3.5, captured verbatim. */
+const AGY_LISTING = [
+  'Fetching available models...',
+  'gemini-3.8-flash-high\tGemini 3.8 Flash (High)',
+  'gemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)',
+  'gemini-3.8-flash-low\tGemini 3.8 Flash (Low)',
+  'claude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)',
+  'claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)',
+  'gpt-oss-120b-medium\tGPT-OSS 120B (Medium)',
+].join('\n');
+
+/** The `agy -p /model --output-format json` payload of `agy` 1.3.5, trimmed. */
+function accountPayload(id: string): string {
+  return JSON.stringify({
+    conversation_id: '',
+    status: 'SUCCESS',
+    response: `${id}\tGemini 3.8 Flash (Medium)\n`,
+    num_turns: 0,
+    command: {
+      name: 'model',
+      data: { id, label: 'Gemini 3.8 Flash (Medium)', effort: 'medium', is_default: false },
+    },
+  });
+}
+
+test('groupAntigravityModels folds one family’s tiers into one model, lowest tier first', () => {
+  const models = groupAntigravityModels(parseAntigravityModelList(AGY_LISTING));
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['gemini-3.8-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'],
+  );
+  const family = models[0]!;
+  assert.equal(family.displayName, 'Gemini 3.8 Flash');
+  assert.deepEqual(family.options, [
+    {
+      key: 'reasoning',
+      kind: 'enum',
+      label: 'Reasoning effort',
+      values: [
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ],
+      // No account default known: the middle listed tier.
+      default: 'medium',
+    },
+  ]);
+  // Ungrouped ids keep their listed id and label, with no options.
+  assert.equal(models[1]?.displayName, 'Claude Sonnet 4.6 (Thinking)');
+  assert.equal(models[1]?.options, undefined);
+  assert.equal(models[3]?.id, 'gpt-oss-120b-medium');
+});
+
+test('groupAntigravityModels marks the account default and takes its tier', () => {
+  const account = parseAntigravityAccountModel(accountPayload('gemini-3.8-flash-high'));
+  assert.equal(account, 'gemini-3.8-flash-high');
+  const models = groupAntigravityModels(parseAntigravityModelList(AGY_LISTING), account);
+  assert.equal(models[0]?.isDefault, true);
+  assert.equal(models[0]?.options?.[0]?.default, 'high');
+  assert.equal(models[1]?.isDefault, undefined);
+});
+
+test('groupAntigravityModels marks the family of an untiered account default', () => {
+  const models = groupAntigravityModels(
+    parseAntigravityModelList(AGY_LISTING),
+    'claude-sonnet-4-6',
+  );
   assert.equal(models[1]?.isDefault, true);
+  assert.equal(models[0]?.isDefault, undefined);
+  assert.equal(models[0]?.options?.[0]?.default, 'medium');
+});
+
+test('groupAntigravityModels never marks a default it cannot place', () => {
+  const models = groupAntigravityModels(
+    parseAntigravityModelList(AGY_LISTING),
+    'gemini-9-missing-high',
+  );
+  assert.equal(
+    models.some((m) => m.isDefault),
+    false,
+  );
+});
+
+test('parseAntigravityAccountModel reads command.data.id and nothing else', () => {
+  assert.equal(
+    parseAntigravityAccountModel(accountPayload('gemini-3.8-flash-medium')),
+    'gemini-3.8-flash-medium',
+  );
+  assert.equal(parseAntigravityAccountModel(''), undefined);
+  assert.equal(parseAntigravityAccountModel('not json'), undefined);
+  assert.equal(parseAntigravityAccountModel('{"command":{"name":"model"}}'), undefined);
+  assert.equal(parseAntigravityAccountModel('{"command":{"data":{"id":"two words"}}}'), undefined);
+});
+
+test('expandAntigravityModels lists every tier a family runs as', () => {
+  const ids = expandAntigravityModels(
+    groupAntigravityModels(parseAntigravityModelList(AGY_LISTING)),
+  );
+  assert.deepEqual(ids, [
+    'gemini-3.8-flash-low',
+    'gemini-3.8-flash-medium',
+    'gemini-3.8-flash-high',
+    'claude-sonnet-4-6',
+    'claude-opus-4-6-thinking',
+    'gpt-oss-120b-medium',
+  ]);
+});
+
+test('antigravityRunModel runs a family as its tiered id, at the chosen or default tier', () => {
+  const listing = groupAntigravityModels(
+    parseAntigravityModelList(AGY_LISTING),
+    'gemini-3.8-flash-medium',
+  );
+  assert.equal(antigravityRunModel('gemini-3.8-flash', 'low', listing), 'gemini-3.8-flash-low');
+  assert.equal(
+    antigravityRunModel('gemini-3.8-flash', undefined, listing),
+    'gemini-3.8-flash-medium',
+  );
+  // A level the family does not list runs the default, never an invented tier.
+  assert.equal(antigravityRunModel('gemini-3.8-flash', 'max', listing), 'gemini-3.8-flash-medium');
+  // A stored tiered id (threads made before the grouping) runs unchanged.
+  assert.equal(
+    antigravityRunModel('gemini-3.8-flash-high', 'low', listing),
+    'gemini-3.8-flash-high',
+  );
+  // Ungrouped ids are not tiers of anything.
+  assert.equal(antigravityRunModel('claude-sonnet-4-6', undefined, listing), 'claude-sonnet-4-6');
+  // With no listing yet a chosen level still names its tier; with none the
+  // base goes as it is (agy >= 1.3.4 takes it alone).
+  assert.equal(antigravityRunModel('gemini-3.8-flash', 'low', []), 'gemini-3.8-flash-low');
+  assert.equal(antigravityRunModel('gemini-3.8-flash', undefined, []), 'gemini-3.8-flash');
+  assert.equal(antigravityRunModel('gemini-3.8-flash-high', 'low', []), 'gemini-3.8-flash-high');
+  assert.equal(
+    antigravityRunModel('gemini-3.8-flash-low\tGemini 3.8 Flash (Low)', undefined, listing),
+    'gemini-3.8-flash-low',
+  );
+  assert.equal(antigravityRunModel(undefined, 'low', listing), undefined);
+});
+
+test('chooseAntigravityTitleModel takes the cheapest flash tier, else any -low id, else none', () => {
+  const listed = expandAntigravityModels(
+    groupAntigravityModels(parseAntigravityModelList(AGY_LISTING)),
+  );
+  assert.equal(chooseAntigravityTitleModel(listed), 'gemini-3.8-flash-low');
+  // A flash family wins over a -low id of another family.
+  assert.equal(
+    chooseAntigravityTitleModel(['gemini-3.8-pro-low', 'gemini-3.8-flash-high']),
+    'gemini-3.8-flash-high',
+  );
+  assert.equal(
+    chooseAntigravityTitleModel(['claude-opus-4-6-thinking', 'gemini-3.8-pro-low']),
+    'gemini-3.8-pro-low',
+  );
+  assert.equal(chooseAntigravityTitleModel(['claude-opus-4-6-thinking']), undefined);
 });
 
 test('normalizeAntigravityModel recovers a selection stored as the whole list line', () => {
@@ -622,40 +784,120 @@ test('AntigravityAdapter cancelTurn kills the run and emits turn_aborted', async
   assert.ok(events.some((e) => e.type === 'turn_aborted'));
 });
 
-test('AntigravityAdapter.listModels spawns `agy models` and parses the output', async () => {
-  const { spawnFn, last } = fakeSpawner();
+/** Answer the two reads `listModels` makes: the listing and the account default. */
+function answerListing(spawns: FakeSpawn[], listing: string, account: string): void {
+  const byArg = (arg: string): FakeSpawn => spawns.find((s) => s.args.includes(arg))!;
+  byArg('models').feed([listing]);
+  byArg('/model').feed([account]);
+}
+
+/** Wait until the adapter has spawned `count` processes (its reads are async). */
+async function spawnedAtLeast(spawns: FakeSpawn[], count: number): Promise<void> {
+  for (let i = 0; i < 100 && spawns.length < count; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(spawns.length >= count, `expected ${count} spawns, saw ${spawns.length}`);
+}
+
+test('AntigravityAdapter.listModels reads the listing and the account default, grouped', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
   const listing = adapter.listModels();
-  last().feed([
-    'Fetching available models...\n',
-    'gemini-3.5-flash-medium\tGemini 3.5 Flash (Medium)\nclaude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\n',
-  ]);
+  assert.equal(spawns.length, 2, 'both reads start together');
+  answerListing(spawns, AGY_LISTING, accountPayload('gemini-3.8-flash-medium'));
   const models = await listing;
-  assert.equal(last().args[last().args.length - 1], 'models');
   assert.deepEqual(
     models.map((m) => m.id),
-    ['gemini-3.5-flash-medium', 'claude-sonnet-4-6'],
+    ['gemini-3.8-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'],
   );
+  assert.equal(models[0]?.isDefault, true);
   assert.deepEqual(
-    models.map((m) => m.displayName),
-    ['Gemini 3.5 Flash (Medium)', 'Claude Sonnet 4.6 (Thinking)'],
+    spawns.map((s) => s.args),
+    [['models'], ['-p', '/model', '--output-format', 'json']],
   );
 });
 
-test('AntigravityAdapter names a conversation on the cheap flash tier', async () => {
-  const { spawnFn, last } = fakeSpawner();
+test('AntigravityAdapter.listModels shows no default when the account read fails', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const listing = adapter.listModels();
+  answerListing(spawns, AGY_LISTING, 'signed out');
+  const models = await listing;
+  assert.equal(models.length, 4);
+  assert.equal(
+    models.some((m) => m.isDefault),
+    false,
+  );
+});
+
+test('AntigravityAdapter runs the family at the level the turn picks, else the default', async () => {
+  const { spawnFn, spawns, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const listing = adapter.listModels();
+  answerListing(spawns, AGY_LISTING, accountPayload('gemini-3.8-flash-medium'));
+  await listing;
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    cwd: '/p',
+    service: 'gemini-3.8-flash',
+    options: { reasoning: 'low' },
+  });
+  last().feed([resultEvent('ok')]);
+  await done;
+  assert.equal(last().args[last().args.indexOf('--model') + 1], 'gemini-3.8-flash-low');
+  assert.equal(last().args.includes('--effort'), false, 'the tiered id carries the tier');
+
+  const next = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't2',
+    turnId: 'u2',
+    text: 'hi',
+    cwd: '/p',
+    service: 'gemini-3.8-flash',
+  });
+  last().feed([resultEvent('ok')]);
+  await next.done;
+  assert.equal(last().args[last().args.indexOf('--model') + 1], 'gemini-3.8-flash-medium');
+});
+
+test('AntigravityAdapter names a conversation on the cheapest tier the listing offers', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const listing = adapter.listModels();
+  answerListing(spawns, AGY_LISTING, accountPayload('gemini-3.8-flash-medium'));
+  await listing;
+
+  const titling = adapter.generateTitle({ userText: 'hi', assistantText: 'ok', cwd: '/p' });
+  await spawnedAtLeast(spawns, 3);
+  const title = spawns[spawns.length - 1]!;
+  title.feed(['Fix the model list']);
+  assert.equal(await titling, 'Fix the model list');
+
+  const args = title.args;
+  // Never a pinned id: the cheapest one this account's listing reports.
+  assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.8-flash-low');
+  // And it must never join the conversation the thread resumes.
+  assert.equal(args.includes('--conversation'), false);
+});
+
+test('AntigravityAdapter lists the models before naming when none are known yet', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
 
   const titling = adapter.generateTitle({ userText: 'hi', assistantText: 'ok', cwd: '/p' });
-  last().feed(['Fix the model list']);
+  await spawnedAtLeast(spawns, 2);
+  answerListing(spawns, 'claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)\n', '');
+  await spawnedAtLeast(spawns, 3);
+  const title = spawns[spawns.length - 1]!;
+  title.feed(['Fix the model list']);
   assert.equal(await titling, 'Fix the model list');
 
-  const args = last().args;
-  // It used to pass no model at all, so a six-word title ran on the account's
-  // default (frontier) tier — the very quota the user is working with.
-  assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.6-flash-low');
-  // And it must never join the conversation the thread resumes.
-  assert.equal(args.includes('--conversation'), false);
+  // No cheap tier listed: no `--model`, so agy names it on its own default.
+  assert.equal(title.args.includes('--model'), false);
 });
 
 test('buildAntigravityToolBlock formats command, diff, and tool blocks', () => {
@@ -914,6 +1156,154 @@ function skillsSpawner(
   return { spawnFn, calls };
 }
 
+test('AntigravityAdapter completes a /compact turn as compacted, not as an error', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: '/compact', cwd: '/p' });
+  // The shape `agy` 1.3.5 answers `/compact` with: a checkpoint, then a SUCCESS
+  // result whose response is empty.
+  last().feed([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: { step_index: 2, state: 'DONE', step_type: 'user_input' },
+    }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 3,
+        state: 'DONE',
+        step_type: 'checkpoint',
+        duration_seconds: 3.5,
+      },
+    }),
+    JSON.stringify({
+      event: 'result',
+      result: { status: 'SUCCESS', response: '', num_turns: 2 },
+    }),
+  ]);
+  const events = await done;
+  const compaction = events.find(
+    (e) =>
+      e.type === 'block' && (e.data as { content: { type: string } }).content.type === 'compaction',
+  );
+  assert.ok(compaction, 'the checkpoint is a compaction block');
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+    'an empty compaction is not "produced no output"',
+  );
+  assert.equal(events[events.length - 1]?.type, 'turn_completed');
+});
+
+test('AntigravityAdapter still reports an empty turn that was not a compaction', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p' });
+  last().feed([resultEvent('')]);
+  const events = await done;
+  assert.equal(events[events.length - 1]?.type, 'turn_error');
+});
+
+test('AntigravityAdapter shows a checklist the agent writes as the plan, not a diff', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-brain-'));
+  try {
+    const brain = join(dir, 'brain', 'conv-1');
+    mkdirSync(brain, { recursive: true });
+    const taskFile = join(brain, 'task.md');
+    writeFileSync(
+      taskFile,
+      '# Task\n- [x] Read the spec\n- [/] Write the adapter\n- [ ] Run the tests\n',
+    );
+    const { spawnFn, last } = fakeSpawner();
+    const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'plan it', cwd: dir });
+    const write = (state: string): string =>
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          step_index: 6,
+          state,
+          step_type: 'tool',
+          tool_name: 'write_to_file',
+          tool_info: { name: 'write_to_file', parameters: { TargetFile: taskFile } },
+        },
+      });
+    last().feed([write('ACTIVE'), write('DONE'), resultEvent('ok')]);
+    const events = await done;
+    const blocks = events
+      .filter((e) => e.type === 'block')
+      .map((e) => (e.data as { content: Record<string, unknown> }).content);
+    assert.deepEqual(blocks, [
+      {
+        type: 'plan',
+        state: {
+          steps: [
+            { description: 'Read the spec', status: 'completed' },
+            { description: 'Write the adapter', status: 'in_progress' },
+            { description: 'Run the tests', status: 'pending' },
+          ],
+        },
+        blockId: 'write_to_file_6',
+      },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('AntigravityAdapter keeps the diff for a brain file that is not a checklist', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-brain-'));
+  try {
+    const brain = join(dir, 'brain', 'conv-1');
+    mkdirSync(brain, { recursive: true });
+    const planFile = join(brain, 'plan.md');
+    writeFileSync(planFile, 'Just some prose, no checklist.\n');
+    const { spawnFn, last } = fakeSpawner();
+    const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'plan it', cwd: dir });
+    last().feed([
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          step_index: 4,
+          state: 'DONE',
+          step_type: 'tool',
+          tool_name: 'write_to_file',
+          tool_info: { name: 'write_to_file', parameters: { TargetFile: planFile } },
+        },
+      }),
+      resultEvent('ok'),
+    ]);
+    const events = await done;
+    const block = events.find((e) => e.type === 'block')?.data as { content: { type: string } };
+    assert.equal(block.content.type, 'diff');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('parseAntigravityChecklist reads pending, in-progress and done steps only', () => {
+  const steps = parseAntigravityChecklist(
+    [
+      '# Task',
+      '- [x] **Read** the spec',
+      '- [/] Write the _adapter_',
+      '* [ ] Run `npm test`',
+      '- plain bullet',
+      '- [ ]',
+    ].join('\n'),
+  );
+  assert.deepEqual(steps, [
+    { description: 'Read the spec', status: 'completed' },
+    { description: 'Write the adapter', status: 'in_progress' },
+    { description: 'Run `npm test`', status: 'pending' },
+  ]);
+});
+
 test('listCommands: the skills agy lists in the thread folder, as its workspace', async () => {
   const { spawnFn, calls } = skillsSpawner(
     'probe-agy-skill\tProbe skill\ngenerative_ui\tRender rich widgets\n\n',
@@ -923,6 +1313,7 @@ test('listCommands: the skills agy lists in the thread folder, as its workspace'
   assert.deepEqual(
     commands.map((c) => [c.name, c.source, c.description]),
     [
+      ['compact', 'builtin', 'Summarize the conversation to free up context'],
       ['probe-agy-skill', 'skill', 'Probe skill'],
       ['generative_ui', 'skill', 'Render rich widgets'],
     ],
@@ -933,10 +1324,13 @@ test('listCommands: the skills agy lists in the thread folder, as its workspace'
   assert.equal(calls.length, 1, 'reused for the folder within the minute');
 });
 
-test('listCommands yields none when agy fails', async () => {
+test('listCommands offers /compact alone when agy fails to list its skills', async () => {
   const { spawnFn } = skillsSpawner('error: not signed in\n', 1);
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
-  assert.deepEqual(await adapter.listCommands('/repo'), []);
+  assert.deepEqual(
+    (await adapter.listCommands('/repo')).map((c) => c.name),
+    ['compact'],
+  );
 });
 
 test('parseAntigravitySkills keeps skill lines and skips anything else', () => {

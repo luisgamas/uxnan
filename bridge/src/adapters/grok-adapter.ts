@@ -59,16 +59,24 @@ import type {
   ApprovalDecision,
   GenerateTitleOptions,
   NativeSessionInfo,
+  QuestionItem,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { answersByQuestion, type ApprovalRequester, type QuestionRequester } from './user-input.js';
 import { listGrokSessions } from './native-sessions.js';
 import { acpMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
-import { planBlock, warningBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
+import {
+  assistantResponseBoundaryBlock,
+  planBlock,
+  warningBlock,
+  withBlockId,
+  type PlanStepBlock,
+} from './content-blocks.js';
 import { reasoningOption, reasoningValue } from './run-options.js';
 import {
   acpPlanSteps,
@@ -120,14 +128,18 @@ export interface GrokAdapterOptions {
   /** Default model id when the turn doesn't pick one. */
   defaultModel?: string;
   /**
-   * Route an ACP `session/request_permission` to the bridge so the phone can
-   * decide; returns the user's {@link ApprovalDecision}. Absent in tests →
-   * interactive requests fail safe to reject.
+   * Route an ACP `session/request_permission`, and leaving plan mode
+   * (`_x.ai/exit_plan_mode`), to the person; resolves with their
+   * {@link ApprovalDecision}. Absent in tests → interactive requests fail safe
+   * to reject.
    */
-  onApprovalRequest?: (
-    threadId: string,
-    info: { toolName: string; input: Record<string, unknown> },
-  ) => Promise<ApprovalDecision>;
+  onApprovalRequest?: ApprovalRequester;
+  /**
+   * Route Grok's `_x.ai/ask_user_question` to the person; resolves with one
+   * array of chosen labels per question, empty when they skipped it. Absent →
+   * the question is skipped (`skip_interview`), never an error.
+   */
+  onQuestionRequest?: QuestionRequester;
   /** Injected `grok agent stdio` spawner (tests). */
   spawnAcp?: () => SpawnedAcp;
   /** Where Grok's own non-asking permission mode comes from (tests; default reads the user's files). */
@@ -154,18 +166,30 @@ interface ActiveRun {
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
   posture: PermissionPosture;
-  /** Context-occupying tokens from the stream's `turn_completed`, if it said. */
+  /** `turn_completed`'s tokens: the context figure only when the prompt result has none (see {@link promptContextTokens}). */
   tokens?: number;
   finished: boolean;
 }
 
 /**
- * Context-occupying tokens from Grok's `turn_completed` usage block.
- *
- * `totalTokens` is what Grok itself reports as the turn's size; falling back to
- * `inputTokens + outputTokens` covers a build that omits it.
- * `cachedReadTokens` is a SUBSET of `inputTokens` (as in Codex's
- * `cached_input_tokens`), so adding it would double-count.
+ * The context a finished turn leaves, from the `_meta` of its `session/prompt`
+ * result: `totalTokens` is the LAST model call of the turn (captured: the result
+ * says 22,016 for a turn whose `turn_completed` sums to 43,814 over two calls).
+ * Undefined when the result carries none, as on an older Grok.
+ */
+export function promptContextTokens(meta: unknown): number | undefined {
+  if (!isRecord(meta)) return undefined;
+  const total = num(meta['totalTokens']);
+  return total > 0 ? Math.round(total) : undefined;
+}
+
+/**
+ * Tokens from Grok's `turn_completed` usage block. Its `totalTokens` is the SUM
+ * over every model call of the turn, not the size of the context (it roughly
+ * doubles per tool call), so it is only the fallback behind
+ * {@link promptContextTokens}. Falls back to `inputTokens + outputTokens` when
+ * a build omits `totalTokens`. `cachedReadTokens` is a SUBSET of `inputTokens`
+ * (as in Codex's `cached_input_tokens`), so adding it would double-count.
  */
 export function grokUsageTokens(usage: unknown): number | undefined {
   if (!isRecord(usage)) return undefined;
@@ -302,6 +326,9 @@ function readTextFile(path: string): string | undefined {
 /** The id Grok gives its reasoning-effort config option (2026-09). */
 const GROK_EFFORT_OPTION = 'reasoning_effort';
 
+/** The card's text when the person is asked to leave plan mode (see `_x.ai/exit_plan_mode`). */
+const START_IMPLEMENTING = 'Start implementing this plan';
+
 /** The id of the `thought_level` option among a session's `configOptions`, if any. */
 export function effortOptionId(configOptions: unknown): string | undefined {
   if (!Array.isArray(configOptions)) return undefined;
@@ -367,6 +394,7 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: GrokAdapterOptions['onApprovalRequest'];
+  readonly #onQuestionRequest: GrokAdapterOptions['onQuestionRequest'];
   readonly #spawnAcp: () => SpawnedAcp;
   /** Ends the running `grok agent stdio` (closing the RPC alone leaves it
    *  alive, and a live child keeps a stopping bridge from exiting). */
@@ -392,14 +420,17 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #cwdBySession = new Map<string, string>();
   /** sessionId → the commands its latest update announced (it can beat `session/new`'s answer). */
   readonly #commandsBySession = new Map<string, AgentCommand[]>();
-  /** Model list, captured from the `initialize` handshake (cached for the process). */
+  /** Grok's current model list: from `initialize`, each `session/new`, and every `_x.ai/models/update`. */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
   readonly #homeDir: string;
   /** The ACP process advertised HTTP MCP servers (`initialize`) — Uxnan Desktop's tools are offered only then. */
   #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -422,6 +453,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#onApprovalRequest = options.onApprovalRequest;
+    this.#onQuestionRequest = options.onQuestionRequest;
     this.#spawnAcp =
       options.spawnAcp ?? defaultSpawnAcp(this.#binaryPath, this.#prependArgs, this.#defaultCwd);
     this.#permissionSource = options.permissionSource ?? ((cwd) => grokPermissionSource(cwd));
@@ -431,10 +463,11 @@ export class GrokAdapter extends BaseAgentAdapter {
    * List the models this Grok install reports, for `agent/models`. Grok returns
    * them (with context window + reasoning-effort knobs) in the `initialize`
    * handshake's `_meta.modelState`, so we just start the ACP process and read
-   * them — no extra CLI call and no session needed. Cached for the process.
+   * them — no extra CLI call and no session needed. The live process keeps the
+   * list current (`_x.ai/models/update`), so it is read on every call rather
+   * than cached for the life of the process.
    */
   async listModels(): Promise<AgentModel[]> {
-    if (this.#modelsCache) return this.#modelsCache;
     try {
       await this.#ensureAcp();
     } catch {
@@ -443,12 +476,17 @@ export class GrokAdapter extends BaseAgentAdapter {
     return this.#modelsCache ?? [];
   }
 
+  /** Adopt Grok's model list; an empty one keeps the last known list. */
+  #adoptModels(state: GrokModelState | undefined): void {
+    const models = mapGrokModels(state, this.#defaultModel);
+    if (models.length > 0) this.#modelsCache = models;
+  }
+
   get defaultModel(): string | undefined {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
@@ -528,12 +566,12 @@ export class GrokAdapter extends BaseAgentAdapter {
     // prompts arrive via notifications/server-requests meanwhile.
     rpc
       // timeout 0: a turn may run arbitrarily long, so never auto-reject it.
-      .request<{ stopReason?: string }>(
+      .request<{ stopReason?: string; _meta?: unknown }>(
         'session/prompt',
         { sessionId, prompt: [{ type: 'text', text }] },
         0,
       )
-      .then((result) => this.#completeTurn(run, result?.stopReason ?? 'end_turn'))
+      .then((result) => this.#completeTurn(run, result?.stopReason ?? 'end_turn', result?._meta))
       .catch((err) => {
         // A rejected prompt (or a dead process) ends the turn as an error, unless
         // it was already finished by a cancel.
@@ -592,9 +630,8 @@ export class GrokAdapter extends BaseAgentAdapter {
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
         this.#mcpHttp = acpSupportsHttpMcp(init);
-        // Grok reports its models in the handshake — cache them for `agent/models`.
-        const models = mapGrokModels(init?._meta?.modelState, this.#defaultModel);
-        if (models.length > 0) this.#modelsCache = models;
+        // Grok reports its models in the handshake — kept for `agent/models`.
+        this.#adoptModels(init?._meta?.modelState);
       } catch (err) {
         rpc.close();
         streams.kill();
@@ -630,10 +667,12 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#effortBySession.delete(known);
       }
     }
-    const res = await rpc.request<{ sessionId: string; configOptions?: unknown }>('session/new', {
-      cwd,
-      mcpServers,
-    });
+    const res = await rpc.request<{
+      sessionId: string;
+      configOptions?: unknown;
+      _meta?: { modelState?: GrokModelState };
+    }>('session/new', { cwd, mcpServers });
+    this.#adoptModels(res._meta?.modelState);
     this.setNativeSession(threadId, res.sessionId);
     this.#cwdBySession.set(res.sessionId, cwd);
     const effortOption = effortOptionId(res.configOptions);
@@ -691,6 +730,11 @@ export class GrokAdapter extends BaseAgentAdapter {
 
   /** Route a `session/update` notification to the run + bridge events. */
   #onNotification(method: string, params: unknown): void {
+    // The model list changed (same `modelState` shape as the handshake's).
+    if (method === '_x.ai/models/update') {
+      this.#adoptModels(params as GrokModelState | undefined);
+      return;
+    }
     // Grok splits its stream across THREE methods, and only the first is ACP's
     // own. Captured off the live wire while the adapter drove a real turn:
     // `session/update` carries the ACP-standard updates, while `turn_completed`
@@ -870,14 +914,81 @@ export class GrokAdapter extends BaseAgentAdapter {
     });
   }
 
-  /** Handle a server-initiated request: permission prompts + (ignored) fs/*. */
+  /** Handle a server-initiated request: permission prompts, Grok's questions and plan exits. */
   async #onServerRequest(method: string, params: unknown): Promise<unknown> {
     if (method === 'session/request_permission') {
       return this.#onRequestPermission(isRecord(params) ? params : {});
     }
+    if (method === '_x.ai/ask_user_question') {
+      return this.#onAskUserQuestion(isRecord(params) ? params : {});
+    }
+    if (method === '_x.ai/exit_plan_mode') {
+      return this.#onExitPlanMode(isRecord(params) ? params : {});
+    }
     // fs/read_text_file / fs/write_text_file are never sent (we advertised
     // fs:false), so anything else is unexpected — fail safe.
     throw new RpcError(-32601, `grok: unhandled server request '${method}'`);
+  }
+
+  /**
+   * Put Grok's `ask_user_question` to the person and answer with their choice.
+   * Nobody to ask (no requester, or no turn of ours on the session) is a skip,
+   * never an error: the model carries on without the answer.
+   */
+  async #onAskUserQuestion(p: Record<string, unknown>): Promise<unknown> {
+    const run = this.#runBySession.get(str(p['sessionId']));
+    const questions = grokQuestions(p['questions']);
+    const ask = this.#onQuestionRequest;
+    if (!run || !ask || questions.length === 0) return { outcome: 'skip_interview' };
+    try {
+      const chosen = answersByQuestion(questions, await ask(run.threadId, questions));
+      return chosen ? { outcome: 'accepted', answers: chosen } : { outcome: 'skip_interview' };
+    } catch {
+      return { outcome: 'skip_interview' };
+    }
+  }
+
+  /**
+   * Grok's `exit_plan_mode`: the plan goes into the turn first (as Claude's
+   * does), then the person decides whether to start implementing it. Full
+   * access leaves plan mode without asking. Never an error: one leaves Grok
+   * stuck in plan mode. Grok reads any outcome but `approved` as "the user
+   * wants to revise the plan", so a decline is sent as `rejected`.
+   */
+  async #onExitPlanMode(p: Record<string, unknown>): Promise<unknown> {
+    const run = this.#runBySession.get(str(p['sessionId']));
+    if (!run) return { outcome: 'rejected' };
+    const plan = str(p['planContent']).trim();
+    if (plan.length > 0) {
+      const text = `${plan}\n\n`;
+      run.full += text;
+      this.emit({
+        type: 'delta',
+        threadId: run.threadId,
+        turnId: run.bridgeTurnId,
+        data: { text },
+      });
+      this.emit({
+        type: 'block',
+        threadId: run.threadId,
+        turnId: run.bridgeTurnId,
+        data: { content: assistantResponseBoundaryBlock() },
+      });
+    }
+    if (run.posture === 'approveSession') return { outcome: 'approved' };
+    const ask = this.#onApprovalRequest;
+    if (!ask) return { outcome: 'rejected' };
+    let decision: ApprovalDecision = 'reject';
+    try {
+      decision = await ask(run.threadId, {
+        toolName: 'ExitPlanMode',
+        input: {},
+        action: START_IMPLEMENTING,
+      });
+    } catch {
+      decision = 'reject';
+    }
+    return { outcome: decision === 'reject' ? 'rejected' : 'approved' };
   }
 
   /** Route an ACP permission prompt to the bridge's approval round-trip. */
@@ -910,7 +1021,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     return selectOption(options, decision) ?? cancelledOutcome();
   }
 
-  #completeTurn(run: ActiveRun, stopReason: string): void {
+  #completeTurn(run: ActiveRun, stopReason: string, promptMeta?: unknown): void {
     if (run.finished) return;
     run.finished = true;
     this.#active.delete(run.bridgeTurnId);
@@ -929,16 +1040,17 @@ export class GrokAdapter extends BaseAgentAdapter {
       return;
     }
     const contextWindow = this.#currentContextWindow();
+    const tokens = promptContextTokens(promptMeta) ?? run.tokens;
     this.emit({
       type: 'turn_completed',
       threadId: run.threadId,
       turnId: run.bridgeTurnId,
       data: {
         text: run.full,
-        ...(run.tokens !== undefined
+        ...(tokens !== undefined
           ? {
               usage: {
-                tokens: run.tokens,
+                tokens,
                 ...(contextWindow !== undefined ? { contextWindow } : {}),
               },
             }
@@ -1055,6 +1167,34 @@ function selectOption(
     if (match) return { outcome: { outcome: 'selected', optionId: str(match['optionId']) } };
   }
   return undefined;
+}
+
+/**
+ * Grok's `questions` (`[{ question, options:[{label, description}], multiSelect }]`)
+ * as the bridge's questions. A question with no option to pick is left out:
+ * nothing could answer it. Grok offers no free text, so none is `custom`.
+ */
+export function grokQuestions(raw: unknown): QuestionItem[] {
+  if (!Array.isArray(raw)) return [];
+  const questions: QuestionItem[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) continue;
+    const question = str(entry['question']);
+    if (question.length === 0) continue;
+    const options = (Array.isArray(entry['options']) ? entry['options'] : [])
+      .filter(isRecord)
+      .map((option) => {
+        const description = str(option['description']);
+        return {
+          label: str(option['label']),
+          ...(description.length > 0 ? { description } : {}),
+        };
+      })
+      .filter((option) => option.label.length > 0);
+    if (options.length === 0) continue;
+    questions.push({ question, options, multiple: entry['multiSelect'] === true });
+  }
+  return questions;
 }
 
 function cancelledOutcome(): { outcome: { outcome: string } } {

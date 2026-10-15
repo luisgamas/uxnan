@@ -25,9 +25,9 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { onLines } from '../json-lines.js';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { createInterface } from 'node:readline';
 import type {
   AccessMode,
   AgentCapabilities,
@@ -45,28 +45,23 @@ import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thre
 import { BaseAgentAdapter } from './base-adapter.js';
 import { listClaudeSessions } from './native-sessions.js';
 import {
+  applyTaskResult,
+  claudeQuestions,
   extractToolResults,
   extractToolUses,
+  isTaskTool,
+  taskListSteps,
   toolUseStartBlock,
   toolUseToBlock,
+  type ClaudeTaskList,
   type ClaudeToolResult,
   type ClaudeToolUse,
 } from './claude-tools.js';
-import { warningBlock, withBlockId } from './content-blocks.js';
+import { planBlock, warningBlock, withBlockId } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
-
-/**
- * Timeout (seconds) for the injected `PreToolUse` approval hook. Claude Code's
- * default hook timeout is ~60s; without raising it Claude aborts the hook (and
- * the tool defaults to deny) long before a backgrounded phone can reconnect and
- * answer the approval — making the agent take an unauthorized default and the
- * turn appear "cut". A generous cap lets the user return and answer; the bridge
- * still auto-rejects after its own (connection-aware) window once a phone is
- * connected. The total wait is bounded by this value, after which Claude denies.
- */
-const APPROVAL_HOOK_TIMEOUT_SECONDS = 1800;
+import { answersByQuestion, type ApprovalRequester, type QuestionRequester } from './user-input.js';
 
 const CLAUDE_CAPABILITIES: AgentCapabilities = {
   streaming: true,
@@ -158,11 +153,19 @@ const TITLE_MODEL = 'haiku';
  */
 const CLAUDE_DEFAULT_EFFORT = 'high';
 
+/** What the CLI is told when the person refuses or cannot answer, so it knows why a step did not run. */
+const NOT_ANSWERED = 'The user did not answer.';
+const REJECTED = 'The user rejected this action.';
+const REVISE = 'The user wants to revise the plan.';
+const PLAN_ONLY = 'Plan only: stop here and wait for the user to switch modes before implementing.';
+const TURN_ENDED = 'The turn has ended, so this request is no longer answered.';
+/** The card's text when the person is asked to leave plan mode (see `ExitPlanMode`). */
+const START_IMPLEMENTING = 'Start implementing this plan';
+
 /**
- * How each access mode runs on `claude -p` (verified on claude 2.1.287):
- *  - `requestApproval` → the `PreToolUse` hook asks the person for every tool,
- *    with `--permission-mode default` (headless `-p` consults the hook only
- *    then). Offered only when the bridge can serve the hook.
+ * How each access mode runs on `claude -p` (verified on claude 2.1.296):
+ *  - `requestApproval` → `--permission-mode default`: every gated tool arrives
+ *    as a `can_use_tool` control request, which the person answers.
  *  - `approveForMe`    → `--permission-mode auto`: tools run under Claude's own
  *    reviewer, which declines what it judges unsafe. Not every model has it
  *    (haiku starts in `default` instead, which declines anything needing
@@ -170,7 +173,8 @@ const CLAUDE_DEFAULT_EFFORT = 'high';
  *  - `fullAccess`      → `--dangerously-skip-permissions`.
  *  - `plan`            → `--permission-mode plan`: reads and plans, changes nothing.
  */
-const CLAUDE_MODE_FLAGS: Record<Exclude<AccessMode, 'requestApproval'>, string[]> = {
+const CLAUDE_MODE_FLAGS: Record<AccessMode, string[]> = {
+  requestApproval: ['--permission-mode', 'default'],
   approveForMe: ['--permission-mode', 'auto'],
   fullAccess: ['--dangerously-skip-permissions'],
   plan: ['--permission-mode', 'plan'],
@@ -210,12 +214,16 @@ export interface ClaudeCodeAdapterOptions {
    */
   pinnedModels?: ClaudeModelSpec[];
   /**
-   * The local approval-hook endpoint + token + the path to the shipped hook
-   * script — what lets `requestApproval` ask the person. Without it the mode is
-   * not offered. `url()` is lazy because the LAN port is known only after the
-   * server starts; a turn that asks before then fails rather than run unasked.
+   * Routes a tool the CLI asks about (`requestApproval`) to the person; resolves
+   * with their decision. Without it such a tool is denied, never run unasked.
    */
-  approvalHook?: { token: string; scriptPath: string; url: () => string | undefined };
+  onApprovalRequest?: ApprovalRequester;
+  /**
+   * Routes an `AskUserQuestion` to the person; resolves with the chosen labels
+   * (or typed text) per question, empty when skipped. Without it the question
+   * is declined.
+   */
+  onQuestionRequest?: QuestionRequester;
   /** Injected spawn function for the one-shot path (tests). */
   spawnFn?: SpawnFn;
   /** Override {@link WAKE_GRACE_MS} (tests). */
@@ -246,6 +254,19 @@ interface ActiveRun {
   ending?: 'cancelled' | 'stopping';
 }
 
+/**
+ * A `control_request` the CLI sends on stdout when `--permission-prompt-tool
+ * stdio` makes it ask the client (`subtype: can_use_tool`). The client answers
+ * with a `control_response` carrying the same `requestId` on stdin.
+ */
+export interface ClaudePermissionRequest {
+  requestId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  /** The CLI's `permission_suggestions`: what "allow for the session" would grant. */
+  suggestions?: unknown[];
+}
+
 /** A normalized Claude Code event extracted from one stream-json line. */
 export interface ClaudeEvent {
   kind:
@@ -259,6 +280,7 @@ export interface ClaudeEvent {
     | 'result'
     | 'task_started'
     | 'task_ended'
+    | 'permission_request'
     | 'other';
   sessionId?: string;
   text?: string;
@@ -310,6 +332,8 @@ export interface ClaudeEvent {
   terminalCommands?: string[];
   /** Only for `init`: the permission mode the CLI says it runs in. */
   permissionMode?: string;
+  /** Only for `permission_request`: the CLI asking the client to allow a tool or answer a question. */
+  permission?: ClaudePermissionRequest;
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
   /** Only set for `result`: the CLI's error messages, when it failed before
@@ -529,8 +553,35 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
         return { kind: 'replay', ...base, uuid: parsed['uuid'] };
       }
       const message = isRecord(parsed['message']) ? parsed['message'] : undefined;
-      const toolResults = extractToolResults(message ? message['content'] : undefined);
+      const toolResults = extractToolResults(
+        message ? message['content'] : undefined,
+        parsed['tool_use_result'],
+      );
       return { kind: 'tool_result', ...base, ...(toolResults.length > 0 ? { toolResults } : {}) };
+    }
+    case 'control_request': {
+      // The CLI asking the client to decide (see `ClaudePermissionRequest`). Any
+      // other control request is not one the bridge acts on.
+      const request = isRecord(parsed['request']) ? parsed['request'] : undefined;
+      const requestId = typeof parsed['request_id'] === 'string' ? parsed['request_id'] : undefined;
+      const toolName =
+        typeof request?.['tool_name'] === 'string' ? request['tool_name'] : undefined;
+      if (requestId === undefined || request?.['subtype'] !== 'can_use_tool' || !toolName) {
+        return { kind: 'other', ...base };
+      }
+      const suggestions = Array.isArray(request['permission_suggestions'])
+        ? request['permission_suggestions']
+        : undefined;
+      return {
+        kind: 'permission_request',
+        ...base,
+        permission: {
+          requestId,
+          toolName,
+          input: isRecord(request['input']) ? request['input'] : {},
+          ...(suggestions !== undefined ? { suggestions } : {}),
+        },
+      };
     }
     case 'result': {
       const isError = parsed['is_error'] === true || parsed['subtype'] !== 'success';
@@ -595,9 +646,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #pinnedModels: ClaudeModelSpec[];
-  readonly #approvalHook:
-    | { token: string; scriptPath: string; url: () => string | undefined }
-    | undefined;
+  readonly #onApprovalRequest: ApprovalRequester | undefined;
+  readonly #onQuestionRequest: QuestionRequester | undefined;
   readonly #spawn: SpawnFn;
   readonly #wakeGraceMs: number;
   /** What the CLI last said only works in its terminal (see listCommands). */
@@ -608,10 +658,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   #reportedModels: { at: number; models: ClaudeReportedModel[] } | undefined;
   /** The `initialize` asked for models and not answered yet, shared by every caller. */
   #modelsInFlight: Promise<void> | undefined;
+  /** threadId → the task list its session built with TaskCreate / TaskUpdate (see sendTurn). */
+  readonly #taskLists = new Map<string, ClaudeTaskList>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   readonly #homeDir: string;
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -634,16 +689,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
-    this.#approvalHook = options.approvalHook;
-    // Asking first needs the hook's endpoint; every other mode is a flag.
+    this.#onApprovalRequest = options.onApprovalRequest;
+    this.#onQuestionRequest = options.onQuestionRequest;
     this.capabilities = {
       ...CLAUDE_CAPABILITIES,
-      accessModes: [
-        ...(options.approvalHook !== undefined ? (['requestApproval'] as const) : []),
-        'approveForMe',
-        'fullAccess',
-        'plan',
-      ],
+      accessModes: ['requestApproval', 'approveForMe', 'fullAccess', 'plan'],
       defaultAccessMode: 'fullAccess',
     };
     this.#spawn = options.spawnFn ?? defaultSpawn;
@@ -654,8 +704,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
@@ -677,19 +726,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The conversation's access mode, one this adapter declared (the bridge
     // resolves anything else to the default before it gets here).
     const accessMode: AccessMode = options.accessMode ?? 'fullAccess';
-    const hookUrl = accessMode === 'requestApproval' ? this.#approvalHook?.url() : undefined;
-    if (accessMode === 'requestApproval' && hookUrl === undefined) {
-      // Running it anyway would act without the approvals the person chose.
-      this.emit({
-        type: 'turn_error',
-        threadId,
-        turnId,
-        data: {
-          text: 'Claude Code cannot ask for approval yet: the bridge has no approval endpoint. Try again in a moment, or choose another access mode.',
-        },
-      });
-      return Promise.resolve();
-    }
+    // The task list TaskCreate / TaskUpdate build lives as long as the CLI session
+    // does: a fresh session starts empty (its task ids start again), a resumed
+    // one keeps the list it built.
+    const tasks: ClaudeTaskList =
+      sessionId === undefined ? new Map() : (this.#taskLists.get(threadId) ?? new Map());
+    this.#taskLists.set(threadId, tasks);
 
     const args = [
       '-p',
@@ -711,34 +753,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // or for a `<task-notification>` a resumed session still owed. A
       // `result` ends this turn only once every message we wrote was read.
       '--replay-user-messages',
+      // Every ask the CLI makes of the client comes on stdout as a
+      // `control_request` and is answered on stdin (see `answerPermission`). Without
+      // this flag the CLI does not offer `AskUserQuestion`, `EnterPlanMode` or
+      // `ExitPlanMode` to the model at all.
+      '--permission-prompt-tool',
+      'stdio',
     ];
-    if (hookUrl !== undefined) {
-      const settings = JSON.stringify({
-        hooks: {
-          PreToolUse: [
-            {
-              matcher: '*',
-              hooks: [
-                {
-                  type: 'command',
-                  command: `node "${this.#approvalHook!.scriptPath}"`,
-                  // Raise the hook timeout well above Claude's ~60s default so a
-                  // backgrounded phone can reconnect and answer before Claude
-                  // aborts the hook (which would default the tool to deny).
-                  timeout: APPROVAL_HOOK_TIMEOUT_SECONDS,
-                },
-              ],
-            },
-          ],
-        },
-      });
-      // `--permission-mode default` is REQUIRED for the PreToolUse hook to run
-      // (validated against claude 2.1.177: without it, headless `-p` doesn't
-      // consult the hook and denies). The hook is then the gate.
-      args.push('--settings', settings, '--permission-mode', 'default');
-    } else if (accessMode !== 'requestApproval') {
-      args.push(...CLAUDE_MODE_FLAGS[accessMode]);
-    }
+    args.push(...CLAUDE_MODE_FLAGS[accessMode]);
     if (model) args.push('--model', model);
     // Reasoning effort (low|medium|high|xhigh|max). Pass-through — the CLI
     // validates the level; `claude --effort` is a session flag (verified
@@ -758,13 +780,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (servers.length) args.push('--mcp-config', claudeMcpConfig(servers));
 
     const env: Record<string, string> = {
-      ...(hookUrl !== undefined
-        ? {
-            UXNAN_HOOK_URL: hookUrl,
-            UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
-            UXNAN_HOOK_THREAD_ID: threadId,
-          }
-        : {}),
       ...(servers.length
         ? {
             ...Object.fromEntries(
@@ -980,8 +995,113 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       });
     };
 
-    const reader = createInterface({ input: child.stdout });
-    reader.on('line', (line) => {
+    // Answers the CLI's `control_request` on its stdin, under the request id it
+    // asked with (see `ClaudePermissionRequest`).
+    const respond = (requestId: string, response: Record<string, unknown>): void => {
+      const stdin = child.stdin;
+      if (!stdin || !stdin.writable) return;
+      try {
+        stdin.write(
+          `${JSON.stringify({
+            type: 'control_response',
+            response: { subtype: 'success', request_id: requestId, response },
+          })}\n`,
+        );
+      } catch {
+        /* the pipe is already gone: the CLI has no one left to answer */
+      }
+    };
+    // Decides one ask of the CLI. Nothing runs without an answer: a request with
+    // no requester for it, a refusal, or a request that arrives once the turn has
+    // ended is denied, with the reason the CLI passes on to the model.
+    // What this turn asked the person and is still open: withdrawn once the
+    // process is gone, so no card waits on a CLI nobody is left to answer.
+    const asks = new AbortController();
+    const answerPermission = (request: ClaudePermissionRequest): void => {
+      const allow = (updatedInput: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+        respond(request.requestId, { behavior: 'allow', updatedInput, ...extra });
+      const deny = (message: string) => respond(request.requestId, { behavior: 'deny', message });
+      if (run.finished || run.ending !== undefined) {
+        deny(TURN_ENDED);
+        return;
+      }
+      if (request.toolName === 'AskUserQuestion') {
+        const questions = claudeQuestions(request.input);
+        const ask = this.#onQuestionRequest;
+        if (!ask || questions.length === 0) {
+          deny(NOT_ANSWERED);
+          return;
+        }
+        void ask(threadId, questions, asks.signal).then(
+          (answers) => {
+            const mapped = answersByQuestion(questions, answers);
+            if (mapped === undefined) deny(NOT_ANSWERED);
+            else allow({ ...request.input, answers: mapped });
+          },
+          () => deny(NOT_ANSWERED),
+        );
+        return;
+      }
+      if (request.toolName === 'ExitPlanMode') {
+        // The plan is what the turn answers with: it goes into the message whatever
+        // the person decides, and the model is told what happens to it.
+        const plan = typeof request.input['plan'] === 'string' ? request.input['plan'].trim() : '';
+        if (plan.length > 0) {
+          const text = `${plan}\n\n`;
+          full += text;
+          this.emit({ type: 'delta', threadId, turnId, data: { text } });
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        if (accessMode === 'plan') {
+          deny(PLAN_ONLY);
+          return;
+        }
+        if (accessMode !== 'requestApproval') {
+          allow(request.input);
+          return;
+        }
+        const ask = this.#onApprovalRequest;
+        if (!ask) {
+          deny(REJECTED);
+          return;
+        }
+        void ask(
+          threadId,
+          { toolName: 'ExitPlanMode', input: request.input, action: START_IMPLEMENTING },
+          asks.signal,
+        ).then(
+          (decision) => (decision === 'reject' ? deny(REVISE) : allow(request.input)),
+          () => deny(REJECTED),
+        );
+        return;
+      }
+      const ask = this.#onApprovalRequest;
+      if (!ask) {
+        deny(REJECTED);
+        return;
+      }
+      void ask(threadId, { toolName: request.toolName, input: request.input }, asks.signal).then(
+        (decision) => {
+          if (decision === 'reject') deny(REJECTED);
+          else if (decision === 'approveSession' && request.suggestions !== undefined) {
+            // "Allow for the session": the rules the CLI itself offered for this
+            // call, kept for THIS session only. Echoed as offered they name
+            // `destination: "localSettings"`, and Claude writes them into the
+            // project's `.claude/settings.local.json` for good (verified on
+            // 2.1.296) — a permanent rule in the person's repository.
+            allow(request.input, { updatedPermissions: forThisSession(request.suggestions) });
+          } else allow(request.input);
+        },
+        () => deny(REJECTED),
+      );
+    };
+
+    const reader = onLines(child.stdout, (line) => {
       const event = parseClaudeLine(line);
       if (!event) return;
       // The wake-up turn has begun (it opens with an `init`, then the model's
@@ -993,6 +1113,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // their tool blocks still feed the work log, but their text/usage must
       // never fold into the main message or close the main text run.
       const subagent = event.parentToolUseId !== undefined;
+      if (event.kind === 'permission_request' && event.permission) {
+        answerPermission(event.permission);
+        return;
+      }
       if (event.sessionId) this.setNativeSession(threadId, event.sessionId);
       // The CLI's own word on which commands only work in its terminal.
       if (event.terminalCommands) this.#terminalCommands = event.terminalCommands;
@@ -1040,6 +1164,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           const tool = pendingTools.get(result.toolUseId);
           if (!tool) continue;
           pendingTools.delete(result.toolUseId);
+          if (isTaskTool(tool.name)) {
+            // The task list is one plan, shown whole under the thread's block id so
+            // every change updates it in place.
+            if (applyTaskResult(tasks, tool, result)) {
+              const content = withBlockId(
+                planBlock(taskListSteps(tasks)),
+                `claude-tasks:${threadId}`,
+              );
+              this.emit({
+                type: 'block',
+                threadId,
+                turnId,
+                data: {
+                  content,
+                  ...(openTextIndex !== undefined ? { beforeText: true } : {}),
+                },
+              });
+            }
+            continue;
+          }
           const settled = toolUseToBlock(tool, result);
           if (!settled) continue;
           const content = withBlockId(settled, tool.id);
@@ -1222,6 +1366,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     child.on('error', (err) => {
       stopWaitingForWake();
       reader.close();
+      asks.abort();
       returnUnreadFollowUps();
       run.finished = true;
       this.#active.delete(turnId);
@@ -1239,6 +1384,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     child.on('close', (code) => {
       stopWaitingForWake();
       reader.close();
+      asks.abort();
       // First, before any early return: a stopped turn must not leave a
       // delivery waiting on a read that will never come.
       returnUnreadFollowUps();
@@ -1478,8 +1624,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         resolve(answer);
       };
       const timer = setTimeout(() => finish(undefined), INITIALIZE_TIMEOUT_MS);
-      const reader = createInterface({ input: child.stdout });
-      reader.on('line', (line) => {
+      onLines(child.stdout, (line) => {
         const response = initializeResponse(line);
         if (response === undefined) return;
         finish({ commands: readCommands(response), models: readModels(response) });
@@ -1728,4 +1873,14 @@ function errorMessage(err: unknown): string {
 function unseenAssistantText(streamed: string, complete: string): string {
   if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
   return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
+}
+
+/**
+ * Claude's `permission_suggestions` for one tool call, each kept for the
+ * running session (`destination: "session"`) whatever destination it named.
+ */
+export function forThisSession(suggestions: unknown[]): unknown[] {
+  return suggestions.map((suggestion) =>
+    isRecord(suggestion) ? { ...suggestion, destination: 'session' } : suggestion,
+  );
 }

@@ -393,6 +393,102 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
   await rmrf(baseDir);
 });
 
+test('an approval with its own action shows that text and no detail', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-hook-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const blocks: {
+    content: { type?: string; approvalId?: string; action?: string; blockId?: string };
+  }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) => {
+      const m = message as { method: string; params?: unknown };
+      if (m.method === StreamNotification.ContentBlock) {
+        blocks.push(
+          m.params as {
+            content: { type?: string; approvalId?: string; action?: string; blockId?: string };
+          },
+        );
+      }
+    },
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  // Open a turn that stays in-flight (the demo pauses), so requestApproval has
+  // an active turn to attach the approval to.
+  await manager.sendTurn(thread.id, 'approval-demo');
+  await waitFor(() => blocks.length > 0);
+
+  // The hook asks whether a Write may run; capture the approvalId it emitted.
+  // A plan leaving plan mode: "Allow ExitPlanMode: <plan path>" would not say
+  // what is being decided.
+  const decisionPromise = manager.requestApproval(thread.id, {
+    toolName: 'ExitPlanMode',
+    input: { plan: '1. Do it', file_path: '/tmp/plan.md' },
+    action: 'Start implementing this plan',
+  });
+  await waitFor(() => blocks.some((b) => b.content.action === 'Start implementing this plan'));
+  const planBlock = blocks.find((b) => b.content.action === 'Start implementing this plan')!;
+  assert.equal(planBlock.content.type, 'approval');
+  assert.equal((planBlock.content as { detail?: string }).detail, undefined);
+
+  await manager.respondApproval(thread.id, planBlock.content.approvalId!, 'reject');
+  assert.equal(await decisionPromise, 'reject');
+
+  await rmrf(baseDir);
+});
+
+test('a withdrawn approval or question resolves at once and every client retires its card', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-withdraw-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notes: { method: string; params?: Record<string, unknown> }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (message) =>
+      notes.push(message as { method: string; params?: Record<string, unknown> }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await manager.sendTurn(thread.id, 'approval-demo'); // keeps a turn in-flight
+  await waitFor(() => notes.some((n) => n.method === StreamNotification.ContentBlock));
+
+  const approval = new AbortController();
+  const decision = manager.requestApproval(
+    thread.id,
+    { toolName: 'Bash', input: { command: 'ls' } },
+    approval.signal,
+  );
+  const question = new AbortController();
+  const answers = manager.requestQuestion(
+    thread.id,
+    [{ question: 'Which?', options: [{ label: 'A' }] }],
+    question.signal,
+  );
+  await waitFor(
+    () => notes.filter((n) => n.method === StreamNotification.ContentBlock).length >= 3,
+  );
+  approval.abort();
+  question.abort();
+  assert.equal(await decision, 'reject');
+  assert.deepEqual(await answers, []);
+  assert.ok(notes.some((n) => n.method === StreamNotification.ApprovalResolved));
+  assert.ok(notes.some((n) => n.method === StreamNotification.QuestionResolved));
+
+  // Already withdrawn: nothing is asked at all.
+  assert.equal(
+    await manager.requestApproval(thread.id, { toolName: 'Bash', input: {} }, approval.signal),
+    'reject',
+  );
+  await rmrf(baseDir);
+});
+
 test('requestQuestion emits a question block and resolves on respondQuestion', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-q-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

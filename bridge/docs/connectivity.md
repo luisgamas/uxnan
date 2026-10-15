@@ -192,7 +192,7 @@ WebSocket on a free port and writes how to reach it to
   so a conversation started on either shows up on both
   (architecture/02a §5.8.15–§5.8.16).
 - It never leaves this machine and is not the E2EE protocol: it is a local
-  route with a token, the same trust model as the agent approval hook.
+  route with a token that only processes of the same user can read.
 - `bridge/status` reports `features.localControl: true` while it listens.
   Turn it off with `"localControlEnabled": false` in `~/.uxnan/daemon-config.json`.
 

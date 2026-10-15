@@ -195,7 +195,7 @@ attention to.
 | **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` |
 | **OpenCode** | `opencode run` (no `--session`/`--continue`); on 2.x `opencode run --standalone`, so a title never starts the shared background service | CLI default |
 | **pi** | `pi -p --no-session` | CLI default |
-| **Antigravity** | `agy -p --mode plan` (no `--conversation`) | `gemini-3.6-flash-low` |
+| **Antigravity** | `agy -p --mode plan` (no `--conversation`) | the lowest tier of a `flash` family in `agy models` (else any `-low` id, else the CLI default) — read, never pinned |
 | **Grok** | `grok -p` | CLI default |
 | **Zero** | `zero exec` | CLI default |
 
@@ -208,9 +208,9 @@ and reasoning tokens are exactly what can make a cheap model cost more than an
 expensive one on a task this small; `-c` keys are validated, so a typo fails the
 run instead of quietly naming on the default tier.
 
-**Each pinned id has a twin in the desktop app** (`uxnandesktop/src-tauri/src/
-convtitle.rs` → `title_model` / `title_effort_args`), which names terminal tabs
-the same way. Move both halves in the same change set — the bridge once passed
+**Each pinned id — and Antigravity's rule — has a twin in the desktop app**
+(`uxnandesktop/src-tauri/src/convtitle.rs` → `title_model` / `agy_title_model` /
+`title_effort_args`), which names terminal tabs the same way. Move both halves in the same change set — the bridge once passed
 **no** model for Antigravity while both the spec and the desktop said it named
 on the cheap flash tier, so every phone-side title quietly ran on the account's
 frontier model.
@@ -228,7 +228,10 @@ fixed cheap-tier id to pin and they title on their own default.
 **Model ids are checked against each account's real list, never assumed.** A
 wrong id is not cosmetic: the CLI rejects the run and the thread silently keeps
 its provisional name. That is how the desktop's `agy` mapping was caught —
-`agy models` lists `gemini-3.6-flash-*`, not `gemini-2.0-flash`.
+`agy` listed `gemini-3.6-flash-*`, not `gemini-2.0-flash` — and why
+Antigravity's is no longer pinned at all: `agy` 1.3.x retired
+`gemini-3.6-flash-low` and every title failed until the model was read from the
+listing.
 
 The whole path is best-effort and bounded (30s): no credit, a missing CLI or a
 timeout leaves the provisional title in place and never disturbs the thread.
@@ -259,8 +262,8 @@ surface it does not drive.**
 | **OpenCode** | `opencode serve` — 1.x: V1 routes, no password; 2.x: `/api/*` routes behind a per-process password (see *OpenCode 1 and OpenCode 2*) | local HTTP + SSE | yes — 1.x on `step-finish` parts / the assistant `message.updated`; 2.x on `session.step.ended`. The context window comes from `opencode models --verbose` (1.x) or `GET /api/model` (2.x) |
 | **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin; `--replay-user-messages` echoes each message as the CLI reads it | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
-| **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |
-| **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
+| **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out; a `prompt` answered `disposition: "handled"` — a command pi resolved itself — starts no run, so the turn ends there) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |
+| **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — the context is the **`session/prompt` result's `_meta.totalTokens`** (the turn's last model call). The `turn_completed` update on `_x.ai/session_notification` carries a `usage` block **summed over every model call** of the turn (measured on 1.0.50: 43,814 with `modelCalls: 2` against 22,016 in the context), so it is only the fallback for a Grok whose result has no `_meta` |
 | **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
 | **Antigravity** | `agy --input-format stream-json --output-format stream-json`, one resident process per thread | NDJSON both ways (a `user` message in, `init` / `step_update` / `result` events out) | yes — on the **last `agent_response` `step_update`** of the turn, NOT on `result.usage`: see below |
 
@@ -312,17 +315,17 @@ Every spawn passes an **explicit** environment, never the implicit inherited one
 the bridge's own, minus the keys the desktop ADE injects into one terminal of one
 launch (`UXNAN_AGENT_ID`, its hook server's url/token, the endpoint file, the
 browser / MCP endpoints), plus whatever the adapter sets deliberately — which
-wins. `agentEnv` in `src/adapters/spawn.ts` is the one place that decides this;
+wins. Its stdout is read with the one line reader (`src/json-lines.ts`), split on
+`\n` only: Node's `readline` also ends a line at U+2028 / U+2029, which
+`JSON.stringify` leaves unescaped, so a reply carrying one would arrive cut in
+two and fail to parse. `agentEnv` in `src/adapters/spawn.ts` is the one place that decides this;
 a new spawn site must use it.
 
 The reason is that environment variables are inherited by the whole process tree.
 Start the bridge **inside** an ADE terminal and it is handed that terminal's
 identity; without the scrub every agent it spawned inherited it too, and their
 hooks reported to the ADE as if they *were* that terminal — an agent card on a
-terminal where nobody launched an agent, with a session stamped on the tab. The
-bridge's own approval hook is unaffected: it uses three of those names
-(`UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID`) for its own server, but it **sets**
-them per turn and a value it sets survives. Only an inherited one is dropped.
+terminal where nobody launched an agent, with a session stamped on the tab.
 
 ### Which agents are installed (one rule, shared with Uxnan Desktop)
 
@@ -338,8 +341,12 @@ real `.exe`/`.com`). A path configured in `agents.<id>.binaryPath` always wins.
 (`login-path.ts`), because a service or a GUI launch starts with a minimal one.
 Detection is live: `agent/list` re-checks at most every 10 s, an agent
 installed while the bridge runs gets its adapter built where it was found, and
-every client hears it (`stream/agents/updated`). `agent/doctor` lists, per
-agent, the command it runs and every location it checked.
+every client hears it (`stream/agents/updated`). A CLI that *moves* while the
+bridge runs gets its adapter rebuilt at the new path too, so no adapter keeps
+spawning the one that is gone — the agent list did not change, so nothing is
+announced — and never while that agent has a turn running: then nothing is
+swapped and the next re-check retries. `agent/doctor` lists, per agent, the
+command it runs and every location it checked.
 
 ### MCP servers for every run: the bridge's own and the desktop's
 
@@ -471,8 +478,9 @@ CLIs with the user's own sign-ins, nothing written to their configs.
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on
 OpenCode 2), `model/list`,
-`pi --list-models`, `agy models`, `zero models list`, Grok's `initialize`
-handshake. **Claude Code is the only curated, hand-maintained list** (see
+pi's RPC `get_available_models`, `agy models` (+ `agy -p /model --output-format
+json` for the account's default), `zero models list`, Grok's `initialize`
+handshake (refreshed by each `session/new` and every `_x.ai/models/update`). **Claude Code is the only curated, hand-maintained list** (see
 *Claude Code models* below); it is the one place a new model has to be added by
 hand, and it has a matching half in the desktop app.
 
@@ -485,10 +493,16 @@ Fetching available models...
 gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
 ```
 
-The **first column is the `--model` routing key** (it already carries the
-reasoning tier — `--model gemini-3.5-flash` alone is refused with "requires
-`--effort`", so the bridge never passes `--effort`), and the second is the label
-the phone shows. A parser written for the old one-value-per-line shape kept
+The **first column is the `--model` routing key** and carries the reasoning
+tier; the second is the label. Since 1.2.11 a tier is also `--effort`, and since
+1.3.4 a bare base runs at the account's tier — but a tiered id runs on **every**
+version, so that is what the bridge sends. It folds a family of tiers
+(`gemini-3.8-flash-{low,medium,high}`, two or more sharing a base) into **one
+model with a reasoning knob** over exactly the listed tiers, defaulting to the
+account's own tier (`agy -p /model --output-format json`, which answers without
+starting a turn), and runs the choice as `<base>-<tier>`; a tiered id a thread
+stored earlier runs unchanged. The first row is **not** the account default
+(1.3.5 lists High first; the account runs Medium). A parser written for the old one-value-per-line shape kept
 "working" silently: it sent the *whole line* as `--model`, which `agy` rejects,
 and it offered `Fetching available models...` as a model — the first entry, so
 also the default. Both were verified live against `agy` 1.1.13: `--model
@@ -502,8 +516,8 @@ so a format change there is a **two-app** fix.
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE), 1.x or 2.x | persisted server session id | per-session permission rules + its `plan` agent — see *Access modes*; the rules are re-applied before a turn whose mode changed (`PATCH /session/:id` on 1.x, `PATCH /api/session/:id` on 2.x) | `opencode models` (1.x) / `GET /api/model` (2.x) |
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --replay-user-messages` (prompt and uuid-tagged follow-ups on stdin) | `--resume <session_id>` | per-turn flags — see *Access modes* | `initialize` `models`: aliases (latest), what each runs, older ids **+ `agents.claude-code.models`** |
-| **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `approvalPolicy` + `approvalsReviewer` + sandbox on `thread/start`, every `thread/resume` and every `turn/start` — see *Access modes*; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
-| **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | no access modes: `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
+| **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `approvalPolicy` + `approvalsReviewer` + sandbox on `thread/start`, every `thread/resume` and every `turn/start` — see *Access modes*; approval requests route to the phone | `model/list` (account-aware; every page, following `nextCursor`) → `~/.codex/config.toml` fallback |
+| **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | no access modes: `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | RPC `get_available_models` on a short-lived `pi --mode rpc --no-session` (since pi 0.74): exact `contextWindow`, `name`, and the reasoning levels pi itself allows per model (`thinkingLevelMap`: `xhigh`/`max` only when mapped, a level mapped to `null` is unsupported, a model that does not reason has none) |
 | **Antigravity** | `agy [--conversation <id>] --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json --print-timeout 2h` — one resident process per thread; the turn is a `user` message on stdin | `--conversation <id>`, the id `agy` announced on the first process's `init`, passed on every later spawn for the thread (never client-minted: 1.2.x refuses an unknown id and starts a new conversation) | no access modes (headless `agy` cannot ask): `permissionMode` → `--dangerously-skip-permissions` (default) / `--mode plan` | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | ACP session mode `ask`/`auto`/`plan` — see *Access modes* | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | only *request approval* and *full access* (see *Access modes*): each ACP `session/request_permission` asks the phone / is allowed; a request for no turn of the bridge's is refused. **Grok decides by itself whether to ask**, from its `[ui] permission_mode` and the `defaultMode` of the Claude settings it also reads; under `auto` its classifier runs tools without asking (measured: `rm -rf` ran on a thread set to request approval), and ACP offers no per-session way to turn that off, so such a thread gets a warning once per session naming the mode and the file (`grokPermissionSource`). Verified: with Grok asking, the round-trip reaches the phone and `reject-once` blocks the command | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model); the chosen effort is set with `session/set_config_option` on the session's `thought_level` option (`reasoning_effort`) — `session/set_mode` accepts anything and changes nothing |
@@ -522,7 +536,7 @@ file in the project, touch one outside it.
 
 | Agent | Request approval | Approve for me | Full access | Plan only | Default |
 |---|---|---|---|---|---|
-| **Claude Code** | `PreToolUse` hook to the phone + `--permission-mode default` — offered only when the bridge serves the hook (LAN on); a turn before its URL exists fails rather than run unasked | `--permission-mode auto` (Claude's own reviewer). Not every model has it: **Haiku 4.5** starts in `default` and declines what needs approval (its `initialize` entry carries no `supportsAutoMode`) — the turn says so (`system/init` reports the mode). Every other model, Haiku 5.5 included, reports `supportsAutoMode: true` | `--dangerously-skip-permissions` | `--permission-mode plan` | full access |
+| **Claude Code** | `--permission-mode default`: every gated tool arrives as a stream-json `can_use_tool` control request (`--permission-prompt-tool stdio`) and goes to the person | `--permission-mode auto` (Claude's own reviewer). Not every model has it: **Haiku 4.5** starts in `default` (its `initialize` entry carries no `supportsAutoMode`), so what needs approval goes to the person as in *Request approval* — the turn says so (`system/init` reports the mode). Every other model, Haiku 5.5 included, reports `supportsAutoMode: true` | `--dangerously-skip-permissions` | `--permission-mode plan` | full access |
 | **Codex** | `untrusted` + reviewer `user` + `workspace-write` | `on-request` + reviewer `auto_review` + `workspace-write` (its own reviewer decides sandbox escapes; measured: a write outside the workspace was approved without asking) | `never` + `danger-full-access` | `never` + `read-only` | full access |
 | **OpenCode** | every gated action `ask` | `edit`/`shell` allow, `webfetch`/`external_directory` ask — OpenCode checks paths on its file tools, not on shell commands, so a command can still reach outside | everything `allow` | its `plan` agent (v1 `agent` on the prompt, v2 `POST /api/session/:id/agent`) + every action `ask` as a backstop. Not `deny` rules: OpenCode's free models refuse a session that denies tools ("free tier can only be used from within OpenCode") | full access |
 | **Zero** | ACP mode `ask` | ACP mode `auto` (runs safe tools, asks before risky ones — those questions go to the person) | **not offered**: `zero acp` cannot run outside its sandbox (no ACP mode, no flag; only the user's global config) | ACP mode `plan` | approve for me |
@@ -553,7 +567,7 @@ Compactions use the ordinary structured-content path and therefore persist in
 | OpenCode | `session.compacted` (1.x) / `session.compaction.ended` (2.x), once the session holds context (see below) | reason unknown |
 | pi | successful `compaction_end` | reason + before/estimated-after tokens |
 | Zero / Grok | ACP exposes no compaction update | no marker |
-| Antigravity | the stream-json surface exposes no compaction event | no marker |
+| Antigravity | a `checkpoint` `step_update` (state `DONE`), since 1.3.5's `/compact`; the turn's `result` is then `SUCCESS` with an empty answer, which completes it | reason unknown |
 
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
@@ -590,11 +604,11 @@ real turn of each agent (2026-09-25):
 
 | Agent | Tool names the bridge maps | Diffs | Plan | Subagent |
 |---|---|---|---|---|
-| Claude Code | `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `mcp__*` (`ToolSearch` is not shown) | from the edit's old/new strings | `TodoWrite` | `Agent` / `Task` |
-| Codex | app-server items: `commandExecution` (the login-shell wrapper removed), `mcpToolCall` (`server/tool`), `dynamicToolCall`, `webSearch`, `imageView` | the item's unified diff; an added file's content | `turn/plan/updated` | `collabAgentToolCall` (`spawnAgent`, `followupTask`) |
-| OpenCode | `read`, `grep`, `glob`, `list`, `webfetch`, … | from the edit's old/new strings | `todowrite` | `task` |
+| Claude Code | `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `mcp__*` (`ToolSearch`, `AskUserQuestion` and `ExitPlanMode` are not shown: a question card / the plan's text stand for them) | from the edit's old/new strings | `TaskCreate` + `TaskUpdate` (2.x: one list per thread, its ids from `TaskCreate`'s `tool_use_result`; the newest models have no task tool at all), `TodoWrite` on older setups | `Agent` / `Task` |
+| Codex | app-server items: `commandExecution` (the login-shell wrapper removed), `mcpToolCall` (`server/tool`), `dynamicToolCall`, `webSearch`, `imageView`, `imageGeneration` (a `generate_image` row naming the saved file) | the item's unified diff; an added file's content | `turn/plan/updated` (its `update_plan` tool, which the models of 0.162.1 do not offer) | `collabAgentToolCall` (`spawnAgent`, `followupTask`) |
+| OpenCode | `read`, `grep`, `glob`, `list`, `webfetch`, … (2.x renamed `bash` → `shell`) | from the edit's old/new strings | `todowrite` (1.x only: 2.x has no to-do tool) | `task` (1.x) / `subagent` (2.x, its report unwrapped from `<subagent state="…">`) |
 | pi | `read`, `grep`, `find`, `ls` | from the edit's old/new texts | — | — |
-| Antigravity | `view_file`, `grep_search`, `find_by_name`, `list_dir`, `read_url_content`, `search_web` | `agy` 1.2.x reports only the file, once changed: the adapter diffs it against the text the agent last read or wrote this turn, else the committed file | — | `invoke_subagent`, `browser_subagent` |
+| Antigravity | `view_file`, `grep_search`, `find_by_name`, `list_dir`, `read_url_content`, `search_web` | `agy` 1.2.x reports only the file, once changed: the adapter diffs it against the text the agent last read or wrote this turn, else the committed file | a `task.md` / `plan.md` checklist it writes in its own `brain/<conversation>/` folder (`- [ ]`, `- [/]`, `- [x]`), read once written, instead of a diff of a file outside the project | `invoke_subagent`, `browser_subagent` |
 | Zero / Grok (ACP) | the ACP `kind`, and the tool's name from Grok's `rawInput.variant` or the first word of Zero's title | ACP `diff` content: real hunks when it is the whole file on disk, else the snippet | the ACP `plan` update (the call that wrote it is not shown twice) | a `task` / `agent` call |
 
 **A step shows while it runs.** Every adapter emits a call's row as it starts —
@@ -735,7 +749,10 @@ native start inside that turn's run window identify it, and the reply is filled
 into the bridge's turn in place (`fillEmptyReply`, `thread-store.ts`). A copy an
 older read imported at the end of the conversation folds back into it.
 
-Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
+Each agent runs a turn in the thread's `cwd`; agent-wide work — a model
+catalog above all — runs in the user's home, the adapter's own folder
+(`IAgentAdapter.defaultCwd()`), so renaming or deleting a project folder can
+never empty the picker. Codex turns and model discovery both use
 `codex app-server` (`thread/start` / `turn/start` and `initialize` →
 `model/list`), each on its own short-lived process — see
 *Codex holds one writer per thread* below. Binary resolution
@@ -943,27 +960,45 @@ configuration would choose:
 |---|---|---|
 | **Codex** | the app-server `model/list` (`supportedReasoningEfforts`) | the model's `defaultReasoningEffort` |
 | **Claude Code** | `--effort` low…max, on every model but **Haiku 4.5** (Claude's `initialize` lists it without `supportsEffort`; Haiku 5.5 reports `supportsEffort: true`, verified on 2.1.293) | `high` — Claude decides its own at run time (remote configuration, then the model's capabilities) and no headless surface reports it, so the bridge names one and sends it |
-| **pi** | `--thinking` off…max, on models whose `thinking` column is `yes` | what pi itself would use: `settings.json` `modelThinkingLevels["provider/model"]`, then `defaultThinkingLevel`, then `medium` |
+| **pi** | `--thinking`, the levels pi allows that model (`get_available_models` → `thinkingLevelMap`; `off…high`, plus `xhigh`/`max` where mapped) | what pi itself would use: `settings.json` `modelThinkingLevels["provider/model"]`, then `defaultThinkingLevel`, then `medium` — clamped to a level the model has |
 | **Grok** | ACP `_meta.reasoningEfforts` | the entry flagged `default` |
 | **OpenCode** 2 | the model's `variants` (sent as `variant`) | none named: an untouched turn runs at the provider's own |
-| **Antigravity** | none (the tier is part of the model id) | — |
+| **Antigravity** | the tiers `agy models` lists for a family (`-low` / `-medium` / `-high`), sent as the tiered id | the account's own tier (`agy -p /model --output-format json`), else the middle listed one |
 | **Zero** | none | — |
 
-**Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
-Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`, both versions),
-Zero and Grok (ACP `session/request_permission`);
-**pi** and **Antigravity** have no headless pre-tool channel (both run
-autonomously — Antigravity's headless surface auto-denies any tool that needs a prompt,
-so a `requestApproval` thread runs read-only `--mode plan` instead — see
-[`../FOR-DEV.md`](../FOR-DEV.md)).
+**Interactive approvals** are wired for Echo, Claude Code (stream-json
+`can_use_tool` control requests, `--permission-prompt-tool stdio`), Codex
+(`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`, both
+versions), Zero and Grok (ACP `session/request_permission`); **pi** and
+**Antigravity** have no headless pre-tool channel and run autonomously.
+Antigravity's stream-json surface auto-denies any tool that would prompt
+(`result.denied_actions`, verified on 1.3.5); its stdin `control_request` is
+reserved but answers "not supported yet" — see [`../FOR-DEV.md`](../FOR-DEV.md).
 
-**Interactive questions** — OpenCode's `question` tool (the agent asks a
-multiple-choice question) surfaces as a `question` content block the phone answers
-via `turn/send { questionResponse }`; the bridge (`AgentManager.requestQuestion`)
-answers it so the agent continues with the choice — on 1.x `/question/{id}/reply`
-(or `/reject` to skip), on 2.x the question arrives as a **form** (`form.created`,
-one field per question) answered per field key at
-`/api/session/:id/form/:id/reply` (or dismissed with `DELETE`). OpenCode 1's
+**Leaving plan mode** is one rule for every agent that asks (Claude Code's
+`ExitPlanMode`, Grok's `_x.ai/exit_plan_mode`): the plan is shown as the turn's
+text first; then a *Plan only* thread is refused (the agent stays in plan mode
+and waits for the person to switch modes), *Full access* and *Approve for me*
+go on by themselves, and *Request approval* asks with a card that reads
+"Start implementing this plan" (`ApprovalRequestInfo.action`). Replying with an
+error is never an answer: Grok ends the prompt `cancelled` and stays in plan
+mode.
+
+**Interactive questions** — an agent's own "ask the user" tool surfaces as a
+`question` content block the person answers via `turn/send { questionResponse }`;
+the bridge (`AgentManager.requestQuestion`) hands the answer back so the agent
+continues with it. `QuestionItem.custom` marks a question that also takes an
+answer the person types (returned like a label). Per agent:
+
+| Agent | How it asks | How the bridge answers |
+|---|---|---|
+| **OpenCode** | its `question` tool: 1.x a question, 2.x a **form** (`form.created`, one field per question; `type: "multiselect"` — `array` / `multiple` on early 2.x — for several picks, `custom: true` for typed text) | 1.x `/question/{id}/reply` (or `/reject`); 2.x `/api/session/:id/form/:id/reply` with each chosen option's **`value`** (an array for a multi-select field), or `DELETE` to dismiss. A reply the server refuses dismisses the form, so the turn goes on instead of hanging |
+| **Claude Code** | `AskUserQuestion`, offered only with `--permission-prompt-tool stdio`; it arrives as a `can_use_tool` control request (questions, options, `multiSelect`; always `custom`) | `control_response` allow with `updatedInput.answers` keyed by question text (several labels joined with `, `); skipped → deny "The user did not answer." |
+| **Grok** | `ask_user_question`, as the server request `_x.ai/ask_user_question` (`{label, description}` options, `multiSelect`) | `{ outcome: "accepted", answers: { <question>: <label> } }`; skipped, or nobody to ask → `{ outcome: "skip_interview" }` — never an error, which the model reads as "could not be delivered" |
+| **Codex** | `item/tool/requestUserInput` (`questions: [{ id, header, question, isOther, isSecret, options \| null }]`; `isOther` or no options → `custom`). On 0.162.1 the model only has the tool in the app-server's *plan* collaboration mode, which the bridge does not use, so it is wired for when Codex sends it | `{ answers: { <question id>: { answers: [...] } } }`; skipped → `{ answers: {} }`. A request Codex settles itself (`serverRequest/resolved`) withdraws the card |
+| **Zero** | `ask_user` exists, but `zero acp` never sends it to the client: the tool answers itself "No interactive user is available" (0.9.0) | — (the tool call is shown read-only) |
+| **Antigravity** | `ask_question` shows only as `step_type: "unknown"`, and the CLI answers "User Skipped" itself (1.3.5) | — |
+| **pi** | no question tool | — | OpenCode 1's
 `permission.v2.asked` shape is routed through the same approval path as
 `permission.asked`.
 
@@ -1019,7 +1054,7 @@ The bridge discovers each agent's special ("slash") commands (`agent/commands` �
 | **Codex** | a native `compact` + the **skills the app-server lists** in the thread's folder (`skills/list { cwds: [cwd] }`: repository, user and system skills, enabled only, short description; reused per folder for a minute) + the user's custom prompts (`~/.codex/prompts/*.md`; a prompt keeps its name over a skill) | natively: a skill as a `{ type: 'skill', name, path }` input item beside the arguments' text; `compact` as `thread/compact/start` (its own turn, rendered as a compaction block); a custom prompt is expanded by the bridge (`expandCommand`) and sent as text |
 | **OpenCode** | **asked of its server** in the thread's folder — v1 `GET /command` (commands and skills, told apart by `source`), v2 `GET /api/command` + `GET /api/skill`, waiting for a freshly booted catalog to settle (it loads in stages over ~1 s); includes its own `init`/`review`, the config's `command` key, `.opencode/command(s)` (project and user) and skills; reused per folder for a minute | **native** — v2 `POST /api/session/:id/command {name, text}`, a skill as a prompt with the skill attached; v1 `POST /session/:id/command {command, arguments, model}`, not awaited (it answers only when the turn ends). The server expands the template; the turn streams like a prompt |
 | **pi** | **asked of pi itself**: `get_commands` on a short-lived `pi --mode rpc --no-session` in the thread's folder, started with the turn's posture flags, so a project's own prompts and skills are listed exactly when pi trusts the project for the turn (`--approve`, or its saved `trust.json` decision); prompt templates as `custom`, skills as `skill` (`skill:<name>`); extension commands left out, because their dialogs would block with nobody to answer; reused per folder for a minute | native — sent as `/name args` on the `prompt` command, which pi expands |
-| **Antigravity** | its **skills**, from `agy -p /skills --add-dir <cwd>` in the thread's folder (a command the CLI answers itself; the workspace's skills come from `--add-dir`; ~4 s cold); built-ins are never listed because they fail on stream-json; reused per folder for a minute | native — sent as `/name args` in the user message, which `agy` expands |
+| **Antigravity** | its **skills**, from `agy -p /skills --add-dir <cwd>` in the thread's folder (a command the CLI answers itself; the workspace's skills come from `--add-dir`; ~4 s cold), plus its built-in `compact` (1.3.5 runs it on stream-json: a `checkpoint` step, then an empty `SUCCESS`); other built-ins are not listed because they fail on stream-json; reused per folder for a minute | native — sent as `/name args` in the user message, which `agy` expands |
 | **Zero** | its **own skills**, from `zero skills list --json` in the thread's folder — only those in Zero's skills folder (`~/.local/share/zero/skills`): the list also shows the shared `~/.agents/skills`, but the skill tool of a Zero run over ACP never looks there (asked for one, it answers "no skills are available"), so those are left out; its ACP server sends no `available_commands_update` and its slash commands are its TUI's; reused per folder for a minute | expanded by the bridge (`expandCommand`) into a prompt asking Zero to load the skill with its skill tool, then the arguments — verified: the run calls `skill` and follows it |
 | **Grok** (ACP) | the ACP `available_commands_update` a session announces in the thread's folder: its built-ins (`compact`, `review`, `goal`, `deep-research`, …, with their argument hints) and the skills it finds (labelled `skill` when a `SKILL.md` of that name is in `~/.agents/skills`, `~/.grok/skills` or the folder's own). A folder no thread has opened gets a short session of its own — `session/new`, no prompt, no tokens, the list ~2.5 s later — closed afterwards; reused per folder for a minute, refreshed by a thread's session. Left out: `always-approve` (the thread's access mode is the bridge's), `statusline` and `memory` (screens of its terminal UI) | native — sent as `/name args` through `session/prompt` (verified: `/session-info` answers with the session's context, no model call) |
 
@@ -1050,8 +1085,8 @@ Two rules make the file-path delivery work, both verified against the real CLIs:
    (`<cwd>/.uxnan-attachments/<turnId>/`) and is referenced **relative to that
    cwd**. Agents are confined to their workspace: given the same image under the
    OS temp dir, Claude answers *"the read was blocked by a permission prompt"*.
-   A turn without its own `cwd` therefore falls back to the adapter's
-   (`IAgentAdapter.defaultCwd()`), never to the temp dir.
+   A turn without its own `cwd` therefore falls back to the adapter's own
+   folder (`IAgentAdapter.defaultCwd()`, the user's home), never to the temp dir.
 2. **The directory is removed when the turn ends**; no temp path leaks into the
    conversation. The images themselves are kept **with the message**: the
    thread store writes them to `~/.uxnan/attachments/<threadId>/`, names them in
