@@ -631,7 +631,7 @@ test('the adapter reads the version and drives OpenCode 2 end to end', async () 
     spawnFn: fake.spawnFn,
   });
   try {
-    await adapter.loadContextWindows();
+    await adapter.loadContextWindows(process.cwd());
     const { events, done } = collect(adapter);
     await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hello', cwd: process.cwd() });
     await done;

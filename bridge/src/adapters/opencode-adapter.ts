@@ -347,9 +347,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   start(_config: AgentConfig): Promise<void> {
-    // Warm the per-model context-window cache so the first turn can already emit
-    // `usage.contextWindow` (a percentage on the phone).
-    void this.loadContextWindows();
+    // Nothing to warm here: the context windows load with a turn's own server
+    // (`sendTurn`), so no server starts for a folder no turn runs in.
     return Promise.resolve();
   }
 
@@ -374,7 +373,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const modelRef = model !== undefined ? splitOpenCodeModel(model) : undefined;
     const variant = reasoningValue(options);
-    void this.loadContextWindows();
+    void this.loadContextWindows(cwd);
 
     // A folder's server carries the MCP servers it was started with; when
     // they changed (attached, detached, a new token) and nothing runs there,
@@ -1016,9 +1015,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return undefined;
   }
 
-  /** The models OpenCode offers, remembering each one's context window. */
-  async #models(): Promise<OpenCodeModel[]> {
-    const server = await this.#serverFor(this.#defaultCwd);
+  /** The models OpenCode offers in [cwd], remembering each one's context window. */
+  async #models(cwd: string = this.#defaultCwd): Promise<OpenCodeModel[]> {
+    const server = await this.#serverFor(cwd);
     const models = await server.models();
     for (const m of models) {
       if (m.contextWindow !== undefined) this.#contextWindowByModel.set(m.id, m.contextWindow);
@@ -1032,11 +1031,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * window at all — OpenCode 1's first `opencode models` on a fresh install
    * prints nothing while it downloads its catalog, and settling on that empty
    * answer would leave the phone without a context percentage for the session.
-   * One load at a time, so turns never pile up catalog reads.
+   * One load at a time, so turns never pile up catalog reads. A turn loads it
+   * from its own folder's server ([cwd]), the one it already runs on.
    */
-  loadContextWindows(): Promise<void> {
+  loadContextWindows(cwd: string = this.#defaultCwd): Promise<void> {
     if (this.#windowsLoad) return this.#windowsLoad;
-    const load: Promise<void> = this.#models()
+    const load: Promise<void> = this.#models(cwd)
       .then((models) => models.some((m) => m.contextWindow !== undefined))
       .catch(() => false)
       .then((found) => {
