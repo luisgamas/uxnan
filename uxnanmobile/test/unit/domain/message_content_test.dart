@@ -220,6 +220,7 @@ void main() {
               ],
               multiple: true,
             ),
+            QuestionItem(question: 'Project name?', custom: true),
           ],
         ),
       );

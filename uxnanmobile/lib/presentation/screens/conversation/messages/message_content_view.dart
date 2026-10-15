@@ -34,6 +34,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/file_chip.dart';
+import 'package:uxnan/presentation/widgets/ne_filled_field.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
@@ -527,6 +528,9 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
   /// order the user chose.
   late List<Set<String>> _selected;
 
+  /// What the user typed per question, on a question that takes it (`custom`).
+  late List<TextEditingController> _typed;
+
   /// The question on screen: several are asked one at a time.
   int _step = 0;
 
@@ -536,6 +540,7 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
   void initState() {
     super.initState();
     _selected = List.generate(_questions.length, (_) => <String>{});
+    _typed = List.generate(_questions.length, (_) => TextEditingController());
   }
 
   @override
@@ -544,14 +549,37 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
     // Re-sync the selection buffer if the question set is swapped under us.
     if (_questions.length != _selected.length) {
       _selected = List.generate(_questions.length, (_) => <String>{});
+      for (final controller in _typed) {
+        controller.dispose();
+      }
+      _typed = List.generate(_questions.length, (_) => TextEditingController());
       _step = 0;
     }
   }
 
-  /// A question is satisfied once it has a selection — or trivially when it has
-  /// no options to pick from (a degenerate payload).
+  @override
+  void dispose() {
+    for (final controller in _typed) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  /// The answer sent for question [i]: the picks, with the typed text
+  /// replacing a single choice or joining a multiple one.
+  List<String> _answer(int i) {
+    final question = _questions[i];
+    final own = question.custom ? _typed[i].text.trim() : '';
+    final chosen = _selected[i].toList();
+    if (own.isEmpty) return chosen;
+    return question.multiple ? [...chosen, own] : [own];
+  }
+
+  /// A question is satisfied once it has an answer — or trivially when there
+  /// is nothing to pick or type (a degenerate payload).
   bool _satisfied(int i) =>
-      _questions[i].options.isEmpty || _selected[i].isNotEmpty;
+      (_questions[i].options.isEmpty && !_questions[i].custom) ||
+      _answer(i).isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -605,6 +633,8 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
           selection
             ..clear()
             ..add(label);
+          // A picked option replaces what was typed for it.
+          _typed[qIndex].clear();
         }
       });
       // A single choice answers its question: on to the next one, after a
@@ -616,10 +646,21 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
       }
     }
 
+    void typed(int qIndex) {
+      if (!interactive) return;
+      setState(() {
+        // A typed single answer replaces a picked option.
+        if (!questions[qIndex].multiple &&
+            _typed[qIndex].text.trim().isNotEmpty) {
+          _selected[qIndex].clear();
+        }
+      });
+    }
+
     void submit() {
       if (!canSubmit) return;
       final answers = [
-        for (var i = 0; i < questions.length; i++) _selected[i].toList(),
+        for (var i = 0; i < questions.length; i++) _answer(i),
       ];
       ref
           .read(questionResponsesProvider.notifier)
@@ -684,6 +725,16 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
                   chosen: chosenFor(i),
                   enabled: interactive,
                   onToggle: (label) => toggle(i, label),
+                  typed: _typed[i],
+                  onTyped: () => typed(i),
+                  onTypedDone: () {
+                    if (!_satisfied(i)) return;
+                    if (stepping && i < questions.length - 1) {
+                      setState(() => _step = i + 1);
+                    } else {
+                      submit();
+                    }
+                  },
                 ),
               ],
             const SizedBox(height: UxnanSpacing.sm),
@@ -727,6 +778,9 @@ class _QuestionBlock extends StatelessWidget {
     required this.chosen,
     required this.enabled,
     required this.onToggle,
+    required this.typed,
+    required this.onTyped,
+    required this.onTypedDone,
   });
 
   final QuestionItem question;
@@ -735,6 +789,15 @@ class _QuestionBlock extends StatelessWidget {
   final List<String> chosen;
   final bool enabled;
   final ValueChanged<String> onToggle;
+
+  /// The user's own answer, on a question that takes one.
+  final TextEditingController typed;
+
+  /// Called on every edit of [typed].
+  final VoidCallback onTyped;
+
+  /// Called when the keyboard's action button is pressed in [typed].
+  final VoidCallback onTypedDone;
 
   @override
   Widget build(BuildContext context) {
@@ -784,6 +847,21 @@ class _QuestionBlock extends StatelessWidget {
                   multiple: question.multiple,
                   enabled: enabled,
                   onTap: () => onToggle(question.options[i].label),
+                ),
+              ],
+              if (question.custom) ...[
+                if (question.options.isNotEmpty) const SizedBox(height: 8),
+                NeFilledField(
+                  controller: typed,
+                  icon: UxIcons.edit,
+                  label: question.options.isEmpty
+                      ? l10n.questionTypeAnswer
+                      : l10n.questionTypeOther,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.done,
+                  onChanged: (_) => onTyped(),
+                  onSubmitted: (_) => onTypedDone(),
                 ),
               ],
             ],
@@ -1880,12 +1958,16 @@ class AssistantTurnView extends ConsumerStatefulWidget {
   /// Creates an [AssistantTurnView] for an assistant [message].
   const AssistantTurnView({
     required this.message,
+    this.running = false,
     this.onTapLink,
     super.key,
   });
 
   /// The assistant message to render.
   final Message message;
+
+  /// Whether its turn is the one running now (see [MessageBubble.running]).
+  final bool running;
 
   /// Handles links in every visible response group, including streaming text.
   final ValueChanged<String>? onTapLink;
@@ -1909,17 +1991,14 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final thinking = StringBuffer();
     final diffs = <DiffContent>[];
     final prose = StringBuffer();
-    final responseGroups = <List<MessageContent>>[];
-    var response = <MessageContent>[];
+    final contents = <MessageContent>[];
 
-    // Native protocols may produce several assistant messages in one turn.
-    // Boundaries are zero-text metadata: during streaming every group remains
-    // visible; once settled, all but the last response move into one disclosure
-    // without changing the persisted content or the copy projection. A reply a
-    // later message cut ([Message.continuedIn]) is not settled in that sense:
-    // it is the answer so far and stays as it streamed, like the desktop's.
-    // An agent resends its whole to-do list on every change: each earlier
-    // plan is a past state of the latest one, which alone is shown.
+    // The answer in the order the agent produced it. Reasoning and diffs are
+    // lifted to their own sections; blank text runs disappear, and the
+    // zero-text boundaries between the agent's own responses only tell
+    // [splitAnswer] where its last response began. An agent resends its whole
+    // to-do list on every change: each earlier plan is a past state of the
+    // latest one, which alone is shown.
     final lastPlan = message.contents.whereType<PlanContent>().lastOrNull;
     for (final content in message.contents) {
       switch (content) {
@@ -1929,56 +2008,48 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           thinking.write(reasoning.text);
         case final DiffContent diff:
           diffs.add(diff);
-        case AssistantResponseBoundaryContent():
-          if (response.isNotEmpty) {
-            responseGroups.add(response);
-            response = <MessageContent>[];
-          }
+        case final AssistantResponseBoundaryContent boundary:
+          contents.add(boundary);
         case final TextContent text:
-          response.add(text);
+          // A streaming run stays even while still empty: it is where the
+          // answer appears.
+          if (text.text.trim().isEmpty && !text.isStreaming) continue;
+          contents.add(text);
           if (text.text.isNotEmpty) {
             if (prose.isNotEmpty) prose.write('\n\n');
             prose.write(text.text);
           }
         default:
-          response.add(content);
+          contents.add(content);
       }
     }
-    if (response.isNotEmpty) responseGroups.add(response);
-    final collapsePrevious = !message.isStreaming &&
-        message.continuedIn == null &&
-        responseGroups.length > 1;
-    // A view the agent showed is part of the answer, never of the folded
-    // responses: it is what the person asked to see, and behind "Worked for…"
-    // only someone who knew it was there would find it. Views leave the earlier
-    // responses, in the order they were shown, and open the visible answer
-    // (the desktop's `splitAnswer` does the same).
-    final earlier = collapsePrevious
-        ? [
-            for (final group in responseGroups.take(responseGroups.length - 1))
-              [
-                for (final content in group)
-                  if (content is! ViewContent) content,
-              ],
-          ]
-        : const <List<MessageContent>>[];
-    final visibleContents = collapsePrevious
-        ? [
-            for (final group in responseGroups.take(responseGroups.length - 1))
-              ...group.whereType<ViewContent>(),
-            ...responseGroups.last,
-          ]
-        : [for (final group in responseGroups) ...group];
-    // Earlier responses and the visible answer are laid out by the same
-    // builder ([_responseSegments]), so a folded response opens exactly as the
-    // answer reads: prose, and collapsed work-log groups that each open alone.
+    // While the turn runs everything is in view. Once it settles, the work
+    // that led to the answer folds behind one line ("Worked for 5m 52s") and
+    // the closing answer stays open, with the views the agent showed — the
+    // desktop's `splitAnswer`, the same rule on both clients. A reply a later
+    // message cut ([Message.continuedIn]) is not settled in that sense: it is
+    // the answer so far and stays as it streamed.
+    final settled =
+        !widget.running && !message.isStreaming && message.continuedIn == null;
+    final split = settled
+        ? splitAnswer(contents)
+        : (
+            work: const <MessageContent>[],
+            answer: [
+              for (final c in contents)
+                if (c is! AssistantResponseBoundaryContent) c,
+            ],
+          );
+    final visibleContents = split.answer;
+    // The folded work and the visible answer are laid out by the same builder
+    // ([_responseSegments]), so the work opens exactly as it read while the
+    // turn ran: prose, and collapsed work-log groups that each open alone.
     final segments = <Widget>[
-      if (collapsePrevious)
+      if (split.work.isNotEmpty)
         _PreviousResponsesSection(
           label: _foldLabel(
             AppLocalizations.of(context),
             message.turnDuration,
-            responseGroups.length - 1,
           ),
           expanded: _previousResponsesExpanded,
           onToggle: () => setState(
@@ -1987,19 +2058,14 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           body: _previousResponsesExpanded
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var r = 0; r < earlier.length; r++) ...[
-                      if (r > 0) const SizedBox(height: UxnanSpacing.md),
-                      ..._responseSegments(
-                        contents: earlier[r],
-                        threadId: message.threadId,
-                        onTapLink: widget.onTapLink,
-                        processPrefix: 'previous-$r-',
-                        expandedProcess: _expandedProcess,
-                        onToggleProcess: _toggleProcess,
-                      ),
-                    ],
-                  ],
+                  children: _responseSegments(
+                    contents: split.work,
+                    threadId: message.threadId,
+                    onTapLink: widget.onTapLink,
+                    processPrefix: 'previous-',
+                    expandedProcess: _expandedProcess,
+                    onToggleProcess: _toggleProcess,
+                  ),
                 )
               : null,
         ),
@@ -2052,12 +2118,59 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
 }
 
 /// The fold's label: how long the turn worked ("Worked for 5m 52s") when the
-/// bridge reported when it ended ([Message.turnDuration]), else how many
-/// earlier responses it holds.
-String _foldLabel(AppLocalizations l10n, Duration? worked, int count) =>
-    worked == null
-        ? l10n.conversationPreviousMessages(count)
-        : l10n.conversationWorkedFor(formatElapsed(worked));
+/// bridge reported when it ended ([Message.turnDuration]), else "Show the
+/// work" — the desktop's labels.
+String _foldLabel(AppLocalizations l10n, Duration? worked) => worked == null
+    ? l10n.conversationShowWork
+    : l10n.conversationWorkedFor(formatElapsed(worked));
+
+/// Splits a settled turn's [items] into the work that led to the answer and
+/// the answer itself: the text after the last block — or of the agent's last
+/// response, when it answered in several (Codex's commentary, then its final
+/// answer; [AssistantResponseBoundaryContent] closes each) — with any notices
+/// that follow it. A turn with no blocks, in one response, is all answer;
+/// notices alone are not an answer, so they stay after the work. Boundaries
+/// are metadata: neither half carries them.
+///
+/// A view the agent showed is part of the answer, never of the work: it is
+/// what the person asked to see, and folded behind "Worked for…" only someone
+/// who knew it was there would find it. Views leave the work, in the order the
+/// agent showed them, and open the answer.
+///
+/// The same rule as the desktop's `splitAnswer` (`uxnandesktop/src/lib/bridge/
+/// timeline.ts`); a change to one is a change to both.
+@visibleForTesting
+({List<MessageContent> work, List<MessageContent> answer}) splitAnswer(
+  List<MessageContent> items,
+) {
+  bool boundary(MessageContent c) => c is AssistantResponseBoundaryContent;
+  bool closing(MessageContent c) =>
+      c is TextContent || c is SystemContent || boundary(c);
+  var cut = items.length;
+  while (cut > 0 && closing(items[cut - 1])) {
+    cut -= 1;
+    // The last response began after this boundary: what came before it is
+    // the work toward it — unless no text of that response followed yet.
+    if (boundary(items[cut]) &&
+        items.skip(cut + 1).any((c) => c is TextContent)) {
+      cut += 1;
+      break;
+    }
+  }
+  if (!items.skip(cut).any((c) => c is TextContent)) cut = items.length;
+  final work = items.take(cut);
+  return (
+    work: [
+      for (final c in work)
+        if (c is! ViewContent && !boundary(c)) c,
+    ],
+    answer: [
+      ...work.whereType<ViewContent>(),
+      for (final c in items.skip(cut))
+        if (!boundary(c)) c,
+    ],
+  );
+}
 
 /// Lays out one run of response content the way the reader sees an answer:
 /// work-log groups and prose/other blocks IN THE ORDER the agent produced
@@ -2153,10 +2266,10 @@ List<Widget> _responseSegments({
   return segments;
 }
 
-/// Folds the assistant progress/commentary messages that preceded the final
-/// response in the same turn behind one quiet line ("Worked for 5m 52s").
-/// Nothing is summarized or discarded: [body] lays the earlier responses out
-/// the way the answer reads, against a hairline rule on the left.
+/// Folds the work that preceded the final answer of a settled turn behind one
+/// quiet line ("Worked for 5m 52s"). Nothing is summarized or discarded:
+/// [body] lays the work out the way it read while the turn ran, against a
+/// hairline rule on the left.
 class _PreviousResponsesSection extends StatelessWidget {
   const _PreviousResponsesSection({
     required this.label,
@@ -2169,7 +2282,7 @@ class _PreviousResponsesSection extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
 
-  /// The earlier responses; built only while [expanded].
+  /// The folded work; built only while [expanded].
   final Widget? body;
 
   @override

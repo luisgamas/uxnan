@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A finished answer reads like the desktop's.** Once a turn settles, the work
+  that led to the answer — its steps and its earlier responses — folds behind
+  one line ("Worked for 1m 3s", or "Show the work"), and the final answer stays
+  open with the charts and pages the agent showed. Before, only the earlier
+  responses of a turn that answered in several folded. A turn still running —
+  even one waiting on your approval before writing anything — stays whole.
+
+### Added
+
+- **A question can be answered in your own words.** When the agent allows it
+  (Claude Code, Codex, OpenCode), the question card has a field under its
+  options: what you type replaces a single choice or joins the picks of a
+  multiple one, and a question with no options is answered by typing alone.
 
 ## [0.0.43-alpha.20261009+20261010] - 20261009
 ### Fixed

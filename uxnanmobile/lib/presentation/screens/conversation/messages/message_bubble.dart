@@ -47,6 +47,7 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.onTapLink,
     this.steered = false,
+    this.running = false,
     super.key,
   });
 
@@ -61,6 +62,12 @@ class MessageBubble extends StatelessWidget {
   /// Ignored for other roles.
   final bool steered;
 
+  /// Whether this message's turn is the one the agent is running now
+  /// ([TurnTimelineSnapshot.streamingTurnId]): an assistant turn folds its
+  /// work only once it is not — even before any text streams, an approval or
+  /// a question it waits on must stay in view.
+  final bool running;
+
   @override
   Widget build(BuildContext context) {
     return switch (message.role) {
@@ -68,12 +75,17 @@ class MessageBubble extends StatelessWidget {
       MessageRole.assistant when message.continuedIn != null => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AssistantTurnView(message: message, onTapLink: onTapLink),
+            AssistantTurnView(
+              message: message,
+              running: running,
+              onTapLink: onTapLink,
+            ),
             const _ContinuesBelowNote(),
           ],
         ),
       MessageRole.assistant => AssistantTurnView(
           message: message,
+          running: running,
           onTapLink: onTapLink,
         ),
       MessageRole.system ||
