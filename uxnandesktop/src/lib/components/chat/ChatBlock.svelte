@@ -22,7 +22,8 @@
   // One structured block of an agent's turn — what the phone calls a content
   // block (`MessageContent`). This dispatches it to its face:
   //
-  //  - a step of work (a command, an edit, a tool call, a subagent) → `ChatActivity`
+  //  - a step of work (a command, an edit, a tool call) → `ChatActivity`
+  //  - a subagent → `ChatSubagent`, its own card
   //  - an approval or a question → `ChatRequest` (a card, or in the timeline
   //    a one-line record while the card waits above the composer)
   //  - a plan, a notice, a code block, an image, a compaction marker → drawn here
@@ -34,6 +35,7 @@
   import TaskDone01Icon from "@hugeicons/core-free-icons/TaskDone01Icon";
   import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
   import ChatActivity from "./ChatActivity.svelte";
+  import ChatSubagent from "./ChatSubagent.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatView from "./ChatView.svelte";
   import type { Conversation } from "$lib/bridge/conversation.svelte";
@@ -111,6 +113,8 @@
 
 {#if isActivity(b)}
   <ChatActivity block={b} {live} />
+{:else if type === "subagent"}
+  <ChatSubagent block={b} {live} />
 {:else if (type === "approval" && str(req.approvalId)) || (type === "question" && str(req.questionId))}
   <ChatRequest block={b} {threadId} {conversation} {live} {compact} />
 {:else if type === "plan" && steps.length > 0}

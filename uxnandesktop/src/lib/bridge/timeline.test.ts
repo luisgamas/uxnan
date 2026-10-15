@@ -31,7 +31,8 @@ describe("textOf / isActivity", () => {
     expect(textOf({ type: "text" })).toBeNull();
     expect(textOf(null)).toBeNull();
     expect(isActivity(cmd("ls"))).toBe(true);
-    expect(isActivity({ type: "subagent" })).toBe(true);
+    // A subagent is its own card, not a step of the work log.
+    expect(isActivity({ type: "subagent" })).toBe(false);
     expect(isActivity({ type: "approval" })).toBe(false);
     expect(isActivity("nonsense")).toBe(false);
   });
@@ -105,6 +106,24 @@ describe("splitAnswer", () => {
     expect(splitAnswer(groupParts([text("a"), cmd("ls")])).answer).toEqual([]);
   });
 
+  it("answers with the agent's last response when it answered in several", () => {
+    const boundary = { type: "assistant_response_boundary", phase: "commentary" };
+    // Codex: commentary, then its final answer, each closed by a boundary.
+    const items = groupParts([
+      text("Looking."),
+      boundary,
+      text("Still looking."),
+      boundary,
+      text("Found it."),
+      boundary,
+    ]);
+    const { work, answer } = splitAnswer(items);
+    expect(work.map((i) => (i.kind === "text" ? i.text : i.kind))).toEqual(["Looking.", "Still looking."]);
+    expect(answer).toEqual([{ kind: "text", text: "Found it.", opens: true }]);
+    // One response closed by its boundary is all answer.
+    expect(splitAnswer(groupParts([text("Done."), boundary])).work).toEqual([]);
+  });
+
   it("keeps an answer open when a notice closes the turn", () => {
     const notice = { type: "system", kind: "warning", text: "A background task was interrupted." };
     const boundary = { type: "assistant_response_boundary", phase: "unknown" };
@@ -142,9 +161,8 @@ describe("summarizeWork", () => {
         cmd("b", { exitCode: 2 }),
         diff("f"),
         { type: "tool", toolName: "Read" },
-        { type: "subagent" },
       ]),
-    ).toEqual({ commands: 2, edits: 1, tools: 1, agents: 1, failed: 1 });
+    ).toEqual({ commands: 2, edits: 1, tools: 1, failed: 1 });
   });
 });
 

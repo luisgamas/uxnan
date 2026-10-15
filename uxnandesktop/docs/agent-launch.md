@@ -381,8 +381,9 @@ the same conversation (13.4k vs 18.3k) — about 5× cheaper per title. Where th
 CLI separates the reasoning tier from the model id, that tier is pinned too
 (`title_effort_args` → `-c model_reasoning_effort=low`), because Luna's own
 default is `medium` and thinking tokens are what would undo the saving. Claude's
-`haiku` and Antigravity's `gemini-3.6-flash-low` already carry their tier in the
-id.
+`haiku` already carries its tier in the id; Antigravity's model is not pinned at
+all — `agy` 1.3.x retired the old id — but read from `agy models`: the lowest
+tier of a flash family (`agy_title_model`, the same rule as the bridge).
 
 **Every id here has a twin in the bridge**, which names the phone's
 conversations (`claude-adapter.ts` `TITLE_MODEL`, `codex-adapter.ts`

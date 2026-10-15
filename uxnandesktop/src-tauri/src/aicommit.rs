@@ -67,7 +67,10 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
         "claude" => claude_models(&resolved).await?,
         "opencode" => {
             // stderr included so a broken install's own complaint reaches the user.
-            let out = run_list(&resolved, &["models"], false).await?;
+            let major = agentcli::opencode_major_version().await;
+            let args = opencode_models_args(major);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            let out = run_list(&resolved, &args, false).await?;
             agentcli::parse_opencode_models(&out)
         }
         "pi" => {
@@ -78,7 +81,7 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
         }
         "codex" => codex_models(&resolved).await,
         "agy" => {
-            // One bare model id per line on stdout.
+            // `<id>⟨TAB⟩<label>` rows on stdout (`agentcli::parse_agy_models`).
             let out = run_list(&resolved, &["models"], false).await?;
             agentcli::parse_agy_models(&out)
         }
@@ -91,6 +94,16 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
         _ => vec![],
     };
     Ok(models)
+}
+
+/// The arguments that list OpenCode's models. OpenCode 2 lists them through its
+/// shared background service, which answers a folder it has not seen yet with
+/// nothing; `--standalone` (the flag uxnan launches OpenCode 2 with, see
+/// `mcpinject::required_args`) lists them at once. OpenCode 1 rejects the flag.
+fn opencode_models_args(opencode_major: Option<u32>) -> Vec<String> {
+    let mut args = vec!["models".to_string()];
+    args.extend(crate::mcpinject::required_args("opencode", opencode_major));
+    args
 }
 
 /// Generate a commit message for `worktree_path` using `cfg`. Reads the staged
@@ -362,6 +375,29 @@ async fn codex_models(resolved: &agentcli::Resolved) -> Vec<AgentModel> {
     codex_models_inner(resolved).await.unwrap_or_default()
 }
 
+/// Most `model/list` pages read for one listing.
+const MODEL_LIST_MAX_PAGES: u64 = 10;
+
+/// The `model/list` request with JSON-RPC id [id], asking for the page after
+/// [cursor] (the first page without one).
+fn codex_model_list_request(id: u64, cursor: Option<&str>) -> String {
+    let params = match cursor {
+        Some(cursor) => serde_json::json!({ "cursor": cursor }),
+        None => serde_json::json!({}),
+    };
+    serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": "model/list", "params": params })
+        .to_string()
+}
+
+/// The cursor of the page after a `model/list` result, if there is one.
+fn next_cursor(result: &serde_json::Value) -> Option<String> {
+    result
+        .get("nextCursor")
+        .and_then(|c| c.as_str())
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+}
+
 async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentModel>> {
     let mut child = crate::winproc::command(&resolved.program)
         .args(&resolved.prepend)
@@ -391,19 +427,30 @@ async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentMo
             }
         }
 
-        // 2) model/list, then read until its response (id:2).
-        let list = r#"{"jsonrpc":"2.0","id":2,"method":"model/list","params":{}}"#;
-        stdin.write_all(list.as_bytes()).await.ok()?;
-        stdin.write_all(b"\n").await.ok()?;
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
-                if v.get("id") == Some(&serde_json::json!(2)) {
-                    let data = v.get("result").and_then(|r| r.get("data"))?;
-                    return Some(agentcli::parse_codex_models(data));
+        // 2) model/list, page by page: each answer may carry a `nextCursor`
+        //    for the next one (bounded, so a server that never stops cannot
+        //    hold the listing).
+        let mut models = Vec::new();
+        let mut cursor: Option<String> = None;
+        for id in 2..2 + MODEL_LIST_MAX_PAGES {
+            let request = codex_model_list_request(id, cursor.as_deref());
+            stdin.write_all(request.as_bytes()).await.ok()?;
+            stdin.write_all(b"\n").await.ok()?;
+            let result = loop {
+                let line = lines.next_line().await.ok()??;
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if v.get("id") == Some(&serde_json::json!(id)) {
+                        break v.get("result")?.clone();
+                    }
                 }
+            };
+            models.extend(agentcli::parse_codex_models(result.get("data")?));
+            cursor = next_cursor(&result);
+            if cursor.is_none() {
+                break;
             }
         }
-        None
+        Some(models)
     };
 
     let result = tokio::time::timeout(LIST_TIMEOUT, work)
@@ -554,6 +601,46 @@ fn sanitize_message(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opencode_models_are_listed_standalone_only_by_opencode_2() {
+        assert_eq!(
+            opencode_models_args(Some(2)),
+            vec!["models", "--standalone"]
+        );
+        assert_eq!(
+            opencode_models_args(Some(3)),
+            vec!["models", "--standalone"]
+        );
+        assert_eq!(opencode_models_args(Some(1)), vec!["models"]);
+        assert_eq!(opencode_models_args(None), vec!["models"]);
+    }
+
+    #[test]
+    fn codex_model_list_pages_follow_the_cursor() {
+        let first: serde_json::Value =
+            serde_json::from_str(&codex_model_list_request(2, None)).unwrap();
+        assert_eq!(first["method"], "model/list");
+        assert_eq!(first["id"], 2);
+        assert_eq!(first["params"], serde_json::json!({}));
+        let next: serde_json::Value =
+            serde_json::from_str(&codex_model_list_request(3, Some("abc"))).unwrap();
+        assert_eq!(next["params"], serde_json::json!({ "cursor": "abc" }));
+
+        assert_eq!(
+            next_cursor(&serde_json::json!({ "data": [], "nextCursor": "abc" })).as_deref(),
+            Some("abc")
+        );
+        assert_eq!(
+            next_cursor(&serde_json::json!({ "data": [], "nextCursor": null })),
+            None
+        );
+        assert_eq!(
+            next_cursor(&serde_json::json!({ "data": [], "nextCursor": "" })),
+            None
+        );
+        assert_eq!(next_cursor(&serde_json::json!({ "data": [] })), None);
+    }
 
     #[test]
     fn commit_and_pr_prompts_open_like_a_one_shot() {

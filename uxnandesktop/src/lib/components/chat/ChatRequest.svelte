@@ -9,6 +9,7 @@
   // says what was asked and how it ended.
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import { Icon } from "$lib/components/ui/icon";
   import { Spinner } from "$lib/components/ui/spinner";
   import Kbd from "$lib/components/Kbd.svelte";
@@ -78,6 +79,8 @@
     question: string;
     header: string;
     multiple: boolean;
+    /** The agent takes an answer the person types instead of (or besides) the options. */
+    custom: boolean;
     options: { label: string; description: string }[];
   }
   const questionId = $derived(str(req.questionId));
@@ -89,6 +92,7 @@
         question: str(q.question),
         header: str(q.header),
         multiple: q.multiple === true,
+        custom: q.custom === true,
         options: (Array.isArray(q.options) ? q.options : [])
           .filter((o): o is Record<string, unknown> => !!o && typeof o === "object")
           .map((o) => ({ label: str(o.label), description: str(o.description) })),
@@ -96,9 +100,23 @@
   });
   const questionOutcome = $derived(questionId ? conversation.questions[questionId] : undefined);
   let picks = $state<string[][]>([]);
+  /** What the person typed per question, on a question that takes it. */
+  let typed = $state<string[]>([]);
   $effect(() => {
     if (picks.length !== questions.length) picks = questions.map(() => []);
+    if (typed.length !== questions.length) typed = questions.map(() => "");
   });
+
+  /** The answers sent: the picks, with the typed text replacing a single
+   *  choice or joining a multiple one. */
+  const answers = $derived(
+    questions.map((q, qi) => {
+      const own = q.custom ? (typed[qi] ?? "").trim() : "";
+      const chosen = picks[qi] ?? [];
+      if (!own) return chosen;
+      return q.multiple ? [...chosen, own] : [own];
+    }),
+  );
 
   /** The question on screen: several are asked one at a time. */
   let step = $state(0);
@@ -113,6 +131,8 @@
         : [...current, label]
       : [label];
     picks = picks.map((p, i) => (i === qi ? next : p));
+    // A single choice replaces what was typed for it.
+    if (!multiple) typed = typed.map((t, i) => (i === qi ? "" : t));
     // A single choice answers its question: on to the next one.
     if (!multiple && qi === step && !last) step += 1;
   }
@@ -138,10 +158,23 @@
     toggle(step, q.options[n - 1]!.label, q.multiple);
   }
 
+  /** Typing a single-choice answer takes the place of a picked option. */
+  function onTyped(qi: number, multiple: boolean) {
+    if (!multiple && (typed[qi] ?? "").trim()) picks = picks.map((p, i) => (i === qi ? [] : p));
+  }
+
+  /** Enter in the answer field moves on, or sends on the last question. */
+  function onTypedKey(event: KeyboardEvent) {
+    if (event.key !== "Enter" || event.isComposing || answering !== null) return;
+    event.preventDefault();
+    if (!last) step += 1;
+    else if (answers.some((a) => a.length > 0)) void answer(false);
+  }
+
   async function answer(skip: boolean) {
     answering = skip ? "skip" : "submit";
     try {
-      await chatStore.answerQuestion(threadId, questionId, skip ? questions.map(() => []) : picks);
+      await chatStore.answerQuestion(threadId, questionId, skip ? questions.map(() => []) : answers);
     } catch (err) {
       toastError(err);
     } finally {
@@ -263,8 +296,9 @@
                 </span>
               {/if}
             </div>
-            <div class="flex flex-col overflow-hidden rounded-md border border-border/60">
-              {#each q.options as option, oi (option.label)}
+            {#if q.options.length > 0}
+              <div class="flex flex-col overflow-hidden rounded-md border border-border/60">
+                {#each q.options as option, oi (option.label)}
                 {@const selected = (picks[step] ?? []).includes(option.label)}
                 <button
                   type="button"
@@ -280,8 +314,22 @@
                     {#if option.description}<span class={text.meta}>{option.description}</span>{/if}
                   </span>
                 </button>
-              {/each}
-            </div>
+                {/each}
+              </div>
+            {/if}
+            {#if q.custom}
+              <Input
+                density="compact"
+                bind:value={typed[step]}
+                placeholder={i18n.t(
+                  q.options.length > 0 ? "chat.questionTypeOther" : "chat.questionTypeAnswer",
+                )}
+                aria-label={i18n.t("chat.questionTypeAnswer")}
+                disabled={answering !== null}
+                oninput={() => onTyped(step, q.multiple)}
+                onkeydown={onTypedKey}
+              />
+            {/if}
             {#if q.multiple}
               <p class={cn(text.meta, "pl-6")}>{i18n.t("chat.questionPickAny")}</p>
             {/if}
@@ -296,7 +344,7 @@
                     "size-1.5 rounded-full transition-colors",
                     i === step
                       ? "bg-foreground/70"
-                      : (picks[i] ?? []).length > 0
+                      : (answers[i] ?? []).length > 0
                         ? "bg-sky-500/70"
                         : "bg-foreground/15",
                   )}
@@ -319,7 +367,7 @@
           {:else}
             <Button
               size="sm"
-              disabled={answering !== null || picks.every((p) => p.length === 0)}
+              disabled={answering !== null || answers.every((a) => a.length === 0)}
               onclick={() => void answer(false)}
             >
               {#if answering === "submit"}

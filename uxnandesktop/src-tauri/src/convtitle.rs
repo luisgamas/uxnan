@@ -31,24 +31,69 @@ const TITLE_TIMEOUT: Duration = Duration::from_secs(45);
 ///
 /// **Every id here has a twin in the bridge**, which names the phone's
 /// conversations the same way (`claude-adapter.ts` `TITLE_MODEL`,
-/// `codex-adapter.ts` `CODEX_TITLE_MODEL`, `antigravity-adapter.ts`
-/// `ANTIGRAVITY_TITLE_MODEL`). Move both halves together, or one app keeps
-/// paying for a tier the other one dropped.
+/// `codex-adapter.ts` `CODEX_TITLE_MODEL`). Move both halves together, or one
+/// app keeps paying for a tier the other one dropped. Antigravity is not here:
+/// its cheap tier is read from its own listing ([`agy_title_model`]).
 fn title_model(agent_id: &str) -> &'static str {
     match agent_id {
         "claude" => "haiku",
-        // Verified against the account's real `model/list` (codex) and
-        // `agy models`. A wrong id is not a cosmetic mistake here: the CLI
-        // rejects the run and the session silently keeps its old label.
+        // Verified against the account's real `model/list` (codex). A wrong id
+        // is not a cosmetic mistake here: the CLI rejects the run and the
+        // session silently keeps its old label.
         //
         // Luna is the cheapest of Codex's line on both halves of the bill —
         // $0.20/$1.20 per 1M tokens against the mini tier's $0.75/$4.50 — and
         // measured on a real title it also spent *fewer* tokens (13.4k vs
         // 18.3k), so it is roughly 5× cheaper per name.
         "codex" => "gpt-5.6-luna",
-        "agy" => "gemini-3.6-flash-low",
         _ => "",
     }
+}
+
+/// The model a title run asks for: [`title_model`], except for Antigravity,
+/// whose ids are the ones its own `agy models` lists this month — read, not
+/// pinned, so a retired tier is never asked for (`""` when the listing cannot be
+/// read: the run then takes `agy`'s default, and a failed read is logged like
+/// any other failed naming).
+async fn title_model_for(agent_id: &str) -> String {
+    if agent_id != "agy" {
+        return title_model(agent_id).to_string();
+    }
+    match crate::aicommit::list_models("agy").await {
+        Ok(models) => agy_title_model(&models).unwrap_or_default(),
+        Err(e) => {
+            fail(agent_id, &format!("could not list its models: {e}"));
+            String::new()
+        }
+    }
+}
+
+/// The reasoning tiers `agy` appends to a model id, cheapest first.
+const AGY_TIERS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// The cheapest model `agy` offers to name a conversation with, from its listing
+/// — the same rule as the bridge's `chooseAntigravityTitleModel`: the lowest
+/// tier of a `flash` family, else any `-low` id. `None` when neither is listed
+/// (the run then takes `agy`'s default).
+fn agy_title_model(models: &[agentcli::AgentModel]) -> Option<String> {
+    let rank = |id: &str| {
+        let (base, tier) = id.rsplit_once('-')?;
+        if !base.contains("flash") {
+            return None;
+        }
+        AGY_TIERS.iter().position(|t| *t == tier)
+    };
+    models
+        .iter()
+        .filter_map(|m| rank(&m.id).map(|r| (r, &m.id)))
+        .min_by_key(|(r, _)| *r)
+        .map(|(_, id)| id.clone())
+        .or_else(|| {
+            models
+                .iter()
+                .find(|m| m.id.ends_with("-low"))
+                .map(|m| m.id.clone())
+        })
 }
 
 /// Extra flags pinning the title run to the cheapest reasoning tier its CLI
@@ -201,7 +246,7 @@ where
 
     let result = run(TitleRun {
         agent: agent_id.to_string(),
-        model: title_model(agent_id).to_string(),
+        model: title_model_for(agent_id).await,
         prompt: build_title_prompt(transcript),
         timeout_ms: TITLE_TIMEOUT.as_millis() as u64,
         extra: title_run_args(agent_id),
@@ -379,11 +424,57 @@ agent: the token expired",
     fn the_title_model_is_the_cheap_tier_where_we_know_one() {
         assert_eq!(title_model("claude"), "haiku");
         assert_eq!(title_model("codex"), "gpt-5.6-luna");
-        assert_eq!(title_model("agy"), "gemini-3.6-flash-low");
         // An agent whose cheap tier we cannot name falls back to its CLI
         // default rather than guessing an id the CLI would reject.
         assert_eq!(title_model("opencode"), "");
         assert_eq!(title_model("unknown"), "");
+    }
+
+    fn listed(ids: &[&str]) -> Vec<agentcli::AgentModel> {
+        ids.iter()
+            .map(|id| agentcli::AgentModel {
+                id: id.to_string(),
+                display_name: id.to_string(),
+                is_legacy: false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn agy_names_a_conversation_on_the_cheap_flash_family_it_lists() {
+        // The listing of `agy` 1.3.5, in its own order.
+        let models = listed(&[
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-low",
+            "claude-sonnet-4-6",
+            "gpt-oss-120b-medium",
+        ]);
+        assert_eq!(
+            agy_title_model(&models).as_deref(),
+            Some("gemini-3.8-flash-low")
+        );
+        // A flash family with no low tier is named on its lowest one.
+        assert_eq!(
+            agy_title_model(&listed(&[
+                "claude-sonnet-4-6",
+                "gemini-3.9-flash-high",
+                "gemini-3.9-flash-medium"
+            ]))
+            .as_deref(),
+            Some("gemini-3.9-flash-medium")
+        );
+    }
+
+    #[test]
+    fn agy_falls_back_to_a_low_tier_then_to_its_own_default() {
+        assert_eq!(
+            agy_title_model(&listed(&["claude-sonnet-4-6", "gemini-3.1-pro-low"])).as_deref(),
+            Some("gemini-3.1-pro-low")
+        );
+        // Nothing cheap listed: no model is named, so agy's default runs.
+        assert_eq!(agy_title_model(&listed(&["claude-sonnet-4-6"])), None);
+        assert_eq!(agy_title_model(&[]), None);
     }
 
     #[test]
@@ -394,8 +485,8 @@ agent: the token expired",
             title_effort_args("codex"),
             vec!["-c".to_string(), "model_reasoning_effort=low".to_string()]
         );
-        // The others carry their tier in the model id itself (`haiku`,
-        // `gemini-3.6-flash-low`) or expose no knob at all.
+        // The others carry their tier in the model id itself (`haiku`, an
+        // Antigravity `-low` id) or expose no knob at all.
         for id in ["claude", "agy", "opencode", "grok", "zero", "pi", "unknown"] {
             assert!(title_effort_args(id).is_empty(), "{id}");
         }
