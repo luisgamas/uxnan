@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
-![Contracts](https://img.shields.io/badge/101_methods_%7C_25_notifications-blue?style=for-the-badge)
+![Contracts](https://img.shields.io/badge/103_methods_%7C_25_notifications-blue?style=for-the-badge)
 
 Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
 single source of truth every component agrees on. Consumed as a local workspace
@@ -65,6 +65,7 @@ flowchart TB
 | Models | thread / turn / message (with `MessageContent` polymorphic blocks), durable `CompactionContentBlock` and `AssistantResponseBoundaryBlock`, git, workspace (incl. `browseDirs` + `exists`), project, auth, session/trust (`BridgeStatus` incl. `latestVersion?`/`updateAvailable?`), bridge-owned profile metrics (complete-ledger export/import), approval, question (interactive multiple-choice) |
 | Agent sessions | `agent/sessions` · `holds` · `hold` · `release` · `requestHandoff` · `handoffAnswer` (`AgentSessionSummary`, `AgentSessionHold`, hand-off outcomes), `stream/agent/held` / `handoffRequested`, `SessionHeld` (`-32010`), `ONE_SHOT_PROMPT_OPENERS` / `isOneShotPrompt` (`src/models/agent-session.ts`, `src/agents/one-shot.ts`, architecture/02a §5.8.19) |
 | Agents | `IAgentAdapter` (with `respondApproval`, `listModels`, `nativeSessionId`, `adoptNativeSession`, `listNativeSessions` → `NativeSessionInfo`, `SendTurnOptions { threadId, turnId, text, service?, effort?, options?, attachments?, cwd?, accessMode? }`), `AgentModel` (incl. `version?`, `isDefault?`, `options?`, `contextWindow?`, `isLatestAlias?`), `AgentCapabilities` (incl. `images`, `approvals`, `reportsContextUsage`, `reportsCompaction`), `AgentDescriptor.deprecated`, `AgentConfig` (cwd, agentId, model, plus optional `binaryPath`/`extraArgs`) |
+| Agent views | the page ↔ host protocol (`VIEW_METHODS`, `VIEW_HOST_METHODS`, `ViewHostContext`, `VIEW_THEME_VARIABLES` and `VIEW_PAGE_VARIABLES`, `VIEW_THEME_EVENT`), annotations (`ViewAnnotation`, `formatViewAnnotations`), declarative view blocks (`ViewBlock`, `VIEW_BLOCK_TYPES`, `parseViewBlocks`), the view tool names and limits (`VIEW_TOOL_NAME`, `VIEW_MAX_HTML_BYTES`, `VIEW_MAX_BLOCKS`, `VIEW_MAX_BLOCKS_BYTES`) |
 | Version | `compareVersions` / `isNewerVersion` — dependency-free SemVer precedence (used by the bridge's npm update check) |
 | Validation | Ajv validators for requests, responses, envelopes, pairing payload |
 
