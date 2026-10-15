@@ -10,6 +10,12 @@ The iframe has `sandbox="allow-scripts"` only and no `allow` permissions, so the
 
 The host accepts messages only when `event.source` is the iframe's `contentWindow`, then validates the JSON-RPC envelope and bounded method parameters. Link requests support only HTTP, HTTPS, and mail links and ask before opening in the external browser. Messages and element annotations are inserted into the chat draft; they are never sent automatically.
 
+## Theme
+
+A view sits on the surface around it: the chat card inline, or the popover surface of the dialog when it is expanded. `ChatView.svelte` (`themeContext`) sends the variables the app owns and nothing else: that surface as `--color-background-primary`, the foreground and muted text, the border, the focus ring, the app's body and monospace fonts, and the three corner radii derived from the app's radius. Status colors (`--color-background-info|success|warning|danger`, with their `--color-text-*` partners) and the chart palette (`--color-chart-1` to `-6`, `-muted`, `-grid`) are not sent: the bridge's base stylesheet defines them, so a success and a warning look the same on the desktop as on the phone. The font stacks end in system faces, because the sandboxed page cannot load the bundled UI and monospace faces. A theme or language change sends `ui/notifications/host-context-changed`; the page's `uxnan-theme` event tells a canvas to redraw.
+
+A view can be a set of typed blocks — stats, bar and line charts, tables, lists, comparisons, choices — that the bridge draws into one page (`view_show { blocks }`). The desktop does not know the difference: it fetches, stages and frames the page like any other view.
+
 ## Performance and use
 
 - Pages are fetched and staged only when their card enters a 240px viewport margin.

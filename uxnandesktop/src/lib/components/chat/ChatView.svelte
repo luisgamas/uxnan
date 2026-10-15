@@ -49,24 +49,32 @@
   let sentTheme = '';
   const frameSlot = Symbol('agent-view-frame');
 
+  /** The host context the page applies: the surface it sits on (the chat card
+   *  inline, the dialog it opens in when fullscreen), its text, and the app's
+   *  border, ring, fonts and corners. Status colors and the chart palette are
+   *  the bridge's own, so nothing about them is sent. */
   const themeContext = (displayMode: 'inline' | 'fullscreen'): ViewHostContext => {
     const style = getComputedStyle(document.documentElement);
+    const read = (name: string) => style.getPropertyValue(name).trim();
+    const surface = displayMode === 'fullscreen' ? 'popover' : 'card';
+    // Tailwind inlines `--radius-*` and `--font-sans` (`@theme inline` in app.css), so they are not
+    // on :root: read the values they are built from and derive the same results.
+    const radius = read('--radius');
+    const body = read('--ux-font-body');
+    const mono = read('--ux-font-mono');
     const themeVariables: Record<string, string> = {
-      '--color-background-primary': style.getPropertyValue('--background').trim(),
-      '--color-background-secondary': style.getPropertyValue('--muted').trim(),
-      '--color-text-primary': style.getPropertyValue('--foreground').trim(),
-      '--color-text-secondary': style.getPropertyValue('--muted-foreground').trim(),
-      '--color-border-primary': style.getPropertyValue('--border').trim(),
-      '--color-ring-primary': style.getPropertyValue('--ring').trim(),
-      '--color-background-info': style.getPropertyValue('--primary').trim(),
-      '--color-background-danger': style.getPropertyValue('--destructive').trim(),
-      '--color-background-success': style.getPropertyValue('--chart-2').trim(),
-      '--color-background-warning': style.getPropertyValue('--chart-4').trim(),
-      '--font-sans': style.getPropertyValue('--font-sans').trim(),
-      '--font-mono': style.getPropertyValue('--ux-font-mono').trim(),
-      '--border-radius-sm': style.getPropertyValue('--radius-sm').trim(),
-      '--border-radius-md': style.getPropertyValue('--radius-md').trim(),
-      '--border-radius-lg': style.getPropertyValue('--radius-lg').trim(),
+      '--color-background-primary': read(`--${surface}`),
+      '--color-background-secondary': read('--muted'),
+      '--color-text-primary': read(`--${surface}-foreground`),
+      '--color-text-secondary': read('--muted-foreground'),
+      '--color-border-primary': read('--border'),
+      '--color-ring-primary': read('--ring'),
+      // The sandboxed page cannot load the bundled Geist, so the stacks end in system fonts.
+      '--font-sans': body ? `${body}, system-ui, sans-serif` : '',
+      '--font-mono': mono ? `${mono}, monospace` : '',
+      '--border-radius-sm': radius ? `calc(${radius} - 4px)` : '',
+      '--border-radius-md': radius ? `calc(${radius} - 2px)` : '',
+      '--border-radius-lg': radius,
     };
     const variables = Object.fromEntries(VIEW_THEME_VARIABLES.flatMap((key) => themeVariables[key] ? [[key, themeVariables[key]]] : []));
     return { theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light', styles: { variables }, displayMode, platform: 'desktop', locale: i18n.locale };
@@ -221,7 +229,7 @@
   {:else if !near || loading}
     <div class="flex items-center justify-center bg-muted/30 text-xs text-muted-foreground" style={`height:${height}px`} aria-live="polite">{loading ? i18n.t('chat.viewLoading') : i18n.t('chat.viewWaiting')}</div>
   {:else if url && frameLive && !expanded}
-    <iframe bind:this={frame} title={title} src={url} sandbox={frameAttributes.sandbox} referrerpolicy={frameAttributes.referrerpolicy} loading={frameAttributes.loading} class="block w-full border-0 bg-background" style={`height:${height}px`} onload={() => frameReady('inline')}></iframe>
+    <iframe bind:this={frame} title={title} src={url} sandbox={frameAttributes.sandbox} referrerpolicy={frameAttributes.referrerpolicy} loading={frameAttributes.loading} class="block w-full border-0 bg-card" style={`height:${height}px`} onload={() => frameReady('inline')}></iframe>
   {:else if url && !expanded}
     <div class="flex items-center justify-center bg-muted/30 text-xs text-muted-foreground" style={`height:${height}px`}>{i18n.t('chat.viewPaused')}</div>
   {/if}
@@ -230,7 +238,7 @@
 <Dialog.Root bind:open={expanded} onOpenChange={(open) => { expanded = open; }}>
   <Dialog.Content size="large" class="flex h-[min(90vh,900px)] flex-col overflow-hidden" showCloseButton>
     <Dialog.Header><Dialog.Title class="truncate">{title}</Dialog.Title></Dialog.Header>
-    {#if url && frameLive}<iframe bind:this={frame} title={title} src={url} sandbox={frameAttributes.sandbox} referrerpolicy="no-referrer" loading="lazy" class="min-h-0 w-full flex-1 border-0 bg-background" onload={() => frameReady('fullscreen')}></iframe>{:else if url}<div class="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground">{i18n.t('chat.viewPaused')}</div>{/if}
+    {#if url && frameLive}<iframe bind:this={frame} title={title} src={url} sandbox={frameAttributes.sandbox} referrerpolicy="no-referrer" loading="lazy" class="min-h-0 w-full flex-1 border-0 bg-popover" onload={() => frameReady('fullscreen')}></iframe>{:else if url}<div class="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground">{i18n.t('chat.viewPaused')}</div>{/if}
   </Dialog.Content>
 </Dialog.Root>
 
