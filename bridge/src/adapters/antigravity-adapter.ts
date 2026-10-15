@@ -328,9 +328,10 @@ export const ANTIGRAVITY_FILE_TOOLS = new Set([
 
 /**
  * The checklists the agent keeps for its own task list: `task.md` and `plan.md`
- * in its brain folder (`~/.gemini/antigravity-cli/brain/<conversation>/`).
+ * in its brain folder (`~/.gemini/antigravity-cli/brain/<conversation>/`),
+ * with either separator: on Windows the path comes with backslashes.
  */
-const ANTIGRAVITY_CHECKLIST_FILE = /\/brain\/[^/]+\/(?:task|plan)\.md$/;
+const ANTIGRAVITY_CHECKLIST_FILE = /[\\/]brain[\\/][^\\/]+[\\/](?:task|plan)\.md$/;
 
 /** The tools that hand work to a subagent. */
 const ANTIGRAVITY_SUBAGENT_TOOLS = new Set(['invoke_subagent', 'browser_subagent']);
