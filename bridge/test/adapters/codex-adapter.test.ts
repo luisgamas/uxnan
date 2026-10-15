@@ -18,6 +18,8 @@ import {
 import type { AgentStreamEvent } from '@uxnan/shared';
 import { codexFileChanges } from '../../src/adapters/codex-tools.js';
 import { unifiedDiffBlock } from '../../src/adapters/content-blocks.js';
+import { describeUserInputRequest, questionReply } from '../../src/adapters/codex-approval.js';
+import type { ApprovalRequestInfo, QuestionRequester } from '../../src/adapters/user-input.js';
 
 // --- a fake `codex app-server` whose stdio we drive from the test ---
 //
@@ -187,6 +189,7 @@ function setup(
       threadId: string,
       info: { toolName: string; input: Record<string, unknown> },
     ) => Promise<'approve' | 'reject' | 'approveSession'>;
+    onQuestionRequest?: QuestionRequester;
     defaultModel?: string;
     /** Make every `thread/resume` fail with this message (see the handover tests). */
     resumeError?: string;
@@ -233,6 +236,7 @@ function setup(
     binaryPath: 'codex',
     ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
     ...(options.onApprovalRequest ? { onApprovalRequest: options.onApprovalRequest } : {}),
+    ...(options.onQuestionRequest ? { onQuestionRequest: options.onQuestionRequest } : {}),
     spawnAppServer: () => server.spawn(),
   });
   allAdapters.push(adapter);
@@ -527,7 +531,7 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   const { adapter, server } = setup({ defaultModel: 'gpt-5.4-mini' });
   const { done, until } = collect(adapter);
 
-  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: process.cwd() });
   await waitForTurnStarted(until);
   server.feed([
     JSON.stringify({
@@ -863,7 +867,7 @@ test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff 
   const { adapter, server } = setup();
   const { done, until } = collect(adapter);
 
-  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: process.cwd() });
   await waitForTurnStarted(until);
   // The path is relative to the thread's cwd; use a path inside cwd so the
   // relative-name round-trip is short and predictable.
@@ -1840,4 +1844,315 @@ test('CodexAdapter compacts natively, as a turn of its own', async () => {
   const events = await done;
   assert.ok(events.some((e) => e.type === 'block'));
   assert.equal(events.at(-1)?.type, 'turn_completed');
+});
+
+// ============================================================================
+// Questions (`item/tool/requestUserInput`), stdin approvals, model paging and
+// generated images — against the schema of codex-cli 0.162.1.
+// ============================================================================
+
+const CODEX_QUESTIONS = [
+  {
+    id: 'stack',
+    header: 'Stack',
+    question: 'Which stack?',
+    isOther: true,
+    isSecret: false,
+    options: [
+      { label: 'Rust', description: 'Fast' },
+      { label: 'Go', description: '' },
+    ],
+  },
+  {
+    id: 'name',
+    header: 'Name',
+    question: 'Your name?',
+    isOther: false,
+    isSecret: true,
+    options: null,
+  },
+];
+
+test('describeUserInputRequest maps Codex questions and leaves out the ones it cannot answer', () => {
+  const pending = describeUserInputRequest({
+    threadId: CODEX_THREAD,
+    turnId: 'codex-turn-1',
+    itemId: 'q-1',
+    isBlocking: true,
+    questions: [
+      ...CODEX_QUESTIONS,
+      { header: 'No text', id: 'no-text', question: 42, isOther: false, options: null },
+      { header: 'No id', question: 'Which one?', isOther: false, options: null },
+    ],
+  });
+  assert.deepEqual(pending.ids, ['stack', 'name']);
+  assert.deepEqual(pending.questions, [
+    {
+      question: 'Which stack?',
+      header: 'Stack',
+      options: [{ label: 'Rust', description: 'Fast' }, { label: 'Go' }],
+      custom: true,
+    },
+    // No choices at all: the person can only answer in their own words.
+    { question: 'Your name?', header: 'Name', options: [], custom: true },
+  ]);
+});
+
+test('questionReply files each answer under its Codex id and leaves skipped questions out', () => {
+  const pending = describeUserInputRequest({ questions: CODEX_QUESTIONS });
+  assert.deepEqual(questionReply(pending, [['Rust'], ['Ada']]), {
+    answers: { stack: { answers: ['Rust'] }, name: { answers: ['Ada'] } },
+  });
+  assert.deepEqual(questionReply(pending, [[], ['']]), { answers: {} });
+  assert.deepEqual(questionReply(pending, []), { answers: {} });
+});
+
+/** Start a turn, send Codex a `requestUserInput`, and resolve with the reply it gets. */
+async function userInputReply(
+  options: Parameters<typeof setup>[0],
+  questions: unknown[],
+): Promise<{ result?: unknown; error?: unknown }> {
+  const { adapter, server } = setup(options);
+  const { until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  const reply = new Promise<{ result?: unknown; error?: unknown }>((resolve) => {
+    server.handle((msg) => {
+      if (msg.id === 55) resolve(msg);
+    });
+  });
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 55,
+      method: 'item/tool/requestUserInput',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'codex-turn-1',
+        itemId: 'q-1',
+        isBlocking: true,
+        questions,
+      },
+    }),
+  ]);
+  return reply;
+}
+
+test('CodexAdapter puts requestUserInput questions to the person and answers each by its Codex id', async () => {
+  let asked: { threadId: string; questions: unknown } | undefined;
+  const reply = await userInputReply(
+    {
+      onQuestionRequest: async (threadId, questions) => {
+        asked = { threadId, questions };
+        return [['Rust'], ['typed by hand']];
+      },
+    },
+    CODEX_QUESTIONS,
+  );
+  assert.deepEqual(reply.result, {
+    answers: { stack: { answers: ['Rust'] }, name: { answers: ['typed by hand'] } },
+  });
+  assert.equal(asked?.threadId, 't1');
+  assert.deepEqual(asked?.questions, [
+    {
+      question: 'Which stack?',
+      header: 'Stack',
+      options: [{ label: 'Rust', description: 'Fast' }, { label: 'Go' }],
+      custom: true,
+    },
+    { question: 'Your name?', header: 'Name', options: [], custom: true },
+  ]);
+});
+
+test('CodexAdapter withdraws the card of a request Codex settled itself (serverRequest/resolved)', async () => {
+  let withdrawn = false;
+  const { adapter, server } = setup({
+    onQuestionRequest: (_threadId, _questions, signal) =>
+      new Promise((resolve) => {
+        signal?.addEventListener('abort', () => {
+          withdrawn = true;
+          resolve([]);
+        });
+      }),
+  });
+  const { until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  const reply = new Promise<{ result?: unknown }>((resolve) => {
+    server.handle((msg) => {
+      if (msg.id === 77) resolve(msg);
+    });
+  });
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 77,
+      method: 'item/tool/requestUserInput',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'codex-turn-1',
+        itemId: 'q-2',
+        questions: CODEX_QUESTIONS,
+      },
+    }),
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(withdrawn, false, 'the person is still being asked');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'serverRequest/resolved',
+      params: { threadId: CODEX_THREAD, requestId: 77 },
+    }),
+  ]);
+  assert.deepEqual((await reply).result, { answers: {} });
+  assert.equal(withdrawn, true);
+});
+
+test('CodexAdapter answers a requestUserInput the person skipped with no answers', async () => {
+  const reply = await userInputReply({ onQuestionRequest: async () => [[], []] }, CODEX_QUESTIONS);
+  assert.deepEqual(reply.result, { answers: {} });
+});
+
+test('CodexAdapter answers a requestUserInput with no answers when no question callback is wired', async () => {
+  const reply = await userInputReply({}, CODEX_QUESTIONS);
+  assert.deepEqual(reply.result, { answers: {} });
+});
+
+test('CodexAdapter names a stdin write as a write to a running command, and shows no input text', async () => {
+  let seen: ApprovalRequestInfo | undefined;
+  const { adapter, server } = setup({
+    onApprovalRequest: async (_threadId, info) => {
+      seen = info;
+      return 'approve';
+    },
+  });
+  const { until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  const reply = new Promise<any>((resolve) => {
+    server.handle((msg) => {
+      if (msg.id === 66) resolve(msg);
+    });
+  });
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 66,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'codex-turn-1',
+        itemId: 'call-stdin',
+        kind: 'writeStdin',
+        // What is typed can be a password: it must not reach the card.
+        command: 'hunter2',
+        cwd: 'C:/tmp',
+      },
+    }),
+  ]);
+  assert.equal((await reply).result?.decision, 'accept');
+  assert.equal(seen?.toolName, 'codex.writeStdin');
+  assert.equal(seen?.action, "Codex wants to write to a running command's input");
+  assert.deepEqual(seen?.input, {});
+});
+
+test('CodexAdapter lists every page of model/list until the cursor runs out', async () => {
+  const server = new FakeAppServer();
+  allServers.push(server);
+  const requested: unknown[] = [];
+  server.handle((msg) => {
+    if (msg.method === 'initialize') {
+      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } })]);
+    } else if (msg.method === 'model/list') {
+      requested.push(msg.params);
+      const onFirstPage = msg.params.cursor === null;
+      const result = onFirstPage
+        ? { data: [{ id: 'gpt-6-luna', displayName: 'GPT-6 Luna' }], nextCursor: 'page-2' }
+        : {
+            data: [
+              { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra' },
+              { id: 'gpt-5.6-luna', displayName: 'GPT-5.6 Luna' },
+            ],
+            nextCursor: null,
+          };
+      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })]);
+    }
+  });
+  const adapter = new CodexAdapter({ binaryPath: 'codex', spawnAppServer: () => server.spawn() });
+  allAdapters.push(adapter);
+  const models = await adapter.listModels();
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+  );
+  assert.deepEqual(requested, [
+    { cursor: null, limit: 50, includeHidden: false },
+    { cursor: 'page-2', limit: 50, includeHidden: false },
+  ]);
+});
+
+test('CodexAdapter shows a generated image as a row naming its saved file, and a failed one with its failure', async () => {
+  const { adapter, server } = setup({});
+  const { done, until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        threadId: CODEX_THREAD,
+        item: {
+          type: 'imageGeneration',
+          id: 'img-1',
+          status: 'completed',
+          // The base64 image: it must not be shown.
+          result: 'iVBORw0KGgo=',
+          savedPath: '/tmp/out/img-1.png',
+          failure: null,
+        },
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        threadId: CODEX_THREAD,
+        item: {
+          type: 'imageGeneration',
+          id: 'img-2',
+          status: 'failed',
+          result: '',
+          savedPath: null,
+          failure: { type: 'usageLimitExceeded', limitId: 'images' },
+        },
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { threadId: CODEX_THREAD, item: { type: 'sleep', id: 'sleep-1', durationMs: 500 } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { threadId: CODEX_THREAD, turn: { status: 'completed' } },
+    }),
+  ]);
+  const events = await done;
+  const tools = events
+    .filter((event) => event.type === 'block')
+    .map((event) => (event.data as any).content)
+    .filter((content) => content.type === 'tool');
+  assert.equal(tools.length, 2, 'the sleep item shows nothing');
+  assert.equal(tools[0].toolName, 'generate_image');
+  assert.equal(tools[0].toolId, 'img-1');
+  assert.deepEqual(tools[0].input, { path: '/tmp/out/img-1.png' });
+  assert.equal(tools[0].output, undefined);
+  assert.equal(tools[0].isError, false);
+  assert.equal(tools[1].toolId, 'img-2');
+  assert.deepEqual(tools[1].input, {});
+  assert.equal(tools[1].output, 'image generation failed (usageLimitExceeded)');
+  assert.equal(tools[1].isError, true);
 });

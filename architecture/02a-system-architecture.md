@@ -1,10 +1,22 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.7.0
-> **Fecha:** 2026-10-08
+> **Version:** 1.7.1
+> **Fecha:** 2026-10-15
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.7.1):** the bridge survives the CLIs changing under it.
+> Every adapter's agent-wide folder is the user's home, never the first turn's
+> (a renamed project emptied the model picker); an agent whose CLI moves is
+> rebuilt where it is now (pi's managed installer, Zero's renamed package — both
+> in `shared/agent-locations.json`, `npmEntries` newest first); every
+> newline-delimited reader splits on `\n` only (`bridge/src/json-lines.ts`).
+> Questions reach the person from OpenCode, Claude Code, Grok and Codex, with a
+> typed answer when the agent allows it (`QuestionItem.custom`); Claude Code's
+> approvals ride its stream-json `can_use_tool` requests — the `PreToolUse` hook
+> and `POST /agent-hook/approval` are gone. Antigravity folds effort tiers into
+> one model with a knob and names conversations from its listing.
 
 > **Executive summary (1.7.0):** agents can **show interactive views** in a
 > chat — a chart, table, diagram, mockup or small tool as one self-contained HTML
@@ -432,10 +444,10 @@ interface AgentCapabilities {
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
 //   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; plan nativo vía `todo.updated`; steer en turno; **`permission.asked` real approvals**)
-//   ✅ claude-code (`claude -p --input-format stream-json --output-format stream-json --replay-user-messages`; --resume; `steer` en turno; **PreToolUse hook** real approvals)
+//   ✅ claude-code (`claude -p --input-format stream-json --output-format stream-json --replay-user-messages --permission-prompt-tool stdio`; --resume; `steer` en turno; **`can_use_tool` real approvals + `AskUserQuestion`**)
 //   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation; `turn/steer` en turno)
 //   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ✅ antigravity-cli (`agy --input-format stream-json --output-format stream-json --add-dir <cwd>`, UN proceso residente por thread; `--conversation <id>` con el id que `agy` anuncia en `init` (no client-owned: 1.2.x rechaza un id desconocido); usage en `stream/turn/completed`; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
+//   ✅ antigravity-cli (`agy --input-format stream-json --output-format stream-json --add-dir <cwd>`, UN proceso residente por thread; `--conversation <id>` con el id que `agy` anuncia en `init` (no client-owned: 1.2.x rechaza un id desconocido); usage en `stream/turn/completed`; **autonomous=true**: `--dangerously-skip-permissions`; models via `agy models`, los niveles de una familia como un solo modelo con perilla de esfuerzo)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
 ```
@@ -1992,9 +2004,9 @@ procesos, asi que un `uxnan-bridge start` arrancado **dentro** de una terminal
 del ADE le pasaba esa identidad a cada agente que lanzaba, y sus hooks
 reportaban al ADE como si fueran esa terminal. `agentEnv`
 (`bridge/src/adapters/spawn.ts`) es el unico sitio que decide esto; un spawn
-nuevo debe usarlo. El hook de aprobaciones del bridge reutiliza tres de esos
-nombres (`UXNAN_HOOK_URL`/`_TOKEN`/`_THREAD_ID`) para su propio servidor: los
-**fija** por turno y lo que fija sobrevive; solo se descarta lo heredado.
+nuevo debe usarlo. Su stdout se lee con el unico lector de lineas
+(`bridge/src/json-lines.ts`), que corta solo en `\n`: `readline` corta tambien en
+U+2028/U+2029, que `JSON.stringify` no escapa.
 
 #### 5.8.2 Entrypoint y estructura de archivos del bridge
 
@@ -2847,7 +2859,7 @@ de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
 | Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` con `-c model_reasoning_effort=low` |
 | OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
 | pi | `pi -p --no-session` | por defecto de la CLI |
-| Antigravity | `agy -p --mode plan` (sin `--conversation`) | `gemini-3.6-flash-low` |
+| Antigravity | `agy -p --mode plan` (sin `--conversation`) | el nivel mas bajo de una familia `flash` de `agy models` (si no, cualquier `-low`; si no, el de la CLI) — leido, nunca fijado |
 | Grok | `grok -p` | por defecto de la CLI |
 | Zero | `zero exec` | por defecto de la CLI |
 
@@ -3018,7 +3030,8 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
   carpeta es `UXNAN_CWD_HEADER` (`x-uxnan-cwd`) para ambos.
 
 **No es una variante criptografica**: es una ruta local con token, el mismo
-modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.
+modelo de confianza: un token que solo leen los procesos del mismo usuario. El
+E2EE no cambia.
 Contrato: `shared/src/local-control/local-control.ts`.
 
 #### 5.8.16 Convergencia entre clientes ("un dueño, dos vistas")
@@ -3191,8 +3204,11 @@ donde se instala cada CLI; el bridge (`locateAgent`) y el desktop (Rust,
 PATH del shell de login del usuario (`$SHELL -ilc`, `bridge/src/login-path.ts`)
 — un servicio o una app grafica solo tienen `/usr/bin:/bin` — y re-detecta en
 vivo (`agent/list`, a lo sumo cada 10 s): un agente instalado despues aparece
-sin reiniciar y se avisa con `stream/agents/updated`; `agent/doctor` explica
-donde busco y que encontro.
+sin reiniciar y se avisa con `stream/agents/updated`; uno cuya CLI se movio se
+reconstruye donde esta ahora (sin aviso: la lista no cambio), nunca con un turno
+en curso; `agent/doctor` explica donde busco y que encontro. Cada adapter trabaja
+lo que no es de un turno (catalogos de modelos) en el home del usuario, nunca en
+la carpeta de un turno.
 
 **Replicas en los clientes.** En el telefono, `BridgeReplica`
 (`uxnanmobile/lib/application/managers/bridge_replica.dart`) es la unica capa
@@ -3433,9 +3449,10 @@ tambien: funciona con solo el telefono.
   `frame-src`); el telefono, en un WebView (§5.4.7). Ambos montan solo lo que
   esta en pantalla, limitan las vistas vivas y reservan la altura para que el
   chat no salte. Una vista **es parte de la respuesta, nunca del trabajo**: al
-  plegar un turno terminado ("Worked for…" en el desktop, las respuestas
-  anteriores en el telefono) las vistas salen de lo plegado, en el orden en que
-  se mostraron, y abren la respuesta visible.
+  plegar un turno terminado (una sola regla en los dos clientes, `splitAnswer`:
+  la respuesta es el texto tras el ultimo bloque o el ultimo fin de respuesta
+  del agente; lo anterior se pliega tras "Worked for…") las vistas salen de lo
+  plegado, en el orden en que se mostraron, y abren la respuesta visible.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 
@@ -4188,7 +4205,7 @@ class ApprovalContent extends MessageContent {
 // con opciones y responde `turn/send { questionResponse: { questionId, answers } }`.
 class QuestionContent extends MessageContent {
   final String questionId;
-  final List<QuestionItem> questions; // { question, header?, options:[{label,description?}], multiple? }
+  final List<QuestionItem> questions; // { question, header?, options:[{label,description?}], multiple?, custom? }
 }
 
 class PlanContent extends MessageContent {

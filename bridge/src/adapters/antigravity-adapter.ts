@@ -74,10 +74,11 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
+import { onLines } from '../json-lines.js';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname } from 'node:path';
-import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -92,14 +93,18 @@ import type {
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
   commandBlock,
+  compactionBlock,
   editDiffBlock,
   fileDiffBlock,
+  planBlock,
   runningBlock,
   subagentBlock,
   toolBlock,
   withBlockId,
   writeDiffBlock,
+  type PlanStepBlock,
 } from './content-blocks.js';
+import { REASONING_KEY, effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 import { proxyLaunchEnv } from './mcp-proxy.js';
@@ -121,6 +126,13 @@ const TURN_TIMEOUT = '2h';
 
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
+
+/**
+ * Hard cap on the `agy -p /model` spawn that reads the account's default model
+ * (about 5 s on a cold start). It runs beside `agy models`, so a slow answer
+ * only costs the default mark, never the list.
+ */
+const ACCOUNT_MODEL_TIMEOUT_MS = 10_000;
 
 /** How long a folder's skill list is reused before `agy` is asked again. */
 const COMMANDS_TTL_MS = 60_000;
@@ -157,19 +169,16 @@ export function parseAntigravitySkills(output: string): AgentCommand[] {
 }
 
 /**
- * Model used to name a conversation: the cheapest tier `agy models` reports,
- * never the thread's own — a six-word title must not spend the quota of the
- * model the user is working with.
- *
- * `flash` is the cheap family and `-low` its cheapest reasoning tier (the id
- * carries the tier, see {@link parseAntigravityModelList}). Hand-kept, like
- * every pinned id here: it is verified against a real `agy models`, and it has
- * a **twin in the desktop app** (`uxnandesktop/src-tauri/src/convtitle.rs` →
- * `title_model`) that must move with it. If Antigravity ever retires this id,
- * naming degrades to "no title" (the run is best-effort), never to a broken
- * conversation.
+ * `/compact`: summarize the conversation to free its context. On the stream-json
+ * surface `agy` runs it as a `checkpoint` step (verified on `agy` 1.3.5), so it
+ * is a turn like any other that answers nothing.
  */
-const ANTIGRAVITY_TITLE_MODEL = 'gemini-3.6-flash-low';
+const ANTIGRAVITY_COMPACT_COMMAND: AgentCommand = {
+  name: 'compact',
+  description: 'Summarize the conversation to free up context',
+  source: 'builtin',
+  headlessSupported: true,
+};
 
 const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   streaming: true,
@@ -317,6 +326,12 @@ export const ANTIGRAVITY_FILE_TOOLS = new Set([
   'multi_replace_file_content',
 ]);
 
+/**
+ * The checklists the agent keeps for its own task list: `task.md` and `plan.md`
+ * in its brain folder (`~/.gemini/antigravity-cli/brain/<conversation>/`).
+ */
+const ANTIGRAVITY_CHECKLIST_FILE = /\/brain\/[^/]+\/(?:task|plan)\.md$/;
+
 /** The tools that hand work to a subagent. */
 const ANTIGRAVITY_SUBAGENT_TOOLS = new Set(['invoke_subagent', 'browser_subagent']);
 
@@ -398,6 +413,35 @@ export function buildAntigravityToolBlock(
     return subagentBlock(toolId, task, out, isError);
   }
   return toolBlock(toolName, toolId, params, out, isError);
+}
+
+/**
+ * The steps of a markdown checklist the agent wrote (`- [ ]` pending, `- [/]` in
+ * progress, `- [x]` done), in file order. Anything else is not a step. Emphasis
+ * markers are dropped from the text: the phone draws the step, not the markdown.
+ */
+export function parseAntigravityChecklist(markdown: string): PlanStepBlock[] {
+  const steps: PlanStepBlock[] = [];
+  for (const raw of markdown.split(/\r?\n/)) {
+    const match = /^\s*[-*]\s+\[( |\/|x|X)\]\s+(\S.*?)\s*$/.exec(raw);
+    if (!match) continue;
+    const description = stripEmphasis(match[2]!);
+    if (description.length === 0) continue;
+    const mark = match[1];
+    const status: PlanStepBlock['status'] =
+      mark === 'x' || mark === 'X' ? 'completed' : mark === '/' ? 'in_progress' : 'pending';
+    steps.push({ description, status });
+  }
+  return steps;
+}
+
+/** `**bold**`, `__bold__`, `*em*` and `_em_` without their markers. */
+function stripEmphasis(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/(^|[\s(])[*_](\S(?:.*?\S)?)[*_](?=$|[\s).,:;!?])/g, '$1$2')
+    .trim();
 }
 
 /**
@@ -551,6 +595,8 @@ interface ActiveTurn {
   fullText: string;
   /** Context after the latest `agent_response` step — the turn's `usage.tokens`. */
   contextTokens: number | undefined;
+  /** A `checkpoint` step ended in this turn: the context was compacted. */
+  compacted: boolean;
   /** Diagnostics: stderr plus any non-JSON stdout line, surfaced when no answer came. */
   diagnostics: string[];
   completed: boolean;
@@ -580,34 +626,40 @@ interface ActiveSession {
 }
 
 /**
- * Parse the `agy models` output into {@link AgentModel}s.
+ * The reasoning tiers `agy` appends to a model id (`gemini-3.8-flash-high`),
+ * lowest first. A listed id ends in one of them and is a tier of its base.
+ */
+const AGY_TIERS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** `<base>-<tier>`: the id of one tier of a model family. */
+const TIERED_ID = new RegExp(`^(.+)-(${AGY_TIERS.join('|')})$`);
+
+/** A trailing ` (High)`-style tier in a label, which the grouped name drops. */
+const TIER_LABEL = /\s*\((?:low|medium|high|xhigh|extra high|max)\)\s*$/i;
+
+/**
+ * Parse the `agy models` output into one {@link AgentModel} per listed row.
  *
- * The surface as of `agy` 1.1.13 (captured verbatim from a signed-in machine):
+ * The surface as of `agy` 1.3.5 (captured verbatim, `--model` routing keys):
  *
  * ```text
  * Fetching available models...
- * gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
+ * gemini-3.8-flash-high⟨TAB⟩Gemini 3.8 Flash (High)
+ * gemini-3.8-flash-low⟨TAB⟩Gemini 3.8 Flash (Low)
  * claude-sonnet-4-6⟨TAB⟩Claude Sonnet 4.6 (Thinking)
  * ```
  *
  * So a data row is `<id>⟨TAB⟩<label>`: the **id** is the `--model` routing key
- * (it already carries the reasoning tier, so no `--effort` is needed — `--model
- * gemini-3.5-flash` alone is rejected with "requires --effort"), and the label is
- * for humans. Both were verified live: `--model gemini-3.5-flash-low` and
- * `--model "Gemini 3.5 Flash (Low)"` each run, while the whole line does NOT —
- * which is what an earlier parser sent, so every model pick failed.
+ * (it already carries the reasoning tier — `--model gemini-3.5-flash` alone was
+ * rejected with "requires --effort" on 1.1.x), and the label is for humans.
  *
  * Anything that is not a data row is dropped, including the leading progress
- * line: taking it made "Fetching available models..." the first entry and hence
- * the default, and the phone then sent it as `--model`. A line without a TAB is
- * only kept when it is a bare id (older `agy` printed those alone); prose is
- * never minted into a phantom model.
- *
- * `agy` lists its account default first, so — absent a configured
- * `defaultModel` that matches — the first entry is marked as the default
- * (presentation-only).
+ * line and a `Available models:` header. A line without a TAB is only kept when
+ * it is a bare id (older `agy` printed those alone); prose is never minted into
+ * a phantom model. Rows are not grouped and none is marked as the default: that
+ * is {@link groupAntigravityModels}' job.
  */
-export function parseAntigravityModelList(output: string, defaultModel?: string): AgentModel[] {
+export function parseAntigravityModelList(output: string): AgentModel[] {
   const out: AgentModel[] = [];
   const seen = new Set<string>();
   for (const raw of output.split(/\r?\n/)) {
@@ -625,11 +677,178 @@ export function parseAntigravityModelList(output: string, defaultModel?: string)
     seen.add(id);
     out.push({ id, displayName: label || id });
   }
-  const defaultIndex =
-    defaultModel !== undefined ? out.findIndex((m) => m.id === defaultModel) : -1;
-  const markIndex = defaultIndex >= 0 ? defaultIndex : out.length > 0 ? 0 : -1;
-  if (markIndex >= 0) out[markIndex] = { ...out[markIndex]!, isDefault: true };
   return out;
+}
+
+/**
+ * The account's default model, from `agy -p /model --output-format json` — a
+ * payload whose `command.data.id` is the routing key the account runs by
+ * default (`{"command":{"name":"model","data":{"id":"gemini-3.8-flash-medium",…}}}`,
+ * verified on `agy` 1.3.5; it starts no turn and spends no quota). `undefined`
+ * for anything else: the list then shows no default rather than a guessed one.
+ */
+export function parseAntigravityAccountModel(output: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output.trim());
+  } catch {
+    return undefined;
+  }
+  const data = asObject(asObject(asObject(parsed)?.['command'])?.['data']);
+  const id = asString(data?.['id'])?.trim();
+  return id && !/\s/.test(id) ? id : undefined;
+}
+
+/** The tier of a tiered id (`gemini-3.8-flash-high` → `high`), or undefined. */
+function tierOf(id: string): { base: string; tier: string } | undefined {
+  const match = TIERED_ID.exec(id);
+  return match ? { base: match[1]!, tier: match[2]! } : undefined;
+}
+
+/** The label without its trailing tier (`Gemini 3.8 Flash (High)` → `Gemini 3.8 Flash`). */
+function familyLabel(label: string, fallback: string): string {
+  const stripped = label.replace(TIER_LABEL, '').trim();
+  return stripped.length > 0 ? stripped : fallback;
+}
+
+/**
+ * Group the tiers of one model family into ONE selectable model.
+ *
+ * Ids that share a base with at least one sibling (`gemini-3.8-flash-high`,
+ * `…-medium`, `…-low`) become one model whose id is the base, named after the
+ * family, with a reasoning option over exactly the tiers listed, lowest first.
+ * Its default tier is the account default's tier when the account default is
+ * one of them, else the middle listed tier. A lone tiered id
+ * (`gpt-oss-120b-medium`) and anything untiered (`claude-sonnet-4-6`) stay as
+ * they are: nothing to choose between.
+ *
+ * `isDefault` marks the model the account default belongs to — the family, for a
+ * tiered default; never a guess when `accountDefault` is absent or not listed.
+ */
+export function groupAntigravityModels(rows: AgentModel[], accountDefault?: string): AgentModel[] {
+  const families = new Map<string, { tier: string; label: string }[]>();
+  for (const row of rows) {
+    const parts = tierOf(row.id);
+    if (!parts) continue;
+    const members = families.get(parts.base) ?? [];
+    // A row without a label (a bare id) is named by its family id.
+    const label = row.displayName === row.id ? parts.base : row.displayName;
+    members.push({ tier: parts.tier, label });
+    families.set(parts.base, members);
+  }
+  const grouped = new Map<string, { levels: string[]; name: string; defaultTier: string }>();
+  for (const [base, members] of families) {
+    if (members.length < 2) continue;
+    const levels = AGY_TIERS.filter((t) => members.some((m) => m.tier === t));
+    const accountTier = accountDefault !== undefined ? tierOf(accountDefault) : undefined;
+    const defaultTier =
+      accountTier?.base === base && levels.includes(accountTier.tier as (typeof AGY_TIERS)[number])
+        ? accountTier.tier
+        : levels[Math.floor((levels.length - 1) / 2)]!;
+    const first = members[0]!;
+    grouped.set(base, { levels, name: familyLabel(first.label, base), defaultTier });
+  }
+
+  const out: AgentModel[] = [];
+  const emitted = new Set<string>();
+  for (const row of rows) {
+    const parts = tierOf(row.id);
+    const family = parts ? grouped.get(parts.base) : undefined;
+    if (!parts || !family) {
+      out.push(row.id === accountDefault ? { ...row, isDefault: true } : row);
+      continue;
+    }
+    if (emitted.has(parts.base)) continue;
+    emitted.add(parts.base);
+    const isDefault = accountDefault !== undefined && tierOf(accountDefault)?.base === parts.base;
+    out.push({
+      id: parts.base,
+      displayName: family.name,
+      ...(isDefault ? { isDefault: true } : {}),
+      options: [reasoningOption(effortValues(family.levels), family.defaultTier)],
+    });
+  }
+  return out;
+}
+
+/** The reasoning option of a grouped model, when it has one. */
+function reasoningKnob(model: AgentModel): NonNullable<AgentModel['options']>[number] | undefined {
+  return model.options?.find((option) => option.key === REASONING_KEY);
+}
+
+/**
+ * The `--model` value for a turn.
+ *
+ * A grouped family (see {@link groupAntigravityModels}) is run as its tiered id,
+ * `<base>-<tier>`: that works on every `agy` version, where `--effort` is only
+ * recent. The tier is the chosen reasoning level when it is one the family
+ * lists, else the family's default tier. A selection that is not a grouped
+ * family — an ungrouped id, or a tiered id stored by an earlier version — runs
+ * unchanged. Before any listing (a bridge that just started), a chosen level on
+ * an untiered id still names its tier: only a grouped family has a level to
+ * choose. `undefined` when there is no selection (`agy` picks its own).
+ */
+export function antigravityRunModel(
+  selection: string | undefined,
+  level: string | undefined,
+  listing: AgentModel[],
+): string | undefined {
+  const model = normalizeAntigravityModel(selection);
+  if (model === undefined) return undefined;
+  const family = listing.find((m) => m.id === model && reasoningKnob(m) !== undefined);
+  const knob = family ? reasoningKnob(family) : undefined;
+  if (!knob) {
+    const tiered = tierOf(model) !== undefined;
+    const known = level !== undefined && (AGY_TIERS as readonly string[]).includes(level);
+    return listing.length === 0 && known && !tiered ? `${model}-${level}` : model;
+  }
+  const levels = (knob.values ?? []).map((v) => v.value);
+  const chosen =
+    level !== undefined && levels.includes(level)
+      ? level
+      : typeof knob.default === 'string'
+        ? knob.default
+        : undefined;
+  return chosen !== undefined ? `${model}-${chosen}` : model;
+}
+
+/**
+ * Every model id `agy` runs, with each grouped family expanded to its tiers:
+ * `gemini-3.8-flash` (tiers low, medium, high) → `gemini-3.8-flash-low`, …
+ */
+export function expandAntigravityModels(listing: AgentModel[]): string[] {
+  const ids: string[] = [];
+  for (const model of listing) {
+    const knob = reasoningKnob(model);
+    if (knob) {
+      for (const value of knob.values ?? []) ids.push(`${model.id}-${value.value}`);
+    } else {
+      ids.push(model.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The model that names a conversation, from the ids `agy` runs
+ * ({@link expandAntigravityModels}): the lowest tier of a `flash` family — the
+ * cheap one — else any `-low` id, else `undefined` (no `--model`: `agy`'s own
+ * default, which naming never prefers over a cheap tier when one is listed).
+ *
+ * Never the thread's own model: a six-word title must not spend the quota of
+ * the model the user is working with. The id is taken from the listing, not
+ * pinned, so a retired tier is never asked for.
+ */
+export function chooseAntigravityTitleModel(ids: string[]): string | undefined {
+  let cheapest: { id: string; rank: number } | undefined;
+  for (const id of ids) {
+    const parts = tierOf(id);
+    if (!parts || !parts.base.includes('flash')) continue;
+    const rank = AGY_TIERS.indexOf(parts.tier as (typeof AGY_TIERS)[number]);
+    if (cheapest === undefined || rank < cheapest.rank) cheapest = { id, rank };
+  }
+  if (cheapest) return cheapest.id;
+  return ids.find((id) => id.endsWith('-low'));
 }
 
 /**
@@ -665,10 +884,15 @@ export class AntigravityAdapter extends BaseAgentAdapter {
    */
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
+  /** The last non-empty `agy models` listing, grouped (see listModels). */
+  #models: AgentModel[] = [];
   /** The folder's skill list, briefly reused (see listCommands). */
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
 
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -704,8 +928,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
@@ -834,8 +1057,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       this.setNativeSession(threadId, id);
     };
 
-    const rl = createInterface({ input: child.stdout as unknown as Readable, crlfDelay: Infinity });
-    rl.on('line', (line: string) => {
+    onLines(child.stdout as unknown as Readable, (line: string) => {
       const ev = parseAntigravityLine(line);
       // `init` is per process and may precede any turn: adopt the id regardless.
       if (ev?.kind === 'init') {
@@ -896,7 +1118,16 @@ export class AntigravityAdapter extends BaseAgentAdapter {
             const path = params['AbsolutePath'];
             session.fileText.set(path, { turnId: active.turnId, text: readTextOrNull(path) });
           }
-          const settled = buildAntigravityToolBlock(update, session.toolSequence++, change);
+          // The task list the agent keeps for itself is shown as the plan, not as
+          // a diff of a file outside the project — when it is a checklist at all.
+          const checklist =
+            fileTool && update.state === 'DONE' && ANTIGRAVITY_CHECKLIST_FILE.test(target)
+              ? parseAntigravityChecklist(change?.after ?? '')
+              : [];
+          const settled =
+            checklist.length > 0
+              ? planBlock(checklist)
+              : buildAntigravityToolBlock(update, session.toolSequence++, change);
           const block = stepId !== undefined ? withBlockId(settled, stepId) : settled;
           if (stepId !== undefined) session.startedSteps.delete(stepId);
           this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: block } });
@@ -909,6 +1140,17 @@ export class AntigravityAdapter extends BaseAgentAdapter {
           }
           const tokens = contextTokens(update.usage);
           if (tokens !== undefined) active.contextTokens = tokens;
+        }
+        // `/compact` runs as a checkpoint step: the context is compacted, and the
+        // turn's result then carries no answer.
+        if (update.step_type === 'checkpoint' && update.state === 'DONE') {
+          active.compacted = true;
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId: active.turnId,
+            data: { content: compactionBlock() },
+          });
         }
         return;
       }
@@ -956,7 +1198,11 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   sendTurn(options: SendTurnOptions): Promise<void> {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
-    const model = normalizeAntigravityModel(options.service ?? this.#defaultModel);
+    const model = antigravityRunModel(
+      options.service ?? this.#defaultModel,
+      reasoningValue(options),
+      this.#models,
+    );
     const mode = this.#permissionMode;
 
     let session: ActiveSession;
@@ -976,6 +1222,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       turnId,
       fullText: '',
       contextTokens: undefined,
+      compacted: false,
       diagnostics: [],
       completed: false,
       finish: (res?: AntigravityResult): void => {
@@ -997,7 +1244,10 @@ export class AntigravityAdapter extends BaseAgentAdapter {
         // The streamed text is what the phone saw; `response` only fills in for
         // a CLI that skipped deltas and handed the answer whole.
         const body = activeTurn.fullText.length > 0 ? activeTurn.fullText : (res?.response ?? '');
-        if (body.trim().length > 0) {
+        // A compaction answers nothing by design: a SUCCESS with an empty response
+        // after a checkpoint is a finished turn, not a missing answer.
+        const compacted = activeTurn.compacted && res?.status === 'SUCCESS';
+        if (body.trim().length > 0 || compacted) {
           const tokens = activeTurn.contextTokens;
           this.emit({
             type: 'turn_completed',
@@ -1047,19 +1297,21 @@ export class AntigravityAdapter extends BaseAgentAdapter {
    * it never joins the conversation this thread resumes, and in `--mode plan`
    * so a naming errand can never touch the workspace.
    *
-   * On {@link ANTIGRAVITY_TITLE_MODEL}, not the thread's model: this ran on the
-   * account's default (the frontier tier) while both the spec and the desktop
-   * app said it named on the cheap flash tier — so every title quietly spent
-   * the quota of the model the user is actually working with.
+   * On the cheapest model the account's listing offers
+   * ({@link chooseAntigravityTitleModel}), never the thread's own: a title must
+   * not spend the quota of the model the user is working with. The listing is
+   * the last one `agy models` gave (fetched here when there is none yet); with
+   * no cheap tier listed, `agy`'s own default names it.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
+    const listing = this.#models.length > 0 ? this.#models : await this.listModels();
+    const titleModel = chooseAntigravityTitleModel(expandAntigravityModels(listing));
     const args = [
       '--output-format',
       'text',
-      '--model',
-      ANTIGRAVITY_TITLE_MODEL,
+      ...(titleModel !== undefined ? ['--model', titleModel] : []),
       '--mode',
       'plan',
       '--add-dir',
@@ -1089,82 +1341,47 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * List the models `agy models` reports — the id is the `--model` routing key
-   * (`gemini-3.7-flash-high`) and the label is what the phone shows ("Gemini 3.7
-   * Flash (High)"). Parsed by {@link parseAntigravityModelList}. Resolves
-   * to `[]` if the spawn fails or times out — the phone then shows no picker and
-   * the agent runs on `agy`'s own default model.
+   * The models `agy models` reports, grouped into one selectable model per
+   * family ({@link groupAntigravityModels}), with the account's default marked.
+   * The default is read from `agy -p /model` in the same breath; the
+   * configured `defaultModel` wins over it when set. Both reads are best-effort:
+   * a failed read yields no default (never the first row), a failed listing
+   * yields `[]` and the phone shows no picker — `agy` then runs its own default.
+   * A non-empty listing is kept for the next turn and the title model.
    */
-  listModels(): Promise<AgentModel[]> {
-    return new Promise((resolve) => {
-      let settled = false;
-      let output = '';
-      let child: SpawnedProcess;
-      const finish = (models: AgentModel[]): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        try {
-          child.kill();
-        } catch {
-          /* already gone */
-        }
-        resolve(models);
-      };
-
-      try {
-        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, 'models'], this.#defaultCwd);
-      } catch {
-        resolve([]);
-        return;
-      }
-
-      const timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
-      const collect = (chunk: unknown): void => {
-        output += String(chunk);
-      };
-      child.stdout.on('data', collect);
-      child.stderr?.on('data', collect);
-      child.on('error', () => finish([]));
-      child.on('close', () => finish(parseAntigravityModelList(output, this.#defaultModel)));
-    });
+  async listModels(): Promise<AgentModel[]> {
+    const [listing, account] = await Promise.all([
+      this.#capture(['models'], this.#defaultCwd, MODEL_LIST_TIMEOUT_MS),
+      this.#capture(
+        ['-p', '/model', '--output-format', 'json'],
+        this.#defaultCwd,
+        ACCOUNT_MODEL_TIMEOUT_MS,
+      ),
+    ]);
+    const accountDefault =
+      this.#defaultModel ?? parseAntigravityAccountModel(account?.stdout ?? '');
+    const models = groupAntigravityModels(
+      parseAntigravityModelList(listing?.stdout ?? ''),
+      accountDefault,
+    );
+    if (models.length > 0) this.#models = models;
+    return models;
   }
 
   /**
-   * The commands Antigravity runs from the conversation: its **skills** — the
-   * workspace's own and the user's — as `agy -p /skills` lists them, a command
-   * the CLI answers itself (like `/help`), in the thread's folder with the
-   * same `--add-dir` a turn gets (the workspace's skills come from it; verified
-   * on `agy` 1.2.11: without it the project's skill is not listed). A picked
-   * skill is sent as `/name args` on the user message, which `agy` expands
-   * natively — no {@link expandCommand}.
-   *
-   * Nothing else is advertised. The commands `agy` answers itself (`/help`,
-   * `/skills`, …) fail on the stream-json surface the bridge drives ("is
-   * answered by the CLI itself and is unavailable with --input-format
-   * stream-json"), `/compact` is not a command there (it reaches the model as
-   * plain text), and legacy `.agents/workflows` are not expanded — skills
-   * replace them. The stream's `init` event carries no command list. Reused
-   * per folder for a minute; an unanswered request yields none.
+   * One short `agy` run in [cwd], its stdout and exit code; `undefined` when it
+   * cannot start, errors, or does not exit within [timeoutMs] (it is killed).
    */
-  async listCommands(cwd?: string): Promise<AgentCommand[]> {
-    const dir = cwd ?? this.#defaultCwd;
-    const cached = this.#commandsByCwd.get(dir);
-    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
-    const output = await this.#askSkills(dir);
-    if (output === undefined) return [];
-    const commands = parseAntigravitySkills(output);
-    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
-    return commands;
-  }
-
-  /** `agy -p /skills` in [cwd]; its stdout, or `undefined` if it failed. */
-  #askSkills(cwd: string): Promise<string | undefined> {
+  #capture(
+    args: string[],
+    cwd: string,
+    timeoutMs: number,
+  ): Promise<{ stdout: string; code: number | null } | undefined> {
     return new Promise((resolve) => {
       let settled = false;
-      let output = '';
+      let stdout = '';
       let child: SpawnedProcess;
-      const finish = (result: string | undefined): void => {
+      const finish = (result: { stdout: string; code: number | null } | undefined): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -1175,23 +1392,61 @@ export class AntigravityAdapter extends BaseAgentAdapter {
         }
         resolve(result);
       };
+
       try {
-        child = this.#spawn(
-          this.#binaryPath,
-          [...this.#prependArgs, '-p', '/skills', '--add-dir', cwd],
-          cwd,
-        );
+        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
       } catch {
         resolve(undefined);
         return;
       }
-      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
+
+      const timer = setTimeout(() => finish(undefined), timeoutMs);
       child.stdout.on('data', (chunk: unknown) => {
-        output += String(chunk);
+        stdout += String(chunk);
       });
       child.on('error', () => finish(undefined));
-      child.on('close', (code) => finish(code === 0 ? output : undefined));
+      child.on('close', (code: number | null) => finish({ stdout, code }));
     });
+  }
+
+  /**
+   * The commands Antigravity runs from the conversation: `/compact`, which `agy`
+   * runs as a checkpoint on the stream-json surface (see the adapter's turn
+   * handling), and its **skills** — the workspace's own and the user's — as
+   * `agy -p /skills` lists them, in the thread's folder with the same
+   * `--add-dir` a turn gets (the workspace's skills come from it; verified on
+   * `agy` 1.2.11: without it the project's skill is not listed). A picked
+   * command is sent as `/name args` on the user message, which `agy` expands
+   * natively — no {@link expandCommand}.
+   *
+   * The other commands `agy` answers itself (`/help`, `/skills`, …) fail on the
+   * stream-json surface the bridge drives ("is answered by the CLI itself and is
+   * unavailable with --input-format stream-json"), and legacy
+   * `.agents/workflows` are not expanded — skills replace them. The stream's
+   * `init` event carries no command list. The skills are reused per folder for
+   * a minute; an unanswered request yields none of them, `/compact` always.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    let skills: AgentCommand[];
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) {
+      skills = cached.commands;
+    } else {
+      const output = await this.#askSkills(dir);
+      skills = output === undefined ? [] : parseAntigravitySkills(output);
+      this.#commandsByCwd.set(dir, { at: Date.now(), commands: skills });
+    }
+    return [
+      ANTIGRAVITY_COMPACT_COMMAND,
+      ...skills.filter((skill) => skill.name !== ANTIGRAVITY_COMPACT_COMMAND.name),
+    ];
+  }
+
+  /** `agy -p /skills` in [cwd]; its stdout, or `undefined` if it failed. */
+  async #askSkills(cwd: string): Promise<string | undefined> {
+    const out = await this.#capture(['-p', '/skills', '--add-dir', cwd], cwd, COMMANDS_TIMEOUT_MS);
+    return out?.code === 0 ? out.stdout : undefined;
   }
 }
 

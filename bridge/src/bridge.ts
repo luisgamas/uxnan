@@ -8,6 +8,7 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,14 +83,12 @@ import { localHostPorts } from './transport/local-hosts.js';
 import { NetworkWatcher } from './transport/network-watcher.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
-import { constantTimeEqual } from './transport/constant-time.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { UsageScanner } from './usage/usage-scan.js';
 import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { SessionHolds } from './agents/session-holds.js';
-import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
@@ -191,11 +190,11 @@ export interface Bridge {
    */
   startRelay(): Promise<void>;
   /**
-   * Start the bridge's HTTP endpoint — the phones' direct WebSocket, manual-code
-   * pairing and agents' approval hook — and resolve with the bound port. With
-   * `lanEnabled` it listens on every interface and is published (mDNS, the QR's
-   * hosts); without, it listens on `127.0.0.1` only, on a port of the OS's
-   * choosing, so the agents' approvals still work and nothing is exposed.
+   * Start the bridge's HTTP endpoint — the phones' direct WebSocket and
+   * manual-code pairing — and resolve with the bound port. With `lanEnabled` it
+   * listens on every interface and is published (mDNS, the QR's hosts);
+   * without, it listens on `127.0.0.1` only, on a port of the OS's choosing, so
+   * pairing from this machine still works and nothing is exposed.
    * Idempotent.
    */
   startLan(): Promise<{ port: number }>;
@@ -507,32 +506,23 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       (openCodeAdapter = new OpenCodeAdapter({
         binaryPath: located.binaryPath,
         // Route OpenCode's permission requests to the bridge's shared approval
-        // round-trip (the same one the Claude PreToolUse hook, Codex app-server, and
-        // Echo demo use).
-        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        // round-trip (the same one every agent's approvals use).
+        onApprovalRequest: (threadId, info, signal) =>
+          agentManager.requestApproval(threadId, info, signal),
         // Route OpenCode's questions (the agent's multiple-choice tool; a form on
         // OpenCode 2) to the phone's question card and back.
-        onQuestionRequest: (threadId, questions) =>
-          agentManager.requestQuestion(threadId, questions),
+        onQuestionRequest: (threadId, questions, signal) =>
+          agentManager.requestQuestion(threadId, questions, signal),
         ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
       })),
   });
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
-  // "Request approval" on Claude Code is a `PreToolUse` hook that round-trips
-  // each tool to this bridge's local HTTP endpoint. That endpoint exists with
-  // or without the LAN — loopback-only when the LAN is off (`startLan`) — so
-  // approvals do not cost a published port. The hook URL is lazy (the port is
-  // known only after `startLan`); the token guards the endpoint and the script
-  // is written under `~/.uxnan/hooks/`.
-  const claudeApprovals = true;
-  const hookState: { port?: number; token: string } = { token: randomUUID() };
-  const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
-  if (claudeApprovals) {
-    void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
-      logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
-    );
-  }
+  // Bridges before Claude's asks moved onto its stream-json channel wrote a
+  // `PreToolUse` approval hook script here; nothing runs it any more.
+  void rm(state.pathFor(join('hooks', 'claude-approval-hook.cjs')), { force: true }).catch(
+    () => undefined,
+  );
   // Normalize the configured extra models (bare id strings or {id,...} specs)
   // into the adapter's spec shape; they appear in the picker alongside the
   // auto-updating fable/opus/sonnet/haiku aliases. See docs/agents.md.
@@ -548,18 +538,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new ClaudeCodeAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        ...(claudeApprovals
-          ? {
-              approvalHook: {
-                token: hookState.token,
-                scriptPath: claudeHookScriptPath,
-                url: () =>
-                  hookState.port !== undefined
-                    ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
-                    : undefined,
-              },
-            }
-          : {}),
+        // Claude's own asks (a tool it wants to run, `AskUserQuestion`, a plan to
+        // leave plan mode) go to the phone through the same round-trips as OpenCode.
+        onApprovalRequest: (threadId, info, signal) =>
+          agentManager.requestApproval(threadId, info, signal),
+        onQuestionRequest: (threadId, questions, signal) =>
+          agentManager.requestQuestion(threadId, questions, signal),
         ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
         ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
       }),
@@ -578,9 +562,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
         // Route app-server approval elicitations to the bridge's shared
-        // approval round-trip (the same one the Claude PreToolUse hook and
-        // the Echo demo use).
-        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        // approval round-trip (the same one every agent's approvals use).
+        onApprovalRequest: (threadId, info, signal) =>
+          agentManager.requestApproval(threadId, info, signal),
+        // `requestUserInput` questions go to the question card.
+        onQuestionRequest: (threadId, questions, signal) =>
+          agentManager.requestQuestion(threadId, questions, signal),
         ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
       }),
   });
@@ -640,7 +627,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new ZeroAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        onApprovalRequest: (threadId, info, signal) =>
+          agentManager.requestApproval(threadId, info, signal),
         ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
       }),
   });
@@ -657,7 +645,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       new GrokAdapter({
         binaryPath: located.binaryPath,
         prependArgs: located.prependArgs,
-        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        onApprovalRequest: (threadId, info, signal) =>
+          agentManager.requestApproval(threadId, info, signal),
+        // Its `ask_user_question` tool (an `_x.ai/` request) asks the person.
+        onQuestionRequest: (threadId, questions, signal) =>
+          agentManager.requestQuestion(threadId, questions, signal),
         ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
       }),
   });
@@ -896,29 +888,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           logger.info(`pair/resolve from ${ip}: accepted (200); pairing window armed`);
           return { status: 200, json: payload };
         },
-        // Claude PreToolUse approval hook: ask the user (on the phone) whether a
-        // tool may run; hold the response until they answer (or it times out).
-        onHookApproval: async (body, token) => {
-          if (typeof token !== 'string' || !constantTimeEqual(token, hookState.token)) {
-            return { status: 403, json: { error: 'bad_token' } };
-          }
-          const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-          const threadId = typeof b['threadId'] === 'string' ? (b['threadId'] as string) : '';
-          if (!threadId) return { status: 400, json: { error: 'missing_thread' } };
-          const toolName = typeof b['toolName'] === 'string' ? (b['toolName'] as string) : 'tool';
-          const input =
-            b['input'] && typeof b['input'] === 'object'
-              ? (b['input'] as Record<string, unknown>)
-              : {};
-          // The hook script consumes `'allow' | 'deny'`; translate from the
-          // generic `ApprovalDecision` (the Codex app-server uses the same
-          // generic decision, so the same route serves both backends).
-          const decision = await agentManager.requestApproval(threadId, { toolName, input });
-          const hookDecision = decision === 'reject' ? 'deny' : 'allow';
-          return { status: 200, json: { decision: hookDecision } };
-        },
       });
-      hookState.port = lanHandle.port;
       if (!published) {
         logger.info(`local endpoint on 127.0.0.1:${lanHandle.port} (the LAN is off)`);
         return { port: lanHandle.port };

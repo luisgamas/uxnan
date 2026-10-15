@@ -6,9 +6,11 @@ import {
   effortOptionId,
   grokPermissionNotice,
   grokPermissionSource,
+  grokQuestions,
   parseGrokCommands,
+  promptContextTokens,
 } from '../../src/adapters/grok-adapter.js';
-import type { AgentStreamEvent } from '@uxnan/shared';
+import type { AgentStreamEvent, QuestionItem } from '@uxnan/shared';
 
 // A fake `grok agent stdio` process: an ndjson JSON-RPC peer over PassThrough
 // streams. The handshake (initialize / session/new / session/set_model /
@@ -24,6 +26,8 @@ class FakeAcp {
   sessionId = 'grok_sess_1';
   /** `agentCapabilities` the handshake advertises (none by default). */
   agentCapabilities: unknown = undefined;
+  /** The `_meta` a `session/new` answer carries (Grok's `modelState`), if any. */
+  sessionMeta: unknown = undefined;
 
   constructor() {
     let buf = '';
@@ -79,6 +83,7 @@ class FakeAcp {
       } else if (m.method === 'session/new')
         this.reply(m.id, {
           sessionId: this.sessionId,
+          ...(this.sessionMeta ? { _meta: this.sessionMeta } : {}),
           // As Grok answers: effort is a `thought_level` config option.
           configOptions: [
             { id: 'model', category: 'model', type: 'select', currentValue: 'grok-4.5' },
@@ -157,8 +162,9 @@ function setup(
   opts: {
     onApprovalRequest?: (
       threadId: string,
-      info: { toolName: string; input: Record<string, unknown> },
+      info: { toolName: string; input: Record<string, unknown>; action?: string },
     ) => Promise<'approve' | 'reject' | 'approveSession'>;
+    onQuestionRequest?: (threadId: string, questions: QuestionItem[]) => Promise<string[][]>;
     permissionSource?: (cwd: string) => { mode: string; file: string } | undefined;
   } = {},
 ): { adapter: GrokAdapter; server: FakeAcp } {
@@ -170,6 +176,7 @@ function setup(
     // Never the user's own settings: a test sees only what it sets.
     permissionSource: opts.permissionSource ?? (() => undefined),
     ...(opts.onApprovalRequest ? { onApprovalRequest: opts.onApprovalRequest } : {}),
+    ...(opts.onQuestionRequest ? { onQuestionRequest: opts.onQuestionRequest } : {}),
   });
   adapters.push(adapter);
   return { adapter, server };
@@ -187,6 +194,54 @@ function collect(adapter: GrokAdapter): Promise<AgentStreamEvent[]> {
 }
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 5));
+
+/**
+ * Run one turn in which the model makes Grok send `method` (a server request
+ * with id 900) with `params`; resolves with the reply the adapter gave it.
+ */
+async function serverRequestTurn(
+  adapter: GrokAdapter,
+  server: FakeAcp,
+  method: string,
+  params: Record<string, unknown>,
+  accessMode: 'requestApproval' | 'fullAccess' = 'fullAccess',
+): Promise<{ reply: any; events: AgentStreamEvent[] }> {
+  const done = collect(adapter);
+  const answered = new Promise<any>((resolve) =>
+    server.handle((m) => {
+      if (m.id === 900 && m.result !== undefined) resolve(m.result);
+    }),
+  );
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    server.feed({
+      jsonrpc: '2.0',
+      id: 900,
+      method,
+      params: { sessionId: server.sessionId, ...params },
+    });
+    void answered.then(() => server.reply(m.id, { stopReason: 'end_turn' }));
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode });
+  const events = await done;
+  return { reply: await answered, events };
+}
+
+/** Grok's `ask_user_question` params for one single-select question. */
+const LANGUAGE_QUESTION = {
+  toolCallId: 'call-1',
+  questions: [
+    {
+      question: 'Which language do you prefer?',
+      options: [
+        { label: 'Python', description: 'Prefer Python' },
+        { label: 'Bash', description: 'Prefer Bash' },
+      ],
+      multiSelect: null,
+    },
+  ],
+  mode: 'default',
+};
 
 test('mapGrokModels maps context window, default flag, and reasoning knob', () => {
   const models = mapGrokModels({
@@ -740,4 +795,317 @@ test('a thread that asks first is told, once, when the mode of Grok will not ask
     /"auto" \(from ~\/\.claude\/settings\.json\)/,
   );
   assert.equal((await warnings('u2')).length, 0);
+});
+
+const PLAN = {
+  toolCallId: 'plan-1',
+  planContent: '# Plan\n\n1. Print hi',
+};
+
+test('GrokAdapter lists the models Grok updates while the process runs', async () => {
+  const { adapter, server } = setup();
+  assert.deepEqual(
+    (await adapter.listModels()).map((m) => m.id),
+    ['grok-4.5', 'grok-composer-2.5-fast'],
+  );
+  server.feed({
+    jsonrpc: '2.0',
+    method: '_x.ai/models/update',
+    params: {
+      currentModelId: 'grok-4.7',
+      availableModels: [
+        {
+          modelId: 'grok-4.7',
+          name: 'Grok 4.7',
+          _meta: {
+            totalContextTokens: 256000,
+            supportsReasoningEffort: true,
+            reasoningEfforts: [{ id: 'high', value: 'high', label: 'High', default: true }],
+          },
+        },
+      ],
+    },
+  });
+  await tick();
+  const models = await adapter.listModels();
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['grok-4.7'],
+  );
+  assert.equal(models[0]?.isDefault, true);
+  assert.equal(models[0]?.contextWindow, 256000);
+});
+
+test('GrokAdapter takes the model list from each new session’s answer', async () => {
+  const { adapter, server } = setup();
+  server.sessionMeta = {
+    modelState: {
+      currentModelId: 'grok-4.7',
+      availableModels: [{ modelId: 'grok-4.7', name: 'Grok 4.7' }],
+    },
+  };
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await done;
+  assert.deepEqual(
+    (await adapter.listModels()).map((m) => m.id),
+    ['grok-4.7'],
+  );
+});
+
+test('GrokAdapter reports the context of the last model call, once per turn', async () => {
+  const { adapter, server } = setup();
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    // Captured: the turn's usage sums both model calls; the result carries the last one.
+    server.feed({
+      jsonrpc: '2.0',
+      method: '_x.ai/session_notification',
+      params: {
+        sessionId: server.sessionId,
+        update: {
+          sessionUpdate: 'turn_completed',
+          stop_reason: 'end_turn',
+          usage: { inputTokens: 39816, outputTokens: 116, totalTokens: 39932, modelCalls: 2 },
+        },
+      },
+    });
+    server.reply(m.id, {
+      stopReason: 'end_turn',
+      _meta: { totalTokens: 20063, inputTokens: 20032, outputTokens: 22 },
+    });
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', service: 'grok-4.5' });
+  const completed = (await done).filter((e) => e.type === 'turn_completed');
+  assert.equal(completed.length, 1);
+  assert.equal((completed[0]?.data as any).usage.tokens, 20063);
+});
+
+test('GrokAdapter falls back to the turn usage when the prompt result has none', async () => {
+  const { adapter, server } = setup();
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    server.feed({
+      jsonrpc: '2.0',
+      method: '_x.ai/session_notification',
+      params: {
+        sessionId: server.sessionId,
+        update: {
+          sessionUpdate: 'turn_completed',
+          usage: { inputTokens: 39816, outputTokens: 116, totalTokens: 39932 },
+        },
+      },
+    });
+    server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', service: 'grok-4.5' });
+  const completed = (await done).find((e) => e.type === 'turn_completed');
+  assert.equal((completed?.data as any).usage.tokens, 39932);
+});
+
+test('GrokAdapter puts ask_user_question to the person and answers with their choice', async () => {
+  const asked: { threadId: string; questions: QuestionItem[] }[] = [];
+  const { adapter, server } = setup({
+    onQuestionRequest: (threadId, questions) => {
+      asked.push({ threadId, questions });
+      return Promise.resolve([['Python']]);
+    },
+  });
+  const { reply } = await serverRequestTurn(
+    adapter,
+    server,
+    '_x.ai/ask_user_question',
+    LANGUAGE_QUESTION,
+  );
+  assert.deepEqual(reply, {
+    outcome: 'accepted',
+    answers: { 'Which language do you prefer?': 'Python' },
+  });
+  assert.deepEqual(asked, [
+    {
+      threadId: 't1',
+      questions: [
+        {
+          question: 'Which language do you prefer?',
+          options: [
+            { label: 'Python', description: 'Prefer Python' },
+            { label: 'Bash', description: 'Prefer Bash' },
+          ],
+          multiple: false,
+        },
+      ],
+    },
+  ]);
+});
+
+test('GrokAdapter joins the labels of a multi-select answer', async () => {
+  const { adapter, server } = setup({
+    onQuestionRequest: () => Promise.resolve([['Python', 'Bash']]),
+  });
+  const multi = {
+    ...LANGUAGE_QUESTION,
+    questions: [{ ...LANGUAGE_QUESTION.questions[0], multiSelect: true }],
+  };
+  const { reply } = await serverRequestTurn(adapter, server, '_x.ai/ask_user_question', multi);
+  assert.deepEqual(reply, {
+    outcome: 'accepted',
+    answers: { 'Which language do you prefer?': 'Python, Bash' },
+  });
+});
+
+test('GrokAdapter skips a question nobody answers, never failing it', async () => {
+  const declined = setup({ onQuestionRequest: () => Promise.resolve([[]]) });
+  const skipped = await serverRequestTurn(
+    declined.adapter,
+    declined.server,
+    '_x.ai/ask_user_question',
+    LANGUAGE_QUESTION,
+  );
+  assert.deepEqual(skipped.reply, { outcome: 'skip_interview' });
+
+  const unasked = setup();
+  const noRequester = await serverRequestTurn(
+    unasked.adapter,
+    unasked.server,
+    '_x.ai/ask_user_question',
+    LANGUAGE_QUESTION,
+  );
+  assert.deepEqual(noRequester.reply, { outcome: 'skip_interview' });
+
+  const failing = setup({ onQuestionRequest: () => Promise.reject(new Error('phone offline')) });
+  const failed = await serverRequestTurn(
+    failing.adapter,
+    failing.server,
+    '_x.ai/ask_user_question',
+    LANGUAGE_QUESTION,
+  );
+  assert.deepEqual(failed.reply, { outcome: 'skip_interview' });
+});
+
+test('a question for no turn of ours is skipped', async () => {
+  const { adapter, server } = setup({
+    onQuestionRequest: () => Promise.resolve([['Python']]),
+  });
+  await adapter.listModels();
+  server.feed({
+    jsonrpc: '2.0',
+    id: 901,
+    method: '_x.ai/ask_user_question',
+    params: { ...LANGUAGE_QUESTION, sessionId: 'someone-else' },
+  });
+  await tick();
+  await tick();
+  assert.deepEqual(server.sent.find((m) => m.id === 901)?.result, { outcome: 'skip_interview' });
+});
+
+test('GrokAdapter leaves plan mode on full access, with the plan in the turn, without asking', async () => {
+  let asked = 0;
+  const { adapter, server } = setup({
+    onApprovalRequest: () => {
+      asked += 1;
+      return Promise.resolve('approve');
+    },
+  });
+  const { reply, events } = await serverRequestTurn(
+    adapter,
+    server,
+    '_x.ai/exit_plan_mode',
+    PLAN,
+    'fullAccess',
+  );
+  assert.deepEqual(reply, { outcome: 'approved' });
+  assert.equal(asked, 0);
+  const deltas = events.filter((e) => e.type === 'delta').map((e) => (e.data as any).text);
+  assert.equal(deltas.join(''), '# Plan\n\n1. Print hi\n\n');
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.equal((completed?.data as any).text, '# Plan\n\n1. Print hi\n\n');
+});
+
+test('GrokAdapter asks before leaving plan mode: approve starts, reject keeps planning', async () => {
+  const seen: { toolName: string; input: Record<string, unknown>; action?: string }[] = [];
+  const approving = setup({
+    onApprovalRequest: (_t, info) => {
+      seen.push(info);
+      return Promise.resolve('approve');
+    },
+  });
+  const approved = await serverRequestTurn(
+    approving.adapter,
+    approving.server,
+    '_x.ai/exit_plan_mode',
+    PLAN,
+    'requestApproval',
+  );
+  assert.deepEqual(approved.reply, { outcome: 'approved' });
+  assert.deepEqual(seen, [
+    { toolName: 'ExitPlanMode', input: {}, action: 'Start implementing this plan' },
+  ]);
+
+  const rejecting = setup({ onApprovalRequest: () => Promise.resolve('reject') });
+  const rejected = await serverRequestTurn(
+    rejecting.adapter,
+    rejecting.server,
+    '_x.ai/exit_plan_mode',
+    PLAN,
+    'requestApproval',
+  );
+  assert.deepEqual(rejected.reply, { outcome: 'rejected' });
+});
+
+test('an exit from plan mode with nobody to ask, or no turn of ours, is rejected, not an error', async () => {
+  const unasked = setup();
+  const noRequester = await serverRequestTurn(
+    unasked.adapter,
+    unasked.server,
+    '_x.ai/exit_plan_mode',
+    PLAN,
+    'requestApproval',
+  );
+  assert.deepEqual(noRequester.reply, { outcome: 'rejected' });
+
+  const { adapter, server } = setup({ onApprovalRequest: () => Promise.resolve('approve') });
+  await adapter.listModels();
+  server.feed({
+    jsonrpc: '2.0',
+    id: 902,
+    method: '_x.ai/exit_plan_mode',
+    params: { ...PLAN, sessionId: 'someone-else' },
+  });
+  await tick();
+  await tick();
+  assert.deepEqual(server.sent.find((m) => m.id === 902)?.result, { outcome: 'rejected' });
+});
+
+test('promptContextTokens reads a positive total from the prompt result', () => {
+  assert.equal(promptContextTokens({ totalTokens: 20063, inputTokens: 20032 }), 20063);
+  assert.equal(promptContextTokens({ totalTokens: 0 }), undefined);
+  assert.equal(promptContextTokens(undefined), undefined);
+  assert.equal(promptContextTokens('20063'), undefined);
+});
+
+test('grokQuestions maps Grok options and leaves out a question nothing can answer', () => {
+  assert.deepEqual(
+    grokQuestions([
+      {
+        question: 'Pick',
+        options: [{ label: 'A', description: 'first' }, { label: 'B' }],
+        multiSelect: true,
+      },
+      { question: 'No options', options: [], multiSelect: null },
+      { options: [{ label: 'C' }] },
+    ]),
+    [
+      {
+        question: 'Pick',
+        options: [{ label: 'A', description: 'first' }, { label: 'B' }],
+        multiple: true,
+      },
+    ],
+  );
+  assert.deepEqual(grokQuestions(undefined), []);
 });

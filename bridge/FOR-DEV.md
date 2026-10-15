@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1067, shared 64, relay
+standalone). It builds clean and the suite is green (bridge 1152, shared 65, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -241,8 +241,8 @@ push validation (FOR-HUMAN).
   (no creds = silent no-op; foreground local notifications still work).
 - **Sanitized per-agent `auth/status`** — never tokens; login detected by
   auth-file existence only.
-- **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
-  hook + Codex via the `codex app-server` turn protocol + OpenCode via
+- **Interactive approval intake** — Echo demo + Claude Code over its stream-json
+  `can_use_tool` control requests + Codex via the `codex app-server` turn protocol + OpenCode via
   `opencode serve` `permission.asked` + Zero and Grok
   via ACP `session/request_permission`; all routed through one `requestApproval`
   round-trip, validated end-to-end.
@@ -342,18 +342,12 @@ push validation (FOR-HUMAN).
 - [ ] **Interactive approvals — pi gap.** pi's headless mode (`pi -p --mode json`)
       runs tools autonomously and emits tool events only **after** the tool ran — no
       pre-tool channel to gate them, so pi surfaces `autonomous: true` (chip + banner)
-      instead of approvals. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) +
+      instead of approvals. Echo + Claude (stream-json `can_use_tool`) + Codex (`app-server`) +
       OpenCode (`opencode serve` `permission.asked`) +
       Zero (`zero acp` `session/request_permission`) all have real per-action
       approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
       a headless entry point.
-- [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
-      session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
-      app-server already remembers `acceptForSession`); a per-turn allow-list so
-      repeated identical tools aren't re-prompted; document that the Claude
-      hook URL needs the LAN port resolved (handled by the lazy `url()` after
-      `startLan`, but worth a note).
 - [ ] **Image attachments — follow-ups** — native per-CLI image input (a dedicated
       flag / MCP image part) where richer than a cwd-relative file path; add
       `.uxnan-attachments/` to a recommended `.gitignore` (cleaned per turn, but a
@@ -438,7 +432,7 @@ push validation (FOR-HUMAN).
       all seven active agents and **verified live on six**: Claude Code
       (`haiku`), Codex (`gpt-5.6-luna` at `low` effort, `codex exec --ephemeral
       -s read-only -o <file>`), OpenCode, pi, Antigravity
-      (`gemini-3.6-flash-low`) and Grok. Zero's `zero exec
+      (the lowest flash tier `agy models` lists) and Grok. Zero's `zero exec
       <prompt>` form is confirmed **in Zero's own source** (its eval harness
       drives itself that way), but has never run: Zero is not installed here and
       the account has no credits. Run it once and drop this item.
@@ -455,9 +449,6 @@ push validation (FOR-HUMAN).
       have no fast mode — so there is little to wire today. Keep the option schema
       forward-compatible (unknown `kind` ignored by the phone) and only advertise a
       knob that maps to a real flag.
-- [ ] **pi context-window %** — pi reports raw `totalTokens` (shown as a count like
-      Codex). Map the resolved model's context window (pi `--list-models` exposes it)
-      so the phone can render a `%` ring instead of a count.
 - [ ] **Zero token usage** — the Agent Client Protocol carries no per-turn
       token/context usage over ACP — but it records one per turn in its own session
       store, which `readZeroUsage` now reads, so `reportsContextUsage:true`. The

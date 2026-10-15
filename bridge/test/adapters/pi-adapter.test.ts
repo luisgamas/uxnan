@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   PiAdapter,
   parsePiLine,
-  parsePiModelList,
+  parsePiModels,
+  piSupportedThinkingLevels,
   readPiThinkingDefaults,
   parsePiUsageTokens,
-  parsePiContextWindow,
   DEFAULT_PI_IDLE_TIMEOUT_MS,
   type SpawnedProcess,
 } from '../../src/index.js';
@@ -19,6 +20,8 @@ import { PI_MCP_EXTENSION, parsePiCommands, piMcpLaunch } from '../../src/adapte
 // --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
   args: string[];
+  /** The folder the process was started in. */
+  cwd: string;
   /** The environment the spawn added (`extra.env`). */
   env?: Record<string, string>;
   /** Whether the spawn asked for a writable stdin (`--mode rpc`). */
@@ -30,8 +33,6 @@ interface FakeSpawn {
   feed(lines: string[]): void;
   /** Feed lines WITHOUT closing stdout, so the turn stays open. */
   feedOpen(lines: string[]): void;
-  /** Write lines to STDERR (where `pi --list-models` prints its table), then close. */
-  feedStderr(lines: string[]): void;
   /**
    * How the fake answers a `steer`, as pi does every RPC command
    * (`{type:'response', command, success}`): accept it, reject it, or stay
@@ -54,7 +55,7 @@ function fakeSpawner(): {
   const spawnFn = (
     _command: string,
     args: string[],
-    _cwd?: string,
+    cwd?: string,
     extra?: { stdin?: 'pipe' | 'ignore'; env?: Record<string, string> },
   ): SpawnedProcess => {
     const stdout = new PassThrough();
@@ -63,6 +64,7 @@ function fakeSpawner(): {
     stdout.on('end', () => emitter.emit('close', 0));
     const record: FakeSpawn = {
       args,
+      cwd: cwd ?? '',
       ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       sent: [],
@@ -73,11 +75,6 @@ function fakeSpawner(): {
       },
       feedOpen: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
-      },
-      feedStderr: (lines) => {
-        for (const line of lines) stderr.write(`${line}\n`);
-        stderr.end();
-        stdout.end();
       },
       steerReply: 'accept',
     };
@@ -279,24 +276,12 @@ test('parsePiUsageTokens prefers totalTokens, falls back to input+output', () =>
   assert.equal(parsePiUsageTokens('nope'), undefined);
 });
 
-test('parsePiContextWindow parses K/M suffixes and bare numbers', () => {
-  assert.equal(parsePiContextWindow('1.0M'), 1_000_000);
-  assert.equal(parsePiContextWindow('1M'), 1_000_000);
-  assert.equal(parsePiContextWindow('384K'), 384_000);
-  assert.equal(parsePiContextWindow('200000'), 200_000);
-  assert.equal(parsePiContextWindow('-'), undefined);
-  assert.equal(parsePiContextWindow(undefined), undefined);
-});
-
 test('PiAdapter emits usage.contextWindow from the cached model list', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
-  // Prime the per-model window cache from `--list-models`.
+  // Prime the per-model window cache from `get_available_models`.
   const listing = adapter.listModels();
-  last().feedStderr([
-    'provider      model                    context  max-out  thinking  images',
-    'google        gemini-2.5-pro           1.0M     65.5K    yes       yes',
-  ]);
+  last().feedOpen([modelsReply([GEMINI])]);
   await listing;
 
   const { done } = collect(adapter);
@@ -316,7 +301,7 @@ test('PiAdapter emits usage.contextWindow from the cached model list', async () 
     }
   ).usage;
   assert.equal(usage?.tokens, 99);
-  assert.equal(usage?.contextWindow, 1_000_000);
+  assert.equal(usage?.contextWindow, 1_048_576);
 });
 
 test('PiAdapter prefers the context window `get_state` reports for the session', async () => {
@@ -571,43 +556,115 @@ test('PiAdapter surfaces a plain-text startup error as turn_error', async () => 
   assert.match((err?.data as { text: string }).text, /No API key found/);
 });
 
-test('parsePiModelList parses the --list-models table', () => {
-  const table = [
-    'provider      model                    context  max-out  thinking  images',
-    'google        gemini-2.5-pro           1.0M     65.5K    yes       yes',
-    'google        gemini-2.0-flash-lite    1.0M     8.2K     no        yes',
-    'deepseek      deepseek-v4-pro          1M       384K     yes       no',
-    '',
-  ].join('\n');
-  const models = parsePiModelList(table, 'google/gemini-2.5-pro');
+/** A `get_available_models` answer, as pi 1.2.0 writes it. */
+function modelsReply(models: unknown[]): string {
+  return JSON.stringify({
+    type: 'response',
+    command: 'get_available_models',
+    success: true,
+    data: { models },
+  });
+}
+
+// Models as pi 1.2.0's `get_available_models` lists them.
+const GEMINI = {
+  id: 'gemini-2.5-pro',
+  name: 'Gemini 2.5 Pro',
+  provider: 'google',
+  reasoning: true,
+  contextWindow: 1048576,
+  thinkingLevelMap: { off: null },
+};
+const FABLE = {
+  id: 'claude-fable-5',
+  name: 'Claude Fable 5',
+  provider: 'opencode',
+  reasoning: true,
+  contextWindow: 1000000,
+  thinkingLevelMap: { off: null, xhigh: 'xhigh', max: 'max' },
+};
+const DEEPSEEK = {
+  id: 'deepseek-v4-pro',
+  name: 'DeepSeek V4 Pro',
+  provider: 'deepseek',
+  reasoning: false,
+  contextWindow: 262144,
+};
+const GPT6 = {
+  id: 'gpt-6',
+  name: 'GPT-6',
+  provider: 'openai',
+  reasoning: true,
+  contextWindow: 400000,
+  thinkingLevelMap: { xhigh: 'xhigh' },
+};
+const STANDARD = ['off', 'minimal', 'low', 'medium', 'high'];
+
+test('parsePiModels reads get_available_models: exact window, name, provider, levels', () => {
+  const models = parsePiModels(modelsReply([GEMINI, FABLE, DEEPSEEK]), 'google/gemini-2.5-pro');
   assert.deepEqual(
-    models.map((m) => m.id),
-    ['google/gemini-2.5-pro', 'google/gemini-2.0-flash-lite', 'deepseek/deepseek-v4-pro'],
+    models?.map((m) => m.id),
+    ['google/gemini-2.5-pro', 'opencode/claude-fable-5', 'deepseek/deepseek-v4-pro'],
   );
-  // header skipped; displayName is the model, description the provider
-  assert.equal(models[0]?.displayName, 'gemini-2.5-pro');
-  assert.equal(models[0]?.description, 'google');
-  assert.equal(models[0]?.isDefault, true);
-  // the `context` column is parsed into a token count for usage percentages
-  assert.equal(models[0]?.contextWindow, 1_000_000);
-  assert.equal(models[2]?.contextWindow, 1_000_000);
-  // thinking==yes advertises the reasoning knob; thinking==no does not
-  assert.equal(models[0]?.options?.[0]?.key, 'reasoning');
-  assert.equal(models[1]?.options, undefined);
+  // name is the display name, provider the description; the window is exact.
+  assert.equal(models?.[0]?.displayName, 'Gemini 2.5 Pro');
+  assert.equal(models?.[0]?.description, 'google');
+  assert.equal(models?.[0]?.isDefault, true);
+  assert.equal(models?.[0]?.contextWindow, 1048576);
+  assert.equal(models?.[2]?.contextWindow, 262144);
+  // A reasoning model offers the levels its map allows; a plain model has no knob.
   assert.deepEqual(
-    models[0]?.options?.[0]?.values?.map((v) => v.value),
-    ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    models?.[0]?.options?.[0]?.values?.map((v) => v.value),
+    ['minimal', 'low', 'medium', 'high'],
   );
+  assert.deepEqual(
+    models?.[1]?.options?.[0]?.values?.map((v) => v.value),
+    ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  );
+  assert.equal(models?.[2]?.options, undefined);
   // pi's own default when its settings name none.
-  assert.equal(models[0]?.options?.[0]?.default, 'medium');
+  assert.equal(models?.[0]?.options?.[0]?.default, 'medium');
+});
+
+test('piSupportedThinkingLevels follows pi: null hides a level, xhigh and max need a value', () => {
+  // A model without a map (an older pi) takes the five standard levels.
+  assert.deepEqual(piSupportedThinkingLevels(undefined), STANDARD);
+  assert.deepEqual(piSupportedThinkingLevels({ off: null }), ['minimal', 'low', 'medium', 'high']);
+  assert.deepEqual(piSupportedThinkingLevels({ xhigh: 'xhigh' }), [...STANDARD, 'xhigh']);
+  assert.deepEqual(piSupportedThinkingLevels({ max: 'max' }), [...STANDARD, 'max']);
+  assert.deepEqual(piSupportedThinkingLevels({ max: null, xhigh: null }), STANDARD);
+});
+
+test('a default thinking level the model does not accept is clamped as pi clamps it', () => {
+  const defaultFor = (
+    fallback: string,
+    models: unknown[],
+    byModel: Record<string, string> = {},
+  ): unknown =>
+    parsePiModels(modelsReply(models), undefined, { byModel, fallback })?.[0]?.options?.[0]
+      ?.default;
+  assert.equal(defaultFor('max', [GEMINI]), 'high'); // nothing above max; next below
+  assert.equal(defaultFor('xhigh', [GEMINI]), 'high');
+  assert.equal(defaultFor('off', [GEMINI]), 'minimal'); // off is hidden; next up
+  assert.equal(defaultFor('max', [FABLE]), 'max');
+  assert.equal(defaultFor('medium', [FABLE], { 'opencode/claude-fable-5': 'minimal' }), 'minimal');
+});
+
+test('parsePiModels yields nothing for other lines, and none for a refused request', () => {
+  assert.equal(
+    parsePiModels('{"type":"response","command":"get_state","success":true,"data":{}}'),
+    undefined,
+  );
+  assert.equal(parsePiModels('No API key found'), undefined);
+  assert.deepEqual(
+    parsePiModels(
+      '{"type":"response","command":"get_available_models","success":false,"error":"Unknown command"}',
+    ),
+    [],
+  );
 });
 
 test('a pi model defaults to the thinking level pi itself would use', () => {
-  const table = [
-    'provider  model           context  max-out  thinking  images',
-    'google    gemini-2.5-pro  1.0M     65.5K    yes       yes',
-    'openai    gpt-6           400K     128K     yes       yes',
-  ].join('\n');
   const settings = JSON.stringify({
     defaultThinkingLevel: 'high',
     modelThinkingLevels: { 'openai/gpt-6': 'xhigh', 'openai/bogus': 'loud' },
@@ -617,9 +674,9 @@ test('a pi model defaults to the thinking level pi itself would use', () => {
     return settings;
   });
   assert.deepEqual(defaults, { byModel: { 'openai/gpt-6': 'xhigh' }, fallback: 'high' });
-  const models = parsePiModelList(table, undefined, defaults);
-  assert.equal(models[0]?.options?.[0]?.default, 'high');
-  assert.equal(models[1]?.options?.[0]?.default, 'xhigh');
+  const models = parsePiModels(modelsReply([GEMINI, GPT6]), undefined, defaults);
+  assert.equal(models?.[0]?.options?.[0]?.default, 'high');
+  assert.equal(models?.[1]?.options?.[0]?.default, 'xhigh');
   // No settings file: pi's built-in medium.
   assert.deepEqual(
     readPiThinkingDefaults({}, () => {
@@ -629,7 +686,7 @@ test('a pi model defaults to the thinking level pi itself would use', () => {
   );
 });
 
-test('PiAdapter.listModels parses the table pi prints to stderr', async () => {
+test('PiAdapter.listModels asks pi for get_available_models in a short-lived process', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({
     binaryPath: 'pi',
@@ -637,19 +694,47 @@ test('PiAdapter.listModels parses the table pi prints to stderr', async () => {
     defaultModel: 'google/gemini-2.5-pro',
   });
   const promise = adapter.listModels();
-  // pi prints the --list-models table to STDERR, not stdout.
-  last().feedStderr([
-    'provider      model                    context  max-out  thinking  images',
-    'google        gemini-2.5-pro           1.0M     65.5K    yes       yes',
-    'deepseek      deepseek-v4-pro          1M       384K     yes       no',
-  ]);
+  assert.deepEqual(last().args, ['--mode', 'rpc', '--no-session']);
+  await flush();
+  assert.deepEqual(last().sent, [{ type: 'get_available_models' }]);
+  last().feedOpen([modelsReply([GEMINI, DEEPSEEK])]);
   const models = await promise;
   assert.deepEqual(
     models.map((m) => m.id),
     ['google/gemini-2.5-pro', 'deepseek/deepseek-v4-pro'],
   );
-  assert.equal(last().args.includes('--list-models'), true);
   assert.equal(models[0]?.isDefault, true);
+  assert.equal(models[0]?.contextWindow, 1048576);
+});
+
+test('PiAdapter.listModels runs agent-wide, never in a turn’s folder', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const turnFolder = join(tmpdir(), 'uxnan-pi-turn-folder');
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: turnFolder });
+  assert.equal(last().cwd, turnFolder, 'the turn runs in the folder it asked for');
+
+  const promise = adapter.listModels();
+  // The catalog is agent-wide work: a project folder that was renamed or
+  // deleted must not take the model picker with it.
+  assert.equal(last().cwd, homedir(), 'get_available_models runs in the agent’s own folder');
+  last().feedOpen([modelsReply([GEMINI])]);
+  assert.equal((await promise).length, 1);
+});
+
+test('PiAdapter.listModels yields none when pi does not answer', async () => {
+  const spawnFn = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout: new PassThrough(),
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  assert.deepEqual(await adapter.listModels(), []);
 });
 
 // --- mid-turn delivery (steering) -----------------------------------------
@@ -800,6 +885,62 @@ test('parsePiLine maps a failed RPC response, get_state, and ignores other succe
     parsePiLine('{"type":"response","command":"prompt","success":false,"error":"boom"}'),
     { kind: 'command_failed', commandName: 'prompt', errorText: 'boom' },
   );
+});
+
+test('parsePiLine reads a prompt disposition: only handled ends a turn with no run', () => {
+  assert.deepEqual(
+    parsePiLine(
+      '{"type":"response","command":"prompt","success":true,"data":{"disposition":"handled"}}',
+    ),
+    { kind: 'handled' },
+  );
+  for (const disposition of ['started', 'queued']) {
+    assert.deepEqual(
+      parsePiLine(
+        `{"type":"response","command":"prompt","success":true,"data":{"disposition":"${disposition}"}}`,
+      ),
+      { kind: 'other' },
+    );
+  }
+});
+
+test('a prompt pi answers as handled ends the turn with no run and no error', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: '/mcp' });
+  // pi resolved the typed command itself: no run starts, so no agent_settled comes.
+  last().feedOpen([
+    '{"type":"response","command":"prompt","success":true,"data":{"disposition":"handled"}}',
+  ]);
+  const events = await done;
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.equal((completed?.data as { text: string }).text, '');
+});
+
+test('a reply with U+2028 or U+2029 inside a string is one event, not two', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  const answer = 'first second third';
+  // JSON leaves U+2028 and U+2029 unescaped; a readline split would cut the line there.
+  const delta = JSON.stringify({
+    type: 'message_update',
+    assistantMessageEvent: { type: 'text_delta', delta: answer },
+  });
+  last().feed([STATE, delta, assistantEnd(answer), AGENT_END, AGENT_SETTLED]);
+  const events = await done;
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.equal((completed?.data as { text: string }).text, answer);
 });
 
 test('PiAdapter advertises steering', () => {

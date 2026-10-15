@@ -40,6 +40,7 @@ import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
 import { REASONING_KEY } from '../adapters/run-options.js';
+import type { ApprovalRequestInfo } from '../adapters/user-input.js';
 import {
   approvalBlock,
   blockIdOf,
@@ -56,13 +57,10 @@ import { convertViewToolBlock } from '../views/convert-view-block.js';
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Build the `approval` content block for a tool the agent wants to run. */
-function approvalContent(
-  approvalId: string,
-  toolName: string,
-  input: Record<string, unknown>,
-): ApprovalRequestBlock {
-  const detail = approvalDetail(input);
-  const action = detail ? `Allow ${toolName}: ${detail}` : `Allow ${toolName}`;
+function approvalContent(approvalId: string, info: ApprovalRequestInfo): ApprovalRequestBlock {
+  const { toolName, input } = info;
+  const detail = info.action === undefined ? approvalDetail(input) : '';
+  const action = info.action ?? (detail ? `Allow ${toolName}: ${detail}` : `Allow ${toolName}`);
   const t = toolName.toLowerCase();
   const risk =
     t === 'bash' || t === 'write' || t === 'edit' || t.includes('delete') ? 'high' : 'medium';
@@ -312,13 +310,10 @@ export class AgentManager {
    * runs next instead of the queue pausing.
    */
   readonly #sendNextAfterStop = new Map<string, string>();
-  /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
-   * hook round-trip AND the Codex app-server approval elicitations; the pending
-   * map is shared so a single `respondApproval` call resolves both). The
-   * resolver takes the user's `ApprovalDecision`; the caller (the hook server
-   * or the Codex adapter) translates that into the wire shape its protocol
-   * expects (`'allow' | 'deny'` for the Claude hook, `ReviewDecision` for
-   * Codex). */
+  /** approvalId → resolver for a pending approval an adapter asked for
+   * ({@link requestApproval}); one map, so a single `respondApproval` call
+   * resolves any of them. The resolver takes the user's `ApprovalDecision`; the
+   * adapter translates that into the wire shape its protocol expects. */
   readonly #pendingHookApprovals = new Map<
     string,
     {
@@ -355,7 +350,17 @@ export class AgentManager {
   }
 
   register(adapter: IAgentAdapter, meta?: Partial<AgentMeta>): void {
+    // The adapter it replaces (the CLI appeared or moved) lets go of what it
+    // still holds — idle resident processes, a server per folder — instead of
+    // leaving them running with nothing to drive them. Never while it serves a
+    // turn: `AgentInstalls` only replaces an adapter with no active work.
+    const previous = this.#adapters.get(adapter.agentId);
+    if (previous && previous !== adapter) void previous.stop().catch(() => undefined);
     this.#adapters.set(adapter.agentId, adapter);
+    // An adapter registered in place of another (the CLI appeared or moved) has
+    // not run yet: the id's started marker belongs to the one it replaces, so
+    // this instance gets its own `start` on its first turn.
+    this.#started.delete(adapter.agentId);
     this.#meta.set(adapter.agentId, {
       displayName: meta?.displayName ?? adapter.agentId,
       available: meta?.deprecated === true ? false : (meta?.available ?? true),
@@ -951,7 +956,9 @@ export class AgentManager {
     this.#activeTurnByThread.set(threadId, turnId);
 
     if (!this.#started.has(agentId)) {
-      await adapter.start({ agentId, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) });
+      // Agent-wide, never a turn's: the adapter's own folder comes with it, and
+      // a turn's `cwd` travels on the turn below, not into `start`.
+      await adapter.start({ agentId });
       this.#started.add(agentId);
     }
 
@@ -1117,23 +1124,26 @@ export class AgentManager {
    * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} →
    * `reject`).
    *
-   * The return type is the full {@link ApprovalDecision}: callers translate it
-   * into the wire shape their protocol expects — the Claude `PreToolUse` hook
-   * uses `allow`/`deny`, the Codex app-server uses the `ReviewDecision` oneOf
-   * (`approved` / `approved_for_session` / `denied` / `abort` / `timed_out`).
-   * A common pending map + common resolver keeps the phone's reply path
-   * (`turn/send { approvalResponse }`) uniform for both backends.
+   * The return type is the full {@link ApprovalDecision}: each adapter
+   * translates it into the wire shape its protocol expects (a stream-json
+   * `control_response`, an app-server decision, an ACP option, …). A common
+   * pending map + common resolver keeps the phone's reply path
+   * (`turn/send { approvalResponse }`) uniform for every agent.
+   *
+   * [signal] withdraws the request — the agent settled it itself, or the turn
+   * that asked is gone: it resolves `reject` and every client retires its card.
    */
   async requestApproval(
     threadId: string,
-    info: { toolName: string; input: Record<string, unknown> },
+    info: ApprovalRequestInfo,
+    signal?: AbortSignal,
   ): Promise<ApprovalDecision> {
     const turnId = this.#activeTurnByThread.get(threadId);
-    if (!turnId) return 'reject'; // no in-flight turn to attach the approval to
+    if (!turnId || signal?.aborted) return 'reject'; // nothing to attach the approval to
     const approvalId = `appr-${turnId}-${(this.#approvalSeq += 1)}`;
     this.#openInput(threadId, approvalId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
-    const content = approvalContent(approvalId, info.toolName, info.input);
+    const content = approvalContent(approvalId, info);
     try {
       await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
     } catch {
@@ -1144,6 +1154,14 @@ export class AgentManager {
     );
     return new Promise<ApprovalDecision>((resolve) => {
       this.#pendingHookApprovals.set(approvalId, { threadId, resolve, timer: undefined });
+      this.#withdrawOnAbort(signal, () => {
+        const pending = this.#pendingHookApprovals.get(approvalId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.#pendingHookApprovals.delete(approvalId);
+        pending.resolve('reject');
+        this.#announceApproval(threadId, approvalId, 'reject');
+      });
       // Only start the auto-reject countdown while a phone is connected to see
       // and answer the card. While offline the approval WAITS (the card replays
       // from the outbound log on reconnect), so the agent never takes an
@@ -1151,6 +1169,13 @@ export class AgentManager {
       // phone (re)connects — see onPhoneConnected.
       if (this.#isPhoneConnected()) this.#armApprovalTimeout(approvalId);
     });
+  }
+
+  /** Runs [withdraw] once if [signal] aborts (also when it already has). */
+  #withdrawOnAbort(signal: AbortSignal | undefined, withdraw: () => void): void {
+    if (!signal) return;
+    if (signal.aborted) withdraw();
+    else signal.addEventListener('abort', withdraw, { once: true });
   }
 
   /**
@@ -1200,11 +1225,10 @@ export class AgentManager {
   }
 
   /**
-   * Route a user's approval decision. Resolves a pending approval (shared by
-   * the Claude `PreToolUse` hook round-trip AND the Codex app-server
-   * elicitations) with the user's {@link ApprovalDecision}; the caller that
+   * Route a user's approval decision. Resolves a pending approval an adapter
+   * asked for with the user's {@link ApprovalDecision}; the adapter that
    * started the request translates that into its protocol's wire shape.
-   * Otherwise, when no hook/app-server approval is pending, forwards to the
+   * Otherwise, when no such approval is pending, forwards to the
    * agent adapter's `respondApproval` (e.g. the Echo demo) — no new turn is
    * created. Returns the in-flight turn id (or `''`) so the `turn/send` reply
    * still carries a `turnId`.
@@ -1255,9 +1279,13 @@ export class AgentManager {
    * {@link requestApproval}; the caller (the OpenCode adapter) translates the
    * returned answers into its CLI's reply shape.
    */
-  async requestQuestion(threadId: string, questions: QuestionItem[]): Promise<string[][]> {
+  async requestQuestion(
+    threadId: string,
+    questions: QuestionItem[],
+    signal?: AbortSignal,
+  ): Promise<string[][]> {
     const turnId = this.#activeTurnByThread.get(threadId);
-    if (!turnId) return []; // no in-flight turn to attach the question to
+    if (!turnId || signal?.aborted) return []; // nothing to attach the question to
     const questionId = `qst-${turnId}-${(this.#questionSeq += 1)}`;
     this.#openInput(threadId, questionId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
@@ -1272,6 +1300,14 @@ export class AgentManager {
     );
     return new Promise<string[][]>((resolve) => {
       this.#pendingQuestions.set(questionId, { threadId, resolve, timer: undefined });
+      this.#withdrawOnAbort(signal, () => {
+        const pending = this.#pendingQuestions.get(questionId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.#pendingQuestions.delete(questionId);
+        pending.resolve([]);
+        this.#announceQuestion(threadId, questionId, []);
+      });
       // Same offline posture as approvals: only run the auto-skip countdown while
       // a phone is connected to see and answer the card (see onPhoneConnected).
       if (this.#isPhoneConnected()) this.#armQuestionTimeout(questionId);

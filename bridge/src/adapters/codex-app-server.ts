@@ -2,8 +2,8 @@
  * Minimal JSON-RPC 2.0 client over newline-delimited stdio, used to talk to
  * `codex app-server`.
  *
- * Why a custom client (no deps): the bridge already has a one-line
- * `createInterface({ input })` reader per adapter and only needs request
+ * Why a custom client (no deps): the bridge already has one line reader
+ * (`json-lines.ts`) for every newline-delimited peer and only needs request
  * correlation, server-request routing, and clean shutdown. The protocol
  * surface is small and stable.
  *
@@ -23,7 +23,7 @@
  *  - Late responses (after the caller already moved on) are dropped, not
  *    surfaced.
  */
-import { createInterface, type Interface as RL } from 'node:readline';
+import { onLines, type LineReader } from '../json-lines.js';
 import type { Readable, Writable } from 'node:stream';
 
 export type RpcId = number | string;
@@ -62,7 +62,11 @@ export type ServerNotificationHandler = (method: string, params: unknown) => voi
  * A server-initiated REQUEST (has `id` + `method`) — we MUST reply. The handler
  * returns the `result` payload (or throws an `RpcError`, see below).
  */
-export type ServerRequestHandler = (method: string, params: unknown) => Promise<unknown> | unknown;
+export type ServerRequestHandler = (
+  method: string,
+  params: unknown,
+  id: RpcId,
+) => Promise<unknown> | unknown;
 
 export class RpcError extends Error {
   readonly code: number;
@@ -97,7 +101,7 @@ export class CodexAppServerRpc {
   readonly #stdin: Writable;
   readonly #stdout: Readable;
   readonly #requestTimeoutMs: number;
-  readonly #reader: RL;
+  readonly #reader: LineReader;
   readonly #pending = new Map<RpcId, PendingRequest>();
   readonly #onNotification: ServerNotificationHandler;
   readonly #onServerRequest: ServerRequestHandler;
@@ -118,8 +122,7 @@ export class CodexAppServerRpc {
     this.#onNotification = handlers.onNotification;
     this.#onServerRequest = handlers.onServerRequest;
     this.#onClose = streams.onClose;
-    this.#reader = createInterface({ input: this.#stdout, crlfDelay: Infinity });
-    this.#reader.on('line', (line) => {
+    this.#reader = onLines(this.#stdout, (line) => {
       void this.#handleLine(line);
     });
   }
@@ -269,7 +272,7 @@ export class CodexAppServerRpc {
       const method = parsed['method'];
       const params = parsed['params'];
       try {
-        const result = await this.#onServerRequest(method, params);
+        const result = await this.#onServerRequest(method, params, id);
         this.reply(id, result ?? null);
       } catch (err) {
         if (err instanceof RpcError) {

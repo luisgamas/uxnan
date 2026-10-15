@@ -20,8 +20,9 @@ function accepts(host: string, port: number): Promise<boolean> {
 }
 
 // A bridge whose LAN is off — the default Uxnan writes for a bridge it installs
-// on a server — still needs its HTTP endpoint for the agents' approval hook.
-// It must exist on this machine's loopback, and nowhere a network can reach.
+// on a server — still needs its HTTP endpoint for manual-code pairing run from
+// this machine. It must exist on this machine's loopback, and nowhere a network
+// can reach.
 test('with the LAN off the endpoint listens on loopback only and is published nowhere', async () => {
   const baseDir = join(tmpdir(), `uxnan-lan-off-${randomUUID()}`);
   await new DaemonState(baseDir).writeJson(DAEMON_FILES.config, {
@@ -37,13 +38,9 @@ test('with the LAN off the endpoint listens on loopback only and is published no
     const { port } = await bridge.startLan();
     assert.ok(port > 0);
 
-    // The approval hook answers on loopback (refusing a wrong token, which is
+    // The pairing route answers on loopback (refusing an unknown code, which is
     // proof the route is there).
-    const response = await fetch(`http://127.0.0.1:${port}/agent-hook/approval`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-uxnan-hook-token': 'wrong' },
-      body: JSON.stringify({ threadId: 't', toolName: 'Bash', input: {} }),
-    });
+    const response = await fetch(`http://127.0.0.1:${port}/pair/resolve?code=000000`);
     assert.equal(response.status, 403);
 
     // Not on any other address of this machine.

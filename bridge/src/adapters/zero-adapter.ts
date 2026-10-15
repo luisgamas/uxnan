@@ -61,6 +61,7 @@ import type {
   SendTurnOptions,
   TurnAttachment,
 } from '@uxnan/shared';
+import type { ApprovalRequester } from './user-input.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import type { AcpMcpServerHttp } from './acp-mcp.js';
@@ -193,10 +194,7 @@ export interface ZeroAdapterOptions {
    * decide; returns the user's {@link ApprovalDecision}. Absent in tests →
    * interactive requests fail safe to reject.
    */
-  onApprovalRequest?: (
-    threadId: string,
-    info: { toolName: string; input: Record<string, unknown> },
-  ) => Promise<ApprovalDecision>;
+  onApprovalRequest?: ApprovalRequester;
   /** Injected `zero acp` spawner (tests); [env] is added to the process's. */
   spawnAcp?: (env?: Record<string, string>) => SpawnedAcp;
 }
@@ -269,7 +267,10 @@ export class ZeroAdapter extends BaseAgentAdapter {
   #init: Promise<NdjsonRpc> | null = null;
   /** Ends the running `zero acp` process (closing the RPC alone leaves it alive). */
   #killAcp: (() => void) | undefined;
-  #defaultCwd = process.cwd();
+  /** Agent-wide folder, home: model catalogs and every other agent-wide work
+   *  run here, so a renamed or deleted project folder cannot break them. A
+   *  turn carries its own `cwd` and never writes this. */
+  #defaultCwd = homedir();
 
   /**
    * The directory a turn without its own `cwd` runs in — where the bridge must
@@ -413,8 +414,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
     return zeroSkillPrompt(name, args);
   }
 
-  start(config: AgentConfig): Promise<void> {
-    if (config.cwd) this.#defaultCwd = config.cwd;
+  start(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 

@@ -15,9 +15,16 @@ import {
   parseInitializeCommands,
   parseInitializeModels,
 } from '../../src/adapters/claude-adapter.js';
-import type { AgentStreamEvent } from '@uxnan/shared';
+import type { AccessMode, AgentStreamEvent, ApprovalDecision } from '@uxnan/shared';
 
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
+/** A `control_response` the adapter writes on stdin (the `response` of its line). */
+interface ControlResponse {
+  subtype: string;
+  request_id: string;
+  response: Record<string, unknown>;
+}
+
 interface FakeSpawn {
   args: string[];
   env?: Record<string, string>;
@@ -25,6 +32,8 @@ interface FakeSpawn {
   pipedStdin: boolean;
   /** User message texts written to stdin, in order — the prompt, then any follow-up. */
   sent: string[];
+  /** The `control_response`s written to stdin, in order: each answer to a `control_request`. */
+  controls: ControlResponse[];
   /** True once the adapter closed the pipe; the CLI only exits after this. */
   stdinEnded: boolean;
   feed(lines: string[]): void;
@@ -72,6 +81,7 @@ function fakeSpawner(options: { holdEcho?: boolean } = {}): {
       ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       sent: [],
+      controls: [],
       stdinEnded: false,
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
@@ -96,9 +106,15 @@ function fakeSpawner(options: { holdEcho?: boolean } = {}): {
         for (const line of chunk.toString('utf8').split('\n')) {
           if (!line.trim()) continue;
           const parsed = JSON.parse(line) as {
+            type?: string;
+            response?: ControlResponse;
             uuid?: string;
             message?: { content?: { type: string; text?: string }[] };
           };
+          if (parsed.type === 'control_response') {
+            record.controls.push(parsed.response!);
+            continue;
+          }
           const text = (parsed.message?.content ?? [])
             .filter((c) => c.type === 'text')
             .map((c) => c.text ?? '')
@@ -431,19 +447,15 @@ test('ClaudeCodeAdapter surfaces an error result as turn_error', async () => {
 });
 
 test('every access mode runs on its own CLI flag, the same on every turn', async () => {
-  const hook = {
-    token: 't',
-    scriptPath: 'C:/h.cjs',
-    url: () => 'http://127.0.0.1:19850/agent-hook/approval',
-  };
   const cases = [
+    { accessMode: 'requestApproval' as const, flags: ['--permission-mode', 'default'] },
     { accessMode: 'approveForMe' as const, flags: ['--permission-mode', 'auto'] },
     { accessMode: 'fullAccess' as const, flags: ['--dangerously-skip-permissions'] },
     { accessMode: 'plan' as const, flags: ['--permission-mode', 'plan'] },
   ];
   for (const { accessMode, flags } of cases) {
     const { spawnFn, last } = fakeSpawner();
-    const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn, approvalHook: hook });
+    const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
     const { done } = collect(adapter);
     await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', accessMode });
     last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
@@ -452,25 +464,22 @@ test('every access mode runs on its own CLI flag, the same on every turn', async
     const at = args.indexOf(flags[0]!);
     assert.ok(at >= 0, `${accessMode} passes ${flags.join(' ')}`);
     assert.deepEqual(args.slice(at, at + flags.length), flags);
-    // Only "request approval" asks the person, through the hook.
+    // Every mode asks the person over the stream, and none runs a hook.
+    const prompt = args.indexOf('--permission-prompt-tool');
+    assert.deepEqual(args.slice(prompt, prompt + 2), ['--permission-prompt-tool', 'stdio']);
     assert.equal(args.includes('--settings'), false, `${accessMode} carries no hook`);
   }
 });
 
-test('Claude Code offers "request approval" only when the bridge can serve its hook', () => {
-  const withHook = new ClaudeCodeAdapter({
-    binaryPath: 'claude',
-    approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
-  });
-  assert.deepEqual(withHook.capabilities.accessModes, [
+test('Claude Code always offers "request approval": asks come over the stream, not a hook', () => {
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
+  assert.deepEqual(adapter.capabilities.accessModes, [
     'requestApproval',
     'approveForMe',
     'fullAccess',
     'plan',
   ]);
-  const without = new ClaudeCodeAdapter({ binaryPath: 'claude' });
-  assert.deepEqual(without.capabilities.accessModes, ['approveForMe', 'fullAccess', 'plan']);
-  assert.equal(without.capabilities.defaultAccessMode, 'fullAccess');
+  assert.equal(adapter.capabilities.defaultAccessMode, 'fullAccess');
 });
 
 test('a turn the CLI runs in another mode than asked says so', async () => {
@@ -1045,61 +1054,388 @@ test('ClaudeCodeAdapter emits model_resolved from the init event', async () => {
   assert.equal((resolved?.data as { text: string }).text, 'claude-opus-4-8');
 });
 
-test('request approval injects the PreToolUse hook (--settings + --permission-mode) and env', async () => {
+/** A `can_use_tool` control request as the CLI writes it on stdout (`--permission-prompt-tool stdio`). */
+function canUseTool(
+  requestId: string,
+  toolName: string,
+  input: unknown,
+  extra: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    type: 'control_request',
+    request_id: requestId,
+    request: {
+      subtype: 'can_use_tool',
+      tool_name: toolName,
+      input,
+      tool_use_id: `tu-${requestId}`,
+      ...extra,
+    },
+  });
+}
+
+const TEA_OR_COFFEE = {
+  questions: [
+    {
+      question: 'Which do you prefer: A (tea) or B (coffee)?',
+      header: 'Drink',
+      options: [
+        { label: 'A: Tea', description: 'Choose tea' },
+        { label: 'B: Coffee', description: 'Choose coffee' },
+      ],
+      multiSelect: false,
+    },
+  ],
+};
+
+const COMPLETE = '{"type":"result","subtype":"success","is_error":false,"result":"done"}';
+
+test('parseClaudeLine reads a can_use_tool control request, and skips the rest of the control traffic', () => {
+  const ask = parseClaudeLine(
+    canUseTool(
+      'r1',
+      'Write',
+      { file_path: 'a.txt' },
+      {
+        permission_suggestions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+      },
+    ),
+  );
+  assert.equal(ask?.kind, 'permission_request');
+  assert.deepEqual(ask?.permission, {
+    requestId: 'r1',
+    toolName: 'Write',
+    input: { file_path: 'a.txt' },
+    suggestions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+  });
+  // Our own answer, echoed back on stdout, and any other control request.
+  assert.equal(
+    parseClaudeLine(
+      '{"type":"control_response","response":{"subtype":"success","request_id":"r1","response":{"behavior":"allow"}}}',
+    )?.kind,
+    'other',
+  );
+  assert.equal(
+    parseClaudeLine(
+      '{"type":"control_request","request_id":"r2","request":{"subtype":"initialize"}}',
+    )?.kind,
+    'other',
+  );
+});
+
+test('AskUserQuestion: the question reaches the person, and their answer goes back keyed by question', async () => {
   const { spawnFn, last } = fakeSpawner();
+  const asked: unknown[] = [];
   const adapter = new ClaudeCodeAdapter({
     binaryPath: 'claude',
     spawnFn,
-    approvalHook: {
-      token: 'tok-123',
-      scriptPath: 'C:/Users/x/.uxnan/hooks/claude-approval-hook.cjs',
-      url: () => 'http://127.0.0.1:19850/agent-hook/approval',
+    onQuestionRequest: (_threadId, questions) => {
+      asked.push(questions);
+      return Promise.resolve([['B: Coffee']]);
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'ask me' });
+  last().feedOpen([canUseTool('q1', 'AskUserQuestion', TEA_OR_COFFEE)]);
+  await flush();
+  await flush();
+  last().feed([COMPLETE]);
+  await done;
+
+  assert.deepEqual(asked, [
+    [
+      {
+        question: 'Which do you prefer: A (tea) or B (coffee)?',
+        header: 'Drink',
+        options: [
+          { label: 'A: Tea', description: 'Choose tea' },
+          { label: 'B: Coffee', description: 'Choose coffee' },
+        ],
+        multiple: false,
+        custom: true,
+      },
+    ],
+  ]);
+  assert.deepEqual(last().controls, [
+    {
+      subtype: 'success',
+      request_id: 'q1',
+      response: {
+        behavior: 'allow',
+        updatedInput: {
+          ...TEA_OR_COFFEE,
+          answers: { 'Which do you prefer: A (tea) or B (coffee)?': 'B: Coffee' },
+        },
+      },
+    },
+  ]);
+});
+
+test('AskUserQuestion: several chosen labels are joined, and an unanswered or unrouted question is refused', async () => {
+  const toppings = {
+    questions: [
+      {
+        question: 'Pick toppings',
+        header: 'Toppings',
+        options: [{ label: 'Ham' }, { label: 'Olives' }],
+        multiSelect: true,
+      },
+    ],
+  };
+  const answer = async (
+    onQuestionRequest:
+      | ((threadId: string, questions: unknown[]) => Promise<string[][]>)
+      | undefined,
+  ) => {
+    const { spawnFn, last } = fakeSpawner();
+    const adapter = new ClaudeCodeAdapter({
+      binaryPath: 'claude',
+      spawnFn,
+      ...(onQuestionRequest ? { onQuestionRequest } : {}),
+    });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'ask me' });
+    last().feedOpen([canUseTool('q2', 'AskUserQuestion', toppings)]);
+    await flush();
+    await flush();
+    last().feed([COMPLETE]);
+    await done;
+    return last().controls[0]?.response;
+  };
+
+  assert.deepEqual(await answer(() => Promise.resolve([['Ham', 'Olives']])), {
+    behavior: 'allow',
+    updatedInput: { ...toppings, answers: { 'Pick toppings': 'Ham, Olives' } },
+  });
+  const refused = { behavior: 'deny', message: 'The user did not answer.' };
+  assert.deepEqual(await answer(() => Promise.resolve([[]])), refused, 'skipped');
+  assert.deepEqual(await answer(undefined), refused, 'no requester');
+});
+
+test('request approval asks the person about each tool: allow, deny, or allow for the session', async () => {
+  const input = { file_path: 'hello.txt', content: 'hi' };
+  // As Claude 2.1.296 offers them: a rule for the project's local settings,
+  // which "for the session" must keep to the session.
+  const suggestions = [
+    {
+      type: 'addRules',
+      rules: [{ toolName: 'Write' }],
+      behavior: 'allow',
+      destination: 'localSettings',
+    },
+  ];
+  const kept = [{ ...suggestions[0], destination: 'session' }];
+  const cases: { decision?: ApprovalDecision; expected: Record<string, unknown> }[] = [
+    { decision: 'approve', expected: { behavior: 'allow', updatedInput: input } },
+    {
+      decision: 'approveSession',
+      expected: { behavior: 'allow', updatedInput: input, updatedPermissions: kept },
+    },
+    {
+      decision: 'reject',
+      expected: { behavior: 'deny', message: 'The user rejected this action.' },
+    },
+    {
+      expected: { behavior: 'deny', message: 'The user rejected this action.' },
+    },
+  ];
+  for (const { decision, expected } of cases) {
+    const { spawnFn, last } = fakeSpawner();
+    const asked: unknown[] = [];
+    const adapter = new ClaudeCodeAdapter({
+      binaryPath: 'claude',
+      spawnFn,
+      ...(decision !== undefined
+        ? {
+            onApprovalRequest: (threadId: string, info: unknown) => {
+              asked.push({ threadId, info });
+              return Promise.resolve(decision);
+            },
+          }
+        : {}),
+    });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: 'write it',
+      accessMode: 'requestApproval',
+    });
+    last().feedOpen([canUseTool('w1', 'Write', input, { permission_suggestions: suggestions })]);
+    await flush();
+    await flush();
+    last().feed([COMPLETE]);
+    await done;
+    assert.deepEqual(
+      last().controls.map((c) => c.response),
+      [expected],
+      String(decision),
+    );
+    if (decision !== undefined) {
+      assert.deepEqual(asked, [{ threadId: 't1', info: { toolName: 'Write', input } }]);
+    }
+  }
+});
+
+test('ExitPlanMode shows the plan, and the access mode decides whether implementing may start', async () => {
+  const plan = '# Plan: add a README\n\n1. Write README.md';
+  const input = { plan, planFilePath: '/tmp/plan.md' };
+  const cases: {
+    accessMode: AccessMode;
+    decision?: ApprovalDecision;
+    expected: Record<string, unknown>;
+    asked: boolean;
+  }[] = [
+    {
+      accessMode: 'plan',
+      expected: {
+        behavior: 'deny',
+        message: 'Plan only: stop here and wait for the user to switch modes before implementing.',
+      },
+      asked: false,
+    },
+    {
+      accessMode: 'fullAccess',
+      expected: { behavior: 'allow', updatedInput: input },
+      asked: false,
+    },
+    {
+      accessMode: 'approveForMe',
+      expected: { behavior: 'allow', updatedInput: input },
+      asked: false,
+    },
+    {
+      accessMode: 'requestApproval',
+      decision: 'approve',
+      expected: { behavior: 'allow', updatedInput: input },
+      asked: true,
+    },
+    {
+      accessMode: 'requestApproval',
+      decision: 'reject',
+      expected: { behavior: 'deny', message: 'The user wants to revise the plan.' },
+      asked: true,
+    },
+  ];
+  for (const { accessMode, decision, expected, asked: shouldAsk } of cases) {
+    const { spawnFn, last } = fakeSpawner();
+    const asked: unknown[] = [];
+    const adapter = new ClaudeCodeAdapter({
+      binaryPath: 'claude',
+      spawnFn,
+      onApprovalRequest: (_threadId, info) => {
+        asked.push(info);
+        return Promise.resolve(decision ?? 'reject');
+      },
+    });
+    const { done } = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'plan it', accessMode });
+    last().feedOpen([canUseTool('p1', 'ExitPlanMode', input)]);
+    await flush();
+    await flush();
+    last().feed([COMPLETE]);
+    const events = await done;
+
+    assert.deepEqual(
+      last().controls.map((c) => c.response),
+      [expected],
+      accessMode,
+    );
+    assert.equal(asked.length, shouldAsk ? 1 : 0, `${accessMode} asks the person`);
+    if (shouldAsk) {
+      assert.deepEqual(asked[0], {
+        toolName: 'ExitPlanMode',
+        input,
+        action: 'Start implementing this plan',
+      });
+    }
+    // The plan is the turn's answer, whatever the person decides on it.
+    const completed = events.find((e) => e.type === 'turn_completed');
+    assert.equal((completed?.data as { text: string }).text, `${plan}\n\n`, accessMode);
+  }
+});
+
+test('a request that arrives after the turn ended is not answered, nor asked of the person', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const asked: unknown[] = [];
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn,
+    onApprovalRequest: () => {
+      asked.push(true);
+      return Promise.resolve('approve');
     },
   });
   const { done } = collect(adapter);
   await adapter.sendTurn({
-    threadId: 'thread-1',
+    threadId: 't1',
     turnId: 'u1',
-    text: 'go',
+    text: 'hi',
     accessMode: 'requestApproval',
   });
-  last().feed([
-    '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
-  ]);
+  last().feedOpen([COMPLETE]);
   await done;
-
-  const args = last().args;
-  // The hook settings are injected, and default permission mode lets the hook run.
-  const settingsIdx = args.indexOf('--settings');
-  assert.ok(settingsIdx >= 0);
-  assert.match(args[settingsIdx + 1]!, /PreToolUse/);
-  assert.match(args[settingsIdx + 1]!, /claude-approval-hook\.cjs/);
-  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
-  // The per-turn env carries the endpoint URL, token and threadId for the hook.
-  assert.equal(last().env?.UXNAN_HOOK_THREAD_ID, 'thread-1');
-  assert.equal(last().env?.UXNAN_HOOK_TOKEN, 'tok-123');
-  assert.match(last().env?.UXNAN_HOOK_URL ?? '', /agent-hook\/approval/);
+  last().feedOpen([canUseTool('late', 'Bash', { command: 'rm -rf x' })]);
+  await flush();
+  await flush();
+  assert.deepEqual(asked, []);
+  assert.deepEqual(last().controls, []);
+  last().feed([]);
 });
 
-test('request approval before the hook endpoint exists fails the turn instead of running unasked', async () => {
-  const fake = fakeSpawner();
-  let spawned = 0;
-  const spawnFn: typeof fake.spawnFn = (...args) => {
-    spawned += 1;
-    return fake.spawnFn(...args);
-  };
-  const adapter = new ClaudeCodeAdapter({
-    binaryPath: 'claude',
-    spawnFn,
-    approvalHook: { token: 't', scriptPath: 'C:/h.cjs', url: () => undefined },
-  });
+test('TaskCreate and TaskUpdate keep one plan block, updated in place, instead of a row each', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collect(adapter);
-  await adapter.sendTurn({ threadId: 't', turnId: 'u', text: 'go', accessMode: 'requestApproval' });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'plan the work' });
+  last().feed([
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"tc_1","name":"TaskCreate","input":{"subject":"Run the demo","description":"Echo hello"}}]}}',
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tc_1","content":"Task #1 created successfully: Run the demo"}]},"tool_use_result":{"task":{"id":"1","subject":"Run the demo"}}}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"tu_1","name":"TaskUpdate","input":{"taskId":"1","status":"in_progress","activeForm":"Running the demo"}}]}}',
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tu_1","content":"Updated task #1 activeForm, status"}]},"tool_use_result":{"success":true,"taskId":"1"}}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"tu_2","name":"TaskUpdate","input":{"taskId":"1","status":"completed"}}]}}',
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tu_2","content":"Updated task #1 status"}]},"tool_use_result":{"success":true,"taskId":"1"}}',
+    COMPLETE,
+  ]);
   const events = await done;
-  assert.equal(spawned, 0, 'nothing ran');
-  assert.match(
-    String((events.find((e) => e.type === 'turn_error')?.data as { text: string }).text),
-    /cannot ask for approval yet/,
+
+  const blocks = events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content);
+  // No row for the task tools: each change re-sends the whole list as one plan.
+  assert.equal(blocks.length, 3);
+  assert.ok(blocks.every((b) => b['type'] === 'plan' && b['blockId'] === 'claude-tasks:t1'));
+  assert.deepEqual(
+    blocks.map((b) => (b['state'] as { steps: unknown[] }).steps),
+    [
+      [{ description: 'Run the demo', status: 'pending' }],
+      [{ description: 'Running the demo', status: 'in_progress' }],
+      [{ description: 'Run the demo', status: 'completed' }],
+    ],
+  );
+});
+
+test('request approval runs with the stdio prompt tool and no hook, and the env carries none', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    accessMode: 'requestApproval',
+  });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+  const args = last().args;
+  assert.deepEqual(
+    args.slice(args.indexOf('--permission-mode'), args.indexOf('--permission-mode') + 2),
+    ['--permission-mode', 'default'],
+  );
+  assert.equal(args.includes('--settings'), false);
+  assert.deepEqual(
+    Object.keys(last().env ?? {}).filter((k) => k.startsWith('UXNAN_HOOK_')),
+    [],
   );
 });
 

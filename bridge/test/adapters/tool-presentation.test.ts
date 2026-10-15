@@ -167,6 +167,40 @@ test('OpenCode: task is a subagent', () => {
   assert.equal(block['type'], 'subagent');
 });
 
+test('OpenCode 2: subagent is a subagent, its report unwrapped from the result tag', () => {
+  // Captured from opencode 2.0.29: the report sits inside `<subagent … state=…>`.
+  const input = { agent: 'explore', description: 'Read README first line', prompt: 'Read it.' };
+  assert.deepEqual(
+    opencodeToolBlock(
+      'subagent',
+      'p2',
+      input,
+      '<subagent sessionID="ses_1" state="completed">\n# scratch\n</subagent>',
+      false,
+    ),
+    {
+      type: 'subagent',
+      state: {
+        id: 'p2',
+        name: 'Read README first line',
+        status: 'completed',
+        output: '# scratch',
+      },
+    },
+  );
+  const failed = opencodeToolBlock(
+    'subagent',
+    'p3',
+    input,
+    '<subagent sessionID="ses_1" state="error">boom</subagent>',
+    false,
+  );
+  assert.equal((failed['state'] as { status: string }).status, 'error');
+  const erroredTool = opencodeToolBlock('subagent', 'p4', input, 'plain failure', true);
+  assert.equal((erroredTool['state'] as { status: string }).status, 'error');
+  assert.equal((erroredTool['state'] as { output: string }).output, 'plain failure');
+});
+
 test('ACP: the tool is named by its variant or its title, and the plan call is hidden', () => {
   // Grok: the title is for people; `variant` names the tool.
   const grok = acpToolBlock({
@@ -231,6 +265,34 @@ test('ACP: an ask_user call is shown as readable questions', () => {
   assert.match(output, /Python · JavaScript/);
   assert.match(output, /suggested: Python/);
   assert.match(output, /No interactive user is available\./);
+});
+
+test("ACP: an ask_user call with Grok's labelled options lists each label and its description", () => {
+  const block = acpToolBlock({
+    toolCallId: 't2',
+    title: 'Ask: Which language do you prefer?',
+    kind: 'other',
+    status: 'completed',
+    rawInput: {
+      variant: 'AskUserQuestion',
+      questions: [
+        {
+          question: 'Which language do you prefer?',
+          options: [{ label: 'Python', description: 'Prefer Python' }, { label: 'Bash' }],
+        },
+      ],
+    },
+    content: [
+      {
+        type: 'content',
+        content: { type: 'text', text: 'User has answered your questions: Python.' },
+      },
+    ],
+  });
+  const output = block?.['output'] as string;
+  assert.match(output, /Which language do you prefer\?/);
+  assert.match(output, /Python \(Prefer Python\) · Bash/);
+  assert.match(output, /User has answered your questions/);
 });
 
 test('ACP: a whole-file diff gets hunks, a snippet gets its lines', () => {

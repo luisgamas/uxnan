@@ -108,6 +108,10 @@ export interface OpenCodeCommandRun {
 export interface OpenCodeModel {
   /** `provider/model`. */
   id: string;
+  /** The name the CLI gives the model (OpenCode 2's `name`), shown instead of the id. */
+  displayName?: string;
+  /** The CLI marks it deprecated: still listed, but folded under "Older models". */
+  isLegacy?: boolean;
   contextWindow?: number;
   /**
    * The reasoning variants the model offers (OpenCode 2's `variants[].id`:

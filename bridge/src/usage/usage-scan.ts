@@ -15,12 +15,12 @@
  *
  * The raw records never leave this module: a summary carries sums only.
  */
+import { readLines } from '../json-lines.js';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createInterface } from 'node:readline';
 import type {
   UsageAgentSource,
   UsageBucket,
@@ -336,10 +336,10 @@ export class UsageScanner {
     const zeroModel = kind === 'zero' ? await zeroSessionModel(path) : 'unknown';
     let offset = current.offset;
     const stream = createReadStream(path, { start: current.offset, encoding: 'utf-8' });
-    const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    const lines = readLines(stream);
     for await (const line of lines) {
       // Only complete lines advance the offset: a line still being written is
-      // read whole next time. `readline` drops the newline; +1 puts it back
+      // read whole next time. The reader drops the newline; +1 puts it back
       // (a CRLF file is read again from a line start either way).
       const bytes = Buffer.byteLength(line, 'utf-8') + 1;
       if (offset + bytes > info.size) break;

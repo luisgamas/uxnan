@@ -235,15 +235,111 @@ test('V2 translator: a question form becomes question items, and its answer is k
         question: 'Do you prefer red or blue?',
         header: 'Color preference',
         options: [{ label: 'Red', description: 'You prefer red.' }, { label: 'Blue' }],
+        custom: true,
       },
     ],
   });
   const fields = t.formFields('frm_1') ?? [];
   assert.deepEqual(formAnswer(fields, [['Blue']]), { q0: 'Blue' });
-  assert.deepEqual(formAnswer([{ key: 'q', multiple: true }], [['a', 'b']]), { q: ['a', 'b'] });
   assert.deepEqual(formAnswer(fields, [[]]), {});
   t.translate('form.replied', { id: 'frm_1', sessionID: S, answer: { q0: 'Blue' } });
   assert.equal(t.formFields('frm_1'), undefined);
+});
+
+test('V2 translator: a multiselect field is a multiple-choice question, answered as an array', () => {
+  const t = new OpenCodeV2Translator();
+  const [question] = t.translate('form.created', {
+    form: {
+      id: 'frm_m',
+      sessionID: S,
+      title: 'Questions',
+      fields: [
+        {
+          key: 'q0',
+          title: 'Platforms',
+          description: 'Which platforms?',
+          type: 'multiselect',
+          options: [
+            { value: 'linux', label: 'Linux' },
+            { value: 'mac', label: 'macOS' },
+            { value: 'win', label: 'Windows' },
+          ],
+        },
+      ],
+    },
+  });
+  assert.deepEqual(question, {
+    kind: 'question',
+    sessionId: S,
+    requestId: 'frm_m',
+    questions: [
+      {
+        question: 'Which platforms?',
+        header: 'Platforms',
+        options: [{ label: 'Linux' }, { label: 'macOS' }, { label: 'Windows' }],
+        multiple: true,
+      },
+    ],
+  });
+  assert.deepEqual(formAnswer(t.formFields('frm_m') ?? [], [['Linux', 'Windows']]), {
+    q0: ['linux', 'win'],
+  });
+});
+
+test('V2 translator: a custom field is a question that may carry no options', () => {
+  const t = new OpenCodeV2Translator();
+  const [question] = t.translate('form.created', {
+    form: {
+      id: 'frm_c',
+      sessionID: S,
+      title: 'Questions',
+      fields: [
+        { key: 'q0', description: 'Name the project', type: 'string', options: [], custom: true },
+      ],
+    },
+  });
+  assert.deepEqual(question, {
+    kind: 'question',
+    sessionId: S,
+    requestId: 'frm_c',
+    questions: [{ question: 'Name the project', options: [], custom: true }],
+  });
+});
+
+test('formAnswer: a chosen label is sent as its value, and typed text only on a custom field', () => {
+  const choices = [
+    { value: 'MIT', label: 'MIT license' },
+    { value: 'GPL-3.0', label: 'GPL' },
+  ];
+  const plain = { key: 'q', multiple: false, custom: false, options: choices };
+  const custom = { ...plain, key: 'c', custom: true };
+  const many = { ...plain, key: 'm', multiple: true };
+  assert.deepEqual(formAnswer([plain], [['GPL']]), { q: 'GPL-3.0' });
+  // Text matching no label is the person's own answer only where the field allows one.
+  assert.deepEqual(formAnswer([plain], [['Apache-2.0']]), {});
+  assert.deepEqual(formAnswer([custom], [['Apache-2.0']]), { c: 'Apache-2.0' });
+  assert.deepEqual(formAnswer([custom], [['MIT license']]), { c: 'MIT' });
+  assert.deepEqual(formAnswer([many], [['MIT license', 'GPL', 'Other']]), {
+    m: ['MIT', 'GPL-3.0'],
+  });
+  assert.deepEqual(formAnswer([many], [['Other']]), {});
+  assert.deepEqual(formAnswer([plain, custom], [[], ['mine']]), { c: 'mine' });
+});
+
+test('openCodeV2Models names each model and folds deprecated ones as legacy', () => {
+  assert.deepEqual(
+    openCodeV2Models([
+      { id: 'ember-1', providerID: 'openrouter', name: 'Ember 1', status: 'active' },
+      { id: 'old-1', providerID: 'openrouter', name: 'Old 1', status: 'deprecated' },
+      { id: 'beta-1', providerID: 'openrouter', name: 'Beta 1', status: 'beta', enabled: true },
+      { id: 'hidden', providerID: 'openrouter', name: 'Hidden', enabled: false },
+    ]),
+    [
+      { id: 'openrouter/ember-1', displayName: 'Ember 1' },
+      { id: 'openrouter/old-1', displayName: 'Old 1', isLegacy: true },
+      { id: 'openrouter/beta-1', displayName: 'Beta 1' },
+    ],
+  );
 });
 
 test('openCodeV2Models maps the catalog to provider/model ids with their windows', () => {

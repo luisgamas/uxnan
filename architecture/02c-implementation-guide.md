@@ -469,7 +469,7 @@ async function readSessionFromJSONL(sessionId, { cursor, limit }) {
 ```javascript
 capabilities: {
   streaming: true,
-  approvals: true,                  // Claude Code soporta subagentes + PreToolUse hook
+  approvals: true,                  // Claude Code soporta subagentes + aprobaciones por stream-json (`can_use_tool`)
   forking: true,
   images: true,
   reportsContextUsage: true,

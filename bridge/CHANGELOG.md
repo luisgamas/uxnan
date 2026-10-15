@@ -4,6 +4,100 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Questions from every agent whose CLI can ask.** Claude Code's
+  `AskUserQuestion`, Grok's `ask_user_question` (`_x.ai/ask_user_question`) and
+  Codex's `item/tool/requestUserInput` reach the question card like OpenCode's
+  `question` tool; the answer goes back in each CLI's own shape. A question can
+  take the person's own words (`QuestionItem.custom`: Claude, Codex `isOther`,
+  OpenCode forms' `custom`). Codex's requests had been answered as approvals
+  with an empty set, and Grok's were refused.
+- **Leaving plan mode is one rule for every agent.** Claude Code's
+  `ExitPlanMode` and Grok's `_x.ai/exit_plan_mode` show the plan as the turn's
+  text; *Plan only* refuses, *Full access* and *Approve for me* go on, *Request
+  approval* asks with a "Start implementing this plan" card
+  (`ApprovalRequestInfo.action`). Grok had been answered with an error, which
+  aborted the turn and left it stuck in plan mode.
+- **A request the agent settles itself closes its card.** Approvals and
+  questions take an `AbortSignal`; Codex withdraws on `serverRequest/resolved`
+  and when its process goes away, Claude when its turn's process ends.
+- **Task lists from Claude Code 2.x, Antigravity and OpenCode 2's subagents.**
+  `TaskCreate` / `TaskUpdate` build the plan block (one list per thread);
+  Antigravity's `brain/<conversation>/task.md` checklist becomes the plan block
+  instead of a diff; OpenCode 2's `subagent` tool is a subagent row.
+- **Antigravity: one model per family, with its effort knob, and `/compact`.**
+  `gemini-3.8-flash-{low,medium,high}` is one model whose reasoning option runs
+  the tiered id (every `agy` version takes it), defaulting to the account's own
+  tier (`agy -p /model --output-format json`). `/compact` is offered and its
+  `checkpoint` step is a compaction marker.
+- **Codex: every `model/list` page, generated images, stdin approvals.** The
+  listing follows `nextCursor`; an `imageGeneration` item is a
+  `generate_image` row naming the saved file; a `writeStdin` approval says it
+  writes to a running command's input and shows no input text.
+
+### Changed
+
+- **Claude Code asks over its own stream-json channel.** Every turn runs with
+  `--permission-prompt-tool stdio`; tools, questions and plan exits arrive as
+  `can_use_tool` control requests answered on stdin. *Request approval* no
+  longer depends on the LAN or the bridge's HTTP endpoint. The `PreToolUse` hook,
+  its script under `~/.uxnan/hooks/` (deleted at startup when an older bridge
+  left it), the `POST /agent-hook/approval` route and its token are gone.
+  "Allow for the session" now holds: Claude's own rule for the call is kept for
+  the session (`destination: "session"`) — verified live, the same command is not
+  asked twice — and never written into the project's `.claude/settings.local.json`,
+  which is what echoing Claude's suggestion as offered does.
+- **pi's models come from RPC `get_available_models`** on a short-lived
+  `pi --mode rpc --no-session` (pi ≥ 0.74): exact context windows, `name`, and
+  only the reasoning levels pi allows each model (`thinkingLevelMap`). The
+  `--list-models` table parser is gone.
+- **Grok's context meter reads the last model call** (`session/prompt` →
+  `_meta.totalTokens`); `turn_completed` sums every call of the turn and is only
+  the fallback. Its model list follows `_x.ai/models/update` and each
+  `session/new` instead of being kept for the process's life.
+- **OpenCode: models by name, deprecated ones folded.** `/api/model`'s `name` is
+  the display name and `status: "deprecated"` sets `isLegacy`.
+- **One line reader for every newline-delimited stream** (`src/json-lines.ts`):
+  agents' stdout, the JSON-RPC transport, the MCP proxy and the usage scanner.
+  Node's `readline` also split a line at U+2028 / U+2029, which `JSON.stringify`
+  leaves unescaped, so a reply carrying one failed to parse.
+- **Approvals time out in one place.** The Codex adapter's own 5-minute timer
+  is gone: it answered Codex but left the card open, and it ran while no phone
+  could see the card.
+
+### Fixed
+
+- **Antigravity names conversations again.** The title model was pinned to
+  `gemini-3.6-flash-low`, which `agy` 1.3.x no longer has; it is now the lowest
+  flash tier `agy models` lists.
+- **An Antigravity `/compact` no longer reads as an error.** Its empty
+  `SUCCESS` after a `checkpoint` completes the turn.
+- **A pi command pi handles itself no longer hangs the turn.** A `prompt`
+  answered `disposition: "handled"` (pi ≥ 0.99) starts no run; the turn ends.
+- **An OpenCode multi-select question no longer hangs the turn.** 2.x sends
+  `type: "multiselect"`; the reply is an array of each option's `value`, and a
+  reply the server refuses dismisses the form instead of being swallowed.
+
+- **An agent whose CLI moves is picked up where it is now.** A refresh only
+  rebuilt an adapter when an agent's *availability* flipped, so a CLI relocated
+  while the bridge ran (npm global → `~/.local/bin`) left a stale adapter
+  spawning the path that was gone — 0 models, failing turns — while
+  `agent/doctor` already showed the new one. The adapter is now rebuilt
+  whenever the located command differs (binary path or prepended args), as well
+  as when the agent appears, and never while the agent has a turn running: then
+  nothing is recorded and the next refresh retries. A move alone announces
+  nothing (`stream/agents/updated`): the agent list the clients hold did not
+  change, only the path behind one of them.
+- **A renamed or deleted project folder no longer empties the model picker.**
+  Every adapter kept `start()`'s first turn's folder as its agent-wide default
+  (`#defaultCwd`) and ran its agent-wide work there forever — OpenCode 2
+  answered `GET /api/model` with a 404 `LocationNotFoundError` and pi's
+  `--list-models` spawn failed, so the picker showed 0 models. That default is
+  now the user's home, chosen with the adapter and never moved by a turn:
+  `#runTurn` no longer passes a turn's `cwd` to `adapter.start`, and Codex
+  resolves a turn's file changes (and the `git diff` behind them) against that
+  turn's own folder.
 
 ## [0.0.51-alpha.20261009] - 20261009
 ### Fixed
