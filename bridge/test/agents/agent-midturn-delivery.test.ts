@@ -175,7 +175,13 @@ async function harness(steering = true): Promise<Harness> {
     threadId: thread.id,
     notifications,
     methods: () => notifications.map((n) => n.method),
-    cleanup: () => rmrf(baseDir),
+    // The agent's events keep writing after a test's last assertion: stop
+    // them, let the store finish, then take the folder away.
+    cleanup: async () => {
+      await manager.stopAll();
+      await store.settled();
+      await rmrf(baseDir);
+    },
   };
 }
 

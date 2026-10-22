@@ -1380,6 +1380,15 @@ export class ThreadStore {
   }
 
   /**
+   * Resolves once every write requested so far has landed — what a caller that
+   * is about to take the store's directory away (a test's cleanup) waits for.
+   * A write still on its way then would land in a folder that is gone.
+   */
+  settled(): Promise<void> {
+    return this.#afterPendingWrites();
+  }
+
+  /**
    * Converts what an older bridge left, then reads every `thread.json` — and
    * nothing else, unless a crash left a turn's journal behind ({@link
    * #recoverJournals}).

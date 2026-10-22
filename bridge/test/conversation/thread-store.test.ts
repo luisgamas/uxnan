@@ -59,6 +59,24 @@ test('a turn read right after a write was asked for sees that write', async () =
   await rmrf(baseDir);
 });
 
+test('settled waits for every write asked for before it', async () => {
+  // A cleanup that removes the store's folder must not race a write still
+  // on its way (it landed in a folder that was gone, on Windows CI).
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  void store.appendDelta(thread.id, turnId, 'late', 3);
+  void store.completeTurn(thread.id, turnId, undefined, 4);
+  await store.settled();
+  const turnsDir = join(baseDir, 'threads', thread.id, 'turns');
+  assert.deepEqual(
+    (await readdir(turnsDir)).filter((name) => name.endsWith('.tmp') || name.endsWith('.journal')),
+    [],
+  );
+  assert.equal((await store.getTurn(turnId)).status, 'completed');
+  await rmrf(baseDir);
+});
+
 test('turn lifecycle: start, delta, complete', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
