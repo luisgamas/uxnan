@@ -2360,11 +2360,18 @@ class MessagesTable extends Table {
   TextColumn get threadId => text()();
   TextColumn get turnId => text()();
   TextColumn get role => text()();             // MessageRole serializado
-  TextColumn get contentsJson => text()();     // List<MessageContent> como JSON
+  TextColumn get contentsJson => text()();     // List<MessageContent> como JSON,
+                                               // en la forma de una pagina: pasos
+                                               // como `work`, razonamiento recortado
   TextColumn get deliveryState => text()();
   IntColumn get orderIndex => integer()();
-  TextColumn get fingerprint => text().nullable()();
+  TextColumn get fingerprint => text().nullable()(); // huella del mensaje del cable
+                                               // del que se construyo (re-sync barato)
   IntColumn get createdAtMs => integer()();
+  TextColumn get continuedIn => text().nullable()();
+  IntColumn get turnDurationMs => integer().nullable()();
+  TextColumn get previewText => text().nullable()(); // v13: inicio del texto; la
+                                               // fila de la lista no decodifica nada
 
   @override
   Set<Column> get primaryKey => {id};

@@ -11,6 +11,7 @@
  */
 import type { ApprovalDecision } from '../models/approval.js';
 import type { QueuePausedReason, Thread, Turn } from '../models/thread.js';
+import type { StepPreview } from '../models/history.js';
 import type { Project } from '../models/project.js';
 import type { BridgeSettings, ClientPresence } from '../models/sync.js';
 import type { BridgeUpdate, TrustedDevice } from '../models/session.js';
@@ -19,7 +20,7 @@ import type { AgentDescriptor } from '../agents/agent-capabilities.js';
 export const StreamNotification = {
   TurnStarted: 'stream/turn/started',
   MessageDelta: 'stream/message/delta',
-  /** A chunk of the agent's reasoning / "thinking" for this turn (`data.delta`). */
+  /** A chunk of the agent's reasoning for this turn — a `thinking` segment grows (`ThinkingDeltaParams`). */
   ThinkingDelta: 'stream/thinking/delta',
   /** A structured content block (command/diff/tool) the agent produced this turn. */
   ContentBlock: 'stream/content/block',
@@ -40,6 +41,14 @@ export const StreamNotification = {
   ThreadUpdated: 'stream/thread/updated',
   /** A thread was deleted. */
   ThreadDeleted: 'stream/thread/deleted',
+  /**
+   * The stored history of a thread changed outside a live turn: the bridge
+   * merged turns from the agent's own transcript (written in the agent's app
+   * or terminal) — imported, refreshed or dropped rows. A client showing that
+   * conversation re-reads its newest page (`turn/list { fromEnd: true }`);
+   * none of them polls for it (architecture/02a §5.8.8).
+   */
+  HistoryChanged: 'stream/history/changed',
   /**
    * A user turn was stored (started or queued), carrying the user's message —
    * so a client sees a message another client sent, in order, before the
@@ -96,7 +105,18 @@ export interface MessageDeltaParams {
   delta: string;
 }
 
-/** A chunk of the agent's reasoning ("thinking") for a turn. */
+/**
+ * A chunk of the agent's reasoning ("thinking") for a turn. It carries no
+ * index: every receiver places it by the one rule the bridge stores it by
+ * (`appendThinkingSegment`, `models/history.ts`) — the chunk extends the last
+ * segment of the turn's assistant message when that segment is a thought
+ * (`{ type:'thinking', text }`), and otherwise opens a new thought at the END
+ * of `segments`, never before an open text run. A text delta after it opens a
+ * new text run, and a block after it lands after it — at the `index` its
+ * `stream/content/block` names, which already counts the thought. Notified in
+ * arrival order with the text and blocks around it, so a client applying the
+ * rule builds the `segments` the bridge stores.
+ */
 export interface ThinkingDeltaParams {
   threadId: string;
   turnId: string;
@@ -105,16 +125,28 @@ export interface ThinkingDeltaParams {
 }
 
 /**
- * A structured content block (a serialized MessageContent: `command_execution`,
- * `diff`, `tool`, …) the agent produced during a turn. The phone decodes
- * `content` straight into a MessageContent and folds it into the streaming
- * message (Work log / Changed files).
+ * A block (a serialized MessageContent: `command_execution`, `diff`, `tool`,
+ * a plan, an approval, a view, …) the agent produced during a turn, as the
+ * bridge stored it — `index` says where. A step (`command_execution`, `diff`,
+ * `tool`) arrives as its {@link StepPreview}, bounded exactly as pages bound
+ * it, so a turn with thousands of steps streams no more than its previews;
+ * the whole step is `turn/step { index }`. Any other block arrives as stored.
+ * A thought never arrives here: it streams as `stream/thinking/delta`.
+ * A block with the `blockId` of one already shown replaces it in place (the
+ * same `index`).
  */
 export interface ContentBlockParams {
   threadId: string;
   turnId: string;
   messageId: string;
+  /** A {@link StepPreview} for a step; any other block as stored. */
   content: unknown;
+  /**
+   * Its index in the stored `segments` of the turn's assistant message — the
+   * address `turn/steps` and `turn/step` take, and the `from`/`to` a page's
+   * `work` run reports.
+   */
+  index: number;
   /**
    * `true` when the block arrived from a **parallel/background** activity (e.g.
    * a Claude Code subagent's tool run) while the assistant's main text was
@@ -226,6 +258,22 @@ export interface ThreadDeletedParams {
   threadId: string;
   /** Sync revision of the deletion (see `SyncChanges`). */
   rev?: number;
+}
+
+/**
+ * `stream/history/changed` — the turns stored for [threadId] changed outside a
+ * live turn, because the bridge merged what the agent's own transcript holds
+ * (architecture/02a §5.8.8). It says only that: a client showing the
+ * conversation re-reads its newest page; one that does not show it ignores it.
+ */
+export interface HistoryChangedParams {
+  threadId: string;
+  /**
+   * The thread's sync revision after the merge — the same `thread.rev` the
+   * `stream/thread/updated` sent just before carries. A client that already
+   * re-read the conversation at this revision or later can skip it.
+   */
+  rev: number;
 }
 
 /**

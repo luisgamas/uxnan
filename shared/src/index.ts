@@ -38,6 +38,7 @@ export * from './notifications/push-payload.js';
 
 // Models
 export * from './models/thread.js';
+export * from './models/history.js';
 export * from './models/git.js';
 export * from './models/workspace.js';
 export * from './models/project.js';

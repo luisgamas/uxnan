@@ -19,6 +19,8 @@ export const METHOD_NAMES = [
   'thread/delete',
   'turn/list',
   'turn/read',
+  'turn/steps',
+  'turn/step',
   'turn/send',
   'turn/cancel',
   'turn/attachment',
