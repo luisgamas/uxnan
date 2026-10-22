@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.53-alpha.20261022] - 20261022
 ### Added
 
 - **`turn/steps`, `turn/step`: what a page leaves out, on demand.**
