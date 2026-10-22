@@ -15,6 +15,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   now backs off like a failed attempt (0.5 s doubling to 30 s), the same policy
   for this machine's bridge and a host's, and the reason it closed is written
   to the diagnostics log.
+- **Closed chats let go of their conversation.** Every chat opened in a session
+  kept its whole history in memory until the app quit, and every reconnect
+  loaded all of them again. A conversation now lives while a chat shows it —
+  or until the bridge confirms a message it was still sending — and a
+  reconnect reloads only the chats on screen.
 
 ## [0.0.81] - 20261015
 ### Changed

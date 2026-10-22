@@ -118,6 +118,8 @@ export class ChatStore {
   readonly #modelRequests = new Map<string, Promise<AgentModel[]>>();
   #prefetching = false;
   #conversations = new SvelteMap<string, Conversation>();
+  /** How many mounted chats show each thread (`open` / `release`). */
+  readonly #shown = new Map<string, number>();
   /** Images of user messages already fetched (`attachment`), by thread and id. */
   readonly #attachments = new Map<string, Promise<string>>();
   #started = false;
@@ -179,7 +181,10 @@ export class ChatStore {
       this.loadAgents(),
       this.loadHolds(),
       ...[...this.#models.keys()].map((id) => this.modelsFor(id, { fresh: true })),
-      ...[...this.#conversations.values()].map((c) => c.load()),
+      // Only what a chat shows: the rest loads when it is opened again.
+      ...[...this.#conversations.entries()]
+        .filter(([id]) => this.#shown.has(id))
+        .map(([, c]) => c.load()),
     ]);
   }
 
@@ -409,7 +414,9 @@ export class ChatStore {
     return out;
   }
 
-  /** The live view of one thread, created (and loaded) on first use. */
+  /** The live view of one thread, created (and loaded) on first use. Kept
+   *  while a chat shows it ({@link open}) or it holds a message the bridge has
+   *  not confirmed; see {@link release}. */
   conversation(threadId: string): Conversation {
     let conversation = this.#conversations.get(threadId);
     if (!conversation) {
@@ -430,9 +437,30 @@ export class ChatStore {
     return threadId ? this.#conversations.get(threadId) : undefined;
   }
 
-  /** Stop tracking a thread no tab shows anymore. */
+  /** A mounted chat starts showing [threadId]: its conversation is kept and
+   *  re-synced on every reconnect until the matching {@link release}. */
+  open(threadId: string): Conversation {
+    this.#shown.set(threadId, (this.#shown.get(threadId) ?? 0) + 1);
+    return this.conversation(threadId);
+  }
+
+  /** A chat stopped showing [threadId]. Once none does, its conversation goes:
+   *  every one ever opened used to stay for the whole session — each a full
+   *  copy of its history — and every reconnect loaded all of them again.
+   *  Opening it again loads it fresh. */
   release(threadId: string): void {
-    this.#conversations.delete(threadId);
+    const left = (this.#shown.get(threadId) ?? 0) - 1;
+    if (left > 0) this.#shown.set(threadId, left);
+    else this.#shown.delete(threadId);
+    this.#dropIfUnused(threadId);
+  }
+
+  /** Forget a conversation no chat shows, unless it still holds a message the
+   *  bridge has not confirmed: the echo that confirms it is applied there. */
+  #dropIfUnused(threadId: string): void {
+    if (this.#shown.has(threadId)) return;
+    const conversation = this.#conversations.get(threadId);
+    if (conversation && conversation.pending.length === 0) this.#conversations.delete(threadId);
   }
 
   /** Every session a terminal holds now — after a reconnect, when some
@@ -534,6 +562,7 @@ export class ChatStore {
     const threadId = threadIdOf(notification);
     if (!threadId) return;
     this.#conversations.get(threadId)?.apply(notification);
+    this.#dropIfUnused(threadId);
     // A turn arriving or starting is activity: keep the list's order honest
     // without a refetch.
     if (notification.method === 'stream/turn/created' || notification.method === 'stream/turn/started') {
