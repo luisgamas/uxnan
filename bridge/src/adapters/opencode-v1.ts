@@ -16,6 +16,7 @@
 import type { QuestionItem, QuestionOption } from '@uxnan/shared';
 import { extractPlanSteps } from './content-blocks.js';
 import { opencodeToolBlock } from './opencode-tools.js';
+import { ReplySegments } from './reply-segments.js';
 import {
   approvalInput,
   isPlanTool,
@@ -330,19 +331,17 @@ export function openCodeV1History(messages: unknown[]): OpenCodeHistoryMessage[]
     // OpenCode stamps `finish` (current) or a completion time (older 1.x), or a
     // polling phone would freeze partial prose as a completed turn.
     if (role === 'assistant' && !info['finish'] && time['completed'] === undefined) continue;
-    const texts: string[] = [];
-    const thoughts: string[] = [];
-    const blocks: unknown[] = [];
+    const reply = new ReplySegments();
     for (const part of Array.isArray(value['parts']) ? value['parts'] : []) {
       if (!isRecord(part)) continue;
-      if (part['type'] === 'text' && typeof part['text'] === 'string') texts.push(part['text']);
+      if (part['type'] === 'text' && typeof part['text'] === 'string') reply.text(part['text']);
       else if (part['type'] === 'reasoning' && typeof part['text'] === 'string') {
-        thoughts.push(part['text']);
+        reply.thought(part['text']);
       } else if (part['type'] === 'tool') {
         const state = isRecord(part['state']) ? part['state'] : {};
         const status = str(state['status']);
         if (status !== 'completed' && status !== 'error') continue;
-        blocks.push(
+        reply.block(
           opencodeToolBlock(
             str(part['tool']),
             str(part['id']),
@@ -353,15 +352,14 @@ export function openCodeV1History(messages: unknown[]): OpenCodeHistoryMessage[]
         );
       }
     }
-    const message: OpenCodeHistoryMessage = {
+    const { text, segments } = reply.build();
+    if (segments.length === 0) continue;
+    out.push({
       role,
-      text: texts.join('').trim(),
+      text,
+      ...(role === 'assistant' ? { segments } : {}),
       createdAt: epochMs(time['created']),
-    };
-    const thinking = thoughts.join('').trim();
-    if (thinking) message.thinking = thinking;
-    if (blocks.length > 0) message.blocks = blocks;
-    if (message.text || message.thinking || message.blocks?.length) out.push(message);
+    });
   }
   return out;
 }

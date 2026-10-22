@@ -356,6 +356,80 @@ test('turn/list reconciles native-only turns even when the bridge store is non-e
   await rmrf(baseDir);
 });
 
+test('an idle turn/list that merges new native turns tells every client, once', async () => {
+  const { bridge, baseDir } = await boot();
+  const projectId = ((await bridge.context.projects.list())[0] as Project | undefined)?.id;
+  assert.ok(projectId);
+  const thread = await bridge.context.threadStore.startThread({ projectId, agentId: 'codex' }, 100);
+  await bridge.context.threadStore.setAgentSession(thread.id, 'native-session');
+  // The reader as it answers for a one-file transcript — never the real home.
+  const reader = bridge.context.sessionHistory as unknown as {
+    readTurns: typeof bridge.context.sessionHistory.readTurns;
+    sourceSignature: typeof bridge.context.sessionHistory.sourceSignature;
+  };
+  reader.sourceSignature = async () => '["rollout.jsonl",42,1]';
+  reader.readTurns = async (_source, threadId) => [
+    {
+      id: 'native-session#t0',
+      threadId,
+      status: 'completed',
+      createdAt: 120,
+      completedAt: 122,
+      messages: [
+        {
+          id: 'native-session#m0',
+          turnId: 'native-session#t0',
+          role: 'user',
+          content: 'written in the terminal',
+          createdAt: 120,
+        },
+        {
+          id: 'native-session#m1',
+          turnId: 'native-session#t0',
+          role: 'assistant',
+          content: 'answered there',
+          createdAt: 122,
+        },
+      ],
+    },
+  ];
+  // Two connected clients: the one reading and another that shows it too.
+  const sent: { reader: unknown[]; other: unknown[] } = { reader: [], other: [] };
+  bridge.context.sessionRegistry.register('reader', { send: (m) => sent.reader.push(m) });
+  bridge.context.sessionRegistry.register('other', { send: (m) => sent.other.push(m) });
+  const historyChanged = (messages: unknown[]): unknown[] =>
+    messages.filter((m) => (m as { method?: string }).method === 'stream/history/changed');
+
+  const list = (): Promise<unknown> =>
+    bridge.router.dispatch(makeRequest('l', 'turn/list', { threadId: thread.id, fromEnd: true }), {
+      sessionId: 'reader',
+      deviceId: 'reader',
+    });
+  const response = await list();
+  assert.ok(response && typeof response === 'object' && 'result' in response);
+  assert.equal(
+    (response.result as TurnList).turns[0]?.messages[0]?.content,
+    'written in the terminal',
+  );
+
+  const rev = (await bridge.context.threadStore.getThread(thread.id)).rev;
+  for (const messages of [sent.reader, sent.other]) {
+    assert.deepEqual(
+      historyChanged(messages).map((m) => (m as { params: unknown }).params),
+      [{ threadId: thread.id, rev }],
+    );
+  }
+  // The read keeps the conversation watched for the client that made it.
+  assert.deepEqual(bridge.context.historyWatcher.watched(), [thread.id]);
+
+  // Nothing new in the transcript: a second read announces nothing.
+  await list();
+  assert.equal(historyChanged(sent.other).length, 1);
+
+  await bridge.stop();
+  await rmrf(baseDir);
+});
+
 test('turn/send rejects a message with neither text nor attachments', async () => {
   const { bridge, baseDir } = await boot();
 

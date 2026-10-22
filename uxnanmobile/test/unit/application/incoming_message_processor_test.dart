@@ -89,6 +89,59 @@ void main() {
       expect((content as CommandExecutionContent).command, 'ls');
     });
 
+    test('stream/history/changed names the conversation to re-read', () {
+      expect(
+        processor.classify(
+          note('stream/history/changed', {'threadId': 'th1', 'rev': 9}),
+        ),
+        const HistoryChangedEvent(threadId: 'th1', rev: 9),
+      );
+      expect(
+        processor.classify(note('stream/history/changed', {'rev': 9})),
+        isA<UnknownDomainEvent>(),
+      );
+    });
+
+    test('stream/content/block keeps where the bridge stored the block', () {
+      final preview = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'index': 7,
+          'content': {
+            'type': 'command_execution',
+            'index': 7,
+            'command': 'make',
+            'commandChars': 9000,
+            'status': 'running',
+          },
+        }),
+      ) as ContentBlockEvent;
+      expect(preview.index, 7);
+      final command = preview.content as CommandExecutionContent;
+      expect((command.index, command.commandChars), (7, 9000));
+
+      // A step whose content lacks the index takes the notification's.
+      final bare = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'index': 8,
+          'content': {'type': 'diff', 'filename': 'a', 'additions': 1},
+        }),
+      ) as ContentBlockEvent;
+      expect((bare.content as DiffContent).index, 8);
+
+      // Any other block keeps its own shape.
+      final plan = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'index': 9,
+          'content': {'type': 'holographic'},
+        }),
+      ) as ContentBlockEvent;
+      expect(plan.index, 9);
+      expect((plan.content as UnknownContent).raw, {'type': 'holographic'});
+    });
+
     test('stream/content/block with non-map content degrades gracefully', () {
       final event = processor.classify(
         note('stream/content/block', {'turnId': 't1', 'content': 'nope'}),

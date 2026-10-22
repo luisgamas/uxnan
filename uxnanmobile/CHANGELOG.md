@@ -5,6 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Long conversations open fast and stay smooth.** The phone now receives a
+  conversation the way it reads: each answer whole, and the commands, edits
+  and tool calls behind it summarized. Opening a work log loads its steps
+  then (a page at a time, with *Show more steps*); a long command output
+  shows its last lines with *Show full output*; a changed file opens on its
+  own screen, which draws only what is on screen however large it is. Without a connection to your
+  computer, a work log says what it did and loads its steps once you are
+  back. Large messages are read in the background, a conversation that
+  didn't change costs almost nothing to check, and the conversation list no
+  longer reads whole messages to show each row's last reply.
+- **The agent's reasoning sits where it happened.** Each stretch of thinking
+  is now a line in the work log, between the commands it led to: "Thinking"
+  while the agent is still at it, then "Thought" and what it thought. Tap it
+  to read it in place; while it is being written it follows the newest words,
+  unless you scroll up. A long one opens whole. The separate "Thinking" panel
+  at the top of an answer is gone.
+- **Turns from your computer's terminal appear when they happen, without the
+  phone asking every few seconds.** The bridge now tells the phone when the
+  open conversation gained turns written elsewhere (in the agent's own
+  terminal or app); the phone no longer re-reads the conversation every three
+  seconds, which saves battery and your computer's work.
+- Requires a bridge that serves bounded history and announces history changes
+  (plans/046). An answer the bridge refuses as too large leaves the
+  conversation as it was.
 
 ## [0.0.44-alpha.20261015+20261015] - 20261015
 ### Changed

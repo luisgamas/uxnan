@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile, rm } from 'node:fs/promises';
 import { SessionHistoryReader, openCodeV1History, openCodeV2History } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
+import { segmentTypes, stepsOf, thoughtsOf } from '../helpers/steps.js';
 
 /** Build a throwaway fake-home tree and return its path + a cleanup fn. */
 async function fakeHome(): Promise<{ home: string; cleanup: () => Promise<void> }> {
@@ -156,7 +157,11 @@ test('claude: parses user/assistant turns, keeps thinking, skips tool_result ech
     assert.equal(t.messages[0]!.content, 'hi claude');
     assert.equal(t.messages[1]!.role, 'assistant');
     assert.equal(t.messages[1]!.content, 'hello there');
-    assert.equal(t.messages[1]!.thinking, 'pondering');
+    // The thought stands where it was thought: before the prose it led to.
+    assert.deepEqual(t.messages[1]!.segments, [
+      { type: 'thinking', text: 'pondering' },
+      { type: 'text', text: 'hello there' },
+    ]);
   } finally {
     await cleanup();
   }
@@ -520,11 +525,11 @@ test('claude: pairs tool_use + tool_result into structured blocks on the assista
     assert.equal(assistants.length, 1);
     const assistant = assistants[0]!;
     assert.equal(assistant.content, 'running lsdone');
-    assert.equal(assistant.blocks?.length, 1);
-    assert.equal(block(assistant.blocks![0]).type, 'command_execution');
-    assert.equal(block(assistant.blocks![0]).command, 'ls');
-    assert.equal(block(assistant.blocks![0]).status, 'completed');
-    assert.equal(block(assistant.blocks![0]).output, 'a.txt\nb.txt');
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(assistant)[0]).command, 'ls');
+    assert.equal(block(stepsOf(assistant)[0]).status, 'completed');
+    assert.equal(block(stepsOf(assistant)[0]).output, 'a.txt\nb.txt');
     assert.deepEqual(
       (assistant.segments ?? []).map((s) => block(s).type),
       ['text', 'command_execution', 'assistant_response_boundary', 'text'],
@@ -565,12 +570,12 @@ test('claude: Edit tool becomes a diff block with +/- lines', async () => {
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th-CE');
     const assistant = turns![0]!.messages[1]!;
-    assert.equal(assistant.blocks?.length, 1);
-    assert.equal(block(assistant.blocks![0]).type, 'diff');
-    assert.equal(block(assistant.blocks![0]).filename, 'a.txt');
-    assert.equal(block(assistant.blocks![0]).diff, '-foo\n+bar');
-    assert.equal(block(assistant.blocks![0]).additions, 1);
-    assert.equal(block(assistant.blocks![0]).deletions, 1);
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'diff');
+    assert.equal(block(stepsOf(assistant)[0]).filename, 'a.txt');
+    assert.equal(block(stepsOf(assistant)[0]).diff, '-foo\n+bar');
+    assert.equal(block(stepsOf(assistant)[0]).additions, 1);
+    assert.equal(block(stepsOf(assistant)[0]).deletions, 1);
   } finally {
     await cleanup();
   }
@@ -622,11 +627,11 @@ test('codex (legacy): command_execution becomes a command_execution block', asyn
     const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CL');
     assert.equal(turns!.length, 1);
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
-    assert.equal(assistant?.blocks?.length, 1);
-    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
-    assert.equal(block(assistant!.blocks![0]).command, 'ls');
-    assert.equal(block(assistant!.blocks![0]).output, 'a\nb\nc');
-    assert.equal(block(assistant!.blocks![0]).status, 'completed');
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(assistant)[0]).command, 'ls');
+    assert.equal(block(stepsOf(assistant)[0]).output, 'a\nb\nc');
+    assert.equal(block(stepsOf(assistant)[0]).status, 'completed');
   } finally {
     await cleanup();
   }
@@ -674,9 +679,9 @@ test('codex (legacy): file_change becomes a file_change diff block (path + count
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CF');
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
-    assert.equal(assistant?.blocks?.length, 1);
-    assert.equal(block(assistant!.blocks![0]).type, 'diff');
-    assert.equal(block(assistant!.blocks![0]).filename, 'foo.txt');
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'diff');
+    assert.equal(block(stepsOf(assistant)[0]).filename, 'foo.txt');
   } finally {
     await cleanup();
   }
@@ -730,11 +735,11 @@ test('codex (newer 0.98+): function_call shell_command pairs with function_call_
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CN');
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
-    assert.equal(assistant?.blocks?.length, 1);
-    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
-    assert.equal(block(assistant!.blocks![0]).command, 'echo hi');
-    assert.equal(block(assistant!.blocks![0]).status, 'completed');
-    assert.match(block(assistant!.blocks![0]).output as string, /hi/);
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(assistant)[0]).command, 'echo hi');
+    assert.equal(block(stepsOf(assistant)[0]).status, 'completed');
+    assert.match(block(stepsOf(assistant)[0]).output as string, /hi/);
   } finally {
     await cleanup();
   }
@@ -788,9 +793,9 @@ test('codex: function_call with non-zero exit code surfaces as command_execution
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CE');
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
-    assert.equal(assistant?.blocks?.length, 1);
-    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
-    assert.equal(block(assistant!.blocks![0]).status, 'error');
+    assert.equal(stepsOf(assistant).length, 1);
+    assert.equal(block(stepsOf(assistant)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(assistant)[0]).status, 'error');
   } finally {
     await cleanup();
   }
@@ -840,7 +845,9 @@ test('codex: reasoning items surface as assistant thinking (summary only when en
     const turns = await reader.readTurns({ agentId: 'codex', agentSessionId: sid }, 'th-CR');
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
     assert.ok(assistant);
-    assert.match(assistant!.thinking ?? '', /Step 1.*Step 2/s);
+    assert.equal(thoughtsOf(assistant).length, 1);
+    assert.match(thoughtsOf(assistant)[0]!, /Step 1.*Step 2/s);
+    assert.deepEqual(segmentTypes(assistant), ['thinking', 'text']);
   } finally {
     await cleanup();
   }
@@ -916,18 +923,18 @@ test('opencode: tool parts in a message become structured blocks (bash + edit)',
     );
     const reply = messages[1]!;
     assert.equal(reply.content, 'running lsedited');
-    assert.equal(reply.blocks?.length, 2);
-    assert.equal(block(reply.blocks![0]).type, 'command_execution');
-    assert.equal(block(reply.blocks![0]).command, 'ls');
-    assert.equal(block(reply.blocks![1]).type, 'diff');
-    assert.equal(block(reply.blocks![1]).filename, 'a.txt');
-    assert.match(block(reply.blocks![1]).diff as string, /-foo.*\+bar/s);
+    assert.equal(stepsOf(reply).length, 2);
+    assert.equal(block(stepsOf(reply)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(reply)[0]).command, 'ls');
+    assert.equal(block(stepsOf(reply)[1]).type, 'diff');
+    assert.equal(block(stepsOf(reply)[1]).filename, 'a.txt');
+    assert.match(block(stepsOf(reply)[1]).diff as string, /-foo.*\+bar/s);
   } finally {
     await cleanup();
   }
 });
 
-test('opencode: reasoning parts become assistant thinking', async () => {
+test('opencode: reasoning parts become thoughts where they stand', async () => {
   const { home, cleanup } = await fakeHome();
   try {
     const sid = 'ses_oc_thinking_1';
@@ -962,7 +969,10 @@ test('opencode: reasoning parts become assistant thinking', async () => {
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'opencode', agentSessionId: sid }, 'th-OT');
     const assistant = turns![0]!.messages.find((m) => m.role === 'assistant');
-    assert.equal(assistant?.thinking, 'pondering the answer');
+    assert.deepEqual(assistant?.segments, [
+      { type: 'thinking', text: 'pondering the answer' },
+      { type: 'text', text: 'the answer' },
+    ]);
     assert.equal(assistant?.content, 'the answer');
   } finally {
     await cleanup();
@@ -1020,16 +1030,16 @@ test('pi: toolCall content block in assistant + toolResult message become a pair
     assert.equal(assistants.length, 1, 'one assistant message per turn');
     const reply = assistants[0]!;
     assert.equal(reply.content, 'you are in C:/proj');
-    assert.equal(reply.blocks?.length, 1);
-    assert.equal(block(reply.blocks![0]).type, 'command_execution');
-    assert.equal(block(reply.blocks![0]).command, 'pwd');
-    assert.equal(block(reply.blocks![0]).output, 'C:/proj');
+    assert.equal(stepsOf(reply).length, 1);
+    assert.equal(block(stepsOf(reply)[0]).type, 'command_execution');
+    assert.equal(block(stepsOf(reply)[0]).command, 'pwd');
+    assert.equal(block(stepsOf(reply)[0]).output, 'C:/proj');
   } finally {
     await cleanup();
   }
 });
 
-test('pi: think tags inside assistant text are extracted into Message.thinking', async () => {
+test('pi: think tags inside assistant text become thoughts where they stand', async () => {
   const { home, cleanup } = await fakeHome();
   try {
     const sid = 'sess-pi-thinking';
@@ -1060,7 +1070,10 @@ test('pi: think tags inside assistant text are extracted into Message.thinking',
     const turns = await reader.readTurns({ agentId: 'pi-agent', agentSessionId: sid }, 'th-PTh');
     const assistant = turns![0]!.messages[0]!;
     assert.equal(assistant.role, 'assistant');
-    assert.equal(assistant.thinking, 'I need to think about this');
+    assert.deepEqual(assistant.segments, [
+      { type: 'thinking', text: 'I need to think about this' },
+      { type: 'text', text: 'Here is the answer.' },
+    ]);
     assert.equal(assistant.content, 'Here is the answer.');
   } finally {
     await cleanup();
@@ -1097,7 +1110,8 @@ test('opencode 1: reads the official serve message API and ignores a live assist
   );
   assert.equal(turns?.length, 2);
   assert.equal(turns?.[0]?.messages[1]?.content, 'completed answer');
-  assert.equal(turns?.[0]?.messages[1]?.thinking, 'checking');
+  assert.deepEqual(segmentTypes(turns?.[0]?.messages[1]), ['thinking', 'text']);
+  assert.deepEqual(thoughtsOf(turns?.[0]?.messages[1]), ['checking']);
   assert.equal(turns?.[1]?.messages.length, 1, 'the unfinished answer is not imported');
 });
 
@@ -1143,7 +1157,9 @@ test('opencode 2: reads typed messages and ignores an unfinished assistant', asy
   assert.equal(turns?.length, 2);
   const answer = turns?.[0]?.messages[1];
   assert.equal(answer?.content, 'It printed probe.');
-  assert.equal(answer?.thinking, 'I will run it');
+  // Part order: the thought, the command it led to, the prose.
+  assert.deepEqual(segmentTypes(answer), ['thinking', 'command_execution', 'text']);
+  assert.deepEqual(thoughtsOf(answer), ['I will run it']);
   assert.equal(turns?.[1]?.messages.length, 1, 'the unfinished answer is not imported');
 });
 
@@ -1217,8 +1233,255 @@ test('grok: imports only ACP turns closed by turn_completed', async () => {
     assert.equal(turns?.length, 1);
     assert.equal(turns?.[0]?.messages[0]?.content, 'from Grok TUI');
     assert.equal(turns?.[0]?.messages[1]?.content, 'grok answer');
-    assert.equal(turns?.[0]?.messages[1]?.thinking, 'thinking');
+    assert.deepEqual(turns?.[0]?.messages[1]?.segments, [
+      { type: 'thinking', text: 'thinking' },
+      { type: 'text', text: 'grok answer' },
+    ]);
   } finally {
     await cleanup();
   }
+});
+
+test('sourceSignature names a transcript file as it is now, and changes when it does', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const claude = { agentId: 'claude-code', agentSessionId: 'sig-claude' };
+    assert.equal(await reader.sourceSignature(claude), undefined, 'no file yet');
+
+    const fresh = new SessionHistoryReader({ homeDir: home });
+    const file = join(home, '.claude', 'projects', 'p', 'sig-claude.jsonl');
+    await writeLines(file, [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
+    const first = await fresh.sourceSignature(claude);
+    assert.ok(first?.includes('sig-claude.jsonl'));
+    assert.equal(await fresh.sourceSignature(claude), first, 'unchanged file, same signature');
+    await appendFile(file, `${JSON.stringify({ type: 'assistant' })}\n`);
+    assert.notEqual(await fresh.sourceSignature(claude), first);
+
+    // Zero's transcript sits at a known path; Grok's in its session folder.
+    await writeLines(join(home, '.local', 'share', 'zero', 'sessions', 'z1', 'events.jsonl'), [{}]);
+    assert.ok(await fresh.sourceSignature({ agentId: 'zero', agentSessionId: 'z1' }));
+    await writeLines(join(home, '.grok', 'sessions', 'enc', 'g1', 'updates.jsonl'), [{}]);
+    assert.ok(await fresh.sourceSignature({ agentId: 'grok', agentSessionId: 'g1' }));
+
+    // OpenCode's history is not one file, and nothing names an unknown agent's.
+    assert.equal(
+      await fresh.sourceSignature({ agentId: 'opencode', agentSessionId: 'o1' }),
+      undefined,
+    );
+    assert.equal(await fresh.sourceSignature({ agentId: 'claude-code' }), undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('claude: thoughts on lines of their own stand between the steps they led to', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-thoughts';
+    const assistant = (content: unknown[]) => ({
+      type: 'assistant',
+      message: { role: 'assistant', content },
+    });
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'fix it' }] } },
+      assistant([{ type: 'thinking', thinking: 'list first' }]),
+      assistant([{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } }]),
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'a.ts' }],
+        },
+      },
+      assistant([{ type: 'text', text: 'Found it.' }]),
+      assistant([{ type: 'thinking', thinking: 'now explain' }]),
+      assistant([{ type: 'text', text: 'Done.' }]),
+    ]);
+    const turns = await new SessionHistoryReader({ homeDir: home }).readTurns(
+      { agentId: 'claude-code', agentSessionId: sid },
+      'th',
+    );
+    const reply = turns![0]!.messages[1]!;
+    // The boundary closes the first response before the thought that opens
+    // the second, as the live stream orders them.
+    assert.deepEqual(segmentTypes(reply), [
+      'thinking',
+      'command_execution',
+      'text',
+      'assistant_response_boundary',
+      'thinking',
+      'text',
+    ]);
+    assert.deepEqual(thoughtsOf(reply), ['list first', 'now explain']);
+    assert.equal(reply.content, 'Found it.Done.');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('codex: reasoning and tool events lead the reply they belong to, in rollout order', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-codex-order';
+    const file = join(
+      home,
+      '.codex',
+      'sessions',
+      '2026',
+      '06',
+      '15',
+      `rollout-2026-06-15T00-00-00-${sid}.jsonl`,
+    );
+    const item = (payload: Record<string, unknown>) => ({ type: 'response_item', payload });
+    const user = (text: string) =>
+      item({ type: 'message', role: 'user', content: [{ type: 'input_text', text }] });
+    const call = (id: string, command: string) => [
+      item({
+        type: 'function_call',
+        name: 'shell_command',
+        arguments: JSON.stringify({ command }),
+        call_id: id,
+      }),
+      item({ type: 'function_call_output', call_id: id, output: 'Exit code: 0\nOutput:\nok' }),
+    ];
+    await writeLines(file, [
+      { type: 'session_meta', payload: { id: sid } },
+      user('first'),
+      item({ type: 'reasoning', summary: ['look around'] }),
+      ...call('c1', 'ls'),
+      item({ type: 'reasoning', summary: ['that is it'] }),
+      item({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'A' }] }),
+      // A run stopped before it answered: what it did is that turn's.
+      user('second'),
+      item({ type: 'reasoning', summary: ['try pwd'] }),
+      ...call('c2', 'pwd'),
+      user('third'),
+      // Still going: its reasoning is its own reply, in its own turn.
+      item({ type: 'reasoning', summary: ['thinking now'] }),
+    ]);
+    const turns = await new SessionHistoryReader({ homeDir: home }).readTurns(
+      { agentId: 'codex', agentSessionId: sid },
+      'th-order',
+    );
+    assert.equal(turns!.length, 3);
+    const replyOf = (i: number) => turns![i]!.messages.find((m) => m.role === 'assistant');
+    assert.deepEqual(segmentTypes(replyOf(0)), [
+      'thinking',
+      'command_execution',
+      'thinking',
+      'text',
+    ]);
+    assert.deepEqual(thoughtsOf(replyOf(0)), ['look around', 'that is it']);
+    assert.deepEqual(segmentTypes(replyOf(1)), ['thinking', 'command_execution']);
+    assert.equal(replyOf(1)!.content, '');
+    assert.deepEqual(thoughtsOf(replyOf(2)), ['thinking now']);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('pi: thinking content blocks become thoughts, in order with the prose and the steps', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-pi-thinking-blocks';
+    const file = join(
+      home,
+      '.pi',
+      'agent',
+      'sessions',
+      '--C--proj--',
+      `2026-06-15T00-00-00-000Z_${sid}.jsonl`,
+    );
+    await writeLines(file, [
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'where am I' }] },
+      },
+      {
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'ask the shell', thinkingSignature: 'x' },
+            { type: 'text', text: 'Checking.' },
+            { type: 'toolCall', id: 'call_1', name: 'bash', arguments: { command: 'pwd' } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call_1',
+          toolName: 'bash',
+          content: [{ type: 'text', text: '/proj' }],
+        },
+      },
+      {
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'got it' },
+            { type: 'text', text: 'In /proj.' },
+          ],
+        },
+      },
+    ]);
+    const turns = await new SessionHistoryReader({ homeDir: home }).readTurns(
+      { agentId: 'pi-agent', agentSessionId: sid },
+      'th-pi-blocks',
+    );
+    const reply = turns![0]!.messages[1]!;
+    assert.deepEqual(segmentTypes(reply), [
+      'thinking',
+      'text',
+      'command_execution',
+      'assistant_response_boundary',
+      'thinking',
+      'text',
+    ]);
+    assert.deepEqual(thoughtsOf(reply), ['ask the shell', 'got it']);
+    assert.equal(reply.content, 'Checking.In /proj.');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('opencode 1: a message keeps its parts in their order — prose, thoughts and tools', async () => {
+  const reader = new SessionHistoryReader({
+    openCodeMessages: async () =>
+      openCodeV1History([
+        {
+          info: { id: 'u1', role: 'user', time: { created: 1000 } },
+          parts: [{ type: 'text', text: 'go' }],
+        },
+        {
+          info: { id: 'a1', role: 'assistant', finish: 'stop', time: { created: 1001 } },
+          parts: [
+            { type: 'text', text: 'Looking. ' },
+            { type: 'reasoning', text: 'which file' },
+            {
+              type: 'tool',
+              id: 'p1',
+              tool: 'bash',
+              state: { status: 'completed', input: { command: 'ls' }, output: 'a' },
+            },
+            { type: 'reasoning', text: '   ' },
+            { type: 'text', text: 'Found a.' },
+          ],
+        },
+      ]),
+  });
+  const turns = await reader.readTurns(
+    { agentId: 'opencode', agentSessionId: 'ses_order', cwd: '/repo' },
+    'th-oc-order',
+  );
+  const reply = turns![0]!.messages[1]!;
+  assert.deepEqual(segmentTypes(reply), ['text', 'thinking', 'command_execution', 'text']);
+  // A blank thought is dropped; the prose keeps its inner spacing, and its
+  // runs concatenate to the content.
+  assert.equal(reply.content, 'Looking. Found a.');
+  assert.deepEqual(thoughtsOf(reply), ['which file']);
 });

@@ -725,6 +725,26 @@ driving a turn for that thread, it reads the matching agent-owned transcript and
 merges completed native-only turns before paging the result. This makes a prompt
 written in an agent's desktop app or CLI appear back in Uxnan Mobile.
 
+A transcript that is one file (every row below but OpenCode) is only `stat`-ed
+when nothing changed: its path, size and modification time
+(`SessionHistoryReader.sourceSignature`) are remembered with the thread's shape
+when it is merged, and the next read skips reading and merging it while both
+are the same (`ThreadStore.nativeHistoryCurrent`). A transcript that grew, or a
+thread that gained, lost or ended a turn, is read and merged again in full.
+
+`turn/list` is not the only reader. The read keeps its thread **watched** for the
+client that sent it — 15 minutes after its last read, while it stays connected —
+and the bridge's `NativeHistoryWatcher` checks every watched thread with no
+bridge turn in flight every 2 s: one `stat` of the transcript, a read and merge
+only when it changed. OpenCode's history, which has no file to `stat`, is read at
+most every 10 s by the watcher (and on every idle `turn/list`). Whenever a merge
+changes the stored turns — the watcher's, or the one inside a `turn/list` — the
+bridge broadcasts `stream/history/changed { threadId, rev }`, and a client showing
+that conversation re-reads its newest page. So a prompt typed in the agent's own
+terminal reaches an open conversation within a couple of seconds of the agent
+writing it, with no client polling. Antigravity has no readable history, so it
+has nothing to watch.
+
 What the transcript holds of a run the bridge itself drove is never native-only:
 a native turn starting inside a bridge-recorded turn's run is that run and is
 not imported (rows an older read imported that way are dropped on the next
@@ -741,6 +761,26 @@ and a compaction's `isCompactSummary` line do not.
 | Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP turns converge |
 | Grok | `~/.grok/sessions/.../<sessionId>/updates.jsonl` | only turns closed by ACP `turn_completed` converge |
 | Antigravity | no reliable source | unsupported: the SQLite step payloads are opaque and `agy` has no history/export command |
+
+**Reasoning stays where it was thought.** A turn read back from a transcript has
+the same shape as one the bridge streamed: one assistant message whose
+`segments` hold prose, thoughts (`{ type: 'thinking', text }`) and steps in
+order. Every reader that finds reasoning finds it in order, and keeps it there
+(`ReplySegments`, `src/adapters/reply-segments.ts`):
+
+| Agent | Reasoning in the transcript | Where it lands |
+|---|---|---|
+| Claude Code | `thinking` content blocks (usually a line of their own) | in line order, before the text or tool call they led to |
+| Codex | `reasoning` items (the summary; the body is encrypted) | in rollout order with the tool events, leading the reply they belong to |
+| OpenCode | `reasoning` parts | in part order with the text and tool parts |
+| pi | `thinking` content blocks; `think` tags inside a text block for some models | in content order |
+| Grok | `agent_thought_chunk` updates | in update order with the message chunks (tool calls are not read back) |
+| Zero | none — `events.jsonl` keeps only the messages | — |
+| Antigravity | no readable history | — |
+
+A Claude Code or pi tool step is paired with its result only on a later line, so
+it lands after its own line's prose and thoughts (see `../FOR-DEV.md` →
+*Native-session history — order inside one transcript line*).
 
 The session id that locates those files is the agent's own, persisted per thread
 (`nativeSessionId` → `ThreadStore.setAgentSession`) and **handed back to the

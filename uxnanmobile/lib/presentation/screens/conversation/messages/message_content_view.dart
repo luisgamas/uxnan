@@ -9,21 +9,25 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uxnan/core/errors/rpc_exception.dart';
 import 'package:uxnan/core/utils/elapsed_format.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
+import 'package:uxnan/domain/services/work_runs.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/streaming_markdown_split.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/turn_detail_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -71,9 +75,9 @@ class MessageContentView extends StatelessWidget {
           selectable: selectableText,
           onTapLink: onTapLink,
         ),
-      // Thinking is normally lifted into the turn's dedicated section by
-      // AssistantTurnView; rendered here too for completeness.
-      final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
+      // A thought is normally a row of its turn's work log
+      // (AssistantTurnView); on its own it reads the same way.
+      final ThinkingContent c => _ThoughtRow(thought: c),
       final CompactionContent c => _CompactionMarker(content: c),
       AssistantResponseBoundaryContent() => const SizedBox.shrink(),
       final CodeContent c => _CodeBlock(content: c),
@@ -91,6 +95,10 @@ class MessageContentView extends StatelessWidget {
       final QuestionContent c => _QuestionCard(content: c, threadId: threadId),
       final PlanContent c => _PlanCard(content: c),
       final SubagentContent c => _SubagentCard(content: c),
+      final WorkRunContent c => _Placeholder(
+          icon: UxIcons.terminal,
+          label: _workRunCounts(AppLocalizations.of(context), c),
+        ),
       final UnknownContent c =>
         _Placeholder(icon: UxIcons.widgets, label: c.type),
     };
@@ -1757,7 +1765,12 @@ class _CommandCard extends StatelessWidget {
             ),
             if (content.output != null && content.output!.isNotEmpty) ...[
               const SizedBox(height: UxnanSpacing.sm),
-              Text(content.output!, style: UxnanTypography.codeSmall),
+              // Its last lines only: the card is a glance, never the whole
+              // output (that is the work log's, and the detail screen's).
+              Text(
+                _lastLines(content.output!, _cardOutputLines),
+                style: UxnanTypography.codeSmall,
+              ),
             ],
           ],
         ),
@@ -1803,6 +1816,22 @@ class _SystemBanner extends StatelessWidget {
   }
 }
 
+/// How many lines of output a standalone command card shows.
+const int _cardOutputLines = 12;
+
+/// How many lines of a diff a standalone diff card shows.
+const int _cardDiffLines = 12;
+
+/// The last [count] lines of [text].
+String _lastLines(String text, int count) {
+  final lines = text.split('\n');
+  return lines.length <= count
+      ? text
+      : lines.sublist(lines.length - count).join('\n');
+}
+
+/// A diff outside an assistant turn's changed-files list: its file, its
+/// counts and the first lines of its body — never the whole of it.
 class _DiffBlock extends StatelessWidget {
   const _DiffBlock({required this.content});
   final DiffContent content;
@@ -1839,26 +1868,29 @@ class _DiffBlock extends StatelessWidget {
               ],
             ),
           ),
-          _DiffLines(diff: content.diff),
+          if (content.hasBody) _DiffLines(diff: content.diff),
         ],
       ),
     );
   }
 }
 
-/// The colored, per-line body of a unified diff (no header). Shared by the
-/// inline diff block and the changed-files section.
+/// The first [_cardDiffLines] colored lines of a unified diff, and how many
+/// more there are.
 class _DiffLines extends StatelessWidget {
   const _DiffLines({required this.diff});
   final String diff;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final lines = diff.split('\n');
+    final shown = lines.take(_cardDiffLines).toList();
+    final more = lines.length - shown.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final line in lines)
+        for (final line in shown)
           ColoredBox(
             color: _diffLineColor(line),
             child: Padding(
@@ -1866,7 +1898,22 @@ class _DiffLines extends StatelessWidget {
                 horizontal: UxnanSpacing.sm,
                 vertical: 1,
               ),
-              child: Text(line, style: UxnanTypography.codeSmall),
+              child: Text(
+                line,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: UxnanTypography.codeSmall,
+              ),
+            ),
+          ),
+        if (more > 0)
+          Padding(
+            padding: const EdgeInsets.all(UxnanSpacing.sm),
+            child: Text(
+              AppLocalizations.of(context).conversationDiffMoreLines(more),
+              style: UxnanTypography.codeSmall.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
             ),
           ),
       ],
@@ -1988,8 +2035,8 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
   Widget build(BuildContext context) {
     final message = widget.message;
     final showThinking = ref.watch(showAgentThinkingProvider);
-    final thinking = StringBuffer();
-    final diffs = <DiffContent>[];
+    // What the turn changed: its edits and the summarized runs with any.
+    final changes = <MessageContent>[];
     final prose = StringBuffer();
     final contents = <MessageContent>[];
 
@@ -2004,10 +2051,19 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       switch (content) {
         case final PlanContent plan when !identical(plan, lastPlan):
           continue;
-        case final ThinkingContent reasoning:
-          thinking.write(reasoning.text);
+        // A thought is a step of the work log, where it happened — unless the
+        // reader chose not to see the agent's reasoning.
+        case ThinkingContent() when !showThinking:
+          continue;
         case final DiffContent diff:
-          diffs.add(diff);
+          changes.add(diff);
+        // A run's edits are listed with the changed files; a run that only
+        // edited has nothing for the work log, and leaves the prose around it
+        // as one, the way an edit always has.
+        case final WorkRunContent run:
+          if (run.files.isNotEmpty) changes.add(run);
+          final listed = run.logSteps - (showThinking ? 0 : run.thoughts);
+          if (listed > 0) contents.add(run);
         case final AssistantResponseBoundaryContent boundary:
           contents.add(boundary);
         case final TextContent text:
@@ -2061,6 +2117,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
                   children: _responseSegments(
                     contents: split.work,
                     threadId: message.threadId,
+                    turnId: message.turnId,
                     onTapLink: widget.onTapLink,
                     processPrefix: 'previous-',
                     expandedProcess: _expandedProcess,
@@ -2073,6 +2130,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final answer = _responseSegments(
       contents: visibleContents,
       threadId: message.threadId,
+      turnId: message.turnId,
       onTapLink: widget.onTapLink,
       processPrefix: '',
       expandedProcess: _expandedProcess,
@@ -2094,18 +2152,14 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
             ),
             const SizedBox(height: UxnanSpacing.sm),
           ],
-          if (showThinking && thinking.isNotEmpty) ...[
-            _ThinkingSection(
-              text: thinking.toString(),
-              expanded: _expandedProcess == 'thinking',
-              onToggle: () => _toggleProcess('thinking'),
-            ),
-            const SizedBox(height: UxnanSpacing.sm),
-          ],
           ...segments,
-          if (diffs.isNotEmpty) ...[
+          if (changes.isNotEmpty) ...[
             const SizedBox(height: UxnanSpacing.sm),
-            _ChangedFilesSection(diffs: diffs),
+            _ChangedFilesSection(
+              files: changedFilesOf(changes),
+              threadId: message.threadId,
+              turnId: message.turnId,
+            ),
           ],
           if (prose.isNotEmpty && !message.isStreaming) ...[
             const SizedBox(height: UxnanSpacing.xs),
@@ -2175,19 +2229,22 @@ String _foldLabel(AppLocalizations l10n, Duration? worked) => worked == null
 /// Lays out one run of response content the way the reader sees an answer:
 /// work-log groups and prose/other blocks IN THE ORDER the agent produced
 /// them, so a work log sits just above the response it precedes and
-/// interleaved responses don't collapse into one block. Consecutive commands
-/// and tool calls become one collapsed [_WorkLogSection]; consecutive text
-/// merges into one selectable block.
+/// interleaved responses don't collapse into one block. Consecutive commands,
+/// tool calls and summarized runs ([WorkRunContent]) become one collapsed
+/// [_WorkLogSection] — so a run a re-sync summarized mid-turn and the steps
+/// that streamed after it read as one log; consecutive text merges into one
+/// selectable block.
 ///
 /// The one builder for both the visible answer and the earlier responses the
-/// fold holds. Reasoning and diffs never reach it: the turn lifts them to its
-/// thinking section and its changed-files summary first.
+/// fold holds. Thoughts are work-log steps like commands; diffs never reach
+/// it: the turn lifts them to its changed-files summary first.
 ///
 /// Every work-log group is addressed by [processPrefix] + its index, so each
 /// opens and closes on its own through the turn's [expandedProcess].
 List<Widget> _responseSegments({
   required Iterable<MessageContent> contents,
   required String threadId,
+  required String turnId,
   required ValueChanged<String>? onTapLink,
   required String processPrefix,
   required String? expandedProcess,
@@ -2230,6 +2287,8 @@ List<Widget> _responseSegments({
     segments.add(
       _WorkLogSection(
         items: items,
+        threadId: threadId,
+        turnId: turnId,
         expanded: expandedProcess == processId,
         onToggle: () => onToggleProcess(processId),
       ),
@@ -2238,7 +2297,10 @@ List<Widget> _responseSegments({
 
   for (final content in contents) {
     switch (content) {
-      case CommandExecutionContent() || ToolUseContent():
+      case CommandExecutionContent() ||
+            ToolUseContent() ||
+            ThinkingContent() ||
+            WorkRunContent():
         flushText();
         pendingCommands.add(content);
       case final TextContent text:
@@ -2591,60 +2653,24 @@ class _ResponseActions extends StatelessWidget {
   }
 }
 
-/// Standalone fallback for a reasoning block rendered outside an assistant
-/// turn. Assistant turns lift expansion state to their parent so opening one
-/// process panel collapses the previously open panel in that same turn.
-class _StandaloneThinkingSection extends StatefulWidget {
-  const _StandaloneThinkingSection({required this.text});
-  final String text;
+/// A quiet text action that opens something whole on its own screen.
+class _DetailLink extends StatelessWidget {
+  const _DetailLink({required this.label, required this.onTap});
 
-  @override
-  State<_StandaloneThinkingSection> createState() =>
-      _StandaloneThinkingSectionState();
-}
-
-class _StandaloneThinkingSectionState
-    extends State<_StandaloneThinkingSection> {
-  bool _expanded = false;
+  final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return _ThinkingSection(
-      text: widget.text,
-      expanded: _expanded,
-      onToggle: () => setState(() => _expanded = !_expanded),
-    );
-  }
-}
-
-/// A subdued reasoning disclosure. Its tonal surface keeps the process visible
-/// without competing with the assistant's editorial response.
-class _ThinkingSection extends StatelessWidget {
-  const _ThinkingSection({
-    required this.text,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  final String text;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final l10n = AppLocalizations.of(context);
-    return _AgentProcessDisclosure(
-      icon: UxIcons.psychology,
-      title: l10n.conversationThinking,
-      expanded: expanded,
-      onToggle: onToggle,
-      child: SelectableText(
-        text,
-        style: textTheme.bodySmall?.copyWith(
-          color: colors.onSurfaceVariant,
-          fontStyle: FontStyle.italic,
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: const UxIcon(UxIcons.openInNew, size: 16),
+        label: Text(label),
+        style: TextButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
         ),
       ),
     );
@@ -2654,44 +2680,87 @@ class _ThinkingSection extends StatelessWidget {
 /// A compact work-log disclosure. Collapsed state keeps only the count and the
 /// latest activity summary visible; expansion reveals every command/tool and
 /// its available output.
-class _WorkLogSection extends StatelessWidget {
+///
+/// Its [items] are the steps the reply holds one by one (a live turn's
+/// previews, or steps stored before the bridge summarized them) and the
+/// summarized runs ([WorkRunContent]) whose steps are read from the bridge
+/// when the log opens — never before.
+class _WorkLogSection extends ConsumerWidget {
   const _WorkLogSection({
     required this.items,
+    required this.threadId,
+    required this.turnId,
     required this.expanded,
     required this.onToggle,
   });
 
-  /// The [CommandExecutionContent] / [ToolUseContent] blocks of the turn.
+  /// The [CommandExecutionContent] / [ToolUseContent] / [WorkRunContent]
+  /// entries of one group.
   final List<MessageContent> items;
+  final String threadId;
+  final String turnId;
   final bool expanded;
   final VoidCallback onToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    final showThinking = ref.watch(showAgentThinkingProvider);
+    var count = 0;
+    for (final item in items) {
+      count += item is WorkRunContent
+          ? item.logSteps - (showThinking ? 0 : item.thoughts)
+          : 1;
+    }
     return _AgentProcessDisclosure(
       icon: UxIcons.terminal,
       title: l10n.conversationWorkLog,
-      count: items.length,
+      count: count,
       collapsedSummary: _workLogSummary(l10n, items.last),
       expanded: expanded,
       onToggle: onToggle,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final item in items) _WorkLogRow(item: item),
-        ],
-      ),
+      // Built only while open: a closed log asks the bridge for nothing.
+      child: expanded
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final item in items)
+                  if (item is WorkRunContent)
+                    _WorkRunSteps(run: item, threadId: threadId, turnId: turnId)
+                  else
+                    _WorkLogRow(item: item, threadId: threadId, turnId: turnId),
+              ],
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
 
+/// The one line a collapsed work log shows for its latest entry: the command
+/// or the tool call — or, when a summarized run ended on an edit, the file it
+/// edited.
 String _workLogSummary(AppLocalizations l10n, MessageContent item) =>
     switch (item) {
       final CommandExecutionContent command => '\$ ${command.command}',
       final ToolUseContent tool => _toolLabel(l10n, tool),
+      final DiffContent diff =>
+        l10n.conversationEditedFile(diff.filename.split('/').last),
+      final ThinkingContent thought => thought.isStreaming
+          ? '${l10n.conversationThinking}…'
+          : collapsePreviewText(thought.text),
+      WorkRunContent(:final last?) => _workLogSummary(l10n, last),
+      final WorkRunContent run => _workRunCounts(l10n, run),
       _ => '',
     };
+
+/// What a summarized run amounts to: "12 commands · 3 tool calls · 2
+/// thoughts · 1 failed".
+String _workRunCounts(AppLocalizations l10n, WorkRunContent run) => [
+      if (run.commands > 0) l10n.conversationWorkCommands(run.commands),
+      if (run.tools > 0) l10n.conversationWorkTools(run.tools),
+      if (run.thoughts > 0) l10n.conversationWorkThoughts(run.thoughts),
+      if (run.failed > 0) l10n.conversationWorkFailed(run.failed),
+    ].join(' · ');
 
 /// What a tool call did, the same way for every agent: "Read notes.txt",
 /// "Searched alpha"; an unclassified tool by its own name.
@@ -2827,14 +2896,220 @@ class _AgentProcessDisclosure extends StatelessWidget {
   }
 }
 
+/// The steps of one summarized run, read from the bridge (`turn/steps`) when
+/// its work log opens, a page at a time — the first page right away, the
+/// rest on request. Edits are skipped: they are listed with the changed
+/// files. Offline, the run says what it amounts to and that its steps load
+/// once the computer is connected — which they then do on their own.
+class _WorkRunSteps extends ConsumerStatefulWidget {
+  const _WorkRunSteps({
+    required this.run,
+    required this.threadId,
+    required this.turnId,
+  });
+
+  final WorkRunContent run;
+  final String threadId;
+  final String turnId;
+
+  @override
+  ConsumerState<_WorkRunSteps> createState() => _WorkRunStepsState();
+}
+
+class _WorkRunStepsState extends ConsumerState<_WorkRunSteps> {
+  final List<MessageContent> _steps = [];
+
+  /// Where the next page starts; null once the run is read to its end.
+  int? _next;
+  bool _loaded = false;
+  bool _loading = false;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadMore());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkRunSteps oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A run still running changes as its steps settle: read it again. A
+    // thought growing at its end changes only its preview, not its steps.
+    if (!_sameSteps(oldWidget.run, widget.run)) {
+      _steps.clear();
+      _next = null;
+      _loaded = false;
+      _error = null;
+      unawaited(_loadMore());
+    }
+  }
+
+  bool get _connected =>
+      ref.read(connectionPhaseProvider).value == ConnectionPhase.connected;
+
+  static bool _sameSteps(WorkRunContent a, WorkRunContent b) =>
+      a.from == b.from &&
+      a.to == b.to &&
+      a.commands == b.commands &&
+      a.edits == b.edits &&
+      a.tools == b.tools &&
+      a.thoughts == b.thoughts &&
+      a.failed == b.failed &&
+      a.running == b.running;
+
+  Future<void> _loadMore() async {
+    if (_loading || (_loaded && _next == null) || !_connected) return;
+    final run = widget.run;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final page = await ref.read(turnDetailRepositoryProvider).readSteps(
+            widget.threadId,
+            widget.turnId,
+            from: _next ?? run.from,
+            to: run.to,
+            fresh: run.running > 0,
+          );
+      if (!mounted || !_sameSteps(run, widget.run)) return;
+      setState(() {
+        _steps.addAll(page.steps);
+        _next = page.next;
+        _loaded = true;
+        _loading = false;
+      });
+    } on Object catch (error) {
+      if (!mounted || !_sameSteps(run, widget.run)) return;
+      setState(() {
+        _error = error;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    ref.listen(connectionPhaseProvider, (previous, next) {
+      if (next.value == ConnectionPhase.connected && !_loaded) {
+        unawaited(_loadMore());
+      }
+    });
+    final connected =
+        ref.watch(connectionPhaseProvider).value == ConnectionPhase.connected;
+    final error = _error;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final step in _steps)
+          if (step is! DiffContent &&
+              (step is! ThinkingContent ||
+                  ref.watch(showAgentThinkingProvider)))
+            _WorkLogRow(
+              item: step,
+              threadId: widget.threadId,
+              turnId: widget.turnId,
+            ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
+            child: Center(child: PolygonLoader(size: 20)),
+          )
+        else if (error != null)
+          _WorkLogNotice(
+            icon: UxIcons.error,
+            text: error is RpcException &&
+                    error.code == RpcException.responseTooLarge
+                ? l10n.turnDetailTooLarge
+                : l10n.conversationWorkLogLoadFailed,
+            action: connected
+                ? TextButton(
+                    onPressed: _loadMore,
+                    child: Text(l10n.actionRetry),
+                  )
+                : null,
+          )
+        else if (!_loaded && !connected) ...[
+          _WorkLogNotice(
+            icon: UxIcons.terminal,
+            text: _workRunCounts(l10n, widget.run),
+          ),
+          _WorkLogNotice(
+            icon: UxIcons.cloudOff,
+            text: l10n.conversationWorkLogOffline,
+          ),
+        ] else if (_next != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              onPressed: connected ? _loadMore : null,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(l10n.conversationWorkLogMore),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One quiet line inside an open work log: what it holds while its steps are
+/// out of reach, or why they did not load.
+class _WorkLogNotice extends StatelessWidget {
+  const _WorkLogNotice({required this.icon, required this.text, this.action});
+
+  final UxIconData icon;
+  final String text;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+      child: Row(
+        children: [
+          UxIcon(icon, size: 14, color: colors.onSurfaceVariant),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (action != null) action!,
+        ],
+      ),
+    );
+  }
+}
+
 /// One work-log entry, one line: a command or tool call. A command that
 /// printed something opens on a tap to show its output — the same way a
 /// *Changed files* row opens its diff — so finding one command never means
 /// reading every other one's output. The collapsed disclosure uses
 /// [_workLogSummary] instead.
+///
+/// What opens is a preview, bounded however large the output was: the end of
+/// it, which is where a result lands. When the command or its output was cut
+/// the whole of it opens on its own screen.
 class _WorkLogRow extends StatefulWidget {
-  const _WorkLogRow({required this.item});
+  const _WorkLogRow({
+    required this.item,
+    required this.threadId,
+    required this.turnId,
+  });
   final MessageContent item;
+  final String threadId;
+  final String turnId;
 
   @override
   State<_WorkLogRow> createState() => _WorkLogRowState();
@@ -2846,6 +3121,8 @@ class _WorkLogRowState extends State<_WorkLogRow> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
     final duration = UxnanMotion.revealIn(context);
     switch (widget.item) {
       case final CommandExecutionContent command:
@@ -2862,44 +3139,88 @@ class _WorkLogRowState extends State<_WorkLogRow> {
         };
         final output = command.output;
         final hasOutput = output != null && output.isNotEmpty;
+        final opens = hasOutput || command.isCut;
+        final outputChars = command.outputChars;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _WorkLogLine(
               icon: icon,
               iconColor: color,
-              label: '\$ ${command.command}',
-              open: hasOutput ? _open : null,
-              onTap: hasOutput ? () => setState(() => _open = !_open) : null,
+              label: command.commandChars == null
+                  ? '\$ ${command.command}'
+                  : '\$ ${command.command}…',
+              open: opens ? _open : null,
+              onTap: opens ? () => setState(() => _open = !_open) : null,
             ),
             AnimatedSize(
               duration: duration,
               curve: UxnanMotion.revealCurve,
               alignment: Alignment.topCenter,
-              child: _open && hasOutput
+              child: _open && opens
                   ? Padding(
                       padding: const EdgeInsets.only(
                         left: UxnanSpacing.lg,
                         bottom: UxnanSpacing.xs,
                       ),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(UxnanSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainer,
-                          borderRadius: const BorderRadius.all(UxnanRadius.md),
-                        ),
-                        child: SelectableText(
-                          output,
-                          style: UxnanTypography.codeSmall.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (hasOutput && outputChars != null)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: UxnanSpacing.xs,
+                              ),
+                              child: Text(
+                                l10n.conversationStepOutputTail(
+                                  output.length,
+                                  outputChars,
+                                ),
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          if (hasOutput)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(UxnanSpacing.sm),
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainer,
+                                borderRadius:
+                                    const BorderRadius.all(UxnanRadius.md),
+                              ),
+                              child: SelectableText(
+                                output,
+                                style: UxnanTypography.codeSmall.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          if (command.isCut && command.index != null)
+                            _DetailLink(
+                              label: l10n.conversationStepFullOutput,
+                              onTap: () => TurnDetailScreen.open(
+                                context,
+                                StepDetailRequest(
+                                  threadId: widget.threadId,
+                                  turnId: widget.turnId,
+                                  step: command,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     )
                   : const SizedBox(width: double.infinity),
             ),
           ],
+        );
+      case final ThinkingContent thought:
+        return _ThoughtRow(
+          thought: thought,
+          threadId: widget.threadId,
+          turnId: widget.turnId,
         );
       case final ToolUseContent tool:
         return _WorkLogLine(
@@ -2913,11 +3234,215 @@ class _WorkLogRowState extends State<_WorkLogRow> {
               : tool.isError
                   ? UxnanColors.error
                   : colors.onSurfaceVariant,
-          label: _toolLabel(AppLocalizations.of(context), tool),
+          label: _toolLabel(l10n, tool),
         );
       default:
         return const SizedBox.shrink();
     }
+  }
+}
+
+/// How tall an opened thought gets before it scrolls inside itself.
+const double _thoughtMaxHeight = 240;
+
+/// A stretch of the agent's reasoning as a work-log row, where it happened
+/// among the commands. Collapsed it is one line: **Thinking** (shimmering)
+/// while the agent is still writing it, else **Thought** and its own text
+/// flattened to a line. Opened, its text is Markdown in a box that scrolls
+/// past [_thoughtMaxHeight] — following the newest text while it streams,
+/// until the reader scrolls up — and a thought the page cut opens whole on
+/// its own screen (`turn/step`).
+class _ThoughtRow extends StatefulWidget {
+  const _ThoughtRow({required this.thought, this.threadId, this.turnId});
+
+  final ThinkingContent thought;
+
+  /// Where the whole thought is read from; null leaves it at what is here.
+  final String? threadId;
+  final String? turnId;
+
+  @override
+  State<_ThoughtRow> createState() => _ThoughtRowState();
+}
+
+class _ThoughtRowState extends State<_ThoughtRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final thought = widget.thought;
+    final live = thought.isStreaming;
+    final threadId = widget.threadId;
+    final turnId = widget.turnId;
+    final labelStyle = textTheme.labelMedium?.copyWith(
+      color: colors.onSurfaceVariant,
+      fontStyle: FontStyle.italic,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _WorkLogLine(
+          icon: UxIcons.psychology,
+          iconColor: colors.onSurfaceVariant,
+          leading: live
+              ? PolygonLoader(size: 14, color: colors.onSurfaceVariant)
+              : null,
+          label: '',
+          labelWidget: live
+              ? _SkeletonText(l10n.conversationThinking, style: labelStyle)
+              : Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: l10n.conversationThought,
+                        style: labelStyle,
+                      ),
+                      const TextSpan(text: '  '),
+                      TextSpan(
+                        text: collapsePreviewText(thought.text),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+          open: thought.text.isEmpty ? null : _open,
+          onTap: thought.text.isEmpty
+              ? null
+              : () => setState(() => _open = !_open),
+        ),
+        AnimatedSize(
+          duration: UxnanMotion.revealIn(context),
+          curve: UxnanMotion.revealCurve,
+          alignment: Alignment.topCenter,
+          child: _open
+              ? Padding(
+                  padding: const EdgeInsets.only(
+                    left: UxnanSpacing.lg,
+                    bottom: UxnanSpacing.xs,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _ThoughtBody(text: thought.text, live: live),
+                      if (thought.isCut &&
+                          thought.index != null &&
+                          threadId != null &&
+                          turnId != null)
+                        _DetailLink(
+                          label: l10n.conversationThoughtFull,
+                          onTap: () => TurnDetailScreen.open(
+                            context,
+                            StepDetailRequest(
+                              threadId: threadId,
+                              turnId: turnId,
+                              step: thought,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
+}
+
+/// An opened thought: Markdown in a tonal box at most [_thoughtMaxHeight]
+/// tall. While the thought streams ([live]) the box stays pinned to its
+/// newest text — unless the reader scrolled up, which stops the following
+/// until they scroll back to the end.
+class _ThoughtBody extends StatefulWidget {
+  const _ThoughtBody({required this.text, required this.live});
+
+  final String text;
+  final bool live;
+
+  @override
+  State<_ThoughtBody> createState() => _ThoughtBodyState();
+}
+
+class _ThoughtBodyState extends State<_ThoughtBody> {
+  final ScrollController _scroll = ScrollController();
+
+  /// Whether the box follows the newest text.
+  bool _follow = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pinToEnd();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThoughtBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.text != oldWidget.text) _pinToEnd();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _pinToEnd() {
+    if (!widget.live || !_follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    // Only the reader's own drag decides: a jump to the end is not one.
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
+      final metrics = notification.metrics;
+      _follow = metrics.pixels >= metrics.maxScrollExtent - 8;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Container(
+      constraints: const BoxConstraints(maxHeight: _thoughtMaxHeight),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.md),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          padding: const EdgeInsets.all(UxnanSpacing.sm),
+          // Quieter than the answer: the same Markdown, one step smaller and in
+          // the muted tone, through the theme the style sheet reads.
+          child: Theme(
+            data: theme.copyWith(
+              textTheme: theme.textTheme.copyWith(
+                bodyMedium: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ),
+            child: MessageContentView(content: TextContent(widget.text)),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -2928,6 +3453,8 @@ class _WorkLogLine extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.label,
+    this.leading,
+    this.labelWidget,
     this.open,
     this.onTap,
   });
@@ -2935,6 +3462,12 @@ class _WorkLogLine extends StatelessWidget {
   final UxIconData icon;
   final Color iconColor;
   final String label;
+
+  /// Drawn in place of [icon] (a thought being written shows the loader).
+  final Widget? leading;
+
+  /// Drawn in place of [label] when the line is more than plain text.
+  final Widget? labelWidget;
   final bool? open;
   final VoidCallback? onTap;
 
@@ -2949,15 +3482,16 @@ class _WorkLogLine extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
         child: Row(
           children: [
-            UxIcon(icon, size: 14, color: iconColor),
+            leading ?? UxIcon(icon, size: 14, color: iconColor),
             const SizedBox(width: UxnanSpacing.sm),
             Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: UxnanTypography.codeSmall,
-              ),
+              child: labelWidget ??
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UxnanTypography.codeSmall,
+                  ),
             ),
             if (open != null) ...[
               const SizedBox(width: UxnanSpacing.sm),
@@ -2978,11 +3512,18 @@ class _WorkLogLine extends StatelessWidget {
   }
 }
 
-/// A collapsible "Changed files (N) · +a −d" summary listing the turn's diffs;
-/// tapping a file row expands its unified diff.
+/// A collapsible "Changed files (N) · +a −d" summary listing the files the
+/// turn changed — merged by name across its edits and its summarized runs.
+/// A file's row opens its diff on its own screen, read from the bridge.
 class _ChangedFilesSection extends StatefulWidget {
-  const _ChangedFilesSection({required this.diffs});
-  final List<DiffContent> diffs;
+  const _ChangedFilesSection({
+    required this.files,
+    required this.threadId,
+    required this.turnId,
+  });
+  final List<TurnChangedFile> files;
+  final String threadId;
+  final String turnId;
 
   @override
   State<_ChangedFilesSection> createState() => _ChangedFilesSectionState();
@@ -3001,9 +3542,9 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
     var additions = 0;
     var deletions = 0;
-    for (final diff in widget.diffs) {
-      additions += diff.additions;
-      deletions += diff.deletions;
+    for (final file in widget.files) {
+      additions += file.additions;
+      deletions += file.deletions;
     }
     return Material(
       color: colors.surfaceContainerLow,
@@ -3041,7 +3582,7 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
                       style: textTheme.labelMedium,
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
-                    _CountBadge(count: widget.diffs.length),
+                    _CountBadge(count: widget.files.length),
                     const Spacer(),
                     _DiffCounts(additions: additions, deletions: deletions),
                     const SizedBox(width: UxnanSpacing.sm),
@@ -3069,8 +3610,18 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
                     ),
                     child: Column(
                       children: [
-                        for (final diff in widget.diffs)
-                          _ChangedFileRow(diff: diff),
+                        for (final file in widget.files)
+                          _ChangedFileRow(
+                            file: file,
+                            onTap: () => TurnDetailScreen.open(
+                              context,
+                              FileDiffDetailRequest(
+                                threadId: widget.threadId,
+                                turnId: widget.turnId,
+                                file: file,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   )
@@ -3082,62 +3633,49 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
   }
 }
 
-/// One file in the changed-files list; tap to expand/collapse its diff.
-class _ChangedFileRow extends StatefulWidget {
-  const _ChangedFileRow({required this.diff});
-  final DiffContent diff;
-
-  @override
-  State<_ChangedFileRow> createState() => _ChangedFileRowState();
-}
-
-class _ChangedFileRowState extends State<_ChangedFileRow> {
-  bool _open = false;
+/// One file in the changed-files list; a tap opens its diff.
+class _ChangedFileRow extends StatelessWidget {
+  const _ChangedFileRow({required this.file, required this.onTap});
+  final TurnChangedFile file;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          borderRadius: const BorderRadius.all(UxnanRadius.md),
-          onTap: () => setState(() => _open = !_open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: UxnanSpacing.sm,
-              vertical: UxnanSpacing.sm,
-            ),
-            child: Row(
-              children: [
-                UxIcon(
-                  UxIcons.insertDriveFile,
-                  size: 14,
-                  color: colors.onSurfaceVariant,
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Expanded(
-                  child: Text(
-                    widget.diff.filename,
-                    style: UxnanTypography.codeSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                _DiffCounts(
-                  additions: widget.diff.additions,
-                  deletions: widget.diff.deletions,
-                ),
-              ],
-            ),
-          ),
+    return InkWell(
+      borderRadius: const BorderRadius.all(UxnanRadius.md),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.sm,
+          vertical: UxnanSpacing.sm,
         ),
-        if (_open && widget.diff.diff.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-            child: _DiffLines(diff: widget.diff.diff),
-          ),
-      ],
+        child: Row(
+          children: [
+            UxIcon(
+              UxIcons.insertDriveFile,
+              size: 14,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: Text(
+                file.filename,
+                style: UxnanTypography.codeSmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            _DiffCounts(additions: file.additions, deletions: file.deletions),
+            const SizedBox(width: UxnanSpacing.xs),
+            UxIcon(
+              UxIcons.chevronRight,
+              size: 16,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -8,7 +8,7 @@
   import UserMultipleIcon from "@hugeicons/core-free-icons/UserMultipleIcon";
   import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
   import MarkdownView from "$lib/components/MarkdownView.svelte";
-  import { activityFailed, activityRunning } from "$lib/bridge/timeline";
+  import { stepFailed, stepRunning } from "$shared/models/history";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -30,8 +30,8 @@
   );
   const name = $derived(str(sub.name) || i18n.t("chat.subagent"));
   const report = $derived(str(sub.output).trim());
-  const running = $derived(live && activityRunning(block));
-  const failed = $derived(activityFailed(block));
+  const running = $derived(live && stepRunning(block));
+  const failed = $derived(stepFailed(block));
   let open = $state(false);
 </script>
 

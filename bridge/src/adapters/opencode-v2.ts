@@ -26,6 +26,7 @@
 import type { QuestionItem, QuestionOption } from '@uxnan/shared';
 import { extractPlanSteps } from './content-blocks.js';
 import { opencodeToolBlock } from './opencode-tools.js';
+import { ReplySegments } from './reply-segments.js';
 import {
   approvalInput,
   isPlanTool,
@@ -341,13 +342,11 @@ export function openCodeV2History(messages: unknown[]): OpenCodeHistoryMessage[]
     // Still being written: take it only once it completed, or a polling phone
     // would freeze partial prose as a finished turn.
     if (time['completed'] === undefined) continue;
-    const texts: string[] = [];
-    const thoughts: string[] = [];
-    const blocks: unknown[] = [];
+    const reply = new ReplySegments();
     for (const c of Array.isArray(m['content']) ? m['content'] : []) {
       if (!isRecord(c)) continue;
-      if (c['type'] === 'text') texts.push(str(c['text']));
-      else if (c['type'] === 'reasoning') thoughts.push(str(c['text']));
+      if (c['type'] === 'text') reply.text(str(c['text']));
+      else if (c['type'] === 'reasoning') reply.thought(str(c['text']));
       else if (c['type'] === 'tool') {
         const name = str(c['name']);
         const state = isRecord(c['state']) ? c['state'] : {};
@@ -355,7 +354,7 @@ export function openCodeV2History(messages: unknown[]): OpenCodeHistoryMessage[]
         if ((status !== 'completed' && status !== 'error') || isPlanTool(name)) continue;
         const output =
           status === 'error' ? readErrorMessage(state['error']) : contentText(state['content']);
-        blocks.push(
+        reply.block(
           opencodeToolBlock(
             name,
             str(c['id']),
@@ -366,15 +365,8 @@ export function openCodeV2History(messages: unknown[]): OpenCodeHistoryMessage[]
         );
       }
     }
-    const message: OpenCodeHistoryMessage = {
-      role: 'assistant',
-      text: texts.join('').trim(),
-      createdAt,
-    };
-    const thinking = thoughts.join('').trim();
-    if (thinking) message.thinking = thinking;
-    if (blocks.length > 0) message.blocks = blocks;
-    if (message.text || message.thinking || message.blocks?.length) out.push(message);
+    const { text, segments } = reply.build();
+    if (segments.length > 0) out.push({ role: 'assistant', text, segments, createdAt });
   }
   return out;
 }

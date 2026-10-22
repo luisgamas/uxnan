@@ -209,7 +209,7 @@ describe('ChatStore', () => {
   it('routes timeline notifications to the open conversation only', () => {
     const { store } = harness();
     expect(store.peekConversation('t1')).toBeUndefined();
-    const open = store.conversation('t1');
+    const open = store.open('t1');
     expect(store.peekConversation('t1')).toBe(open);
     store.apply({
       method: 'stream/queue/updated',
@@ -220,6 +220,61 @@ describe('ChatStore', () => {
       params: { threadId: 'not-open', queuedTurnIds: ['z'], paused: true },
     });
     expect(open.queue.turnIds).toEqual(['q']);
+  });
+
+  it('lets a conversation go once no chat shows it, and opens it fresh after', () => {
+    const { store } = harness();
+    const first = store.open('t1');
+    store.open('t1');
+    store.release('t1');
+    // Still shown by the other chat.
+    expect(store.peekConversation('t1')).toBe(first);
+    store.release('t1');
+    expect(store.peekConversation('t1')).toBeUndefined();
+    expect(store.open('t1')).not.toBe(first);
+  });
+
+  it('keeps a closed chat until the bridge confirms the message it was sending', async () => {
+    const { store } = harness();
+    const conversation = store.open('t1');
+    conversation.loaded = true;
+    await store.send('t1', 'ship it');
+    const [pending] = conversation.pending;
+    store.release('t1');
+    // The echo that confirms it is applied there, so it stays until then.
+    expect(store.peekConversation('t1')).toBe(conversation);
+    store.apply({
+      method: 'stream/turn/created',
+      params: {
+        threadId: 't1',
+        clientTurnId: pending.clientTurnId,
+        turn: {
+          id: 'turn-1',
+          threadId: 't1',
+          seq: 1,
+          status: 'pending',
+          createdAt: 1,
+          messages: [{ id: 'm', turnId: 'turn-1', role: 'user', content: 'ship it', createdAt: 1 }],
+        },
+      },
+    });
+    expect(conversation.pending).toEqual([]);
+    expect(store.peekConversation('t1')).toBeUndefined();
+  });
+
+  it('reloads after a reconnect only the conversations a chat shows', async () => {
+    const page: TurnList = { turns: [], total: 0 };
+    const { store, calls } = harness({ 'turn/list': page });
+    store.open('shown');
+    const closed = store.open('closed');
+    closed.addPending({ clientTurnId: 'c', text: 'hold', request: { text: 'hold' } });
+    store.release('closed');
+    calls.length = 0;
+    await store.resync();
+    const listed = calls
+      .filter((c) => c.method === 'turn/list')
+      .map((c) => (c.params as { threadId: string }).threadId);
+    expect(listed).toEqual(['shown']);
   });
 
   it('starts a thread in a folder with a fixed agent, leaving its access mode to the bridge', async () => {

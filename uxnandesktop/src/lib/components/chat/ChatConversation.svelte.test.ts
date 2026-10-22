@@ -53,6 +53,9 @@ function mount(tab: ChatTab, calls: { method: string; params: unknown }[] = []) 
 
 afterEach(() => {
   chat.holds.clear();
+  // A message left unsent keeps a conversation past its chat (the bridge's
+  // confirmation lands there): forget it so the next test starts clean.
+  chat.peekConversation(THREAD)?.forgetPending();
   chat.release(THREAD);
   chat.threads.delete(THREAD);
   chat.agents = [];

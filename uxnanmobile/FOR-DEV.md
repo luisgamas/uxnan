@@ -29,6 +29,29 @@ pass.
 
 **Built (DONE):**
 
+- **Bounded history** (plans/046 phase 4; architecture/02a §5.8.3 *What a
+  page carries*, 02b §1.5). A reply is stored the way a page serves it: each
+  run of steps (thoughts included) one `WorkRunContent` (`type: 'work'`);
+  `Message.blocks` and the turn-level reasoning are gone. Reasoning is a
+  `ThinkingContent` step where it happened (phase 4c): a work-log row of one
+  line ("Thinking" while written, "Thought" + its text), opened in place as
+  Markdown in a 240 dp box that follows the live edge. A work log reads a
+  summarized run's steps with `turn/steps` when it opens (a page at a time),
+  a cut command or thought opens whole (`turn/step`) and the changed files
+  open their diffs (`FileEditsLoader`) on a lazy full-screen reader
+  (`TurnDetailScreen`); offline, a run says what it amounts to and
+  loads on reconnect. Live previews carry their stored `index`, a step of a
+  run seeded by a mid-turn resync settles into it, and a finished turn is
+  folded before it is stored. `-32011` is an ordinary failure (the
+  conversation keeps what it has). Nothing polls: the open conversation is
+  re-read when the bridge's history watcher announces a change
+  (`stream/history/changed`), on reconnect, resume and opening. Each inbound frame is decoded once per layer,
+  in arrival order, a payload of 64 KiB or more on a background isolate
+  (`JsonPayloadDecoder`); a re-sync reads stored heads and skips an answer
+  whose wire fingerprint did not change; thread-row previews come from a
+  `preview_text` column (schema v13). Device verification is open — see
+  *App+bridge seams*.
+
 - **Updating the PC's bridge** (architecture/02a §5.8.18). `BridgeReplica`
   mirrors the bridge's own update (`stream/bridge/updated`, the answer to
   `bridge/update`); the notice atop the conversations and Settings → Updates →
@@ -232,9 +255,10 @@ pass.
   completed turn **reconciles via `turn/read`** so the stored message converges
   to the bridge's exact text↔work-log interleave. `beforeText`-flagged blocks
   (parallel/subagent activity) slot before the open text run, never splitting a
-  sentence mid-word. The connected active idle conversation also polls its
-  newest `turn/list` page every three seconds, so completed turns written from a
-  supported native agent client appear without reopening the screen. Both the
+  sentence mid-word. When the bridge's history watcher announces that the open
+  conversation changed (`stream/history/changed`), its newest `turn/list` page
+  is re-read, so completed turns written from a supported native agent client
+  appear without reopening the screen — and nothing polls. Both the
   external user prompt and assistant reply persist; Mobile-authored prompts are
   matched by turn id instead of duplicated. This is completed-turn convergence,
   not cross-client token streaming; Antigravity has no readable history source.
@@ -545,6 +569,24 @@ shipping.
       questions the list is actually asked.
 
 ## App+bridge seams (need a live bridge to finish/verify)
+
+- [ ] **Bounded history — on-device verification against a live bridge
+      (plans/046).** The phone reads the summarized pages (`work` runs,
+      thoughts as steps, `offset`), fetches a run's steps / a step on demand
+      and folds a live turn's steps at its end — all
+      unit- and widget-tested against the `shared/` shapes
+      (`thread_manager_history_test`, `bounded_history_widgets_test`), not
+      yet run against a real bridge serving them. Verify on a phone: open a
+      long conversation (the 46 MB one), open a work log, a cut output, a
+      changed file and a cut thought, watch a thought stream (the box follows
+      its end until you scroll up), go offline mid-way, and reconnect in
+      the middle of a long turn (the seeded run and the steps after it must
+      read as one log, and end as one stored run). Also write a turn in the
+      agent's own terminal and check it appears through
+      `stream/history/changed` with no request in between, and measure that
+      re-read of a long conversation with the `.perf` build
+      (`docs/testing.md`): an unchanged page should be a heads query and no
+      writes.
 
 - [ ] **Relay UI — on-device verification and visual review.** Remote access,
       the setup page, the token / remove dialogs and the relay reasons in the

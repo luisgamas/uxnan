@@ -36,6 +36,7 @@
     baseDir = null,
     target = LOCAL_TARGET,
     inline = false,
+    quiet = false,
     onopenfile,
   }: {
     source: string;
@@ -45,6 +46,9 @@
      *  way. */
     target?: TargetId;
     inline?: boolean;
+    /** With `inline`: secondary text inside a log (an agent's thought among its
+     *  steps) — the log rows' size and muted foreground, not body prose. */
+    quiet?: boolean;
     onopenfile?: (path: string) => void;
   } = $props();
 
@@ -320,7 +324,7 @@
   {#if !inline}<p class={cn("p-4", text.meta)}>{i18n.t("preview.markdownEmpty")}</p>{/if}
 {:else}
   {#if inline}
-    <div class="md md-inline">{@render blockList(blocks)}</div>
+    <div class={cn("md md-inline", quiet && "md-quiet")}>{@render blockList(blocks)}</div>
   {:else}
     <div bind:this={scrollHost} class="md-scroll">
       <article class="md">{@render blockList(blocks)}</article>
@@ -361,6 +365,14 @@
     margin: 0;
     font-size: 13px;
     line-height: 1.6;
+  }
+  /* Quiet inline variant: secondary text in a log, at its rows' size (12px) and
+     in the muted foreground — headings and bold keep their weight, not a louder
+     color. */
+  .md.md-inline.md-quiet {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--muted-foreground);
   }
   .md.md-inline > :global(:first-child) {
     margin-top: 0;

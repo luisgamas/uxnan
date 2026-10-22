@@ -11,7 +11,11 @@ import { fileURLToPath } from "node:url";
 // the same suite as the app's own logic.
 export default defineConfig({
   resolve: {
-    alias: { $lib: fileURLToPath(new URL("./src/lib", import.meta.url)) },
+    alias: {
+      $lib: fileURLToPath(new URL("./src/lib", import.meta.url)),
+      // The bridge contract (svelte.config.js): its pure history helpers run here too.
+      $shared: fileURLToPath(new URL("../shared/src", import.meta.url)),
+    },
   },
   test: {
     name: "node",

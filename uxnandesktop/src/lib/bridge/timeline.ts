@@ -2,9 +2,14 @@
 // list of text runs and structured blocks (`segments`), and the timeline reads
 // better grouped than flat —
 //
-//  - consecutive activity (commands, edits, tool calls) becomes one work
+//  - consecutive activity (commands, edits, tool calls, thoughts) becomes one work
 //    group, open while the turn runs and summarized once it settles; a
 //    subagent is not a step of the log but its own card between them;
+//  - a page from the bridge carries a settled run of steps as ONE `work`
+//    summary (`WorkRunSegment`, shared/src/models/history.ts: its stored index
+//    range, counts and changed files), and a live turn streams each step as a
+//    bounded preview; both are parts of the same group, so a run that began
+//    before the page was read and goes on live reads as one;
 //  - a settled turn folds everything before its closing answer behind one
 //    "Worked for 1m 3s" line, so a long session reads as its conclusions;
 //  - the files a turn changed are gathered into one card at its end.
@@ -12,28 +17,39 @@
 // Pure: every input crossed a process boundary (the bridge), so each field is
 // read defensively and an unknown shape is passed through as a lone block.
 
-/** Block types that are a step of the agent's work rather than something to read or answer. */
-const ACTIVITY_TYPES = new Set(["command_execution", "diff", "tool"]);
+import {
+  isStep,
+  isWorkRunSegment,
+  stepFailed,
+  stepRunning,
+  type ChangedFileSummary,
+  type WorkRunSegment,
+} from "$shared/models/history";
+
+/** One part of a work group: a settled run the page summarized, or one step
+ *  (a live preview, or a step of a run `turn/steps` served). */
+export type WorkPart = WorkRunSegment | Record<string, unknown>;
 
 export type TimelineItem =
   /** [opens]: the first text of one of the agent's own responses after an
    *  earlier one ended (an `assistant_response_boundary` came before it). */
   | { kind: "text"; text: string; opens?: boolean }
-  | { kind: "work"; blocks: Record<string, unknown>[] }
+  | { kind: "work"; parts: WorkPart[] }
   | { kind: "block"; block: unknown };
 
 export interface WorkSummary {
+  /** How many steps the group holds, summarized runs included. */
+  steps: number;
   commands: number;
   edits: number;
   tools: number;
+  /** Stretches of reasoning (`thinking` steps). */
+  thoughts: number;
   failed: number;
+  running: number;
 }
 
-export interface ChangedFile {
-  filename: string;
-  additions: number;
-  deletions: number;
-}
+export type ChangedFile = ChangedFileSummary;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -52,9 +68,38 @@ export function textOf(part: unknown): string | null {
   return p && p.type === "text" && typeof p.text === "string" ? p.text : null;
 }
 
-/** Whether a block is one step of the agent's work (a command, an edit, a tool call). */
+/** Whether a part is the agent's work: one step (a command, an edit, a tool
+ *  call) or a page's summary of a run of them. */
 export function isActivity(part: unknown): boolean {
-  return ACTIVITY_TYPES.has(typeOf(part));
+  return isStep(part) || isWorkRunSegment(part);
+}
+
+/** How many steps a run summarizes. */
+export function runSize(run: WorkRunSegment): number {
+  return run.commands + run.edits + run.tools + run.thoughts;
+}
+
+/** The step a group's last part ends on: the part itself, or a run's `last`. */
+export function lastStepOf(part: unknown): Record<string, unknown> | undefined {
+  if (isWorkRunSegment(part)) return part.last as unknown as Record<string, unknown>;
+  return isStep(part) ? part : undefined;
+}
+
+/**
+ * A thought's text on one line, as its collapsed row reads it: Markdown marks
+ * dropped (headings, emphasis, code fences and ticks, quotes, list bullets,
+ * link targets), whitespace collapsed. The row truncates it to its width.
+ */
+export function plainLine(markdown: string): string {
+  return markdown
+    .replace(/```[^\n]*\n?/g, " ")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, "")
+    .replace(/(\*\*|\*|~~|`)(?=\S)([^]*?\S)\1/g, "$2")
+    .replace(/(^|\W)(__|_)(?=\S)([^]*?\S)\2(?=\W|$)/g, "$1$3")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Groups a turn's parts: runs of activity become one `work` item; blank text
@@ -90,8 +135,8 @@ export function groupParts(parts: readonly unknown[]): TimelineItem[] {
     if (isActivity(part)) {
       const last = items[items.length - 1];
       const block = record(part) as Record<string, unknown>;
-      if (last?.kind === "work") last.blocks.push(block);
-      else items.push({ kind: "work", blocks: [block] });
+      if (last?.kind === "work") last.parts.push(block);
+      else items.push({ kind: "work", parts: [block] });
       continue;
     }
     items.push({ kind: "block", block: part });
@@ -137,25 +182,24 @@ export function splitAnswer(items: readonly TimelineItem[]): {
   };
 }
 
-/** Whether an activity block failed (a non-zero exit, an error status, a tool error, a failed subagent). */
-export function activityFailed(block: Record<string, unknown>): boolean {
-  if (block.status === "error" || block.isError === true) return true;
-  if (record(block.state)?.status === "error") return true;
-  return typeof block.exitCode === "number" && block.exitCode !== 0;
-}
-
-/** Whether an activity block is still running. */
-export function activityRunning(block: Record<string, unknown>): boolean {
-  if (block.status === "running" || block.status === "in_progress") return true;
-  const state = record(block.state);
-  return state?.status === "running" || state?.status === "in_progress";
-}
-
-/** What a run of activity amounts to, for its settled header ("Ran 3 commands · 2 edits"). */
-export function summarizeWork(blocks: readonly Record<string, unknown>[]): WorkSummary {
-  const summary: WorkSummary = { commands: 0, edits: 0, tools: 0, failed: 0 };
-  for (const block of blocks) {
-    switch (block.type) {
+/** What a group of work amounts to, for its header ("Ran 3 commands · 2
+ *  edits", how many failed): a summarized run brings its counts, a step
+ *  counts itself — by the one rule every client uses (`stepFailed`,
+ *  `stepRunning`). */
+export function summarizeWork(parts: readonly WorkPart[]): WorkSummary {
+  const summary: WorkSummary = { steps: 0, commands: 0, edits: 0, tools: 0, thoughts: 0, failed: 0, running: 0 };
+  for (const part of parts) {
+    if (isWorkRunSegment(part)) {
+      summary.steps += runSize(part);
+      summary.commands += part.commands;
+      summary.edits += part.edits;
+      summary.tools += part.tools;
+      summary.thoughts += part.thoughts;
+      summary.failed += part.failed;
+      summary.running += part.running;
+      continue;
+    }
+    switch (part.type) {
       case "command_execution":
         summary.commands += 1;
         break;
@@ -165,29 +209,41 @@ export function summarizeWork(blocks: readonly Record<string, unknown>[]): WorkS
       case "tool":
         summary.tools += 1;
         break;
+      case "thinking":
+        summary.thoughts += 1;
+        break;
     }
-    if (activityFailed(block)) summary.failed += 1;
+    summary.steps += 1;
+    if (stepFailed(part)) summary.failed += 1;
+    if (stepRunning(part)) summary.running += 1;
   }
   return summary;
 }
 
-/** The files a turn changed, once each, in first-touched order, with their line counts summed. */
+/** The files a turn changed, once each, in first-touched order, with their
+ *  line counts summed — from its edits, and from the `files` each summarized
+ *  run reports for the edits it folds. */
 export function changedFiles(parts: readonly unknown[]): ChangedFile[] {
   const byName = new Map<string, ChangedFile>();
+  const add = (filename: unknown, additions: unknown, deletions: unknown) => {
+    if (typeof filename !== "string" || !filename) return;
+    const plus = typeof additions === "number" ? additions : 0;
+    const minus = typeof deletions === "number" ? deletions : 0;
+    const known = byName.get(filename);
+    if (known) {
+      known.additions += plus;
+      known.deletions += minus;
+    } else {
+      byName.set(filename, { filename, additions: plus, deletions: minus });
+    }
+  };
   for (const part of parts) {
-    const block = record(part);
-    if (!block || block.type !== "diff" || typeof block.filename !== "string" || !block.filename) {
+    if (isWorkRunSegment(part)) {
+      for (const file of part.files) add(file?.filename, file?.additions, file?.deletions);
       continue;
     }
-    const additions = typeof block.additions === "number" ? block.additions : 0;
-    const deletions = typeof block.deletions === "number" ? block.deletions : 0;
-    const known = byName.get(block.filename);
-    if (known) {
-      known.additions += additions;
-      known.deletions += deletions;
-    } else {
-      byName.set(block.filename, { filename: block.filename, additions, deletions });
-    }
+    const block = record(part);
+    if (block?.type === "diff") add(block.filename, block.additions, block.deletions);
   }
   return [...byName.values()];
 }

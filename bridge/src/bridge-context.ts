@@ -10,6 +10,7 @@ import type { SessionRegistry } from './transport/session-registry.js';
 import type { TrustStore } from './transport/trust-store.js';
 import type { ThreadStore } from './conversation/thread-store.js';
 import type { SessionHistoryReader } from './conversation/session-history.js';
+import type { NativeHistoryWatcher } from './conversation/native-history-watcher.js';
 import type { MetricsService } from './metrics/metrics-service.js';
 import type { UsageScanner } from './usage/usage-scan.js';
 import type { AgentManager } from './agents/agent-manager.js';
@@ -45,6 +46,12 @@ export interface BridgeContext {
   readonly usage: UsageScanner;
   /** Reads agent on-disk session logs as a `turn/list` fallback (§5.8.8). */
   readonly sessionHistory: SessionHistoryReader;
+  /**
+   * Merges agent transcripts into the store and announces it
+   * (`stream/history/changed`): before `turn/list` pages a thread, and on its
+   * own for the threads clients are reading (§5.8.8).
+   */
+  readonly historyWatcher: NativeHistoryWatcher;
   /** Agent turn orchestration. */
   readonly agentManager: AgentManager;
   /** Prepared pages shown by agents (`view/read`). */

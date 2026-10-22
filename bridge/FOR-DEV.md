@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1193, shared 92, relay
+standalone). It builds clean and the suite is green (bridge 1246, shared 110, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -132,10 +132,11 @@ push validation (FOR-HUMAN).
   `git/deleteBranch`, `git/removeWorktree`, `workspace/exists`,
   `workspace/browseDirs`.
 - **Conversation engine** — threads / turns + streaming, per-thread
-  `Message.blocks` / `Message.thinking` / `Message.usage`, plus the ordered
-  `Message.segments` interleave (text runs + work-log/diff/tool blocks in
-  production order) so a `turn/list` re-sync renders the work log inline with
-  the response instead of stacking all activity above one merged paragraph.
+  `Message.usage`, and the ordered `Message.segments` interleave (text runs,
+  thoughts and work-log/diff/tool blocks in production order) — the one place
+  a step or a thought lives (`Message.blocks` and `Message.thinking` are gone)
+  — so a `turn/list` re-sync renders the work log, reasoning included, inline
+  with the response.
   Parallel-activity blocks (e.g. a Claude Code subagent's tool landing while the
   main text streams) are flagged `beforeText` and slotted BEFORE the open text
   run — in the store and on the `stream/content/block` wire — so a text run is
@@ -144,6 +145,31 @@ push validation (FOR-HUMAN).
   Native assistant envelopes from Codex, Claude and pi are separated by durable
   `assistant_response_boundary` blocks; terminal text is reconciled additively,
   so an agent's final item cannot erase progress/commentary already shown.
+- **Bounded conversation store** (plans/046 phase 1, architecture/02a §5.8.3) —
+  a conversation is `threads/<id>/thread.json` + one file per turn + an
+  append-only journal for the turn in flight. A streamed event appends one line
+  (~0.1 ms, from ~130 ms on a real 46 MB conversation); a start reads only the
+  indexes (5 ms, from 474 ms and ~316 MB of heap on the real 73 conversations);
+  turns load on demand into a 64 MiB cache that never drops a conversation being
+  streamed into; a crash's journal is replayed on the next start; each step is
+  stored once, in `segments` (an older layout's `blocks` are folded in when it
+  converts). Older layouts convert once and
+  are kept aside (`threads.v1/`, `threads.json.migrated`). `turn/list` skips
+  re-reading a native transcript file whose size and mtime did not change
+  (OpenCode, read over HTTP, is still read each time). Guarded by
+  `test/conversation/thread-store-budget.test.ts`.
+- **Bounded pages** (plans/046 phase 2, architecture/02a §5.8.3 *What a page
+  carries*, 02b §1.5 *Historial acotado*) — `turn/list`, `turn/read` and
+  `stream/turn/created` serve each reply summarized (`summarizeTurn` in
+  `shared`): prose whole, each run of steps (thoughts included) one `work`
+  segment; `turn/list` fits 1 MiB (newest turns first, `offset`).
+  `turn/steps` / `turn/step` serve the detail on demand;
+  `stream/content/block` carries a step's preview and its stored `index`
+  (`ThreadStore.blockIndex`, computed before the write). Every response larger
+  than one local-control frame is answered `-32011` (`HandlerRouter`). The real
+  46 MB conversation's newest page went from 46 MB to 1.0 MB. The desktop and
+  phone still read the old shape — their move is phase 3/4
+  (`uxnandesktop/FOR-DEV.md`, `uxnanmobile/FOR-DEV.md`).
 - **Conversation naming** — a thread is no longer labelled with the first ~72
   characters of its opening message (two conversations that start with the same
   phrase were indistinguishable). No agent CLI exposes a title — every one of
@@ -264,10 +290,19 @@ push validation (FOR-HUMAN).
   echo demo; see `docs/agents.md` → *Image attachments*.
 - **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
   Zero and Grok. Every idle read merges completed native-only turns into the
-  bridge store; OpenCode uses its official local server endpoint and the other
+  bridge store (skipped while a transcript file and the thread are unchanged); OpenCode uses its official local server endpoint and the other
   agents use their persisted transcripts. A row already imported is refreshed
   in place rather than imported again, and a turn the bridge closed before any
   reply takes the transcript's reply in its own place (`fillEmptyReply`).
+  **Native-history watcher** (plans/046 phase 4b, architecture/02a §5.8.8,
+  `src/conversation/native-history-watcher.ts`): a `turn/list` keeps its thread
+  watched for the client that read it (15 min after the last read, while it
+  stays connected); every 2 s each watched thread with no turn in flight costs
+  one `stat` (OpenCode a read every 10 s), and a merge that changed the stored
+  turns — the watcher's or one inside `turn/list` — is broadcast as
+  `stream/history/changed { threadId, rev }`. Idle (no timer) with nothing
+  watched; started and stopped with the bridge. The clients still have to
+  re-read on it and drop the phone's 3 s poll (desktop + mobile, same plan).
 - **Bridge control** — `bridge/status` (real `relayConnected`),
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,
@@ -418,17 +453,16 @@ push validation (FOR-HUMAN).
 
 ## Conversation history
 
-- [ ] **Native-session history — ordered `segments`.** The live/stored path
-      (`thread-store.ts`) emits `Message.segments` (interleaved text↔work-log
-      order), so a phone reconnecting to a still-running bridge recovers the real
-      order. The native-history readers in `session-history.ts` still emit
-      `content` + `blocks` separately, so an imported external turn renders blocks-first
-      (the phone falls back to `_assistantContents`). Reconstruct `segments` from
-      each CLI log's real text↔tool order (Claude `tool_use` is interleaved in the
-      assistant `content`; Codex/pi attach tool blocks after the text; OpenCode
-      parts are read in file order) and
-      attach them to each `RawMessage`. See the `FOR-DEV:` marker in
-      `session-history.ts`.
+- [ ] **Native-session history — order inside one transcript line.** The
+      readers in `session-history.ts` keep each line's prose and thoughts in
+      their order (`RawMessage.segments`, `ReplySegments`), and OpenCode's and
+      Codex's steps too; but a Claude Code or pi step is paired with its result
+      only on a later line, so it lands after its line's prose and thoughts. A
+      line whose content interleaves text and tool calls (`text`, `tool_use`,
+      `text`) loses that inner order — rare, since Claude Code writes one
+      content block per line and pi puts its tool calls last. Hold the step's
+      place when its call is read and fill it when its result is. See the
+      `FOR-DEV:` marker in `attachBlocksToLastAssistant` (`session-history.ts`).
 
 - [ ] **A fork keeps its agent's memory.** `thread/fork` copies the messages but
       drops the native session (two conversations must never write into one

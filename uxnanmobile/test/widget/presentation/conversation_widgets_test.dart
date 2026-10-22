@@ -1331,7 +1331,7 @@ void main() {
     );
   });
 
-  testWidgets('assistant turn shows a collapsible thinking section',
+  testWidgets("a settled turn's thought is a step behind the fold",
       (tester) async {
     final message = Message(
       id: 'm4',
@@ -1350,18 +1350,21 @@ void main() {
     await tester.pumpWidget(_wrap(MessageBubble(message: message)));
     await tester.pumpAndSettle();
 
-    // Shown by default but collapsed: header visible, reasoning hidden.
-    expect(find.text('Thinking'), findsOneWidget);
-    expect(find.text('weighing the options'), findsNothing);
-    // The answer renders normally.
+    // No reasoning block heading the turn: the thought is work, folded.
+    expect(find.text('Thinking'), findsNothing);
     expect(find.text('The answer.'), findsOneWidget);
-
-    await tester.tap(find.text('Thinking'));
+    await tester.tap(find.text('Show the work'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Work log'));
+    await tester.pumpAndSettle();
+    final row = find.textContaining('weighing the options', findRichText: true);
+    expect(row, findsOneWidget);
+    await tester.tap(row);
     await tester.pumpAndSettle();
     expect(find.text('weighing the options'), findsOneWidget);
   });
 
-  testWidgets('assistant process disclosures expand exclusively per turn',
+  testWidgets('a thought and the command after it share one work log',
       (tester) async {
     final message = Message(
       id: 'm-process',
@@ -1386,21 +1389,19 @@ void main() {
         .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Thinking'));
-    await tester.pumpAndSettle();
-    expect(find.text('private reasoning detail'), findsOneWidget);
-    expect(find.text('No issues found'), findsNothing);
-
+    expect(find.text('Work log'), findsOneWidget);
     await tester.tap(find.text('Work log'));
     await tester.pumpAndSettle();
-    expect(find.text('private reasoning detail'), findsNothing);
+    expect(
+      find.textContaining('private reasoning detail', findRichText: true),
+      findsOneWidget,
+    );
     await tester.tap(find.text(r'$ dart analyze'));
     await tester.pumpAndSettle();
     expect(find.text('No issues found'), findsOneWidget);
   });
 
-  testWidgets('thinking section is hidden when the setting is off',
-      (tester) async {
+  testWidgets('thoughts are hidden when the setting is off', (tester) async {
     SharedPreferences.setMockInitialValues({
       'uxnan.conversation.showThinking': false,
     });

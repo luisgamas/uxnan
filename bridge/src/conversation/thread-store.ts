@@ -1,21 +1,34 @@
 /**
- * Persistent conversation store (threads → turns → messages), one file per
- * conversation under `~/.uxnan/threads/<threadId>.json`. Mutations are
- * serialized through a mutex so concurrent turn/delta updates don't corrupt the
- * read-modify-write cycle, and the conversations are held in memory between
- * them (this process is their only reader and writer).
+ * Persistent conversation store (threads → turns → messages). This process is
+ * their only reader and writer (a single-instance lock guarantees it), and
+ * every change runs as one transaction under a mutex, so concurrent turn and
+ * delta updates never interleave inside a read-modify-write.
  *
- * The layout is load-bearing, not housekeeping. Every streamed token mutates a
- * conversation, and while all of them shared one `threads.json` each token
- * re-read, re-serialized and rewrote the entire store: 93 ms per delta on a
- * real 8.4 MB one, which queued up behind the mutex and throttled a reply to a
- * quarter of its natural speed (measured: the same answer took 116 s against
- * that store and 26 s against an empty one). Per conversation the median write
- * is a few KB, and one conversation's size no longer taxes every other.
+ * The rule it is built to: no cost of an everyday operation grows with the
+ * length of a conversation's history. Each streamed token used to re-serialize
+ * and rewrite its whole conversation — ~100 ms of a blocked event loop per
+ * delta on a real 46 MB one, for every chat and client of the bridge — and a
+ * start parsed every conversation in full (207 MB, 512 MB of heap). Now:
  *
- * Source: architecture/02a-system-architecture.md §6 (domain models).
+ * - On disk a conversation is a small `thread.json` (summary + one header per
+ *   turn), one file per turn, and an append-only journal for the turn in
+ *   flight (see {@link DaemonState.threadsDir}).
+ * - A start reads only the `thread.json` files. A turn's messages are read
+ *   when someone reads them, and stay in a cache bounded by bytes
+ *   ({@link DEFAULT_BODY_CACHE_BYTES}) that never drops a conversation being
+ *   streamed into or changed right now.
+ * - A streamed event (text, reasoning, a step, a step settling) is applied in
+ *   memory and appended to the journal as one line, by the same function that
+ *   replays the journal. When the turn ends its file is rewritten once and the
+ *   journal goes. A journal left by a crash is replayed on the next start.
+ * - Any other change rewrites only the turns it reached and, when it changed,
+ *   the index. What it reached is recorded by the accessors that hand state to
+ *   it ({@link Tx}); nothing has to remember to name what it wrote.
+ *
+ * Source: architecture/02a-system-architecture.md §6 (domain models) and §5.8
+ * (the `~/.uxnan/threads/` layout).
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   AccessMode,
   Message,
@@ -32,7 +45,14 @@ import type {
   TurnList,
   TurnStatus,
 } from '@uxnan/shared';
-import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import {
+  JsonRpcErrorCode,
+  RpcError,
+  TURN_PAGE_MAX_BYTES,
+  appendThinkingSegment,
+  jsonBytes,
+  summarizeTurn,
+} from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { provisionalTitle } from '../agents/thread-title.js';
 import { SyncLedger } from '../sync/sync-ledger.js';
@@ -40,18 +60,6 @@ import { blockIdOf, isRunning, settleBlock } from '../adapters/content-blocks.js
 import { canonicalTurn, isAgentWake } from './session-history.js';
 import { utcDayKey } from '../metrics/day.js';
 import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
-
-/**
- * What a mutation changed, so only those conversation files are rewritten.
- * Both lists are thread ids; omitting them writes nothing.
- */
-interface MutationScope<T> {
-  result: T;
-  /** Conversations whose file must be (re)written. */
-  write?: readonly string[];
-  /** Conversations whose file must be deleted. */
-  remove?: readonly string[];
-}
 
 /**
  * A change to a thread's summary, announced after it is on disk. The store is
@@ -68,25 +76,32 @@ export const PLACEHOLDER_THREAD_TITLE = 'New thread';
 /** How many times the bridge asks an agent for a title before giving up. */
 export const MAX_TITLE_ATTEMPTS = 2;
 
+/**
+ * How much of the conversations' turns, counted as the bytes of their files,
+ * the store keeps in memory. Sized so the largest conversation measured on a
+ * real machine (46 MB) stays loaded while it is open; past it, the conversation
+ * read longest ago is dropped and read again from disk when next needed.
+ */
+export const DEFAULT_BODY_CACHE_BYTES = 64 * 1024 * 1024;
+
+export interface ThreadStoreOptions {
+  /** Overrides {@link DEFAULT_BODY_CACHE_BYTES} (tests use a small one). */
+  bodyCacheBytes?: number;
+}
+
 interface StoredMessage {
   id: string;
   turnId: string;
   role: MessageRole;
   text: string;
-  /** The agent's accumulated reasoning ("thinking") for this message, if any. */
-  thinking?: string;
-  /** Structured content blocks (command_execution/diff/tool) for this message. */
-  blocks?: unknown[];
   /**
-   * The message's text runs and structured blocks **in the order they streamed
-   * in** (text runs as `{ type:'text', text }`, blocks verbatim). This preserves
-   * the interleave that `text` + `blocks` lose when stored separately, so a
-   * `turn/list` re-sync can render the work log inline with the response instead
-   * of stacking all activity above one merged paragraph. Maintained from the
-   * first delta/block alongside `text`/`blocks` (the text runs concatenate to
-   * `text`; the non-text entries are exactly `blocks`). Emitted on the wire only
-   * when it carries a structured block — see {@link toMessage} — so plain-text
-   * turns keep the lean shape and need no client interleaving.
+   * The message's text runs, reasoning and blocks **in the order they
+   * streamed in** (text runs as `{ type:'text', text }`, each stretch of
+   * reasoning as `{ type:'thinking', text }`, blocks verbatim) — the one place
+   * a step or a thought is kept, and its index here is how a client addresses it
+   * (`turn/steps`, `turn/step`). The text runs concatenate to `text`. Absent
+   * on an assistant message that has said nothing yet ({@link toMessage}
+   * serves it as empty).
    */
   segments?: unknown[];
   /** Token usage for this turn (so the phone restores the context meter). */
@@ -96,13 +111,37 @@ interface StoredMessage {
   createdAt: number;
 }
 
-interface StoredTurn {
+/** Messages a turn holds per UTC day — what the activity ledger counts. */
+interface MessageDay {
+  day: number;
+  messages: number;
+}
+
+/**
+ * A deeply read-only view, for state a caller may read but must not change:
+ * a change only reaches disk when it went through an accessor that records it
+ * ({@link Tx}), so the type refuses the others.
+ */
+type Frozen<T> = T extends (infer U)[]
+  ? readonly Frozen<U>[]
+  : T extends readonly (infer U)[]
+    ? readonly Frozen<U>[]
+    : T extends object
+      ? { readonly [K in keyof T]: Frozen<T[K]> }
+      : T;
+
+/**
+ * A turn as the store holds it: its header always — what `thread.json` keeps
+ * of it — and its messages only while they are loaded ({@link
+ * ThreadStore.#loadTurn}). Read-only messages here: a mutation changes them
+ * through {@link Tx.turn} / {@link Tx.whole}, which record that it did.
+ */
+interface TurnRecord {
   id: string;
   threadId: string;
   /** Position in the thread, 1-based, never reused (see `Turn.seq`). */
   seq?: number;
   status: TurnStatus;
-  messages: StoredMessage[];
   createdAt: number;
   completedAt?: number;
   /**
@@ -121,16 +160,25 @@ interface StoredTurn {
    * matching it against native history reads the reply across the chain.
    */
   handedOffTo?: string;
+  /** Its messages per day, so metrics never need the messages themselves. */
+  messageDays?: MessageDay[];
+  /** Size of its file on disk — what the body cache counts. */
+  bytes?: number;
+  readonly messages?: Frozen<StoredMessage[]>;
 }
 
-interface StoredThread {
+/** A turn with its messages loaded, for code that may change them. */
+interface StoredTurn extends Omit<TurnRecord, 'messages'> {
+  messages: StoredMessage[];
+}
+
+interface ThreadMeta {
   id: string;
   projectId: string;
   title: string;
   status: ThreadStatus;
   createdAt: number;
   updatedAt: number;
-  turns: StoredTurn[];
   agentId?: string;
   model?: string;
   cwd?: string;
@@ -168,6 +216,121 @@ interface StoredThread {
    * (architecture/02a §5.8.17) — the latest decision wins, whoever made it.
    */
   decidedAt?: { title?: number; status?: number };
+  /**
+   * The agent transcript last merged into this thread ({@link nativeKey}): its
+   * source signature together with the shape of the thread it was merged
+   * into. While both are the same, merging it again cannot change anything,
+   * so `turn/list` skips reading it ({@link ThreadStore.nativeHistoryCurrent}).
+   */
+  nativeSource?: string;
+}
+
+interface ThreadRecord extends ThreadMeta {
+  turns: TurnRecord[];
+}
+
+/** A thread with every turn's messages loaded ({@link Tx.whole}). */
+interface StoredThread extends ThreadMeta {
+  turns: StoredTurn[];
+}
+
+/** What `turns/<turn>.json` holds. */
+interface TurnFile {
+  /** How many journal events are already folded into these messages. */
+  events: number;
+  messages: StoredMessage[];
+}
+
+/** What this process knows of one turn's files. */
+interface TurnDisk {
+  /** Hash of its file as last read or written, when known: an identical rewrite is skipped. */
+  digest?: string;
+  /** Size of its file. */
+  bytes: number;
+  /** Journal events applied to its messages so far (folded into the file or not). */
+  events: number;
+  /** A journal may exist beside its file. */
+  journal: boolean;
+  /** What this process appended to that journal, for the body cache. */
+  journalBytes: number;
+  /** This process is streaming into it: its conversation stays loaded. */
+  live: boolean;
+  /** An append failed and may have left half a line: the next event rewrites the file instead. */
+  suspect: boolean;
+}
+
+interface ThreadDisk {
+  /** Its `thread.json` as last read or written: an identical rewrite is skipped. */
+  index?: string;
+  turns: Map<string, TurnDisk>;
+}
+
+/**
+ * One streamed change to a turn's assistant message — what the journal holds,
+ * one per line, and what {@link applyTurnEvent} applies, live or on replay.
+ * `at` is when it happened: it dates the thread's activity (`updatedAt`).
+ */
+type TurnEvent =
+  | { op: 'delta'; text: string; at: number }
+  | { op: 'thinking'; text: string; at: number }
+  | { op: 'block'; content: unknown; beforeText?: true; at: number }
+  | { op: 'settle'; content: unknown; at: number }
+  | { op: 'usage'; usage: { tokens: number; contextWindow?: number }; at: number };
+
+/**
+ * The state one transaction may read and change. Every accessor that hands
+ * out something changeable records what it handed out, and the transaction
+ * writes exactly that when it ends: the thread's index for {@link find} /
+ * {@link thread} / {@link all}, the turn for {@link turn}, every turn for
+ * {@link whole}. A mutation cannot change a file it never asked for, nor ask
+ * for one and have it left unwritten — an index or turn file that came out
+ * identical is simply not rewritten.
+ */
+interface Tx {
+  /** A thread to read only (nothing is recorded); `undefined` when unknown. */
+  peek(threadId: string): Frozen<ThreadRecord> | undefined;
+  /** A thread's summary and turn headers, to change; `undefined` when unknown. */
+  find(threadId: string): ThreadRecord | undefined;
+  /** {@link find}, rejecting an unknown thread. */
+  thread(threadId: string): ThreadRecord;
+  /** Every thread's summary and turn headers, to change. */
+  all(): ThreadRecord[];
+  /** One turn's header (status, times, links), to change. */
+  header(threadId: string, turnId: string): TurnRecord;
+  /** One turn with its messages, to change. */
+  turn(threadId: string, turnId: string): Promise<StoredTurn>;
+  /** A thread with every turn's messages, to change (its turn list too). */
+  whole(threadId: string): Promise<StoredThread>;
+  /** A thread with every turn's messages, to read only. */
+  view(threadId: string): Promise<Frozen<StoredThread>>;
+  /**
+   * Applies a streamed event to a turn. While the turn is in flight the event
+   * is journaled — one appended line, no file rewritten. Output arriving after
+   * the turn ended is refused (`false`); a step settling or usage on an ended
+   * turn rewrites that turn's file. Resolves whether anything changed.
+   */
+  stream(threadId: string, turnId: string, event: TurnEvent): Promise<boolean>;
+  /** A new thread. */
+  add(thread: StoredThread): void;
+  /** Deletes a thread, its files and its attachments. */
+  remove(threadId: string): void;
+}
+
+/** What one transaction reached, so its end writes exactly that. */
+class Mutation {
+  /** Threads whose index may have changed. */
+  readonly indexes = new Set<string>();
+  /** Turns whose messages may have changed ({@link turnKey}). */
+  readonly bodies = new Set<string>();
+  readonly removed = new Set<string>();
+  /** Threads it is working on: never dropped from the cache meanwhile. */
+  readonly pinned = new Set<string>();
+  /** Journal lines to append, in order. */
+  readonly events: { threadId: string; turnId: string; line: string }[] = [];
+
+  touches(threadId: string): boolean {
+    return this.indexes.has(threadId) || this.removed.has(threadId) || this.pinned.has(threadId);
+  }
 }
 
 /**
@@ -236,6 +399,8 @@ export interface NativeHistoryReconcileResult {
   changed: boolean;
   /** Newly imported turn ids, in native transcript order. */
   importedTurnIds: string[];
+  /** The thread's sync revision after the merge, when it {@link changed}. */
+  rev?: number;
 }
 
 /** Narrow persistence boundary used to project mutable thread history into the
@@ -247,21 +412,40 @@ export interface ConversationMetricsSink {
   ): Promise<number>;
 }
 
+type MetricProjection = { conversation: ConversationMetricEvent; turns: TurnMetricEvent[] };
+
 export class ThreadStore {
   readonly #state: DaemonState;
   readonly #metricsSink: ConversationMetricsSink | undefined;
   readonly #ledger: SyncLedger;
+  readonly #bodyCacheBytes: number;
   readonly #listeners = new Set<(change: ThreadChange) => void>();
-  /** Threads whose summary changed in the mutation running now (under the lock). */
+  /** Threads whose summary changed in the transaction running now (under the lock). */
   readonly #changed = new Set<string>();
-  /** Threads deleted in the mutation running now, with their tombstone revision. */
+  /** Threads deleted in the transaction running now, with their tombstone revision. */
   readonly #deleted: { threadId: string; rev: number }[] = [];
   #lock: Promise<void> = Promise.resolve();
+  /** What is on disk for each thread, as far as this process knows. */
+  readonly #disk = new Map<string, ThreadDisk>();
+  /** Threads with turn messages in memory, least recently used first. */
+  readonly #hot = new Set<string>();
+  /** Turn files being read now ({@link turnKey}), so two readers share one copy. */
+  readonly #loading = new Map<string, Promise<StoredTurn>>();
+  /** The transaction running now, whose threads the cache must not drop. */
+  #mutation: Mutation | undefined;
+  /** The layout of each turn able to stream in this process ({@link turnKey}). */
+  readonly #layouts = new Map<string, SegmentLayout>();
 
-  constructor(state: DaemonState, metricsSink?: ConversationMetricsSink, ledger?: SyncLedger) {
+  constructor(
+    state: DaemonState,
+    metricsSink?: ConversationMetricsSink,
+    ledger?: SyncLedger,
+    options: ThreadStoreOptions = {},
+  ) {
     this.#state = state;
     this.#metricsSink = metricsSink;
     this.#ledger = ledger ?? SyncLedger.memory();
+    this.#bodyCacheBytes = options.bodyCacheBytes ?? DEFAULT_BODY_CACHE_BYTES;
   }
 
   /** Listen for thread changes (after they are on disk). Returns an unsubscribe. */
@@ -271,14 +455,14 @@ export class ThreadStore {
   }
 
   async listThreads(projectId?: string): Promise<ThreadList> {
-    const threads = await this.#read();
+    const threads = [...(await this.#records()).values()];
     const filtered = projectId ? threads.filter((t) => t.projectId === projectId) : threads;
     return { threads: filtered.map(toThread) };
   }
 
   /** Threads whose summary changed after revision [since] (all when omitted). */
   async threadsChangedSince(since?: number): Promise<Thread[]> {
-    const threads = await this.#read();
+    const threads = [...(await this.#records()).values()];
     return threads.filter((t) => since === undefined || (t.rev ?? 0) > since).map(toThread);
   }
 
@@ -291,45 +475,52 @@ export class ThreadStore {
   async relinkProjects(
     projectIdFor: (cwd: string) => Promise<string | undefined>,
   ): Promise<number> {
-    const threads = await this.#read();
     const moves = new Map<string, string>();
-    for (const thread of threads) {
+    for (const thread of (await this.#records()).values()) {
       if (thread.cwd === undefined) continue;
       const projectId = await projectIdFor(thread.cwd);
       if (projectId !== undefined && projectId !== thread.projectId)
         moves.set(thread.id, projectId);
     }
     if (moves.size === 0) return 0;
-    return this.#mutate(async (all) => {
-      for (const thread of all) {
-        const projectId = moves.get(thread.id);
-        if (projectId === undefined) continue;
+    return this.#mutate(async (tx) => {
+      for (const [threadId, projectId] of moves) {
+        const thread = tx.find(threadId);
+        if (!thread) continue;
         thread.projectId = projectId;
         this.#bump(thread);
       }
-      return { result: moves.size, write: [...moves.keys()] };
+      return moves.size;
     });
   }
 
   /** The folders conversations run in, for seeding the project registry. */
   async threadFolders(): Promise<string[]> {
-    const threads = await this.#read();
+    const threads = [...(await this.#records()).values()];
     return [...new Set(threads.map((t) => t.cwd).filter((c): c is string => !!c))];
   }
 
   async getThread(threadId: string): Promise<Thread> {
-    return toThread(await this.#requireThread(await this.#read(), threadId));
+    return toThread(requireThread(await this.#records(), threadId));
   }
 
+  /**
+   * One page of [threadId]'s turns as `turn/list` serves it (`TurnList`): the
+   * window `[cursor, cursor + limit)` — or the last [limit] turns with
+   * [fromEnd] — each summarized (`summarizeTurn`), trimmed to the newest
+   * turns that fit {@link TURN_PAGE_MAX_BYTES} of serialized JSON (always at
+   * least the newest one). Only the turns served are read, newest first: an
+   * older one stays on disk until asked for.
+   */
   async listTurns(
     threadId: string,
     cursor?: string,
     limit?: number,
     fromEnd = false,
+    maxBytes: number = TURN_PAGE_MAX_BYTES,
   ): Promise<TurnList> {
     await this.#afterPendingWrites();
-    const threads = await this.#read();
-    const thread = await this.#requireThread(threads, threadId);
+    const thread = requireThread(await this.#records(), threadId);
     const total = thread.turns.length;
     const size = limit && limit > 0 ? limit : DEFAULT_TURN_LIMIT;
     // `fromEnd` returns the last page (newest turns) so the phone can open a
@@ -339,31 +530,83 @@ export class ThreadStore {
       : cursor
         ? Number.parseInt(cursor, 10) || 0
         : 0;
-    const slice = thread.turns.slice(start, start + size);
-    const result: TurnList = { turns: slice.map(toTurn), total };
-    if (start + size < total) {
-      result.nextCursor = String(start + size);
+    const end = Math.min(total, start + size);
+    const turns: Turn[] = [];
+    // `{"turns":[` … `]}` and a comma between turns.
+    let used = 12;
+    for (let index = end - 1; index >= start; index--) {
+      const turn = summarizeTurn(toTurn(await this.#loadTurn(thread, thread.turns[index]!)));
+      const bytes = jsonBytes(turn) + (turns.length > 0 ? 1 : 0);
+      if (turns.length > 0 && used + bytes > maxBytes) break;
+      turns.push(turn);
+      used += bytes;
     }
+    this.#evict();
+    turns.reverse();
+    const result: TurnList = { turns, offset: end - turns.length, total };
+    if (end < total) result.nextCursor = String(end);
     return result;
   }
 
+  /**
+   * One turn, whole — its steps and reasoning as stored. For the bridge's own
+   * readers (a title, the reply's text, whether it ended); a client reads a
+   * turn through `turn/read`, which summarizes it.
+   */
   async getTurn(turnId: string): Promise<Turn> {
     // Read what was already asked to be written: a client re-reading a turn the
     // moment it hears it ended must never get the copy from before (see
     // {@link #afterPendingWrites}).
     await this.#afterPendingWrites();
-    const threads = await this.#read();
-    for (const thread of threads) {
+    for (const thread of (await this.#records()).values()) {
       const turn = thread.turns.find((t) => t.id === turnId);
-      if (turn) return toTurn(turn);
+      if (!turn) continue;
+      const loaded = await this.#loadTurn(thread, turn);
+      this.#evict();
+      return toTurn(loaded);
     }
     throw notFound(`turn not found: ${turnId}`);
   }
 
+  /**
+   * The assistant message of [turnId] in [threadId], whole: the stored
+   * `segments` a step's index points into, every thought in full — what
+   * `turn/steps` and `turn/step` read.
+   */
+  async readReply(threadId: string, turnId: string): Promise<Message> {
+    await this.#afterPendingWrites();
+    const thread = requireThread(await this.#records(), threadId);
+    const record = thread.turns.find((t) => t.id === turnId);
+    if (!record) throw notFound(`turn not found: ${turnId}`);
+    const turn = await this.#loadTurn(thread, record);
+    this.#evict();
+    const reply = turn.messages.find((m) => m.role === 'assistant');
+    if (!reply) throw notFound(`turn has no reply: ${turnId}`);
+    return toMessage(reply);
+  }
+
+  /**
+   * Where a block handed to {@link appendBlock} right now will stand in the
+   * turn's stored `segments` — its address for `turn/step` — so the live
+   * notification can carry it before the write is done. Asked synchronously,
+   * just before the {@link appendBlock} it describes; `undefined` when the turn
+   * is not streaming in this process (the store refuses output for it).
+   */
+  blockIndex(
+    threadId: string,
+    turnId: string,
+    content: unknown,
+    beforeText = false,
+  ): number | undefined {
+    return this.#layouts.get(turnKey(threadId, turnId))?.place(content, beforeText, false);
+  }
+
   /** The bytes of an image a user message of [threadId] carries. */
   async readAttachment(threadId: string, attachmentId: string): Promise<TurnAttachmentData> {
-    const thread = await this.#requireThread(await this.#read(), threadId);
-    const attachment = thread.turns
+    const thread = requireThread(await this.#records(), threadId);
+    const turns = await Promise.all(thread.turns.map((turn) => this.#loadTurn(thread, turn)));
+    this.#evict();
+    const attachment = turns
       .flatMap((turn) => turn.messages)
       .flatMap((message) => message.attachments ?? [])
       .find((a) => a.id === attachmentId);
@@ -372,6 +615,20 @@ export class ThreadStore {
       throw notFound(`attachment not found: ${attachmentId}`);
     });
     return { mimeType: attachment.mimeType, base64Data: data.toString('base64') };
+  }
+
+  /**
+   * Whether the agent transcript whose source [signature] is given
+   * ({@link SessionHistoryReader.sourceSignature}) was already merged into
+   * [threadId] as the thread stands now — then reading and merging it again
+   * cannot change anything, and the merge (`NativeHistoryWatcher`) skips
+   * both. Always `false` without a signature: a history that is not one file
+   * has nothing cheaper to compare.
+   */
+  async nativeHistoryCurrent(threadId: string, signature: string | undefined): Promise<boolean> {
+    if (signature === undefined) return false;
+    const thread = requireThread(await this.#records(), threadId);
+    return thread.nativeSource === nativeKey(signature, thread);
   }
 
   /**
@@ -390,165 +647,47 @@ export class ThreadStore {
    * bridge itself was driving ({@link insideBridgeRun}) — one native session
    * runs one turn at a time, so it is that run, however the reader split it.
    * It is not imported, and a row imported that way before is dropped.
+   *
+   * [signature], when the transcript has one, is remembered with the result,
+   * so the next merge over an unchanged transcript can skip reading it
+   * ({@link nativeHistoryCurrent}). An empty [nativeTurns] merges nothing and
+   * only remembers it. A merge that changed the thread reports its new `rev`,
+   * which `NativeHistoryWatcher` announces (`stream/history/changed`).
    */
   async reconcileNativeHistory(
     threadId: string,
     nativeTurns: Turn[],
     now: number,
+    signature?: string,
   ): Promise<NativeHistoryReconcileResult> {
-    const captured = await this.#mutate(async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
-      const candidates = nativeTurns.filter(
-        (turn) => turn.threadId === threadId && importableNativeTurn(turn),
-      );
-      // Heal what an earlier read imported from the bridge's own runs (a
-      // transcript's per-line "prompts" once each became a turn of their own).
-      const strays = thread.turns.filter(
-        (turn) => isImportedTurn(turn) && insideBridgeRun(thread.turns, turn.createdAt),
-      );
-      for (const stray of strays) thread.turns.splice(thread.turns.indexOf(stray), 1);
-      if (candidates.length === 0) {
-        if (strays.length > 0) {
-          thread.updatedAt = now;
-          this.#bump(thread);
-          return {
-            result: {
-              reconcile: { changed: true, importedTurnIds: [] },
-              thread: structuredCloneThread(thread),
-            },
-            write: [threadId],
-          };
-        }
-        return {
-          result: {
-            reconcile: { changed: false, importedTurnIds: [] },
-            thread: undefined,
-          },
-          write: [],
-        };
+    const captured = await this.#mutate(async (tx) => {
+      if (nativeTurns.length === 0) {
+        const thread = tx.thread(threadId);
+        if (signature !== undefined) thread.nativeSource = nativeKey(signature, thread);
+        return { reconcile: { changed: false, importedTurnIds: [] }, projection: undefined };
       }
-
-      const claimed = new Set<StoredTurn>();
-      const importedTurnIds: string[] = [];
-      let refreshed = false;
-      let linked = false;
-      let pruned = strays.length > 0;
-
-      for (const native of candidates) {
-        let stored = thread.turns.find(
-          (turn) =>
-            !claimed.has(turn) && (turn.nativeHistoryTurnId === native.id || turn.id === native.id),
-        );
-        // Heal a turn imported before the identity match below could recognize
-        // it: that row and the bridge's own record of the same exchange are the
-        // same turn, shown twice. Only ever drops an imported row (its id IS the
-        // native id) that has a bridge-created twin — a genuinely external turn
-        // has none, so it is never touched.
-        if (stored !== undefined && stored.id === native.id) {
-          const twin = findNativeTwin(thread.turns, native, claimed, stored);
-          if (twin) {
-            thread.turns.splice(thread.turns.indexOf(stored), 1);
-            pruned = true;
-            stored = twin;
-          }
-        }
-        stored ??= findNativeTwin(thread.turns, native, claimed, undefined);
-
-        if (stored) {
-          claimed.add(stored);
-          if (stored.nativeHistoryTurnId === undefined) {
-            stored.nativeHistoryTurnId = native.id;
-            linked = true;
-          }
-          if (takeBackSteeredReply(thread.turns, stored, native)) refreshed = true;
-          if (fillEmptyReply(thread.turns, stored, native)) refreshed = true;
-          // Only native-imported rows are refreshed from native history. A
-          // bridge-created row may contain richer ordered segments and usage.
-          if (stored.id === native.id) {
-            const replacement = storedTurnFromNative(native);
-            replacement.nativeHistoryTurnId = native.id;
-            if (stored.seq !== undefined) replacement.seq = stored.seq;
-            if (JSON.stringify(toTurn(stored)) !== JSON.stringify(toTurn(replacement))) {
-              const index = thread.turns.indexOf(stored);
-              thread.turns[index] = replacement;
-              claimed.delete(stored);
-              claimed.add(replacement);
-              refreshed = true;
-            }
-          }
-          continue;
-        }
-
-        // The bridge was driving the session then: this is (part of) that
-        // run, not a turn of its own, even when no twin matched it.
-        if (insideBridgeRun(thread.turns, native.createdAt)) continue;
-
-        // Already imported under another id: a reader's ids are positions in
-        // the transcript, and a fix to what counts as a prompt renumbers them.
-        // The exchange is the row that holds it, not a second one.
-        const known = sameExchange(thread.turns, native, claimed);
-        if (known) {
-          // The row may hold an earlier, shorter reading of it (imported while
-          // the agent was still answering): take today's, in the same place.
-          const replacement = storedTurnFromNative(native);
-          replacement.nativeHistoryTurnId = native.id;
-          if (known.seq !== undefined) replacement.seq = known.seq;
-          if (JSON.stringify(toTurn(known)) !== JSON.stringify(toTurn(replacement))) {
-            thread.turns[thread.turns.indexOf(known)] = replacement;
-            claimed.add(replacement);
-            refreshed = true;
-          } else {
-            claimed.add(known);
-          }
-          continue;
-        }
-
-        const imported = storedTurnFromNative(native);
-        imported.nativeHistoryTurnId = native.id;
-        imported.seq = nextSeq(thread);
-        thread.turns.push(imported);
-        claimed.add(imported);
-        importedTurnIds.push(imported.id);
-      }
-
-      // A row imported twice under different ids (before the rule above) is
-      // a copy of one this read matched: keep that one.
-      for (const turn of [...thread.turns]) {
-        if (!isImportedTurn(turn) || claimed.has(turn)) continue;
-        const row = { identity: storedTurnIdentity(turn), createdAt: turn.createdAt };
-        const copyOf = [...claimed].some(
-          (other) =>
-            isImportedTurn(other) &&
-            oneExchange({ identity: storedTurnIdentity(other), createdAt: other.createdAt }, row),
-        );
-        if (copyOf) {
-          thread.turns.splice(thread.turns.indexOf(turn), 1);
-          pruned = true;
-        }
-      }
-
-      const changed = importedTurnIds.length > 0 || refreshed || pruned;
-      if (changed) {
+      const thread = await tx.whole(threadId);
+      const reconcile = mergeNativeTurns(thread, nativeTurns);
+      if (reconcile.changed) {
         // An imported turn takes the next position rather than being sorted in
         // by its timestamp: every client orders the conversation by `seq`, and
         // a position, once handed out, never moves.
         thread.updatedAt = now;
         this.#bump(thread);
+        reconcile.rev = thread.rev;
       }
+      if (signature !== undefined) thread.nativeSource = nativeKey(signature, thread);
       return {
-        result: {
-          reconcile: { changed, importedTurnIds },
-          thread: changed ? structuredCloneThread(thread) : undefined,
-        },
-        write: changed || linked ? [threadId] : [],
+        reconcile,
+        projection: reconcile.changed ? metricProjection(thread) : undefined,
       };
     });
-    if (captured.thread) await this.#captureMetrics(captured.thread);
+    await this.#sendMetrics(captured.projection);
     return captured.reconcile;
   }
 
   async startThread(input: StartThreadInput, now: number): Promise<Thread> {
-    const created = await this.#mutate(async (threads) => {
+    const created = await this.#mutate(async (tx) => {
       const created: StoredThread = {
         id: randomUUID(),
         projectId: input.projectId,
@@ -567,13 +706,13 @@ export class ThreadStore {
         ...(input.agentSessionId !== undefined ? { agentSessionId: input.agentSessionId } : {}),
         ...(input.accessMode !== undefined ? { accessMode: input.accessMode } : {}),
       };
-      threads.push(created);
+      tx.add(created);
       this.#ledger.revive('thread', created.id);
       this.#bump(created);
-      return { result: structuredCloneThread(created), write: [created.id] };
+      return { thread: toThread(created), projection: metricProjection(created) };
     });
-    await this.#captureMetrics(created);
-    return toThread(created);
+    await this.#sendMetrics(created.projection);
+    return created.thread;
   }
 
   /**
@@ -582,16 +721,18 @@ export class ThreadStore {
    * this one instead) and the session catalog can point at it.
    */
   async threadForSession(agentId: string, sessionId: string): Promise<Thread | undefined> {
-    const thread = (await this.#read()).find(
-      (t) => t.agentId === agentId && t.agentSessionId === sessionId,
-    );
-    return thread ? toThread(thread) : undefined;
+    for (const thread of (await this.#records()).values()) {
+      if (thread.agentId === agentId && thread.agentSessionId === sessionId) {
+        return toThread(thread);
+      }
+    }
+    return undefined;
   }
 
   /** Every conversation's agent session, keyed `agentId:sessionId` → thread id. */
   async sessionLinks(): Promise<Map<string, string>> {
     const links = new Map<string, string>();
-    for (const thread of await this.#read()) {
+    for (const thread of (await this.#records()).values()) {
       if (thread.agentId !== undefined && thread.agentSessionId !== undefined) {
         links.set(sessionKey(thread.agentId, thread.agentSessionId), thread.id);
       }
@@ -601,7 +742,7 @@ export class ThreadStore {
 
   /** Agent/model/cwd a thread's turns run with (used by `turn/send`). */
   async getThreadRuntime(threadId: string): Promise<ThreadRuntime> {
-    const thread = await this.#requireThread(await this.#read(), threadId);
+    const thread = requireThread(await this.#records(), threadId);
     const runtime: ThreadRuntime = {};
     if (thread.agentId !== undefined) runtime.agentId = thread.agentId;
     if (thread.model !== undefined) runtime.model = thread.model;
@@ -614,7 +755,7 @@ export class ThreadStore {
   async getHistorySource(
     threadId: string,
   ): Promise<{ agentId?: string; agentSessionId?: string; cwd?: string }> {
-    const thread = await this.#requireThread(await this.#read(), threadId);
+    const thread = requireThread(await this.#records(), threadId);
     const source: { agentId?: string; agentSessionId?: string; cwd?: string } = {};
     if (thread.agentId !== undefined) source.agentId = thread.agentId;
     if (thread.agentSessionId !== undefined) source.agentSessionId = thread.agentSessionId;
@@ -627,8 +768,8 @@ export class ThreadStore {
    * the adapter reports it, so the on-disk history fallback can find the log.
    */
   setAgentSession(threadId: string, agentSessionId: string): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const thread = threads.find((t) => t.id === threadId);
+    return this.#mutate(async (tx) => {
+      const thread = tx.find(threadId);
       if (!thread || thread.agentSessionId === agentSessionId) return;
       thread.agentSessionId = agentSessionId;
       this.#bump(thread);
@@ -643,17 +784,17 @@ export class ThreadStore {
    * `thread/unarchive`. Rejects an unknown thread.
    */
   async resumeThread(threadId: string): Promise<void> {
-    await this.#requireThread(await this.#read(), threadId);
+    requireThread(await this.#records(), threadId);
   }
 
   async setModel(threadId: string, model: string): Promise<void> {
-    const updated = await this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
+    const projection = await this.#mutate(async (tx) => {
+      const thread = tx.thread(threadId);
       thread.model = model;
       this.#bump(thread);
-      return structuredCloneThread(thread);
+      return metricProjection(thread);
     });
-    await this.#captureMetrics(updated);
+    await this.#sendMetrics(projection);
   }
 
   /**
@@ -672,8 +813,8 @@ export class ThreadStore {
     source: ThreadTitleSource = 'user',
     at: number = now,
   ): Promise<Thread> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
+    return this.#mutate(async (tx) => {
+      const thread = tx.thread(threadId);
       const weaker =
         source === 'prompt' && (thread.titleSource === 'user' || thread.titleSource === 'agent');
       // A hand rename made offline loses to one made after it, elsewhere.
@@ -700,14 +841,14 @@ export class ThreadStore {
    * provisional for good.
    */
   claimTitleGeneration(threadId: string): Promise<boolean> {
-    return this.#mutate(async (threads) => {
-      const thread = threads.find((t) => t.id === threadId);
-      if (!thread) return { result: false };
-      if (thread.titleSource === 'user' || thread.titleSource === 'agent') return { result: false };
+    return this.#mutate(async (tx) => {
+      const thread = tx.find(threadId);
+      if (!thread) return false;
+      if (thread.titleSource === 'user' || thread.titleSource === 'agent') return false;
       const attempts = thread.titleAttempts ?? 0;
-      if (attempts >= MAX_TITLE_ATTEMPTS) return { result: false };
+      if (attempts >= MAX_TITLE_ATTEMPTS) return false;
       thread.titleAttempts = attempts + 1;
-      return { result: true, write: [threadId] };
+      return true;
     });
   }
 
@@ -721,8 +862,8 @@ export class ThreadStore {
    * which is also the signal not to notify anyone.
    */
   applyGeneratedTitle(threadId: string, title: string, now: number): Promise<Thread | undefined> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const thread = threads.find((t) => t.id === threadId);
+    return this.#mutate(async (tx) => {
+      const thread = tx.find(threadId);
       if (!thread) return undefined;
       // Absent means it predates `titleSource`, and those are all `prompt`.
       if (thread.titleSource !== undefined && thread.titleSource !== 'prompt') return undefined;
@@ -740,8 +881,8 @@ export class ThreadStore {
    * same mode is a no-op. Returns the updated Thread.
    */
   setAccessMode(threadId: string, mode: AccessMode): Promise<Thread> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
+    return this.#mutate(async (tx) => {
+      const thread = tx.thread(threadId);
       if (thread.accessMode !== mode) {
         thread.accessMode = mode;
         this.#bump(thread);
@@ -773,12 +914,11 @@ export class ThreadStore {
    * thread was removed.
    */
   deleteThread(threadId: string, at?: number): Promise<boolean> {
-    return this.#mutate(async (threads) => {
-      const index = threads.findIndex((t) => t.id === threadId);
-      if (index === -1) throw notFound(`thread not found: ${threadId}`);
-      const thread = threads[index];
-      if (thread && at !== undefined && at < lastDecision(thread)) return { result: false };
-      if (thread && this.#metricsSink) {
+    return this.#mutate(async (tx) => {
+      const thread = tx.peek(threadId);
+      if (!thread) throw notFound(`thread not found: ${threadId}`);
+      if (at !== undefined && at < lastDecision(thread)) return false;
+      if (this.#metricsSink) {
         const projection = metricProjection(thread);
         // This final projection is strict (not best-effort): the mutable source
         // remains available if the historical ledger cannot be persisted.
@@ -787,15 +927,16 @@ export class ThreadStore {
           projection.turns,
         );
       }
-      threads.splice(index, 1);
+      tx.remove(threadId);
+      for (const turn of thread.turns) this.#layouts.delete(turnKey(threadId, turn.id));
       this.#deleted.push({ threadId, rev: this.#ledger.tombstone('thread', threadId) });
-      return { result: true, remove: [threadId] };
+      return true;
     });
   }
 
   #setStatus(threadId: string, status: ThreadStatus, at: number): Promise<Thread> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
+    return this.#mutate(async (tx) => {
+      const thread = tx.thread(threadId);
       if (!isLatest(at, thread.decidedAt?.status)) return toThread(thread);
       thread.decidedAt = { ...thread.decidedAt, status: at };
       if (thread.status !== status) {
@@ -808,15 +949,14 @@ export class ThreadStore {
   }
 
   async forkThread(threadId: string, now: number): Promise<Thread> {
-    const fork = await this.#mutate(async (threads) => {
-      const source = await this.#requireThread(threads, threadId);
-      const copy: StoredThread = {
-        ...structuredCloneThread(source),
-        id: randomUUID(),
-        title: `${source.title} (fork)`,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const fork = await this.#mutate(async (tx) => {
+      const source = await tx.view(threadId);
+      const copy = structuredCloneValue(source) as StoredThread;
+      copy.id = randomUUID();
+      copy.title = `${source.title} (fork)`;
+      copy.createdAt = now;
+      copy.updatedAt = now;
+      for (const turn of copy.turns) turn.threadId = copy.id;
       // The fork is a conversation of its own: it must never continue the
       // original's native session, or both would write into one transcript
       // (and every agent now resumes the session a thread stores). Its first
@@ -825,14 +965,15 @@ export class ThreadStore {
       // memory of the copied history (bridge/FOR-DEV.md → "A fork keeps its
       // agent's memory"); needs each CLI's fork measured on the driven surface.
       delete copy.agentSessionId;
-      threads.push(copy);
+      delete copy.nativeSource;
+      tx.add(copy);
       this.#bump(copy);
-      return { result: structuredCloneThread(copy), write: [copy.id] };
+      return { thread: toThread(copy), projection: metricProjection(copy) };
     });
     // The fork's messages keep their images: they are the same messages.
-    await this.#state.copyAttachments(threadId, fork.id);
-    await this.#captureMetrics(fork);
-    return toThread(fork);
+    await this.#state.copyAttachments(threadId, fork.thread.id);
+    await this.#sendMetrics(fork.projection);
+    return fork.thread;
   }
 
   async startTurn(
@@ -885,18 +1026,21 @@ export class ThreadStore {
    * {@link settleStep}.
    */
   handOffTurn(threadId: string, fromTurnId: string, toTurnId: string, now: number): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const from = this.#turn(threads, threadId, fromTurnId);
-      const to = this.#turn(threads, threadId, toTurnId);
+    return this.#mutate(async (tx) => {
+      const from = tx.header(threadId, fromTurnId);
+      const to = tx.header(threadId, toTurnId);
       if (!TERMINAL_TURN_STATUSES.has(from.status)) {
-        from.status = 'completed';
-        from.completedAt = now;
-        settleRunningSteps(from, true);
+        const ended = await tx.turn(threadId, fromTurnId);
+        ended.status = 'completed';
+        ended.completedAt = now;
+        settleRunningSteps(ended, true);
       }
+      this.#layouts.delete(turnKey(threadId, fromTurnId));
       from.handedOffTo = toTurnId;
       to.status = 'streaming';
-      this.#touch(threads, threadId, now);
-      this.#bumpId(threads, threadId);
+      const thread = tx.thread(threadId);
+      thread.updatedAt = now;
+      this.#bump(thread);
     });
   }
 
@@ -907,26 +1051,15 @@ export class ThreadStore {
    * holds no such step.
    */
   settleStep(threadId: string, turnId: string, content: unknown, now: number): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const blockId = blockIdOf(content);
-      if (blockId === undefined) return;
-      const assistant = this.#assistantMessage(threads, threadId, turnId);
-      const same = (b: unknown) => blockIdOf(b) === blockId;
-      const blocks = assistant.blocks ?? [];
-      const segments = assistant.segments ?? [];
-      const inBlocks = blocks.findIndex(same);
-      const inSegments = segments.findIndex(same);
-      if (inBlocks < 0 && inSegments < 0) return;
-      if (inBlocks >= 0) blocks[inBlocks] = content;
-      if (inSegments >= 0) segments[inSegments] = content;
-      this.#touch(threads, threadId, now);
+    return this.#mutate(async (tx) => {
+      if (blockIdOf(content) === undefined) return;
+      await tx.stream(threadId, turnId, { op: 'settle', content, at: now });
     });
   }
 
   /** The ids of a thread's `queued` turns, oldest first (their run order). */
   async queuedTurnIds(threadId: string): Promise<string[]> {
-    const threads = await this.#read();
-    const thread = threads.find((t) => t.id === threadId);
+    const thread = (await this.#records()).get(threadId);
     if (!thread) return [];
     return thread.turns.filter((t) => t.status === 'queued').map((t) => t.id);
   }
@@ -939,10 +1072,9 @@ export class ThreadStore {
    * user sees exactly which messages never went out. Returns how many it closed.
    */
   async cancelOrphanedQueuedTurns(now: number): Promise<number> {
-    return this.#mutate(async (threads) => {
+    return this.#mutate(async (tx) => {
       let cancelled = 0;
-      const write: string[] = [];
-      for (const thread of threads) {
+      for (const thread of tx.all()) {
         const before = cancelled;
         for (const turn of thread.turns) {
           if (turn.status !== 'queued') continue;
@@ -950,12 +1082,9 @@ export class ThreadStore {
           turn.completedAt = now;
           cancelled += 1;
         }
-        if (cancelled !== before) {
-          write.push(thread.id);
-          this.#bump(thread);
-        }
+        if (cancelled !== before) this.#bump(thread);
       }
-      return { result: cancelled, write };
+      return cancelled;
     });
   }
 
@@ -966,8 +1095,8 @@ export class ThreadStore {
     now: number,
     attachments: readonly TurnAttachment[],
   ): Promise<StartTurnResult> {
-    const captured = await this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
+    const captured = await this.#mutate(async (tx) => {
+      const thread = tx.thread(threadId);
       const turnId = randomUUID();
       const stored = await this.#storeAttachments(threadId, turnId, attachments);
       const userMessage: StoredMessage = {
@@ -985,14 +1114,16 @@ export class ThreadStore {
         text: '',
         createdAt: now,
       };
-      thread.turns.push({
+      const turn: StoredTurn = {
         id: turnId,
         threadId,
         seq: nextSeq(thread),
         status,
         messages: [userMessage, assistantMessage],
         createdAt: now,
-      });
+      };
+      thread.turns.push(turn);
+      this.#layouts.set(turnKey(threadId, turnId), new SegmentLayout());
       thread.updatedAt = now;
       // The bridge names the conversation from its opening message the moment
       // it is stored — every client sees the same provisional name, and none
@@ -1008,10 +1139,10 @@ export class ThreadStore {
       this.#bump(thread);
       return {
         result: { turnId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id },
-        thread: structuredCloneThread(thread),
+        projection: metricProjection(thread),
       };
     });
-    await this.#captureMetrics(captured.thread);
+    await this.#sendMetrics(captured.projection);
     return captured.result;
   }
 
@@ -1049,23 +1180,30 @@ export class ThreadStore {
     return stored;
   }
 
+  /**
+   * Appends a streamed text chunk to the turn's assistant message.
+   *
+   * Called for every delta an agent streams, so it costs one appended journal
+   * line — never a rewrite — and resolves once that line is on disk: the
+   * caller tells clients about the delta only after it is durable.
+   */
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      if (this.#isTerminal(threads, threadId, turnId)) return;
-      const assistant = this.#assistantMessage(threads, threadId, turnId);
-      assistant.text += delta;
-      appendTextSegment(assistant, delta);
-      this.#touch(threads, threadId, now);
+    this.#layouts.get(turnKey(threadId, turnId))?.text(delta);
+    return this.#mutate(async (tx) => {
+      await tx.stream(threadId, turnId, { op: 'delta', text: delta, at: now });
     });
   }
 
-  /** Appends a reasoning ("thinking") chunk to the turn's assistant message. */
+  /**
+   * Appends a reasoning ("thinking") chunk to the turn's assistant message:
+   * it grows the last segment when that is a thought, otherwise it opens a new
+   * one at the end ({@link appendThinkingSegment}). One journal line, like a
+   * text delta.
+   */
   appendThinking(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      if (this.#isTerminal(threads, threadId, turnId)) return;
-      const assistant = this.#assistantMessage(threads, threadId, turnId);
-      assistant.thinking = (assistant.thinking ?? '') + delta;
-      this.#touch(threads, threadId, now);
+    this.#layouts.get(turnKey(threadId, turnId))?.thought(delta);
+    return this.#mutate(async (tx) => {
+      await tx.stream(threadId, turnId, { op: 'thinking', text: delta, at: now });
     });
   }
 
@@ -1087,51 +1225,34 @@ export class ThreadStore {
     now: number,
     beforeText = false,
   ): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      if (this.#isTerminal(threads, threadId, turnId)) return;
-      const assistant = this.#assistantMessage(threads, threadId, turnId);
-      // A step that settles replaces the running one it started as, in place
-      // (`LiveBlock`, shared/src/models/tool.ts).
-      const blockId = blockIdOf(content);
-      if (blockId !== undefined) {
-        const same = (b: unknown) => blockIdOf(b) === blockId;
-        const blocks = assistant.blocks ?? [];
-        const segments = assistant.segments ?? [];
-        const inBlocks = blocks.findIndex(same);
-        const inSegments = segments.findIndex(same);
-        if (inBlocks >= 0 || inSegments >= 0) {
-          if (inBlocks >= 0) blocks[inBlocks] = content;
-          if (inSegments >= 0) segments[inSegments] = content;
-          this.#touch(threads, threadId, now);
-          return;
-        }
-      }
-      assistant.blocks = [...(assistant.blocks ?? []), content];
-      const segments = (assistant.segments ??= []);
-      const last = segments[segments.length - 1];
-      if (beforeText && isTextSegment(last)) {
-        segments.splice(segments.length - 1, 0, content);
-      } else {
-        segments.push(content);
-      }
-      this.#touch(threads, threadId, now);
+    this.#layouts.get(turnKey(threadId, turnId))?.place(content, beforeText, true);
+    return this.#mutate(async (tx) => {
+      await tx.stream(threadId, turnId, {
+        op: 'block',
+        content,
+        ...(beforeText ? { beforeText: true as const } : {}),
+        at: now,
+      });
     });
   }
 
-  /** Records a turn's token usage on its assistant message (context meter). */
+  /**
+   * Records a turn's token usage on its assistant message (context meter).
+   * Recorded before the turn ends, it rides the journal and lands with the
+   * turn's one final rewrite; after, it rewrites the turn's file.
+   */
   async setUsage(
     threadId: string,
     turnId: string,
     usage: { tokens: number; contextWindow?: number },
     now: number,
   ): Promise<void> {
-    const updated = await this.#mutateThread(threadId, async (threads) => {
-      const assistant = this.#assistantMessage(threads, threadId, turnId);
-      assistant.usage = usage;
-      this.#touch(threads, threadId, now);
-      return structuredCloneThread(await this.#requireThread(threads, threadId));
+    const projection = await this.#mutate(async (tx) => {
+      await tx.stream(threadId, turnId, { op: 'usage', usage, at: now });
+      const thread = tx.peek(threadId);
+      return thread ? metricProjection(thread) : undefined;
     });
-    await this.#captureMetrics(updated);
+    await this.#sendMetrics(projection);
   }
 
   completeTurn(
@@ -1140,13 +1261,13 @@ export class ThreadStore {
     finalText: string | undefined,
     now: number,
   ): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const turn = this.#turn(threads, threadId, turnId);
+    return this.#mutate(async (tx) => {
       // A turn only ends once. An adapter whose CLI keeps running past its own
       // end-of-turn event can emit a second completion for the same turn; taking
       // it would overwrite the reply the user already read with whatever the
       // later one carried, and (in the manager) drain the message queue twice.
-      if (TERMINAL_TURN_STATUSES.has(turn.status)) return;
+      if (TERMINAL_TURN_STATUSES.has(tx.header(threadId, turnId).status)) return;
+      const turn = await tx.turn(threadId, turnId);
       if (finalText !== undefined) {
         const assistant = turn.messages.find((m) => m.role === 'assistant');
         if (assistant) reconcileAssistantWithFinalText(assistant, finalText);
@@ -1154,8 +1275,10 @@ export class ThreadStore {
       turn.status = 'completed';
       turn.completedAt = now;
       settleRunningSteps(turn, true);
-      this.#touch(threads, threadId, now);
-      this.#bumpId(threads, threadId);
+      this.#layouts.delete(turnKey(threadId, turnId));
+      const thread = tx.thread(threadId);
+      thread.updatedAt = now;
+      this.#bump(thread);
     });
   }
 
@@ -1167,91 +1290,47 @@ export class ThreadStore {
     return this.#setTurnStatus(threadId, turnId, 'aborted', now);
   }
 
-  /**
-   * Whether a turn has already ended, so late output must not be appended to it.
-   *
-   * Every adapter that ends a turn on a **protocol event** (all of them except
-   * Antigravity, which ends on process exit) leaves its CLI alive afterwards and
-   * can therefore emit after the end — Claude Code demonstrably does, when the
-   * model leaves background work running and the CLI later wakes it for another
-   * turn. Appending that output to a closed turn silently rewrote a reply the
-   * user had already read, so the store refuses it instead. Callers get a no-op
-   * rather than a throw: late output is a normal race, not a programming error.
-   *
-   * A missing thread/turn is left to the caller's own lookup to report.
-   */
-  #isTerminal(threads: StoredThread[], threadId: string, turnId: string): boolean {
-    const thread = threads.find((t) => t.id === threadId);
-    const turn = thread?.turns.find((t) => t.id === turnId);
-    return turn !== undefined && TERMINAL_TURN_STATUSES.has(turn.status);
-  }
-
   #setTurnStatus(threadId: string, turnId: string, status: TurnStatus, now: number): Promise<void> {
-    return this.#mutateThread(threadId, async (threads) => {
-      const turn = this.#turn(threads, threadId, turnId);
-      turn.status = status;
+    return this.#mutate(async (tx) => {
+      const header = tx.header(threadId, turnId);
       // Only a terminal status stamps `completedAt`. `beginQueuedTurn` moves a
       // turn from `queued` to `streaming` — it is starting, not ending, and
       // stamping it there would date a live turn as finished.
       if (TERMINAL_TURN_STATUSES.has(status)) {
+        const turn = await tx.turn(threadId, turnId);
+        turn.status = status;
         turn.completedAt = now;
         settleRunningSteps(turn, false);
+        this.#layouts.delete(turnKey(threadId, turnId));
+      } else {
+        header.status = status;
       }
-      this.#touch(threads, threadId, now);
-      this.#bumpId(threads, threadId);
+      const thread = tx.thread(threadId);
+      thread.updatedAt = now;
+      this.#bump(thread);
     });
-  }
-
-  #assistantMessage(threads: StoredThread[], threadId: string, turnId: string): StoredMessage {
-    const turn = this.#turn(threads, threadId, turnId);
-    const assistant = turn.messages.find((m) => m.role === 'assistant');
-    if (!assistant) throw notFound(`assistant message not found for turn: ${turnId}`);
-    return assistant;
-  }
-
-  #turn(threads: StoredThread[], threadId: string, turnId: string): StoredTurn {
-    const thread = threads.find((t) => t.id === threadId);
-    const turn = thread?.turns.find((t) => t.id === turnId);
-    if (!turn) throw notFound(`turn not found: ${turnId}`);
-    return turn;
-  }
-
-  #touch(threads: StoredThread[], threadId: string, now: number): void {
-    const thread = threads.find((t) => t.id === threadId);
-    if (thread) thread.updatedAt = now;
   }
 
   /**
    * Stamp a thread's summary as changed: it takes the next sync revision and is
-   * announced once the mutation is on disk. Only for changes a client shows in a
-   * list (title, status, model, turns created or ended…) — never for streamed
-   * tokens, which reach clients as their own notifications.
+   * announced once the transaction is on disk. Only for changes a client shows
+   * in a list (title, status, model, turns created or ended…) — never for
+   * streamed tokens, which reach clients as their own notifications.
    */
-  #bump(thread: StoredThread): void {
+  #bump(thread: { id: string; rev?: number }): void {
     thread.rev = this.#ledger.next();
     this.#changed.add(thread.id);
-  }
-
-  #bumpId(threads: StoredThread[], threadId: string): void {
-    const thread = threads.find((t) => t.id === threadId);
-    if (thread) this.#bump(thread);
-  }
-
-  async #requireThread(threads: StoredThread[], threadId: string): Promise<StoredThread> {
-    const thread = threads.find((t) => t.id === threadId);
-    if (!thread) throw notFound(`thread not found: ${threadId}`);
-    return thread;
+    this.#mutation?.indexes.add(thread.id);
   }
 
   /** Backfills every currently stored thread/turn into the durable activity
    * ledger. Idempotent and intentionally non-destructive: ledger rows absent
-   * from `threads.json` are historical records and must remain. */
+   * from the store are historical records and must remain. */
   async captureAllMetrics(): Promise<number> {
     if (!this.#metricsSink) return 0;
-    const threads = await this.#read();
     const conversations: ConversationMetricEvent[] = [];
     const turns: TurnMetricEvent[] = [];
-    for (const thread of threads) {
+    for (const thread of (await this.#records()).values()) {
       const projection = metricProjection(thread);
       conversations.push(projection.conversation);
       turns.push(...projection.turns);
@@ -1261,30 +1340,30 @@ export class ThreadStore {
 
   /** Best-effort incremental projection. A later `captureAllMetrics` repairs any
    * transient ledger-write failure without blocking conversation operations. */
-  async #captureMetrics(thread: StoredThread): Promise<void> {
-    if (!this.#metricsSink) return;
-    const projection = metricProjection(thread);
+  async #sendMetrics(projection: MetricProjection | undefined): Promise<void> {
+    if (!this.#metricsSink || !projection) return;
     await this.#metricsSink
       .mergeConversationHistory([projection.conversation], projection.turns)
       .catch(() => undefined);
   }
 
   /**
-   * The conversations, held in memory and loaded once.
-   *
-   * Re-reading them from disk per call bought nothing — this process is the
-   * only reader and writer of that state (a single-instance lock guarantees
-   * it), and on a real 8.4 MB store the read cost 36 ms of the 93 ms every
-   * streamed token spent here. The cache changes no durability guarantee:
-   * every mutation still writes before it resolves.
+   * Every thread's summary and turn headers, loaded once.
    *
    * Memoized as the in-flight PROMISE, never as the resolved value: reads do not
    * take the write lock, so two that arrive before the first load finishes would
-   * otherwise each load their own array, and every mutation applied to whichever
+   * otherwise each load their own copy, and every mutation applied to whichever
    * one lost the race would be silently dropped. The suite caught exactly that —
    * queue tests failing about one run in three.
    */
-  #threads: Promise<StoredThread[]> | undefined;
+  #threads: Promise<Map<string, ThreadRecord>> | undefined;
+  /** {@link #threads} once loaded, for the cache to walk synchronously. */
+  #loaded: Map<string, ThreadRecord> | undefined;
+
+  #records(): Promise<Map<string, ThreadRecord>> {
+    this.#threads ??= this.#open();
+    return this.#threads;
+  }
 
   /**
    * Resolves once every write requested before this call has landed. A
@@ -1300,83 +1379,234 @@ export class ThreadStore {
     return this.#lock;
   }
 
-  #read(): Promise<StoredThread[]> {
-    this.#threads ??= this.#load();
-    return this.#threads;
+  /**
+   * Resolves once every write requested so far has landed — what a caller that
+   * is about to take the store's directory away (a test's cleanup) waits for.
+   * A write still on its way then would land in a folder that is gone.
+   */
+  settled(): Promise<void> {
+    return this.#afterPendingWrites();
   }
 
   /**
-   * Loads every conversation, migrating a legacy single-file store on the way.
-   *
-   * The old `threads.json` is read once, split into one file per conversation,
-   * and then kept under `.migrated` rather than deleted — it is the user's only
-   * copy of their history until the new files are proven on disk.
+   * Converts what an older bridge left, then reads every `thread.json` — and
+   * nothing else, unless a crash left a turn's journal behind ({@link
+   * #recoverJournals}).
    */
-  async #load(): Promise<StoredThread[]> {
-    const threads = await this.#loadFiles();
-    for (const thread of threads) {
-      numberTurns(thread);
-      retireDeliveredTurns(thread);
-      reshapeImportedTurns(thread);
+  async #open(): Promise<Map<string, ThreadRecord>> {
+    await this.#migrate();
+    const records = new Map<string, ThreadRecord>();
+    for (const { threadId, text } of await this.#state.readThreadIndexes()) {
+      const thread = parseIndex(text);
+      if (!thread || thread.id !== threadId) continue;
+      records.set(thread.id, thread);
+      this.#disk.set(thread.id, {
+        index: text,
+        turns: new Map(thread.turns.map((turn) => [turn.id, newTurnDisk(turn.bytes ?? 0)])),
+      });
       this.#ledger.observe(thread.rev);
     }
-    return threads;
-  }
-
-  async #loadFiles(): Promise<StoredThread[]> {
-    const legacy = await this.#state.readJson<StoredThread[]>(DAEMON_FILES.threads);
-    if (legacy === null) return this.#state.readThreadFiles<StoredThread>();
-    // A legacy file alongside per-thread files means a previous migration was
-    // interrupted; the per-thread files are the newer truth, so they win and
-    // the legacy one is only retired.
-    const migrated = await this.#state.readThreadFiles<StoredThread>();
-    const known = new Set(migrated.map((thread) => thread.id));
-    for (const thread of legacy) {
-      if (known.has(thread.id)) continue;
-      await this.#state.writeThreadFile(thread.id, thread);
-      migrated.push(thread);
-    }
-    await this.#state.retireLegacyThreads();
-    return migrated;
+    await this.#recoverJournals(records);
+    this.#loaded = records;
+    return records;
   }
 
   /**
-   * Runs `fn` under the write lock with the current conversations, then writes
-   * only the files it reports as touched.
-   *
-   * Naming them is deliberately explicit and required: writing the whole store
-   * on every mutation is what made a streamed token cost 93 ms, and a mutation
-   * that silently forgot to name its thread would lose that write instead —
-   * so the type makes it impossible to omit.
+   * Folds into its turn the journal a previous run left — it was streaming
+   * when it stopped. The turn keeps everything that reached the journal (a
+   * last line cut in half by the crash is ignored) and stays as it was
+   * (`streaming`, as any turn a restart cut short); its conversation's time is
+   * that of the last event. Only a turn that had not ended can have one: an
+   * ending folds the journal before the index records it.
    */
-  #mutate<T>(fn: (threads: StoredThread[]) => Promise<MutationScope<T>>): Promise<T> {
-    const run = this.#lock.then(async () => {
-      this.#changed.clear();
-      this.#deleted.length = 0;
-      try {
-        const threads = await this.#read();
-        const scope = await fn(threads);
-        for (const id of scope.remove ?? []) {
-          await this.#state.removeThreadFile(id);
-          await this.#state.removeAttachments(id);
-        }
-        const write = new Set([...(scope.write ?? []), ...this.#changed]);
-        for (const id of write) {
-          const thread = threads.find((t) => t.id === id);
-          if (thread) await this.#state.writeThreadFile(id, thread);
-        }
-        if (this.#changed.size > 0 || this.#deleted.length > 0) {
-          // The revisions go to disk before anyone hears of them, so a client
-          // can never hold a revision the bridge might hand out again.
-          await this.#ledger.flush();
-          this.#announce(threads);
-        }
-        return scope.result;
-      } finally {
-        this.#changed.clear();
-        this.#deleted.length = 0;
+  async #recoverJournals(records: Map<string, ThreadRecord>): Promise<void> {
+    const m = new Mutation();
+    for (const thread of records.values()) {
+      for (const turn of thread.turns) {
+        if (TERMINAL_TURN_STATUSES.has(turn.status)) continue;
+        const journal = await this.#state.readTurnJournal(thread.id, turn.id);
+        if (journal === null) continue;
+        this.#turnDisk(thread.id, turn.id).journal = true;
+        await this.#loadTurn(thread, turn);
+        thread.updatedAt = Math.max(thread.updatedAt, lastEventAt(journal));
+        m.indexes.add(thread.id);
+        m.bodies.add(turnKey(thread.id, turn.id));
       }
-    });
+    }
+    if (m.indexes.size > 0) await this.#commit(m, records);
+  }
+
+  /**
+   * Converts conversations stored by an older bridge into the current layout,
+   * once: each `threads/<id>.json` (one file per conversation), then anything
+   * still in the single `threads.json` before it. A converted file is moved out
+   * of the way, never deleted (`threads.v1/`, `threads.json.migrated`).
+   *
+   * A conversion is finished when its `thread.json` exists — written last — so
+   * one interrupted halfway is simply done again from the original, and one
+   * finished but not yet moved is only moved. Between the two old layouts the
+   * per-conversation file is the newer truth and wins.
+   */
+  async #migrate(): Promise<void> {
+    for (const threadId of await this.#state.v1ThreadIds()) {
+      if (!(await this.#state.hasThreadIndex(threadId))) {
+        const thread = await this.#state.readV1ThreadFile<StoredThread>(threadId);
+        // Unreadable: left where it is rather than lost.
+        if (!thread || thread.id !== threadId || !Array.isArray(thread.turns)) continue;
+        await this.#writeConverted(thread);
+      }
+      await this.#state.retireV1ThreadFile(threadId);
+    }
+    const legacy = await this.#state.readJson<StoredThread[]>(DAEMON_FILES.threads);
+    if (legacy === null) return;
+    for (const thread of legacy) {
+      if (!(await this.#state.hasThreadIndex(thread.id))) await this.#writeConverted(thread);
+    }
+    await this.#state.retireLegacyThreads();
+  }
+
+  /**
+   * Writes one conversation of an older layout in the current one, normalized
+   * the way every load used to normalize it — which, done here once, no load
+   * has to repeat: the current layout is only ever written in that shape.
+   */
+  async #writeConverted(thread: StoredThread): Promise<void> {
+    for (const turn of thread.turns) turn.messages = turn.messages.map(currentMessage);
+    numberTurns(thread);
+    retireDeliveredTurns(thread);
+    reshapeImportedTurns(thread);
+    for (const turn of thread.turns) {
+      turn.threadId = thread.id;
+      const text = serializeTurn(turn.messages, 0);
+      await this.#state.writeTurnFile(thread.id, turn.id, text);
+      turn.messageDays = messageDaysOf(turn.messages);
+      turn.bytes = Buffer.byteLength(text);
+    }
+    await this.#state.writeThreadIndex(thread.id, serializeIndex(thread));
+  }
+
+  /**
+   * A turn with its messages, reading its file (and replaying its journal)
+   * when they are not in memory. Two callers asking at once share one read,
+   * so a mutation and a reader can never end up holding different copies.
+   */
+  #loadTurn(thread: ThreadRecord, turn: TurnRecord): Promise<StoredTurn> {
+    this.#touchHot(thread.id);
+    if (turn.messages) return Promise.resolve(turn as StoredTurn);
+    const key = turnKey(thread.id, turn.id);
+    let loading = this.#loading.get(key);
+    if (!loading) {
+      loading = this.#readTurn(thread, turn).finally(() => this.#loading.delete(key));
+      this.#loading.set(key, loading);
+    }
+    return loading;
+  }
+
+  async #readTurn(thread: ThreadRecord, turn: TurnRecord): Promise<StoredTurn> {
+    const disk = this.#turnDisk(thread.id, turn.id);
+    const text = await this.#state.readTurnFile(thread.id, turn.id);
+    let file: TurnFile = { events: 0, messages: [] };
+    // The file's own text is what serializing it again would give (it was
+    // written by {@link serializeTurn}), so it is hashed as read.
+    let digest = digestOf(serializeTurn(file.messages, file.events));
+    if (text !== null) {
+      try {
+        const parsed = JSON.parse(text) as Partial<TurnFile>;
+        if (typeof parsed.events === 'number' && Array.isArray(parsed.messages)) {
+          file = { events: parsed.events, messages: parsed.messages };
+          digest = digestOf(text);
+        }
+      } catch {
+        // A damaged turn reads as empty rather than costing the conversation;
+        // its file is left as it is unless the turn really changes.
+      }
+    }
+    const loaded = turn as StoredTurn;
+    loaded.messages = file.messages;
+    disk.digest = digest;
+    disk.bytes = text === null ? 0 : Buffer.byteLength(text);
+    disk.events = file.events;
+    turn.bytes = disk.bytes;
+    if (disk.journal) {
+      const journal = await this.#state.readTurnJournal(thread.id, turn.id);
+      if (journal !== null) {
+        disk.journalBytes = Buffer.byteLength(journal);
+        disk.events = replayJournal(loaded, journal, file.events);
+      }
+    }
+    return loaded;
+  }
+
+  #threadDisk(threadId: string): ThreadDisk {
+    let disk = this.#disk.get(threadId);
+    if (!disk) this.#disk.set(threadId, (disk = { turns: new Map() }));
+    return disk;
+  }
+
+  #turnDisk(threadId: string, turnId: string): TurnDisk {
+    const thread = this.#threadDisk(threadId);
+    let disk = thread.turns.get(turnId);
+    if (!disk) thread.turns.set(turnId, (disk = newTurnDisk(0)));
+    return disk;
+  }
+
+  /** Marks [threadId] as the most recently used conversation in memory. */
+  #touchHot(threadId: string): void {
+    this.#hot.delete(threadId);
+    this.#hot.add(threadId);
+  }
+
+  /**
+   * Drops the messages of the conversations used longest ago until what stays
+   * fits the cache budget ({@link DEFAULT_BODY_CACHE_BYTES} unless the store
+   * was given another). Never one a transaction is working
+   * on, one being streamed into, nor the one used last (a single conversation
+   * larger than the budget stays while it is the one in use). Dropping is
+   * always safe: everything in memory is already on disk, journal included.
+   */
+  #evict(): void {
+    const records = this.#loaded;
+    if (!records || this.#hot.size < 2) return;
+    const sizes = new Map<string, number>();
+    let total = 0;
+    for (const threadId of this.#hot) {
+      const size = this.#loadedBytes(records.get(threadId));
+      sizes.set(threadId, size);
+      total += size;
+    }
+    if (total <= this.#bodyCacheBytes) return;
+    const newest = [...this.#hot].at(-1);
+    for (const [threadId, size] of sizes) {
+      if (total <= this.#bodyCacheBytes) break;
+      const thread = records.get(threadId);
+      if (threadId === newest || (thread && this.#pinned(thread))) continue;
+      for (const turn of thread?.turns ?? []) delete (turn as { messages?: unknown }).messages;
+      this.#hot.delete(threadId);
+      total -= size;
+    }
+  }
+
+  #loadedBytes(thread: ThreadRecord | undefined): number {
+    let bytes = 0;
+    for (const turn of thread?.turns ?? []) {
+      if (!turn.messages) continue;
+      bytes +=
+        (turn.bytes ?? 0) + (this.#disk.get(thread!.id)?.turns.get(turn.id)?.journalBytes ?? 0);
+    }
+    return bytes;
+  }
+
+  #pinned(thread: ThreadRecord): boolean {
+    if (this.#mutation?.touches(thread.id)) return true;
+    const disk = this.#disk.get(thread.id);
+    return thread.turns.some(
+      (turn) => !TERMINAL_TURN_STATUSES.has(turn.status) && disk?.turns.get(turn.id)?.live === true,
+    );
+  }
+
+  /** Runs [fn] as one transaction, after every one asked for before it. */
+  #mutate<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    const run = this.#lock.then(() => this.#transact(fn));
     // Keep the chain alive regardless of individual failures.
     this.#lock = run.then(
       () => undefined,
@@ -1385,10 +1615,232 @@ export class ThreadStore {
     return run;
   }
 
-  #announce(threads: StoredThread[]): void {
+  /**
+   * Runs [fn] with the state it may change ({@link Tx}), then writes what it
+   * reached ({@link #commit}), then tells listeners. A transaction that throws
+   * writes nothing.
+   */
+  async #transact<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    const records = await this.#records();
+    const m = new Mutation();
+    this.#mutation = m;
+    this.#changed.clear();
+    this.#deleted.length = 0;
+    try {
+      const result = await fn(this.#txFor(m, records));
+      await this.#commit(m, records);
+      if (this.#changed.size > 0 || this.#deleted.length > 0) {
+        // The revisions go to disk before anyone hears of them, so a client
+        // can never hold a revision the bridge might hand out again.
+        await this.#ledger.flush();
+        this.#announce(records);
+      }
+      return result;
+    } finally {
+      this.#mutation = undefined;
+      this.#changed.clear();
+      this.#deleted.length = 0;
+      this.#evict();
+    }
+  }
+
+  #txFor(m: Mutation, records: Map<string, ThreadRecord>): Tx {
+    const find = (threadId: string): ThreadRecord | undefined => {
+      const thread = records.get(threadId);
+      if (thread) m.indexes.add(threadId);
+      return thread;
+    };
+    const thread = (threadId: string): ThreadRecord => {
+      const found = find(threadId);
+      if (!found) throw notFound(`thread not found: ${threadId}`);
+      return found;
+    };
+    const header = (threadId: string, turnId: string): TurnRecord => {
+      const turn = find(threadId)?.turns.find((t) => t.id === turnId);
+      if (!turn) throw notFound(`turn not found: ${turnId}`);
+      return turn;
+    };
+    const turn = (threadId: string, turnId: string): Promise<StoredTurn> => {
+      const record = header(threadId, turnId);
+      m.bodies.add(turnKey(threadId, turnId));
+      return this.#loadTurn(thread(threadId), record);
+    };
+    const loadAll = async (threadId: string): Promise<StoredThread> => {
+      const record = requireThread(records, threadId);
+      m.pinned.add(threadId);
+      await Promise.all(record.turns.map((t) => this.#loadTurn(record, t)));
+      return record as unknown as StoredThread;
+    };
+    return {
+      peek: (threadId) => {
+        const found = records.get(threadId);
+        if (found) m.pinned.add(threadId);
+        return found;
+      },
+      find,
+      thread,
+      all: () => {
+        for (const threadId of records.keys()) m.indexes.add(threadId);
+        return [...records.values()];
+      },
+      header,
+      turn,
+      whole: (threadId) => {
+        const record = thread(threadId);
+        for (const t of record.turns) m.bodies.add(turnKey(threadId, t.id));
+        return loadAll(threadId);
+      },
+      view: (threadId) => loadAll(threadId),
+      stream: async (threadId, turnId, event) => {
+        const record = records.get(threadId);
+        const target = record?.turns.find((t) => t.id === turnId);
+        if (!record || !target) throw notFound(`turn not found: ${turnId}`);
+        m.pinned.add(threadId);
+        if (TERMINAL_TURN_STATUSES.has(target.status)) {
+          // Every adapter that ends a turn on a protocol event (all but
+          // Antigravity, which ends on process exit) leaves its CLI alive and
+          // can emit after the end — Claude Code does, when background work it
+          // left running wakes it for another turn. Appending that to a closed
+          // turn silently rewrote a reply the user had already read, so it is
+          // refused; a no-op, since late output is a normal race. A step's
+          // settled form and the turn's usage still belong to it.
+          if (event.op === 'delta' || event.op === 'thinking' || event.op === 'block') {
+            return false;
+          }
+          const ended = await turn(threadId, turnId);
+          requireAssistant(ended);
+          const changed = applyTurnEvent(ended, event);
+          if (changed) thread(threadId).updatedAt = event.at;
+          return changed;
+        }
+        const live = await this.#loadTurn(record, target);
+        requireAssistant(live);
+        if (!applyTurnEvent(live, event)) return false;
+        record.updatedAt = event.at;
+        const disk = this.#turnDisk(threadId, turnId);
+        disk.events += 1;
+        disk.live = true;
+        m.events.push({
+          threadId,
+          turnId,
+          line: `${JSON.stringify({ n: disk.events, ...event })}\n`,
+        });
+        return true;
+      },
+      add: (created) => {
+        records.set(created.id, created);
+        this.#disk.set(created.id, { turns: new Map() });
+        m.indexes.add(created.id);
+      },
+      remove: (threadId) => {
+        records.delete(threadId);
+        m.indexes.delete(threadId);
+        m.removed.add(threadId);
+      },
+    };
+  }
+
+  /**
+   * Writes what a transaction reached: deleted threads go, each reached turn
+   * whose messages came out different is rewritten (folding its journal), each
+   * reached index that changed is rewritten, and journaled events are appended.
+   *
+   * The order is what makes a crash anywhere in it safe. A turn's journal is
+   * removed only after the file that folds it in is written (the file records
+   * how many events it folded, so a replay never applies one twice); the index
+   * is written after the turns it lists; a turn the index dropped loses its
+   * file only after.
+   */
+  async #commit(m: Mutation, records: Map<string, ThreadRecord>): Promise<void> {
+    for (const threadId of m.removed) {
+      await this.#state.removeThread(threadId);
+      await this.#state.removeAttachments(threadId);
+      this.#disk.delete(threadId);
+      this.#hot.delete(threadId);
+    }
+    // A failed append may have left half a line: appending after it would
+    // glue the next event to it. Rewrite the turn's file instead, which folds
+    // every event in (this one included) and starts the journal afresh.
+    for (const { threadId, turnId } of m.events) {
+      if (!this.#turnDisk(threadId, turnId).suspect) continue;
+      m.indexes.add(threadId);
+      m.bodies.add(turnKey(threadId, turnId));
+    }
+    const written = new Set<string>();
+    for (const threadId of m.indexes) {
+      const thread = records.get(threadId);
+      if (thread) await this.#persist(m, thread, written);
+    }
+    for (const event of m.events) {
+      if (written.has(turnKey(event.threadId, event.turnId))) continue;
+      const disk = this.#turnDisk(event.threadId, event.turnId);
+      disk.journal = true;
+      try {
+        await this.#state.appendTurnJournal(event.threadId, event.turnId, event.line);
+      } catch (err) {
+        disk.suspect = true;
+        throw err;
+      }
+      disk.journalBytes += Buffer.byteLength(event.line);
+    }
+  }
+
+  async #persist(m: Mutation, thread: ThreadRecord, written: Set<string>): Promise<void> {
+    const disk = this.#threadDisk(thread.id);
+    // A turn that ended keeps no journal, whatever ended it: its events are
+    // folded into its file here, so no mutation can leave one behind.
+    for (const turn of thread.turns) {
+      if (!TERMINAL_TURN_STATUSES.has(turn.status) || !disk.turns.get(turn.id)?.journal) continue;
+      await this.#loadTurn(thread, turn);
+      m.bodies.add(turnKey(thread.id, turn.id));
+    }
+    for (const turn of thread.turns) {
+      const key = turnKey(thread.id, turn.id);
+      let known = disk.turns.get(turn.id);
+      if (known && !m.bodies.has(key)) continue;
+      if (!turn.messages) {
+        if (known) continue;
+        throw new Error(`turn ${turn.id} has neither a file nor messages`);
+      }
+      const messages = turn.messages as StoredMessage[];
+      turn.messageDays = messageDaysOf(messages);
+      const text = serializeTurn(messages, known?.events ?? 0);
+      const digest = digestOf(text);
+      if (known && known.digest === digest && !known.journal) {
+        turn.bytes = known.bytes;
+        continue;
+      }
+      await this.#state.writeTurnFile(thread.id, turn.id, text);
+      known ??= this.#turnDisk(thread.id, turn.id);
+      known.digest = digest;
+      known.bytes = Buffer.byteLength(text);
+      turn.bytes = known.bytes;
+      written.add(key);
+      if (known.journal) {
+        await this.#state.removeTurnJournal(thread.id, turn.id);
+        known.journal = false;
+        known.journalBytes = 0;
+        known.suspect = false;
+      }
+      this.#touchHot(thread.id);
+    }
+    const index = serializeIndex(thread);
+    if (index !== disk.index) {
+      await this.#state.writeThreadIndex(thread.id, index);
+      disk.index = index;
+    }
+    const kept = new Set(thread.turns.map((turn) => turn.id));
+    for (const turnId of [...disk.turns.keys()]) {
+      if (kept.has(turnId)) continue;
+      await this.#state.removeTurnFiles(thread.id, turnId);
+      disk.turns.delete(turnId);
+    }
+  }
+
+  #announce(records: Map<string, ThreadRecord>): void {
     const changes: ThreadChange[] = [];
     for (const id of this.#changed) {
-      const thread = threads.find((t) => t.id === id);
+      const thread = records.get(id);
       if (thread) changes.push({ type: 'updated', thread: toThread(thread) });
     }
     for (const { threadId, rev } of this.#deleted) changes.push({ type: 'deleted', threadId, rev });
@@ -1402,21 +1854,231 @@ export class ThreadStore {
       }
     }
   }
+}
 
-  /** {@link #mutate} for the common case: one conversation changed. */
-  #mutateThread<T>(threadId: string, fn: (threads: StoredThread[]) => Promise<T>): Promise<T> {
-    return this.#mutate(async (threads) => ({
-      result: await fn(threads),
-      write: [threadId],
-    }));
+function requireThread(records: Map<string, ThreadRecord>, threadId: string): ThreadRecord {
+  const thread = records.get(threadId);
+  if (!thread) throw notFound(`thread not found: ${threadId}`);
+  return thread;
+}
+
+function requireAssistant(turn: StoredTurn): StoredMessage {
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  if (!assistant) throw notFound(`assistant message not found for turn: ${turn.id}`);
+  return assistant;
+}
+
+/** The key one turn is known by across a store's bookkeeping. */
+function turnKey(threadId: string, turnId: string): string {
+  return `${threadId}\n${turnId}`;
+}
+
+function newTurnDisk(bytes: number): TurnDisk {
+  return { bytes, events: 0, journal: false, journalBytes: 0, live: false, suspect: false };
+}
+
+function digestOf(text: string): string {
+  return createHash('sha1').update(text).digest('base64');
+}
+
+/**
+ * The transcript [signature] merged into [thread] as it stands: what a merge
+ * depends on besides the transcript is which turns the thread holds and which
+ * of them ended, so a turn created, imported, dropped or ended makes the next
+ * read merge again even over an unchanged transcript.
+ */
+function nativeKey(signature: string, thread: Frozen<ThreadRecord>): string {
+  let ended = 0;
+  for (const turn of thread.turns) if (TERMINAL_TURN_STATUSES.has(turn.status)) ended += 1;
+  return `${signature}|${thread.turns.length}.${thread.lastSeq ?? 0}.${ended}`;
+}
+
+/** A turn's file: its messages and the events folded in. */
+function serializeTurn(messages: readonly StoredMessage[], events: number): string {
+  const file: TurnFile = { events, messages: [...messages] };
+  return JSON.stringify(file);
+}
+
+/** A thread's `thread.json`: its summary and a header per turn — no messages. */
+function serializeIndex(thread: Frozen<ThreadRecord> | StoredThread): string {
+  const index: Record<string, unknown> = { ...thread };
+  index['turns'] = thread.turns.map((turn) => ({
+    id: turn.id,
+    ...(turn.seq !== undefined ? { seq: turn.seq } : {}),
+    status: turn.status,
+    createdAt: turn.createdAt,
+    ...(turn.completedAt !== undefined ? { completedAt: turn.completedAt } : {}),
+    ...(turn.nativeHistoryTurnId !== undefined
+      ? { nativeHistoryTurnId: turn.nativeHistoryTurnId }
+      : {}),
+    ...(turn.handedOffTo !== undefined ? { handedOffTo: turn.handedOffTo } : {}),
+    messageDays: turn.messageDays ?? [],
+    bytes: turn.bytes ?? 0,
+  }));
+  return JSON.stringify(index);
+}
+
+function parseIndex(text: string): ThreadRecord | undefined {
+  try {
+    const index = JSON.parse(text) as ThreadRecord;
+    if (typeof index?.id !== 'string' || !Array.isArray(index.turns)) return undefined;
+    for (const turn of index.turns) turn.threadId = index.id;
+    return index;
+  } catch {
+    return undefined;
   }
 }
 
-/** Project one mutable stored thread into stable ledger rows. */
-function metricProjection(thread: StoredThread): {
-  conversation: ConversationMetricEvent;
-  turns: TurnMetricEvent[];
-} {
+/**
+ * Applies a journal's events after the [folded] ones its turn's file already
+ * holds, in order, stopping at the first line that does not parse — the last
+ * one, half-written, when a crash cut it. Returns the last event number.
+ */
+function replayJournal(turn: StoredTurn, journal: string, folded: number): number {
+  let events = folded;
+  for (const line of journal.split('\n')) {
+    if (line.length === 0) continue;
+    let event: TurnEvent & { n: number };
+    try {
+      event = JSON.parse(line) as TurnEvent & { n: number };
+    } catch {
+      break;
+    }
+    if (typeof event.n !== 'number' || event.n <= events) continue;
+    applyTurnEvent(turn, event);
+    events = event.n;
+  }
+  return events;
+}
+
+/** When the last readable event of a journal happened (0 when none). */
+function lastEventAt(journal: string): number {
+  let at = 0;
+  for (const line of journal.split('\n')) {
+    if (line.length === 0) continue;
+    try {
+      const event = JSON.parse(line) as { at?: unknown };
+      if (typeof event.at === 'number') at = event.at;
+    } catch {
+      break;
+    }
+  }
+  return at;
+}
+
+/**
+ * The shape of an in-flight turn's assistant `segments` as of every event
+ * already handed to the store: how many entries, whether the last is a text
+ * run or a thought, where each live step (`blockId`) stands. It moves when an event is
+ * QUEUED — synchronously, in the order events arrive — not when the event is
+ * applied, so a block's live notification can name its index before its
+ * write is done ({@link ThreadStore.blockIndex}). It places blocks by the same
+ * rules {@link applyTurnEvent} applies, over counts instead of content: a
+ * block with a known `blockId` stays where it stands; a `beforeText` block
+ * takes the open text run's place, pushing the run one on; anything else is
+ * appended. A delta opens a text run unless one is open; a reasoning chunk
+ * opens a thought unless the last entry is one (a `beforeText` block after a
+ * thought is simply appended: there is no open text run to slot before).
+ */
+class SegmentLayout {
+  #length = 0;
+  /** What the last entry is, when it is one a delta or a chunk would grow. */
+  #endsIn: 'text' | 'thought' | undefined;
+  readonly #steps = new Map<string, number>();
+
+  text(delta: string): void {
+    this.#grow('text', delta);
+  }
+
+  thought(delta: string): void {
+    this.#grow('thought', delta);
+  }
+
+  #grow(kind: 'text' | 'thought', delta: string): void {
+    if (delta.length === 0 || this.#endsIn === kind) return;
+    this.#length += 1;
+    this.#endsIn = kind;
+  }
+
+  /** Where [content] lands; [commit] records it as landed. */
+  place(content: unknown, beforeText: boolean, commit: boolean): number {
+    const blockId = blockIdOf(content);
+    const known = blockId === undefined ? undefined : this.#steps.get(blockId);
+    if (known !== undefined) return known;
+    const slotted = beforeText && this.#endsIn === 'text';
+    const index = slotted ? this.#length - 1 : this.#length;
+    if (commit) {
+      this.#length += 1;
+      if (!slotted) this.#endsIn = undefined;
+      if (blockId !== undefined) this.#steps.set(blockId, index);
+    }
+    return index;
+  }
+}
+
+/**
+ * Applies one streamed event to [turn]'s assistant message — the one function
+ * both the live write and a journal replay go through, so a replayed turn is
+ * the turn that was streamed. Returns whether it changed anything.
+ */
+function applyTurnEvent(turn: StoredTurn, event: TurnEvent): boolean {
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  if (!assistant) return false;
+  switch (event.op) {
+    case 'delta':
+      if (event.text.length === 0) return false;
+      assistant.text += event.text;
+      appendTextSegment(assistant, event.text);
+      return true;
+    case 'thinking':
+      return appendThinkingSegment((assistant.segments ??= []), event.text);
+    case 'block': {
+      // A step that settles replaces the running one it started as, in place
+      // (`LiveBlock`, shared/src/models/tool.ts).
+      if (replaceStep(assistant, event.content)) return true;
+      const segments = (assistant.segments ??= []);
+      const last = segments[segments.length - 1];
+      if (event.beforeText && isTextSegment(last)) {
+        segments.splice(segments.length - 1, 0, event.content);
+      } else {
+        segments.push(event.content);
+      }
+      return true;
+    }
+    case 'settle':
+      return replaceStep(assistant, event.content);
+    case 'usage':
+      assistant.usage = event.usage;
+      return true;
+  }
+}
+
+/** Writes [content] over the step with its `blockId`, where it stands. */
+function replaceStep(assistant: StoredMessage, content: unknown): boolean {
+  const blockId = blockIdOf(content);
+  if (blockId === undefined) return false;
+  const segments = assistant.segments;
+  const index = segments?.findIndex((b) => blockIdOf(b) === blockId) ?? -1;
+  if (!segments || index < 0) return false;
+  segments[index] = content;
+  return true;
+}
+
+/** A turn's messages per UTC day of their creation. */
+function messageDaysOf(messages: readonly Frozen<StoredMessage>[]): MessageDay[] {
+  const days = new Map<number, number>();
+  for (const message of messages) {
+    const day = utcDayKey(message.createdAt);
+    days.set(day, (days.get(day) ?? 0) + 1);
+  }
+  return [...days].map(([day, count]) => ({ day, messages: count }));
+}
+
+/**
+ * Project one thread into stable ledger rows — from its turn headers, so it
+ * never needs a turn's messages (and never copies the thread to do it).
+ */
+function metricProjection(thread: Frozen<ThreadRecord>): MetricProjection {
   const conversation: ConversationMetricEvent = {
     id: thread.id,
     ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
@@ -1424,25 +2086,22 @@ function metricProjection(thread: StoredThread): {
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
-  const turns = thread.turns.map((turn): TurnMetricEvent => {
-    const messageDays = new Map<number, number>();
-    for (const message of turn.messages) {
-      const day = utcDayKey(message.createdAt);
-      messageDays.set(day, (messageDays.get(day) ?? 0) + 1);
-    }
-    return {
+  const turns = thread.turns.map(
+    (turn): TurnMetricEvent => ({
       id: `${thread.id}:${turn.id}`,
       threadId: thread.id,
       ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
       ...(thread.model !== undefined ? { model: thread.model } : {}),
-      messageDays: [...messageDays].map(([day, messages]) => ({ day, messages })),
+      messageDays: turn.messages
+        ? messageDaysOf(turn.messages)
+        : (turn.messageDays ?? []).map((d) => ({ ...d })),
       updatedAt: thread.updatedAt,
-    };
-  });
+    }),
+  );
   return { conversation, turns };
 }
 
-function toThread(thread: StoredThread): Thread {
+function toThread(thread: Frozen<ThreadRecord>): Thread {
   return {
     id: thread.id,
     projectId: thread.projectId,
@@ -1468,7 +2127,7 @@ function toThread(thread: StoredThread): Thread {
  * The last moment anyone acted on [thread]: a turn starting or ending, or a
  * decision on its title or status. A delete decided before it is superseded.
  */
-function lastDecision(thread: StoredThread): number {
+function lastDecision(thread: Frozen<ThreadRecord>): number {
   let last = Math.max(thread.decidedAt?.title ?? 0, thread.decidedAt?.status ?? 0);
   for (const turn of thread.turns) {
     last = Math.max(last, turn.createdAt, turn.completedAt ?? 0);
@@ -1560,11 +2219,8 @@ function takeBackSteeredReply(turns: StoredTurn[], stored: StoredTurn, native: T
   const moved = segments.slice(cut);
   const kept = segments.slice(0, cut);
   const textOf = (list: unknown[]) => list.map((s) => segmentText(s) ?? '').join('');
-  const blocksOf = (list: unknown[]) =>
-    list.filter((s) => segmentText(s) === undefined && !isResponseBoundary(s));
   from.segments = kept;
   from.text = textOf(kept);
-  from.blocks = blocksOf(kept);
   const reply = stored.messages.find((m) => m.role === 'assistant');
   const target: StoredMessage = reply ?? {
     id: `${stored.id}-reply`,
@@ -1575,24 +2231,18 @@ function takeBackSteeredReply(turns: StoredTurn[], stored: StoredTurn, native: T
   };
   target.segments = moved;
   target.text = textOf(moved);
-  target.blocks = blocksOf(moved);
   if (!reply) stored.messages.push(target);
   return true;
-}
-
-function isResponseBoundary(segment: unknown): boolean {
-  return (
-    !!segment &&
-    typeof segment === 'object' &&
-    (segment as { type?: unknown }).type === 'assistant_response_boundary'
-  );
 }
 
 /**
  * The next turn position in [thread] (see `Turn.seq`), taken: positions only
  * ever grow, even past turns the store has since dropped.
  */
-function nextSeq(thread: StoredThread): number {
+function nextSeq(thread: {
+  lastSeq?: number;
+  readonly turns: readonly { seq?: number }[];
+}): number {
   let max = thread.lastSeq ?? 0;
   for (const turn of thread.turns) if ((turn.seq ?? 0) > max) max = turn.seq ?? 0;
   thread.lastSeq = max + 1;
@@ -1633,20 +2283,19 @@ function toTurn(turn: StoredTurn): Turn {
   return result;
 }
 
+/**
+ * A stored message in the wire shape, whole — what the bridge itself reads
+ * (titles, reconciliation, the detail methods). A page serves it summarized
+ * (`summarizeTurn`). An assistant message always carries `segments`.
+ */
 function toMessage(message: StoredMessage): Message {
   return {
     id: message.id,
     turnId: message.turnId,
     role: message.role,
     content: message.text,
-    ...(message.thinking && message.thinking.length > 0 ? { thinking: message.thinking } : {}),
-    ...(message.blocks && message.blocks.length > 0 ? { blocks: message.blocks } : {}),
-    // Only surface the ordered interleave when it actually carries a structured
-    // block: a plain-text turn renders identically from `content` alone, so the
-    // extra field would be pure duplication. A turn with work-log/diff/tool
-    // blocks ships `segments` so the phone restores the real text↔activity order.
-    ...(message.segments && hasNonTextSegment(message.segments)
-      ? { segments: message.segments }
+    ...(message.role === 'assistant'
+      ? { segments: message.segments ?? textRuns(message.text) }
       : {}),
     ...(message.usage ? { usage: message.usage } : {}),
     ...(message.attachments && message.attachments.length > 0
@@ -1654,6 +2303,11 @@ function toMessage(message: StoredMessage): Message {
       : {}),
     createdAt: message.createdAt,
   };
+}
+
+/** The `segments` of a message that is only [text]: one run, or none. */
+function textRuns(text: string): unknown[] {
+  return text.length > 0 ? [{ type: 'text', text }] : [];
 }
 
 /** File extension for a stored image (no dot); `bin` for an unknown type. */
@@ -1677,10 +2331,6 @@ function attachmentExtension(mimeType: string): string {
   return known[subtype] ?? 'bin';
 }
 
-function structuredCloneThread(thread: StoredThread): StoredThread {
-  return JSON.parse(JSON.stringify(thread)) as StoredThread;
-}
-
 /** Convert a reader-owned wire turn into the private persisted shape. */
 function storedTurnFromNative(turn: Turn): StoredTurn {
   const stored: StoredTurn = {
@@ -1692,8 +2342,6 @@ function storedTurnFromNative(turn: Turn): StoredTurn {
       turnId: turn.id,
       role: message.role,
       text: typeof message.content === 'string' ? message.content : '',
-      ...(message.thinking !== undefined ? { thinking: message.thinking } : {}),
-      ...(message.blocks !== undefined ? { blocks: structuredCloneValue(message.blocks) } : {}),
       ...(message.segments !== undefined
         ? { segments: structuredCloneValue(message.segments) }
         : {}),
@@ -1704,6 +2352,122 @@ function storedTurnFromNative(turn: Turn): StoredTurn {
     ...(turn.completedAt !== undefined ? { completedAt: turn.completedAt } : {}),
   };
   return stored;
+}
+
+/**
+ * Merges an agent's transcript ([nativeTurns]) into [thread], whose every
+ * turn's messages are loaded — the rules {@link ThreadStore.reconcileNativeHistory}
+ * describes. Changes [thread] in place; says whether a client would see a
+ * difference (a link to a native id alone is bookkeeping, not a change).
+ */
+function mergeNativeTurns(thread: StoredThread, nativeTurns: Turn[]): NativeHistoryReconcileResult {
+  const candidates = nativeTurns.filter(
+    (turn) => turn.threadId === thread.id && importableNativeTurn(turn),
+  );
+  // Heal what an earlier read imported from the bridge's own runs (a
+  // transcript's per-line "prompts" once each became a turn of their own).
+  const strays = thread.turns.filter(
+    (turn) => isImportedTurn(turn) && insideBridgeRun(thread.turns, turn.createdAt),
+  );
+  for (const stray of strays) thread.turns.splice(thread.turns.indexOf(stray), 1);
+  if (candidates.length === 0) return { changed: strays.length > 0, importedTurnIds: [] };
+
+  const claimed = new Set<StoredTurn>();
+  const importedTurnIds: string[] = [];
+  let refreshed = false;
+  let pruned = strays.length > 0;
+
+  for (const native of candidates) {
+    let stored = thread.turns.find(
+      (turn) =>
+        !claimed.has(turn) && (turn.nativeHistoryTurnId === native.id || turn.id === native.id),
+    );
+    // Heal a turn imported before the identity match below could recognize
+    // it: that row and the bridge's own record of the same exchange are the
+    // same turn, shown twice. Only ever drops an imported row (its id IS the
+    // native id) that has a bridge-created twin — a genuinely external turn
+    // has none, so it is never touched.
+    if (stored !== undefined && stored.id === native.id) {
+      const twin = findNativeTwin(thread.turns, native, claimed, stored);
+      if (twin) {
+        thread.turns.splice(thread.turns.indexOf(stored), 1);
+        pruned = true;
+        stored = twin;
+      }
+    }
+    stored ??= findNativeTwin(thread.turns, native, claimed, undefined);
+
+    if (stored) {
+      claimed.add(stored);
+      stored.nativeHistoryTurnId ??= native.id;
+      if (takeBackSteeredReply(thread.turns, stored, native)) refreshed = true;
+      if (fillEmptyReply(thread.turns, stored, native)) refreshed = true;
+      // Only native-imported rows are refreshed from native history. A
+      // bridge-created row may contain richer ordered segments and usage.
+      if (stored.id === native.id) {
+        const replacement = storedTurnFromNative(native);
+        replacement.nativeHistoryTurnId = native.id;
+        if (stored.seq !== undefined) replacement.seq = stored.seq;
+        if (JSON.stringify(toTurn(stored)) !== JSON.stringify(toTurn(replacement))) {
+          const index = thread.turns.indexOf(stored);
+          thread.turns[index] = replacement;
+          claimed.delete(stored);
+          claimed.add(replacement);
+          refreshed = true;
+        }
+      }
+      continue;
+    }
+
+    // The bridge was driving the session then: this is (part of) that
+    // run, not a turn of its own, even when no twin matched it.
+    if (insideBridgeRun(thread.turns, native.createdAt)) continue;
+
+    // Already imported under another id: a reader's ids are positions in
+    // the transcript, and a fix to what counts as a prompt renumbers them.
+    // The exchange is the row that holds it, not a second one.
+    const known = sameExchange(thread.turns, native, claimed);
+    if (known) {
+      // The row may hold an earlier, shorter reading of it (imported while
+      // the agent was still answering): take today's, in the same place.
+      const replacement = storedTurnFromNative(native);
+      replacement.nativeHistoryTurnId = native.id;
+      if (known.seq !== undefined) replacement.seq = known.seq;
+      if (JSON.stringify(toTurn(known)) !== JSON.stringify(toTurn(replacement))) {
+        thread.turns[thread.turns.indexOf(known)] = replacement;
+        claimed.add(replacement);
+        refreshed = true;
+      } else {
+        claimed.add(known);
+      }
+      continue;
+    }
+
+    const imported = storedTurnFromNative(native);
+    imported.nativeHistoryTurnId = native.id;
+    imported.seq = nextSeq(thread);
+    thread.turns.push(imported);
+    claimed.add(imported);
+    importedTurnIds.push(imported.id);
+  }
+
+  // A row imported twice under different ids (before the rule above) is
+  // a copy of one this read matched: keep that one.
+  for (const turn of [...thread.turns]) {
+    if (!isImportedTurn(turn) || claimed.has(turn)) continue;
+    const row = { identity: storedTurnIdentity(turn), createdAt: turn.createdAt };
+    const copyOf = [...claimed].some(
+      (other) =>
+        isImportedTurn(other) &&
+        oneExchange({ identity: storedTurnIdentity(other), createdAt: other.createdAt }, row),
+    );
+    if (copyOf) {
+      thread.turns.splice(thread.turns.indexOf(turn), 1);
+      pruned = true;
+    }
+  }
+
+  return { changed: importedTurnIds.length > 0 || refreshed || pruned, importedTurnIds };
 }
 
 /** Native history is imported only once a meaningful assistant result exists. */
@@ -1772,8 +2536,7 @@ function importableNativeTurn(turn: Turn): boolean {
     (message) =>
       message.role === 'assistant' &&
       ((typeof message.content === 'string' && message.content.trim().length > 0) ||
-        (message.thinking?.trim().length ?? 0) > 0 ||
-        (message.blocks?.length ?? 0) > 0),
+        hasBlock(message.segments)),
   );
 }
 
@@ -1936,13 +2699,7 @@ function findNativeTwin(
  *  block in it or in any turn it handed the run on to. */
 function withoutReply(turns: readonly StoredTurn[], turn: StoredTurn): boolean {
   if (storedRunIdentity(turns, turn).assistant.length > 0) return false;
-  return !turn.messages.some(
-    (m) =>
-      m.role === 'assistant' &&
-      ((m.thinking?.trim().length ?? 0) > 0 ||
-        (m.blocks?.length ?? 0) > 0 ||
-        (m.segments?.length ?? 0) > 0),
-  );
+  return !turn.messages.some((m) => m.role === 'assistant' && (m.segments?.length ?? 0) > 0);
 }
 
 /**
@@ -1955,7 +2712,7 @@ function withoutReply(turns: readonly StoredTurn[], turn: StoredTurn): boolean {
 function fillEmptyReply(turns: StoredTurn[], stored: StoredTurn, native: Turn): boolean {
   if (isImportedTurn(stored) || !withoutReply(turns, stored)) return false;
   const reply = storedTurnFromNative(native).messages.filter((m) => m.role === 'assistant');
-  if (!reply.some((m) => m.text.trim().length > 0 || (m.blocks?.length ?? 0) > 0)) return false;
+  if (!reply.some((m) => m.text.trim().length > 0 || hasBlock(m.segments))) return false;
   const empty = stored.messages.find((m) => m.role === 'assistant');
   reply.forEach((message, index) => {
     message.turnId = stored.id;
@@ -1986,9 +2743,45 @@ function isTextSegment(value: unknown): value is { type: 'text'; text: string } 
   );
 }
 
-/** True once the ordered interleave holds at least one non-text (structured) block. */
-function hasNonTextSegment(segments: unknown[]): boolean {
-  return segments.some((s) => !isTextSegment(s));
+/** Whether an ordered interleave holds at least one block or thought (anything but a text run). */
+function hasBlock(segments: readonly unknown[] | undefined): boolean {
+  return segments?.some((s) => !isTextSegment(s)) ?? false;
+}
+
+/**
+ * A message as a layout before this one stored it: its steps possibly kept a
+ * second time, or only, in `blocks`, and its reasoning as one `thinking`
+ * string beside `segments`, with no place in them.
+ */
+type LegacyMessage = StoredMessage & { blocks?: unknown[]; thinking?: string };
+
+/**
+ * Folds a message stored by an older layout into the current shape, where
+ * `segments` alone keeps its steps and thoughts: a message that kept steps
+ * only in `blocks` (a transcript import that gave no order) gets its text,
+ * then those steps, as `segments`; one that kept both keeps `segments`, which
+ * holds every step `blocks` did (and its response boundaries besides). Its
+ * `thinking` becomes ONE thought at the START of `segments` — where in the
+ * reply it was thought was never recorded, and before everything is where a
+ * reply's reasoning mostly stands.
+ *
+ * (The per-turn files of the first build of this layout, which kept
+ * `thinking` too, only ever existed on test machines: they are not converted.)
+ */
+function currentMessage(message: LegacyMessage): StoredMessage {
+  const { blocks, thinking, ...stored } = message;
+  if (blocks === undefined && thinking === undefined) return message;
+  if (blocks !== undefined && (!stored.segments || stored.segments.length === 0)) {
+    const segments = [...textRuns(stored.text), ...blocks];
+    if (segments.length > 0) stored.segments = segments;
+  }
+  if (typeof thinking === 'string' && thinking.length > 0 && stored.role === 'assistant') {
+    stored.segments = [
+      { type: 'thinking', text: thinking },
+      ...(stored.segments ?? textRuns(stored.text)),
+    ];
+  }
+  return stored;
 }
 
 /**
@@ -2060,7 +2853,6 @@ function reconcileAssistantWithFinalText(assistant: StoredMessage, finalText: st
 
   if (finalText.length === 0) return;
   const boundary = { type: 'assistant_response_boundary', phase: 'final_answer' };
-  assistant.blocks = [...(assistant.blocks ?? []), boundary];
   const segments = (assistant.segments ??= [{ type: 'text', text: streamed }]);
   segments.push(boundary, { type: 'text', text: finalText });
   assistant.text = streamed + finalText;
@@ -2076,7 +2868,6 @@ function settleRunningSteps(turn: StoredTurn, ok: boolean): void {
   if (!assistant) return;
   const settle = (list: unknown[] | undefined) =>
     list?.map((b) => (isRunning(b) ? settleBlock(b as Record<string, unknown>, ok) : b));
-  if (assistant.blocks) assistant.blocks = settle(assistant.blocks)!;
   if (assistant.segments) assistant.segments = settle(assistant.segments)!;
 }
 

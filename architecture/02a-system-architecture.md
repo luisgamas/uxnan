@@ -1,11 +1,56 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.7.2
-> **Fecha:** 2026-10-15
+> **Version:** 1.8.2
+> **Fecha:** 2026-10-22
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.8.2):** the agent's reasoning is stored where it
+> happened (§5.8.3, *What a page carries*). Each stretch of it is a thought —
+> `{ type: 'thinking', text }` — in the reply's `segments`, before the command
+> it led to or between two sentences, built from `stream/thinking/delta` by one
+> rule every receiver shares: a chunk grows the last segment when that is a
+> thought, otherwise it opens a new one at the end. A thought is a step: a
+> page folds it into the `work` run it sits in (counted as `thoughts`), a
+> preview carries its first 600 characters, and `turn/step` gives it whole;
+> a message has no reasoning field of its own. Transcripts read back keep the
+> reasoning in the order the agent's own file has it.
+>
+> **Executive summary (1.8.1):** no client polls for history written outside
+> Uxnan (§5.8.8). The bridge watches the conversations clients are reading — a
+> `turn/list` marks its thread watched for that client, for 15 minutes after
+> the last read and only while the client is connected — and every 2 s checks
+> each one with no turn in flight with one `stat` of its transcript (OpenCode,
+> read through its server, at most every 10 s). When a merge changes the
+> stored turns it broadcasts the new notification `stream/history/changed
+> { threadId, rev }`, also when the merge ran inside a client's `turn/list`;
+> a client showing that conversation re-reads its newest page.
+>
+> **Executive summary (1.8.0):** no page the bridge serves grows with a
+> conversation either (§5.8.3, *What a page carries*). `turn/list`,
+> `turn/read` and `stream/turn/created` carry each reply's prose whole, every
+> run of consecutive steps folded into one `work` segment (stored index range,
+> counts per kind, failed, running, changed files, a preview of its last step);
+> `turn/list` fits 1 MiB, newest turns first, and says where it starts
+> (`offset`). What a client opens comes on demand — `turn/steps` (a run's
+> step previews) and `turn/step` (one step whole) — and a live step
+> streams as the same bounded preview, with its index. `Message.blocks` is
+> gone: `segments` is the one place a step lives. A response too large for one
+> frame of the smallest channel is answered `-32011` (`ResponseTooLarge`)
+> instead of a frame that would close the connection. Measured on a real 46 MB
+> conversation: the newest page went from 46 MB to 1.0 MB.
+>
+> **Executive summary (1.7.3):** no everyday cost of the bridge's conversation
+> store grows with a conversation's length (§5.8.3). A conversation is a
+> directory: `thread.json` (summary + one header per turn), one file per turn,
+> and an append-only journal for the turn in flight — a streamed token appends
+> one line instead of rewriting the conversation, a start reads only the
+> `thread.json` files, and turns are read on demand into a cache bounded by
+> bytes. Each step is stored once (`blocks` is derived from `segments`). Native
+> convergence (§5.8.8) skips reading a transcript file whose size and
+> modification time have not changed since it was merged. The wire is unchanged.
+>
 > **Executive summary (1.7.2):** an agent view can be **typed blocks** instead of
 > HTML: `view_show` and `view_check` take `blocks` (ten types: `text`, `stats`,
 > `bar-chart`, `line-chart`, `breakdown`, `table`, `list`, `callout`, `compare`,
@@ -1011,10 +1056,21 @@ class SecureTransportLayer {
   Uint8List encryptEnvelope(Uint8List plaintext, SecureSession session);
   Uint8List decryptEnvelope(Uint8List ciphertext, SecureSession session);
 
-  // Clasificacion de mensajes de control
-  SecureMessageKind classifyRaw(Uint8List data);
+  // Decodifica el frame UNA vez y lo clasifica; el JSON viaja con el resultado
+  // (el envelope se construye de el, nadie vuelve a decodificar el frame)
+  InboundFrame decodeFrame(Uint8List data);
 }
 ```
+
+**Un frame entrante, una decodificacion por capa (2026-10, plans/046).** El
+`SessionCoordinator` procesa los frames en orden de llegada, uno a la vez: el
+JSON del frame se decodifica una vez (`decodeFrame`), el canal descifra, y el
+texto plano lo decodifica `JsonPayloadDecoder` — en un isolate de fondo
+(`Isolate.run`) cuando mide 64 KiB o mas (una pagina de historial), en el
+isolate de UI cuando es menor (los deltas). Como cada frame termina antes de
+que empiece el siguiente, una pagina que se decodifica fuera del isolate de UI
+nunca es adelantada por un delta que llego despues, y la secuencia del envelope
+avanza en orden.
 
 **Criptografia:** implementada con `pointycastle` (puro Dart) + llamadas nativas para operaciones criticas de rendimiento:
 - En Android: Android Keystore / JCE para Ed25519 y X25519
@@ -2087,8 +2143,14 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── trusted-phones.json            # telefonos de confianza registrados
 ├── managed-worktrees.json         # worktrees administrados
 ├── push-state.json                # estado de push notifications
-├── threads/                       # historial mutable, un fichero por conversacion
-│   └── <threadId>.json            #   reescrito solo cuando ESA conversacion cambia
+├── threads/                       # historial mutable, un directorio por conversacion
+│   └── <threadId>/
+│       ├── thread.json            #   resumen + una cabecera por turno (sin mensajes)
+│       └── turns/
+│           ├── <turn>.json        #   los mensajes de un turno; reescrito al terminar
+│           └── <turn>.journal     #   el turno en vuelo: una linea JSON por evento
+├── threads.v1/<threadId>.json     # conversaciones del formato anterior, ya convertidas
+├── threads.json.migrated          # el formato mas antiguo (un solo fichero), ya convertido
 ├── metrics.json                   # ledger historico completo (version 2)
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
@@ -2101,24 +2163,127 @@ El bridge mantiene estado en `~/.uxnan/`:
 The bridge Ed25519 identity and the metrics sealing key live in the OS keychain,
 not in these JSON files.
 
-**Conversations are stored one per file, and that is load-bearing.** Every
-streamed token mutates a conversation, so while they shared a single
-`threads.json` each token re-read, re-serialized and rewrote the whole store.
-Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
-(blocking the event loop) and 24 ms to write — **93 ms per delta**, which queued
-behind the store mutex and throttled delivery to the phone to 5.8 deltas/s with
-gaps of 109 ms (p50) and 573 ms (max). The same reply took 116 s against that
-store and 26 s against an empty one: the cost scaled with the user's whole
-history, so it got worse on its own. Per conversation the median write is a few
-KB, and one conversation's size no longer taxes every other.
+**No everyday cost of the conversation store grows with a conversation's
+length — that is what the layout is for.** Every streamed token changes a
+conversation. While all of them shared one `threads.json`, each token re-read,
+re-serialized and rewrote the whole store (93 ms per delta on a real 8.4 MB
+one); split into one file per conversation, the same happened per
+conversation once one grew large: a real 46 MB conversation (21 turns, ~9 000
+command steps) cost ~100–130 ms of blocked event loop per delta, for every
+chat and client of the bridge, and every start parsed all of them (207 MB in
+424 ms, 512 MB of heap). So a conversation is split by turn:
 
-The conversations are also held in memory between mutations — this process is
-their only reader and writer, guaranteed by the single-instance lock. **No
-durability guarantee changes: every mutation still writes its file before it
-resolves**, so nothing is deferred and no window of loss is opened. A legacy
-`threads.json` is split into per-conversation files on first read and kept as
-`threads.json.migrated` (a backup, not a deletion — it is the user's only copy
-of that history until the new files are proven).
+- **A start reads only the `thread.json` files** (a few KB each: the summary
+  and, per turn, its id, position, status, times, links, messages per day and
+  file size). Measured on the same 73 conversations: 5 ms and no resident turn
+  data, from 474 ms and ~316 MB.
+- **A turn's messages are read when someone reads them** (`turn/list` reads
+  only its page's turns) and stay in memory in a cache bounded by the bytes of
+  their files (64 MiB). The conversation used longest ago goes first; never one
+  being streamed into, one a mutation is working on, or the one used last.
+- **A streamed event — text, reasoning, a step, a step settling, the turn's
+  usage — appends one JSON line to the turn's journal** (`turns/<turn>.journal`)
+  and is applied in memory by the same function that replays a journal. Nothing
+  is rewritten: ~0.1 ms and a few hundred bytes per delta. **No durability
+  guarantee changes: the line is on disk before the store resolves**, so it is
+  still durable before any client is told.
+- **When the turn ends** (completed, failed, aborted, cancelled or handed off)
+  its file is rewritten once with the journal folded in, then the journal is
+  removed. The file records how many journal events it folded, so a crash
+  between the two never applies one twice. A journal a crash left behind is
+  replayed on the next start (a half-written last line is ignored) and folded:
+  the turn keeps everything that reached disk and stays `streaming`, like any
+  turn a restart cut short.
+- **Any other change rewrites only what it reached**: the turns it handed out
+  for change and the index, each only if its content actually differs. What a
+  change reached is recorded by the accessors that hand state to it, so nothing
+  has to remember to name the files it touched.
+- **Each step is stored once**, in the message's ordered `segments` — the
+  only place one lives; a message of an older layout that kept steps in
+  `blocks` has them folded into `segments` (after its text) when it is
+  converted. This halved the data (the real 199 MB became 121 MB). The
+  reasoning lives there too, as thoughts where they happened; an older
+  message's single `thinking` string, whose place was never recorded, becomes
+  one thought at the start of its `segments` when it is converted.
+
+Both older layouts are converted once, at the first start that finds them: a
+`threads/<id>.json` conversation is written in the new layout and then moved to
+`threads.v1/<id>.json`, and anything left in the single `threads.json` is
+converted and that file kept as `threads.json.migrated` (backups, never
+deletions; both can be removed by hand). A conversion is done when its
+`thread.json` exists — written last — so one interrupted halfway is redone from
+the original. The real 207 MB converted in ~1.3 s, once.
+
+**What a page carries (2026-10).** Storing a conversation in bounded pieces is
+half of it; what a client is SENT must not grow with it either. Opening a 46 MB
+conversation asked for a 46 MB page, which the desktop's 32 MiB frame limit
+dropped — closing the connection, which reconnected and asked again, in a loop
+(~2 800 reconnects in a day). So the store keeps every step whole and serves a
+summary (`summarizeTurn`, `shared/src/models/history.ts`), and the detail on
+demand:
+
+- **A page** (`turn/list`, `turn/read`, `stream/turn/created`) carries each
+  assistant message's prose whole and every run of consecutive steps
+  (`command_execution`, `diff`, `tool`, and thoughts — `thinking`) as ONE
+  `work` segment: the run's index range in the stored `segments`
+  (`from`/`to`), how many commands, edits, tool calls and thoughts, how many
+  failed or still run, the files its edits changed (merged by name), and a
+  preview of its last step. A thought between two commands does not split
+  their run. Everything else in `segments` is served as stored.
+- **The reasoning is a step where it happened.** Each stretch of it is a
+  thought, `{ type: 'thinking', text }`, in `segments`. A reasoning chunk
+  (`stream/thinking/delta`, journal op `thinking`) grows the last segment when
+  that is a thought and otherwise opens a new one at the end — never slotted
+  before an open text run, unlike a `beforeText` block, because an agent's own
+  reasoning is sequential with its prose (`appendThinkingSegment`, the one
+  function the store, a journal replay and every client apply). A thought has
+  no status: it never fails, and it is running only while it is the last
+  segment of a live turn, which each client derives. The notification carries
+  no index; like a block's, it is sent in arrival order with the prose and
+  blocks around it, ahead of its write, and a block after it names an `index`
+  that already counts it.
+- **Read back from an agent's own transcript** (§5.8.8), the reasoning keeps
+  the order the file has: Claude Code's and pi's `thinking` blocks (and pi's
+  `think` tags), Codex's `reasoning` items (which lead, with the tool events,
+  the reply they belong to), OpenCode's `reasoning` parts, Grok's
+  `agent_thought_chunk` updates. Zero's transcript keeps no reasoning.
+- **`turn/list` fits a byte budget** (1 MiB of summarized JSON): of the window
+  asked for, the newest turns that fit are served, always at least one, and
+  `offset` says where the page starts. Measured on the real conversation: 46 MB
+  → 1.0 MB for the newest page (20 of its 21 turns; the largest summarized
+  turn is 140 KB).
+- **On demand:** `turn/steps` gives a range's steps as previews (a command's
+  first 400 characters, an output's last 1 200, an edit without its body, each
+  with the full size of what was cut), at most 256 KiB per answer with `next`
+  to continue, and a thought's first 600 characters; `turn/step` gives one
+  stored block whole — a thought's whole text too. A step is addressed by its
+  index in the stored `segments`, which is stable: a new step is appended (or
+  slotted before the open text run), one that settles is replaced where it
+  stands, and a thought grows where it stands.
+- **Live**, `stream/content/block` carries a step as the same preview, with
+  its `index`, which the store computes synchronously, before the write, by
+  the same placement rules (`ThreadStore.blockIndex`): the notification is
+  sent in arrival order, ahead of its write, so no delta can overtake it.
+- **The bridge's own readers keep reading whole turns** (`ThreadStore.getTurn`:
+  titles, the reply's text at the end of a turn, whether a turn ended, native
+  reconciliation, forks); only what leaves for a client is summarized.
+- **The phone keeps the same shape** (`uxnanmobile/docs/architecture.md` →
+  *Bounded history*). It stores a reply as served — runs as `WorkRunContent`,
+  thoughts in them — builds a live thought by `appendThinkingSegment` and
+  folds a live turn's steps into runs before storing it (a run a mid-turn
+  resync summarized and the steps that streamed after it end as one), shows a
+  thought as a one-line work-log row that opens in place (following its end
+  while it streams), reads a run's steps only when its work log opens, and
+  opens a whole step or thought, or a file's diff (its edits found in the
+  runs' steps, each body by index), on a lazily laid-out screen. A re-sync reads the page's stored messages as heads and
+  skips an answer whose wire fingerprint did not change; paging backward
+  starts at `offset`.
+- **No answer may be larger than one frame.** The dispatcher measures every
+  serialized response; one larger than the smallest channel's frame
+  (`LOCAL_CONTROL_MAX_FRAME_BYTES`, 32 MiB, less 1 KiB for the frame around it)
+  is answered with `-32011` (`ResponseTooLarge`, `data: { bytes, limit }`) on
+  every transport, and the connection stays up. The largest legitimate answer
+  — a 20 MiB PDF as base64, ~28 MB — still fits.
 
 **No agent process outlives a bridge that is killed hard.** A graceful stop
 closes every child (`AgentManager.stopAll`); a `SIGKILL`, a crash or an OOM kill
@@ -2360,10 +2525,28 @@ convencional. El ADE de escritorio replica el atenuado con su propio
 
 #### 5.8.8 Native-session history convergence
 
-`turn/list` reconciles the agent-owned transcript before reading the bridge
-store whenever that thread has no bridge-driven turn in flight. This is not an
-empty-store fallback: it runs on every idle read so completed turns written from
-another client attached to the same native session converge into Uxnan.
+The bridge reconciles the agent-owned transcript into its store whenever that
+thread has no bridge-driven turn in flight: before `turn/list` reads the store,
+and on its own for every conversation a connected client is reading (*The
+history watcher*, below). This is not an empty-store fallback: it is considered
+on every idle read and every watch tick — and skipped while neither the
+transcript nor the thread changed since the last merge (below) — so completed
+turns written from another client attached to the same native session converge
+into Uxnan. One owner does both, `NativeHistoryWatcher.reconcile`
+(`bridge/src/conversation/native-history-watcher.ts`).
+
+What every idle read still costs is a `stat` of the transcript. Where the
+transcript is one file (every source below but OpenCode's server),
+`SessionHistoryReader.sourceSignature` reports its path, size and modification
+time; the store remembers, in the thread's `thread.json`, the signature it
+last merged together with the thread's turn count, last position and number of
+ended turns (`ThreadStore.nativeHistoryCurrent`). While both are the same, a
+merge cannot change anything, so the read skips reading and merging the
+transcript — a real 40 MB Claude Code transcript cost ~115 ms per read. A
+transcript that grew, or a thread that gained, lost or ended a turn, is read
+and merged again in full. OpenCode's history, read through its server, has no
+signature: it is read on every idle `turn/list`, and by the watcher at most
+every 10 s.
 
 | Agent | Authoritative readable source | Support |
 |---|---|---|
@@ -2431,7 +2614,7 @@ into one transcript. Reconciliation then follows these rules:
   line of the running prompt, and a compaction leaves an `isCompactSummary`
   one: none of them opens a turn. Taken as prompts, one run became a turn per
   line, each imported beside the bridge's own record of it — duplicate and
-  stray bubbles on the phone, which re-imported them on every 3-second poll;
+  stray bubbles on the phone, which its former 3-second poll re-imported;
 - **what the transcript holds of a run the bridge drove is never
   native-only.** One native session runs one turn at a time, so a native turn
   that starts inside a bridge-recorded turn's run (from its start, less the
@@ -2458,11 +2641,43 @@ into one transcript. Reconciliation then follows these rules:
 - native history is not read while the bridge itself is streaming that thread,
   preventing a half-flushed record from being frozen as an external turn.
 
-The wire shape and offset pagination of `turn/list` do not change. This provides
+A merged turn is served like any other: summarized, within the page budget
+(§5.8.3, *What a page carries*). This provides
 near-real-time **completed-turn convergence**, not token streaming from the
-external client. The active Mobile conversation polls the newest page every
-three seconds while connected and idle; navigation, reconnect and lifecycle
-resume also trigger immediate reads.
+external client.
+
+##### The history watcher: the bridge tells, no client polls
+
+What is written in the agent's own app or terminal reaches an open
+conversation without any client asking for it:
+
+- **Interest.** Each `turn/list` a client sends marks its thread watched for
+  that client (keyed by the client's session: a phone's device id, a local
+  client's receiver id). A client's interest ends 15 minutes after its last
+  read of the thread, or as soon as it is no longer connected; a thread no
+  connected client read recently is not watched. With nothing watched no timer
+  is armed — the watcher costs nothing.
+- **One loop.** Every 2 s, for each watched thread with no bridge turn in
+  flight: one `sourceSignature` (a `stat`); if `nativeHistoryCurrent` says the
+  transcript or the thread changed, the transcript is read and merged by the
+  rules above. A history that is not one file (OpenCode, through its server)
+  is read at most every 10 s. A tick never overlaps the previous one (the next
+  is armed when one ends), a merge already running for a thread — a client's
+  `turn/list` — is joined rather than repeated, and one thread's failure never
+  stops the loop (a deleted thread stops being watched). The loop starts and
+  stops with the bridge.
+- **The announcement.** A merge that changed the stored turns — imported,
+  refreshed or dropped a row — is broadcast as `stream/history/changed
+  { threadId, rev }`, `rev` being the thread's sync revision after it (the same
+  one the `stream/thread/updated` sent just before carries). It is sent
+  whichever caller ran the merge, so when one client's `turn/list` brings a
+  terminal turn in, every other client showing that conversation hears it too.
+- **What a client does with it.** A client showing that conversation re-reads
+  its newest page (`turn/list { fromEnd: true }`, bounded as always); one that
+  does not show it ignores it. Navigation, reconnect and lifecycle resume
+  still read the newest page at once, as they always have (*Converge, don't
+  trust delivery*): the notification makes convergence prompt, the read on
+  return makes it certain.
 
 ##### The other direction: the phone's conversation must open in the agent's app
 
@@ -2583,7 +2798,7 @@ written to this ledger either.
 - Mutating Git operations preserve method, thread association, outcome and time.
 
 Rows have stable ids. Conversation/turn projections advance by `updatedAt`;
-sessions and Git rows are append-only. Existing `threads.json` history is
+sessions and Git rows are append-only. Existing conversation history is
 backfilled idempotently at startup and before snapshot/export. Deleting a thread
 only deletes mutable conversation history — it never deletes ledger rows, so
 activity totals cannot go backwards. Day keys use `utcDayKey` (UTC midnight of

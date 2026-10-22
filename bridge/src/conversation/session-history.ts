@@ -27,8 +27,9 @@
  *     `tool` (with `state.status: completed|error`).
  *   - **pi** — `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl`; lines
  *     `{ type:'message', message:{ role:'user'|'assistant'|'toolResult', content:
- *     [{type:'text'|'toolCall', ...}], toolCallId?, toolName?, ... } }`. Reasoning
- *     is stored inline as `think...think` inside the assistant text blocks.
+ *     [{type:'text'|'thinking'|'toolCall', ...}], toolCallId?, toolName?, ... } }`.
+ *     Reasoning is a `thinking` content block (checked on a real pi session,
+ *     October 2026), or, for some models, `think` tags inside a text block.
  *   - **Zero** — `~/.local/share/zero/sessions/<sessionId>/events.jsonl`; ordered
  *     `message` events with `{ role, content }` payloads.
  *   - **Grok** — `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl`; the
@@ -38,7 +39,14 @@
  * persisted per thread by the adapters/AgentManager so the file is
  * findable after a restart.
  *
- * Beyond text + thinking, the reader ALSO reconstructs the structured
+ * Reasoning becomes thoughts (`{ type:'thinking', text }` segments) placed where
+ * the transcript has them — every reader that finds reasoning finds it in
+ * order: Claude Code's `thinking` content blocks, Codex's `reasoning` items,
+ * OpenCode's `reasoning` parts, pi's `thinking` content blocks and `think`
+ * tags, Grok's `agent_thought_chunk` updates. (Zero's transcript keeps no
+ * reasoning at all.)
+ *
+ * Beyond text + reasoning, the reader ALSO reconstructs the structured
  * MessageContent blocks (`command_execution` / `diff` / generic `tool`) the
  * live adapter would have emitted, so the phone's Work log and Changed files
  * populate for history-fallback turns the same way they do for live turns. Each
@@ -50,25 +58,33 @@
  *     `file_change` / `mcp_tool_call`) AND the NEW codex-cli 0.98+ format
  *     (`function_call` + `function_call_output` / `custom_tool_call` +
  *     `custom_tool_call_output`), pairing by `call_id`. Codex tool events +
- *     `reasoning` items precede the assistant text, so they're queued and
- *     flushed onto the next assistant message. `shell_command` maps to
+ *     `reasoning` items precede the assistant text, so they're queued, in
+ *     order, and lead the next assistant message. `shell_command` maps to
  *     `command_execution`, `apply_patch` to `diff`, others to generic `tool`.
  *   - **OpenCode** — reads each message's `tool` parts (already paired with
  *     their result in the same part) and maps the tool name to a structured
- *     block; reasoning parts become `thinking`.
+ *     block, in part order with the message's text and reasoning.
  *   - **pi** — pairs the `toolCall` content block inside an assistant message
  *     with the subsequent `role:'toolResult'` message (by `toolCallId`).
- *     `think` tags embedded in the assistant text are extracted into
- *     `thinking`.
+ *     `thinking` content blocks, and `think` tags embedded in the assistant
+ *     text, become thoughts.
  * This is a best-effort, READ-ONLY fallback: it never writes, tolerates malformed
  * lines/files, and returns `null` when it cannot produce anything (the caller then
  * keeps the empty store result). Resolved file paths are cached per session id
- * with a 60s TTL so repeated `turn/list` calls don't re-scan the directory tree.
+ * with a 60s TTL so repeated `turn/list` calls don't re-scan the directory tree,
+ * and {@link SessionHistoryReader.sourceSignature} says whether a file-backed
+ * transcript changed, so an unchanged one is not read again at all.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import type { AgentId, Message, MessageRole, Turn } from '@uxnan/shared';
+import {
+  isThinkingSegment,
+  type AgentId,
+  type Message,
+  type MessageRole,
+  type Turn,
+} from '@uxnan/shared';
 import {
   extractToolUses,
   extractToolResults,
@@ -80,6 +96,7 @@ import { fileChangeBlock, truncateOutput } from '../adapters/content-blocks.js';
 import { opencodeToolBlock } from '../adapters/opencode-tools.js';
 import type { OpenCodeHistoryMessage } from '../adapters/opencode-protocol.js';
 import { piToolBlock, piResultText, type PiToolUse } from '../adapters/pi-tools.js';
+import { ReplySegments } from '../adapters/reply-segments.js';
 
 /** Where a thread's on-disk history lives, as known by the bridge. */
 export interface HistorySource {
@@ -116,19 +133,18 @@ interface CacheEntry {
 /** A neutral, ordered message extracted from any agent's log. */
 interface RawMessage {
   role: MessageRole;
+  /** The prose, its runs concatenated (the message's `content`). */
   text: string;
-  thinking?: string;
   /**
-   * Structured MessageContent blocks (`command_execution` / `diff` / generic
-   * `tool`) that this assistant message produced. Reconstructed from the
-   * agent's on-disk tool-call entries so the phone renders Work log / Changed
-   * files for history-fallback turns the same way it does for live turns.
-   * Only set on assistant messages.
+   * An assistant message's prose runs, thoughts and structured MessageContent
+   * blocks (`command_execution` / `diff` / generic `tool`, reconstructed from
+   * the agent's on-disk tool-call entries) in transcript order
+   * ({@link ReplySegments}), so a history turn renders like a live one. Only
+   * set on assistant messages. A transcript writes most parts as lines of
+   * their own, so the line order is their order: `canonicalTurn` folds the
+   * lines into one assistant message whose `segments` follow it.
    */
-  blocks?: unknown[];
-  // A transcript writes prose and steps as separate lines, so the line order is
-  // the text↔step order: `canonicalTurn` folds the lines into one assistant
-  // message whose `segments` follow it (within one line, its text first).
+  segments?: unknown[];
   createdAt: number;
 }
 
@@ -189,9 +205,49 @@ export class SessionHistoryReader {
 
   // --- Per-agent locators + parsers ------------------------------------------
 
-  async #readClaude(sessionId: string): Promise<RawMessage[] | null> {
+  /**
+   * What the agent's transcript for [source] is right now — its file, size
+   * and modification time — so a caller that remembers it can tell an
+   * unchanged transcript from one worth reading again (the bridge skips
+   * re-reading a 40 MB Claude Code transcript on every `turn/list` this way).
+   * `undefined` when the history is not one file — OpenCode's is read through
+   * its server — or none was found: then nothing is cheaper than reading it.
+   */
+  async sourceSignature(source: HistorySource): Promise<string | undefined> {
+    const { agentId, agentSessionId } = source;
+    if (!agentId || !agentSessionId) return undefined;
+    let file: string | null;
+    try {
+      file = await this.#transcriptFile(agentId as AgentId, agentSessionId);
+      if (!file) return undefined;
+      const info = await stat(file);
+      return JSON.stringify([file, info.size, info.mtimeMs]);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The one file holding an agent's transcript, for agents that keep one. */
+  #transcriptFile(agentId: AgentId, sessionId: string): Promise<string | null> {
+    switch (agentId) {
+      case 'claude-code':
+        return this.#claudeFile(sessionId);
+      case 'codex':
+        return this.#codexFile(sessionId);
+      case 'pi-agent':
+        return this.#piFile(sessionId);
+      case 'zero':
+        return this.#zeroFile(sessionId);
+      case 'grok':
+        return this.#grokFile(sessionId);
+      default:
+        return Promise.resolve(null);
+    }
+  }
+
+  #claudeFile(sessionId: string): Promise<string | null> {
     const projects = join(this.#home, '.claude', 'projects');
-    const file = await this.#cached(`claude:${sessionId}`, async () => {
+    return this.#cached(`claude:${sessionId}`, async () => {
       // The session id is the file name; scan project dirs rather than reproduce
       // Claude's cwd-encoding (which is lossy). Session ids are UUIDs → unique.
       const dirs = await safeReaddir(projects);
@@ -201,6 +257,40 @@ export class SessionHistoryReader {
       }
       return null;
     });
+  }
+
+  #codexFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.codex', 'sessions');
+    return this.#cached(`codex:${sessionId}`, async () => {
+      // Layout: sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<sessionId>.jsonl
+      const suffix = `-${sessionId}.jsonl`;
+      return findFileBySuffix(sessionsRoot, suffix, 3);
+    });
+  }
+
+  #piFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.pi', 'agent', 'sessions');
+    return this.#cached(`pi:${sessionId}`, async () => {
+      // Layout: sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
+      return findFileBySuffix(sessionsRoot, `_${sessionId}.jsonl`, 1);
+    });
+  }
+
+  async #zeroFile(sessionId: string): Promise<string | null> {
+    const file = join(this.#home, '.local', 'share', 'zero', 'sessions', sessionId, 'events.jsonl');
+    return (await isFile(file)) ? file : null;
+  }
+
+  async #grokFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.grok', 'sessions');
+    const sessionDir = await this.#cached(`grok:${sessionId}`, () =>
+      findDirByName(sessionsRoot, sessionId, 2),
+    );
+    return sessionDir ? join(sessionDir, 'updates.jsonl') : null;
+  }
+
+  async #readClaude(sessionId: string): Promise<RawMessage[] | null> {
+    const file = await this.#claudeFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
     // Track the assistant's pending `tool_use` invocations so we can pair each
@@ -214,14 +304,13 @@ export class SessionHistoryReader {
       const role = message?.['role'];
       if (role !== 'user' && role !== 'assistant') continue;
       const content = message?.['content'];
-      const { text, thinking } = extractAnthropicContent(content);
       if (role === 'assistant') {
-        const raw: RawMessage = { role, text, createdAt: parseTime(obj['timestamp']) };
-        if (thinking) raw.thinking = thinking;
+        const { text, segments } = anthropicReply(content).build();
+        out.push({ role, text, segments, createdAt: parseTime(obj['timestamp']) });
         const tools = extractToolUses(content);
         if (tools.length > 0) pendingToolUses = tools;
-        out.push(raw);
       } else {
+        const text = anthropicText(content);
         // user message — may carry tool_results AND/OR plain text
         const results = extractToolResults(content);
         if (results.length > 0 && pendingToolUses) {
@@ -249,27 +338,23 @@ export class SessionHistoryReader {
   }
 
   async #readCodex(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.codex', 'sessions');
-    const file = await this.#cached(`codex:${sessionId}`, async () => {
-      // Layout: sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<sessionId>.jsonl
-      const suffix = `-${sessionId}.jsonl`;
-      return findFileBySuffix(sessionsRoot, suffix, 3);
-    });
+    const file = await this.#codexFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
-    // Track the most recent assistant message so we can attach reasoning text
-    // to it as we walk the rollout. (Tool-call blocks attach to the NEXT
-    // assistant message — see `pendingBlocks` below — because Codex's on-disk
-    // order is `user → tool_events → assistant`.)
-    let lastAssistant: RawMessage | null = null;
-    // Blocks waiting for the next assistant message to land (Codex tool events
-    // precede the assistant text that triggered them). When an assistant
-    // message is added, this list is drained into its `blocks` field.
-    const pendingBlocks: unknown[] = [];
-    // Same idea for reasoning text: it may arrive before the assistant message
-    // (codex-cli logs reasoning as its own item, before the final reply). The
-    // queue is flushed onto the next assistant message's `thinking` field.
-    let pendingThinking = '';
+    // Reasoning and tool events waiting, in rollout order, for the assistant
+    // message they lead to: Codex's on-disk order is `user → reasoning / tool
+    // events → assistant`, so they open that message's segments, before its
+    // text. What no assistant message followed (a run stopped before it
+    // answered, or still going) is a reply of its own, in its own turn.
+    let pending = new ReplySegments();
+    let pendingAt = 0;
+    const flushPending = (): void => {
+      if (pending.empty) return;
+      const { text, segments } = pending.build();
+      if (segments.length > 0)
+        out.push({ role: 'assistant', text, segments, createdAt: pendingAt });
+      pending = new ReplySegments();
+    };
     // Pending tool invocations awaiting their `*_output` sibling (newer
     // codex-cli 0.98+ format), keyed by call_id.
     const pendingToolCalls = new Map<
@@ -297,44 +382,38 @@ export class SessionHistoryReader {
       }
       if (ptype === 'function_call_output' || ptype === 'custom_tool_call_output') {
         const callId = typeof payload['call_id'] === 'string' ? payload['call_id'] : '';
-        const pending = callId ? pendingToolCalls.get(callId) : undefined;
-        if (!pending) continue;
+        const call = callId ? pendingToolCalls.get(callId) : undefined;
+        if (!call) continue;
         pendingToolCalls.delete(callId);
         const output = extractCodexOutputText(payload['output']);
         const isError = codexOutputIsError(payload['output']);
-        const block = codexToolCallBlock(pending, output, isError);
-        if (block) pendingBlocks.push(block);
+        const block = codexToolCallBlock(call, output, isError);
+        if (block) {
+          pending.block(block);
+          pendingAt = parseTime(obj['timestamp']);
+        }
         continue;
       }
       // ---- Legacy format (pre-0.98): standalone items per event ----
-      if (ptype === 'command_execution') {
-        const blocks = codexItemBlocks(payload);
-        for (const b of blocks) pendingBlocks.push(b);
+      if (ptype === 'command_execution' || ptype === 'mcp_tool_call') {
+        for (const b of codexItemBlocks(payload)) pending.block(b);
+        pendingAt = parseTime(obj['timestamp']);
         continue;
       }
       if (ptype === 'file_change') {
-        const blocks = codexFileChanges(payload).map((c) => fileChangeBlock(c.path));
-        for (const b of blocks) pendingBlocks.push(b);
+        for (const c of codexFileChanges(payload)) pending.block(fileChangeBlock(c.path));
+        pendingAt = parseTime(obj['timestamp']);
         continue;
       }
-      if (ptype === 'mcp_tool_call') {
-        const blocks = codexItemBlocks(payload);
-        for (const b of blocks) pendingBlocks.push(b);
-        continue;
-      }
-      // ---- Reasoning (either format): attach text to the last assistant
-      //      message when one exists, otherwise queue for the NEXT assistant
-      //      message. codex-cli encrypts the long-form reasoning body into
+      // ---- Reasoning (either format): a thought, queued in order with the
+      //      tool events. codex-cli encrypts the long-form reasoning body into
       //      `encrypted_content`; the human-readable summary (when present)
       //      is the best we can show. ----
       if (ptype === 'reasoning') {
         const text = codexReasoningText(payload);
         if (text) {
-          if (lastAssistant) {
-            lastAssistant.thinking = (lastAssistant.thinking ?? '') + text;
-          } else {
-            pendingThinking += text;
-          }
+          pending.thought(text);
+          pendingAt = parseTime(obj['timestamp']);
         }
         continue;
       }
@@ -345,32 +424,20 @@ export class SessionHistoryReader {
         if (role !== 'user' && role !== 'assistant') continue;
         const text = extractCodexContent(payload['content']);
         if (!text) continue;
-        const raw: RawMessage = { role, text, createdAt: parseTime(obj['timestamp']) };
-        // Drain any queued tool blocks and reasoning text (Codex tool events
-        // and reasoning items precede the assistant text that initiated them,
-        // so the assistant that closes the turn owns them).
-        if (role === 'assistant') {
-          if (pendingBlocks.length > 0) raw.blocks = pendingBlocks.splice(0, pendingBlocks.length);
-          if (pendingThinking.length > 0) {
-            raw.thinking = pendingThinking;
-            pendingThinking = '';
-          }
+        const createdAt = parseTime(obj['timestamp']);
+        if (role === 'user') {
+          // What waited belongs to the turn this prompt closes.
+          flushPending();
+          out.push({ role, text, createdAt });
+          continue;
         }
-        out.push(raw);
-        if (role === 'assistant') lastAssistant = raw;
+        // The reasoning and tool events that led here open this message.
+        const reply = pending.text(text).build();
+        pending = new ReplySegments();
+        out.push({ role, text: reply.text, segments: reply.segments, createdAt });
       }
     }
-    // Tolerate trailing tool events / reasoning with no following assistant:
-    // attach them to the most recent assistant (e.g. when the run ended
-    // without a closing text reply).
-    if (lastAssistant) {
-      if (pendingBlocks.length > 0) {
-        lastAssistant.blocks = (lastAssistant.blocks ?? []).concat(pendingBlocks);
-      }
-      if (pendingThinking.length > 0) {
-        lastAssistant.thinking = (lastAssistant.thinking ?? '') + pendingThinking;
-      }
-    }
+    flushPending();
     return out;
   }
 
@@ -404,35 +471,34 @@ export class SessionHistoryReader {
     const out: RawMessage[] = [];
     for (const meta of metas) {
       const partDir = join(partRoot, meta.id);
-      const { text, thinking, blocks } = await this.#openCodeMessageParts(partDir);
-      if (!text && !thinking && blocks.length === 0) continue;
-      const raw: RawMessage = { role: meta.role, text, createdAt: meta.createdAt };
-      if (thinking) raw.thinking = thinking;
-      if (blocks.length > 0) raw.blocks = blocks;
-      out.push(raw);
+      const { text, segments } = await this.#openCodeMessageParts(partDir);
+      if (segments.length === 0) continue;
+      out.push({
+        role: meta.role,
+        text,
+        ...(meta.role === 'assistant' ? { segments } : {}),
+        createdAt: meta.createdAt,
+      });
     }
     return out;
   }
 
   /**
-   * Read the parts of one OpenCode message: joined `text` for the body,
-   * joined `reasoning` text for the `thinking` field, and one structured
-   * block per `tool` part in a terminal state (matched by tool name).
+   * Read the parts of one OpenCode message, in their order (part ids sort as
+   * they were written): `text` parts as prose, `reasoning` parts as thoughts,
+   * one structured block per `tool` part in a terminal state (matched by
+   * tool name).
    */
-  async #openCodeMessageParts(
-    partDir: string,
-  ): Promise<{ text: string; thinking?: string; blocks: unknown[] }> {
+  async #openCodeMessageParts(partDir: string): Promise<{ text: string; segments: unknown[] }> {
     const files = (await safeReaddir(partDir)).filter((f) => f.endsWith('.json')).sort();
-    const textChunks: string[] = [];
-    const thinkChunks: string[] = [];
-    const blocks: unknown[] = [];
+    const reply = new ReplySegments();
     for (const f of files) {
       const obj = await readJsonFile(join(partDir, f));
       if (!obj) continue;
       if (obj['type'] === 'text' && typeof obj['text'] === 'string') {
-        textChunks.push(obj['text']);
+        reply.text(obj['text']);
       } else if (obj['type'] === 'reasoning' && typeof obj['text'] === 'string') {
-        thinkChunks.push(obj['text']);
+        reply.thought(obj['text']);
       } else if (obj['type'] === 'tool') {
         const state = isRecord(obj['state']) ? obj['state'] : {};
         const status = typeof state['status'] === 'string' ? state['status'] : '';
@@ -448,25 +514,15 @@ export class SessionHistoryReader {
               : typeof state['error'] === 'string'
                 ? state['error']
                 : '';
-          blocks.push(opencodeToolBlock(toolName, partId, input, output, status === 'error'));
+          reply.block(opencodeToolBlock(toolName, partId, input, output, status === 'error'));
         }
       }
     }
-    const text = textChunks.join('').trim();
-    const thinking = thinkChunks.join('').trim();
-    return {
-      text,
-      ...(thinking ? { thinking } : {}),
-      blocks,
-    };
+    return reply.build();
   }
 
   async #readPi(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.pi', 'agent', 'sessions');
-    const file = await this.#cached(`pi:${sessionId}`, async () => {
-      // Layout: sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
-      return findFileBySuffix(sessionsRoot, `_${sessionId}.jsonl`, 1);
-    });
+    const file = await this.#piFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
     // Pending `toolCall` content blocks from the most recent assistant message,
@@ -488,12 +544,10 @@ export class SessionHistoryReader {
         // Assistant messages carry plain `text` AND `toolCall` blocks in the
         // same content array; remember the toolCalls so the next `toolResult`
         // message can pair with them.
-        const { text, thinking } = extractPiAssistantContent(content);
-        const raw: RawMessage = { role, text, createdAt: parseTime(obj['timestamp']) };
-        if (thinking) raw.thinking = thinking;
+        const { text, segments } = piReply(content).build();
+        out.push({ role, text, segments, createdAt: parseTime(obj['timestamp']) });
         const toolCalls = extractPiToolCalls(content);
         if (toolCalls.length > 0) pendingToolCalls = toolCalls;
-        out.push(raw);
         continue;
       }
       if (role === 'toolResult') {
@@ -535,8 +589,8 @@ export class SessionHistoryReader {
   }
 
   async #readZero(sessionId: string): Promise<RawMessage[] | null> {
-    const file = join(this.#home, '.local', 'share', 'zero', 'sessions', sessionId, 'events.jsonl');
-    if (!(await isFile(file))) return null;
+    const file = await this.#zeroFile(sessionId);
+    if (!file) return null;
     const out: RawMessage[] = [];
     for (const event of await readJsonl(file)) {
       if (event['type'] !== 'message') continue;
@@ -550,18 +604,15 @@ export class SessionHistoryReader {
   }
 
   async #readGrok(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.grok', 'sessions');
-    const sessionDir = await this.#cached(`grok:${sessionId}`, () =>
-      findDirByName(sessionsRoot, sessionId, 2),
-    );
-    if (!sessionDir) return null;
+    const file = await this.#grokFile(sessionId);
+    if (!file) return null;
     const out: RawMessage[] = [];
     let user = '';
-    let assistant = '';
-    let thinking = '';
+    // The agent's prose and reasoning chunks, in the order they streamed.
+    let reply = new ReplySegments();
     let userAt = 0;
     let completedAt = 0;
-    for (const event of await readJsonl(join(sessionDir, 'updates.jsonl'))) {
+    for (const event of await readJsonl(file)) {
       const params = asRecord(event['params']);
       if (params?.['sessionId'] !== sessionId) continue;
       const update = asRecord(params['update']);
@@ -572,24 +623,19 @@ export class SessionHistoryReader {
         if (!user) userAt = at;
         user += text;
       } else if (kind === 'agent_message_chunk') {
-        assistant += text;
+        reply.text(text);
       } else if (kind === 'agent_thought_chunk') {
-        thinking += text;
+        // Chunks of one stream of reasoning: joined with nothing between.
+        reply.thought(text, '');
       } else if (kind === 'turn_completed') {
         completedAt = at;
         if (user.trim()) out.push({ role: 'user', text: user.trim(), createdAt: userAt });
-        if (assistant.trim() || thinking.trim()) {
-          const raw: RawMessage = {
-            role: 'assistant',
-            text: assistant.trim(),
-            createdAt: completedAt,
-          };
-          if (thinking.trim()) raw.thinking = thinking.trim();
-          out.push(raw);
+        const built = reply.build();
+        if (built.segments.length > 0) {
+          out.push({ role: 'assistant', ...built, createdAt: completedAt });
         }
         user = '';
-        assistant = '';
-        thinking = '';
+        reply = new ReplySegments();
         userAt = 0;
       }
     }
@@ -636,25 +682,31 @@ export function canonicalTurn(turn: Turn): Turn {
   const replies = turn.messages.filter((m) => m.role === 'assistant');
   if (replies.length <= 1 && users.length <= 1) return turn;
   const segments: unknown[] = [];
-  const blocks: unknown[] = [];
   const texts: string[] = [];
-  const thinking: string[] = [];
   let usage: Message['usage'];
   for (const reply of replies) {
     const text = typeof reply.content === 'string' ? reply.content : '';
-    if (reply.segments && reply.segments.length > 0) {
-      segments.push(...reply.segments);
-    } else {
-      if (text.trim().length > 0) {
-        // Separate replies stay separate runs, as the live stream keeps them.
-        if (texts.length > 0) segments.push({ type: 'assistant_response_boundary' });
-        segments.push({ type: 'text', text });
-      }
-      if (reply.blocks) segments.push(...reply.blocks);
+    const own = reply.segments ?? [];
+    // Separate replies stay separate responses, as the live stream keeps them:
+    // the boundary closes the earlier one, so it goes before any thoughts that
+    // already lead into this reply (a transcript may write them on a line of
+    // their own).
+    if (texts.length > 0 && isTextRun(own.find((s) => !isThinkingSegment(s)))) {
+      let at = segments.length;
+      while (at > 0 && isThinkingSegment(segments[at - 1])) at -= 1;
+      segments.splice(at, 0, { type: 'assistant_response_boundary' });
+    }
+    for (const segment of own) {
+      // Two thoughts in a row are one thought, as the live stream builds it.
+      const last = segments[segments.length - 1];
+      if (isThinkingSegment(segment) && isThinkingSegment(last)) {
+        segments[segments.length - 1] = {
+          type: 'thinking',
+          text: `${last.text}\n\n${segment.text}`,
+        };
+      } else segments.push(segment);
     }
     if (text.length > 0) texts.push(text);
-    if (reply.blocks) blocks.push(...reply.blocks);
-    if (reply.thinking) thinking.push(reply.thinking);
     if (reply.usage) usage = reply.usage;
   }
   const first = replies[0];
@@ -663,14 +715,22 @@ export function canonicalTurn(turn: Turn): Turn {
     turnId: turn.id,
     role: 'assistant',
     content: texts.join(''),
-    ...(thinking.length > 0 ? { thinking: thinking.join('\n\n') } : {}),
-    ...(blocks.length > 0 ? { blocks } : {}),
-    ...(segments.length > 0 ? { segments } : {}),
+    segments,
     ...(usage ? { usage } : {}),
     createdAt: first.createdAt,
   };
   const user = users[0];
   return { ...turn, messages: [...(user ? [user] : []), ...(merged ? [merged] : [])] };
+}
+
+/** Whether a segment is a text run (`{ type:'text', text }`). */
+function isTextRun(segment: unknown): boolean {
+  return (
+    !!segment &&
+    typeof segment === 'object' &&
+    (segment as { type?: unknown }).type === 'text' &&
+    typeof (segment as { text?: unknown }).text === 'string'
+  );
 }
 
 /**
@@ -692,8 +752,7 @@ function groupIntoTurns(messages: RawMessage[], threadId: string, sessionId: str
       turnId: turn.id,
       role: raw.role,
       content: raw.text,
-      ...(raw.thinking ? { thinking: raw.thinking } : {}),
-      ...(raw.blocks && raw.blocks.length > 0 ? { blocks: raw.blocks } : {}),
+      ...(raw.role === 'assistant' ? { segments: raw.segments ?? textRuns(raw.text) } : {}),
       createdAt: raw.createdAt,
     };
     turn.messages.push(message);
@@ -719,20 +778,35 @@ function groupIntoTurns(messages: RawMessage[], threadId: string, sessionId: str
 
 // --- Content extraction (per-agent message shapes) ---------------------------
 
-function extractAnthropicContent(content: unknown): { text: string; thinking?: string } {
-  if (typeof content === 'string') return { text: content.trim() };
-  if (!Array.isArray(content)) return { text: '' };
+/** A Claude Code message's prose (`text` content blocks), trimmed. */
+function anthropicText(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
   const texts: string[] = [];
-  const thinks: string[] = [];
   for (const item of content) {
     const rec = asRecord(item);
-    if (!rec) continue;
-    if (rec['type'] === 'text' && typeof rec['text'] === 'string') texts.push(rec['text']);
-    else if (rec['type'] === 'thinking' && typeof rec['thinking'] === 'string')
-      thinks.push(rec['thinking']);
+    if (rec?.['type'] === 'text' && typeof rec['text'] === 'string') texts.push(rec['text']);
   }
-  const thinking = thinks.join('').trim();
-  return { text: texts.join('').trim(), ...(thinking ? { thinking } : {}) };
+  return texts.join('').trim();
+}
+
+/**
+ * A Claude Code assistant line's `text` and `thinking` content blocks, in
+ * their order. (Its `tool_use` blocks become steps once their results are
+ * read — see `#readClaude`.)
+ */
+function anthropicReply(content: unknown): ReplySegments {
+  const reply = new ReplySegments();
+  if (typeof content === 'string') return reply.text(content);
+  if (!Array.isArray(content)) return reply;
+  for (const item of content) {
+    const rec = asRecord(item);
+    if (rec?.['type'] === 'text' && typeof rec['text'] === 'string') reply.text(rec['text']);
+    else if (rec?.['type'] === 'thinking' && typeof rec['thinking'] === 'string') {
+      reply.thought(rec['thinking']);
+    }
+  }
+  return reply;
 }
 
 function extractCodexContent(content: unknown): string {
@@ -772,51 +846,38 @@ function acpContentText(value: unknown): string {
 // --- pi content extraction (toolCalls inline + toolResult as separate msg) ---
 
 /**
- * Like `extractPiContent`, but additionally pulls `think` tags OUT of the
- * assistant's text content and returns them separately as `thinking`. The
- * saved pi log stores reasoning inline as `think...think` inside the text
- * blocks; the live adapter extracts reasoning from `thinking_delta` events
- * instead. Stripping it here keeps the assistant message's body clean and
- * mirrors the live path's `Message.thinking` separation.
+ * A pi assistant message's prose and reasoning, in their order: pi saves the
+ * model's reasoning as `thinking` content blocks (`{ type:'thinking',
+ * thinking }`, what the live adapter streams as `thinking_delta`), and some
+ * models write it inline as `think` tags inside a text block — each tag is a
+ * thought where it stands, the rest of the block prose. (`toolCall` blocks
+ * become steps once their results are read — see `#readPi`.)
  */
-function extractPiAssistantContent(content: unknown): { text: string; thinking?: string } {
-  if (typeof content === 'string') {
-    return splitPiThinkTags(content);
-  }
-  if (!Array.isArray(content)) return { text: '' };
-  const textChunks: string[] = [];
-  const thinkChunks: string[] = [];
+function piReply(content: unknown): ReplySegments {
+  const reply = new ReplySegments();
+  if (typeof content === 'string') return splitPiThinkTags(content, reply);
+  if (!Array.isArray(content)) return reply;
   for (const item of content) {
     const rec = asRecord(item);
-    if (!rec) continue;
-    if (rec['type'] === 'text' && typeof rec['text'] === 'string') {
-      const split = splitPiThinkTags(rec['text']);
-      if (split.text) textChunks.push(split.text);
-      if (split.thinking) thinkChunks.push(split.thinking);
+    if (rec?.['type'] === 'text' && typeof rec['text'] === 'string') {
+      splitPiThinkTags(rec['text'], reply);
+    } else if (rec?.['type'] === 'thinking' && typeof rec['thinking'] === 'string') {
+      reply.thought(rec['thinking']);
     }
-    // `toolCall` blocks have no user-facing text and are handled separately.
   }
-  const text = textChunks.join('').trim();
-  const thinking = thinkChunks.join('\n\n').trim();
-  return { text, ...(thinking ? { thinking } : {}) };
+  return reply;
 }
 
-/** Strip `think...think` tags out of a pi text block into (text, thinking). */
-function splitPiThinkTags(text: string): { text: string; thinking?: string } {
+/** Hands a pi text block to [reply]: its `think` tags as thoughts, the rest as prose. */
+function splitPiThinkTags(text: string, reply: ReplySegments): ReplySegments {
   const re = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
-  const thinks: string[] = [];
-  const stripped = text.replace(re, (_match, body: string) => {
-    thinks.push(body.trim());
-    return '';
-  });
-  const thinking = thinks
-    .filter((t) => t.length > 0)
-    .join('\n\n')
-    .trim();
-  return {
-    text: stripped.trim(),
-    ...(thinking ? { thinking } : {}),
-  };
+  let from = 0;
+  for (const match of text.matchAll(re)) {
+    reply.text(text.slice(from, match.index));
+    reply.thought(match[1] ?? '');
+    from = match.index + match[0].length;
+  }
+  return reply.text(text.slice(from));
 }
 
 /** Extract `toolCall` content blocks from a pi assistant message. */
@@ -938,12 +999,21 @@ function codexToolCallBlock(
 function attachBlocksToLastAssistant(out: RawMessage[], blocks: unknown[]): void {
   if (blocks.length === 0) return;
   for (let i = out.length - 1; i >= 0; i--) {
-    if (out[i]!.role === 'assistant') {
-      const existing = out[i]!.blocks ?? [];
-      out[i]!.blocks = existing.concat(blocks);
+    const raw = out[i]!;
+    if (raw.role === 'assistant') {
+      // FOR-DEV: place a step where its call stands in the line — it lands
+      // after the line's prose and thoughts, since it is paired with its
+      // result only on a later line (bridge/FOR-DEV.md → "Native-session
+      // history — order inside one transcript line").
+      raw.segments = [...(raw.segments ?? textRuns(raw.text)), ...blocks];
       return;
     }
   }
+}
+
+/** The `segments` of a message that is only [text]: one run, or none. */
+function textRuns(text: string): unknown[] {
+  return text.length > 0 ? [{ type: 'text', text }] : [];
 }
 
 // --- Filesystem + parsing helpers (all tolerant) -----------------------------

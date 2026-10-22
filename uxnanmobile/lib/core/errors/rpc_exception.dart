@@ -64,6 +64,11 @@ class RpcException extends AppException {
   /// Requested resource not found.
   static const int resourceNotFound = -32008;
 
+  /// The answer would not fit one frame of the smallest channel, so the
+  /// bridge refused it instead of sending a frame that would close the
+  /// connection (`data: { bytes, limit }`); the connection stays up.
+  static const int responseTooLarge = -32011;
+
   @override
   String toString() => 'RpcException($code): $message';
 }

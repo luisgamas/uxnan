@@ -918,6 +918,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationThinking => 'Thinking';
 
   @override
+  String get conversationThought => 'Thought';
+
+  @override
+  String get conversationThoughtFull => 'Show full thought';
+
+  @override
+  String conversationWorkThoughts(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count thoughts',
+      one: '1 thought',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get conversationWorkLog => 'Work log';
 
   @override
@@ -3690,4 +3707,109 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get conversationViewLoadInteractive => 'Load interactive view';
+
+  @override
+  String get conversationWorkLogOffline =>
+      'The steps load when your computer is connected.';
+
+  @override
+  String get conversationWorkLogLoadFailed => 'Couldn\'t load the steps.';
+
+  @override
+  String get conversationWorkLogMore => 'Show more steps';
+
+  @override
+  String conversationWorkCommands(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commands',
+      one: '1 command',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String conversationWorkTools(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tool calls',
+      one: '1 tool call',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String conversationWorkFailed(int count) {
+    return '$count failed';
+  }
+
+  @override
+  String conversationEditedFile(String file) {
+    return 'Edited $file';
+  }
+
+  @override
+  String get conversationStepFullOutput => 'Show full output';
+
+  @override
+  String conversationStepOutputTail(int shown, int total) {
+    final intl.NumberFormat shownNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String shownString = shownNumberFormat.format(shown);
+    final intl.NumberFormat totalNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String totalString = totalNumberFormat.format(total);
+
+    return 'Last $shownString of $totalString characters';
+  }
+
+  @override
+  String conversationDiffMoreLines(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more lines',
+      one: '1 more line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get turnDetailCommandTitle => 'Command';
+
+  @override
+  String get turnDetailOutputHeader => 'Output';
+
+  @override
+  String turnDetailExitCode(int code) {
+    return 'Exit code $code';
+  }
+
+  @override
+  String get turnDetailInputHeader => 'Input';
+
+  @override
+  String get turnDetailResultHeader => 'Result';
+
+  @override
+  String turnDetailEditHeader(int index, int total) {
+    return 'Edit $index of $total';
+  }
+
+  @override
+  String get turnDetailOffline => 'Connect to your computer to see this.';
+
+  @override
+  String get turnDetailTooLarge => 'This is too large to send to your phone.';
+
+  @override
+  String get turnDetailFailed => 'Couldn\'t load this.';
+
+  @override
+  String get turnDetailEmpty => 'Nothing to show.';
+
+  @override
+  String get turnDetailCopied => 'Copied to clipboard';
 }

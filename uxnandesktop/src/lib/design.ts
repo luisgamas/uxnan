@@ -409,6 +409,11 @@ export const chat = {
   activityList: "ml-3 flex flex-col border-l border-border/60 pl-1.5",
   /** An interactive card inside a turn (an approval, a question, a plan). */
   card: "rounded-lg border border-border/60 bg-card p-3 shadow-xs",
+  /** An expanded thought: a box that scrolls past its height (it follows the
+   *  newest words while they stream); the text inside is `MarkdownView`'s
+   *  `quiet` variant — the log's size and muted foreground. */
+  thought:
+    "uxnan-scroll max-h-64 overflow-auto rounded-md bg-muted/60 p-2",
   /** Captured output under an expanded activity line. */
   output:
     "uxnan-scroll max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-[11px] leading-4",

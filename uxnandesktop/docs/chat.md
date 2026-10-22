@@ -366,8 +366,39 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   (*Ran 3 commands · 2 edits*, and how many failed). The closing answer stays
   open — with any notice the bridge added after it (a background task cut
 short) — followed by a card of the **files the turn changed** (+/− per file; a
-  click opens the file). *Thinking* folds away. Scrolling to the top loads older
+  click opens the file). Scrolling to the top loads older
   turns.
+- **The agent's reasoning sits where it happened**: each stretch of it is a
+  thought among the steps of its work group (`{ type: 'thinking', text }`,
+  built live from `stream/thinking/delta` by the bridge's own rule,
+  `appendThinkingSegment`). Folded, a thought is one line — *Thinking* (with
+  the working sweep and spinner) while it is the last thing the running turn
+  did, *Thought* once anything follows it — and its own words, Markdown
+  stripped, cut to the row's width. Open, it is Markdown in a box that scrolls
+  past 16 rem; while it is being written the box follows the newest words,
+  unless you scrolled up in it (scrolling back to its bottom follows again). A
+  long thought's preview is its first 600 characters: *Show all of it* reads
+  the rest (`turn/step`). The group's summary counts thoughts too (*Ran 12
+  commands · 4 thoughts*).
+- **A long conversation's work** is read when you open it (the bridge's
+  bounded history, `architecture/02a` §5.8.8). A page brings each settled run
+  of steps as one summary — its counts, how many failed, the files it changed
+  and its last step — so a
+  turn of hundreds of steps costs about what its prose does. Opening a work
+  group reads its steps (`turn/steps`, in pages the bridge fits to 256 KiB)
+  and draws 100 at a time, with *Show 100 more steps* for the rest (the next
+  page is read when the drawn ones run out). A step is its preview: a
+  command's first 400 characters and its output's last 1 200 — opening it
+  shows that with an ellipsis where it was cut, and *Show the full output* (or
+  *Show the full command*) reads the whole step (`turn/step`); an edit reads
+  its diff when it opens, since no preview carries one. A live step arrives as a preview with its
+  place in the turn (`index`): one that settles replaces itself, and a run the
+  agent began before the chat was read (a page's summary) and goes on live is
+  one group — its latest step in view, *Show N earlier steps* for the rest.
+  What was read is kept while the conversation lives and goes with it
+  (`chat.release`). A failure — an answer too large for the connection
+  (`ResponseTooLarge`) included — says why, with *Retry*; nothing is asked
+  again by itself (`ChatOnDemand.svelte`, `chatError.ts`).
 - **Where you were**: coming back to a conversation read earlier in the session
   (another tab, another chat) opens it where you left it; one left at its end,
   or not read yet, opens at the end (`src/lib/bridge/readingPosition.ts`,
@@ -516,9 +547,16 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
 
 - Stores: `src/lib/bridge/client.svelte.ts` (connection + call + notification
   fan-out), `chat.svelte.ts` (thread list, actions), `conversation.svelte.ts`
-  (one thread's timeline reducer, including `openRequests` for the dock),
-  `timeline.ts` (pure: grouping a turn's parts into work groups, splitting the
-  closing answer, work summaries, changed files, durations) and
+  (one thread's timeline reducer, including `openRequests` for the dock; its
+  turns are `$state.raw` — a turn is replaced, never mutated, which read a
+  30-turn page of 400-step turns in 0.5 ms against 38 ms through deep
+  proxies — and it places a live block by its stored `index` (`placeBlock`)
+  and keeps what the timeline read on demand: `stepRun` / `loadSteps`,
+  `fullStep` / `loadFullStep`),
+  `timeline.ts` (pure: grouping a turn's parts — steps and the `work` runs a
+  page summarizes — into work groups, splitting the closing answer, work
+  summaries, changed files, durations; a step's failed/running state is the
+  shared rule, `stepFailed` / `stepRunning` in `shared/src/models/history.ts`) and
   `streamingMarkdown.ts` (the phone's streaming split and render window).
 - **One store and one replica per machine with a bridge.** `bridge` / `chat` are
   this machine's; a connected host whose account runs its own bridge gets its

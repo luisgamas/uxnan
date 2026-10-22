@@ -6,7 +6,12 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { RelayStatus } from '$shared/models/relay';
-import { BridgeClientStore, bridgeErrorText, isUnknownMethodError } from './client.svelte';
+import {
+  BridgeClientStore,
+  bridgeErrorText,
+  isResponseTooLargeError,
+  isUnknownMethodError,
+} from './client.svelte';
 import { isRelayStatus, RelayStore, relayUpdateAvailable } from './relay.svelte';
 
 function relayStatus(extra: Partial<RelayStatus> = {}): RelayStatus {
@@ -137,6 +142,12 @@ describe('bridge error helpers', () => {
       'No relay is set up on this PC.',
     );
     expect(bridgeErrorText({ message: 'not connected to the bridge' })).toBe('not connected to the bridge');
+  });
+
+  it('tells an answer too large for the connection from any other failure', () => {
+    expect(isResponseTooLargeError({ message: 'Response too large (-32011)' })).toBe(true);
+    expect(isResponseTooLargeError({ message: 'Resource not found (-32007)' })).toBe(false);
+    expect(isResponseTooLargeError('socket closed')).toBe(false);
   });
 });
 

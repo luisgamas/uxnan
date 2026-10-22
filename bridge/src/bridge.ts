@@ -34,6 +34,7 @@ import {
   type SettingsUpdatedParams,
   type AgentSessionHeldParams,
   type AgentSessionHandoffRequestedParams,
+  type HistoryChangedParams,
   type ThreadDeletedParams,
   type ThreadUpdatedParams,
 } from '@uxnan/shared';
@@ -109,6 +110,7 @@ import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 import { createBridgePushSender } from './push/push-sender.js';
 import { SessionHistoryReader } from './conversation/session-history.js';
+import { NativeHistoryWatcher } from './conversation/native-history-watcher.js';
 import { ChildLedger } from './adapters/child-ledger.js';
 import { reapOrphanedChildren, type ReapDeps } from './adapters/orphan-reaper.js';
 import { recordChildrenIn } from './adapters/spawn.js';
@@ -653,14 +655,26 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
       }),
   });
-  // Agent-owned history is consulted on every idle `turn/list` so work written
-  // from another client attached to the same native session converges back into
-  // Uxnan. OpenCode is read through its own server's history API, normalized for
-  // the installed version (current releases use SQLite); the other supported
-  // agents use their documented local logs.
+  // Agent-owned history is merged so work written from another client attached
+  // to the same native session converges back into Uxnan. OpenCode is read
+  // through its own server's history API, normalized for the installed version
+  // (current releases use SQLite); the other supported agents use their
+  // documented local logs.
   const sessionHistory = new SessionHistoryReader({
     openCodeMessages: (sessionId, cwd) =>
       openCodeAdapter?.readSessionMessages(sessionId, cwd) ?? Promise.resolve([]),
+  });
+  // The one owner of that merge (§5.8.8): before `turn/list` pages a thread,
+  // and every few seconds for the threads a connected client is reading — a
+  // change is announced, so no client polls for it.
+  const historyWatcher = new NativeHistoryWatcher({
+    threadStore,
+    sessionHistory,
+    activeTurnId: (threadId) => agentManager.activeTurnId(threadId),
+    isConnected: (readerId) => sessionRegistry.isActive(readerId),
+    announce: (params) =>
+      broadcast(StreamNotification.HistoryChanged, params satisfies HistoryChangedParams),
+    now,
   });
   const startedAt = now();
   // Identifies this run, so a local client reconnecting after a restart knows
@@ -724,6 +738,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     metrics,
     usage,
     sessionHistory,
+    historyWatcher,
     agentManager,
     viewStore,
     sessionHolds,
@@ -756,6 +771,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
 
   const router = new HandlerRouter(context);
   registerAllHandlers(router);
+  // Idle until a client reads a conversation; stopped with the bridge.
+  historyWatcher.start();
 
   // Check on boot and hourly; unref'd so a short-lived CLI command (qr/code/
   // status) isn't kept alive, cleared on stop().
@@ -997,6 +1014,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     stop: async () => {
       logger.info('bridge stopping');
       relay.stop();
+      // Before the agents and the store wind down: no merge starts after this.
+      await historyWatcher.stop();
       await viewMcp.close();
       clearInterval(updateTimer);
       await agentManager.stopAll();

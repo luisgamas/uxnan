@@ -51,24 +51,26 @@ export interface Message {
   id: string;
   turnId: string;
   role: MessageRole;
-  /** Serialized MessageContent blocks (text/code/image/tool/diff/...). */
+  /** The message's full text: for an assistant message, its text runs concatenated. */
   content: unknown;
-  /** The agent's reasoning ("thinking") for this message, when it emitted any. */
-  thinking?: string;
-  /** Structured content blocks (command_execution/diff/tool) produced this turn. */
-  blocks?: unknown[];
   /**
-   * The assistant message's text runs and structured blocks **in the exact
-   * order the agent produced them** — each entry is a serialized MessageContent
-   * (text runs as `{ type:'text', text }`, work-log/diff blocks as their own
-   * types). When present, a client SHOULD render from this so the work log sits
-   * inline with the response it precedes, instead of all activity collapsing
-   * above one merged paragraph. `content` (the full concatenated text) and
-   * `blocks` are retained for older clients and for re-sync reconciliation: the
-   * text runs in `segments` concatenate to `content`, and its non-text entries
-   * are exactly `blocks`. Absent for turns recovered without ordering info (an
-   * older bridge, or the on-disk history fallback) — clients fall back to
-   * `content` + `blocks` then. Only set on assistant messages.
+   * The assistant message's text runs, reasoning and blocks **in the exact
+   * order the agent produced them** — text runs as `{ type:'text', text }`,
+   * each stretch of reasoning as a `ThinkingSegment` (`{ type:'thinking',
+   * text }`, see `models/history.ts`), every other block as its own type.
+   * Always present on an assistant message (empty while it has said
+   * nothing), never on any other. The text runs concatenate to `content`.
+   *
+   * As the bridge STORES it, a step (`command_execution`, `diff`, `tool`,
+   * `thinking`) is one entry here, and its index is how a client addresses
+   * it. As a page
+   * (`turn/list`, `turn/read`, `stream/turn/created`) SERVES it, every run of
+   * consecutive steps is one `WorkRunSegment` (`type: 'work'`, see
+   * `models/history.ts`) carrying its stored index range, counts, changed
+   * files and a preview of its last step; the steps themselves come from
+   * `turn/steps` (previews) and `turn/step` (one, whole — a thought's full
+   * text too). Everything else is
+   * served as stored.
    */
   segments?: unknown[];
   /** Token usage for this turn, so the phone restores the context meter on re-sync. */
@@ -224,8 +226,31 @@ export interface ThreadList {
   threads: Thread[];
 }
 
+/**
+ * One page of a thread's turns, oldest first, each as a page serves it
+ * (`summarizeTurn`: steps, thoughts included, folded into `work` runs).
+ *
+ * The page is the window the request names — `[cursor, cursor + limit)`, or
+ * the last `limit` turns with `fromEnd` — trimmed to fit
+ * `TURN_PAGE_MAX_BYTES` of serialized turns: the NEWEST turns of the window
+ * that fit are served (always at least the newest one), so the page always
+ * ends where the window ends and may start later than it began. `offset` says
+ * where it starts.
+ */
 export interface TurnList {
   turns: Turn[];
+  /**
+   * Position (0-based) of the first returned turn in the thread. When the byte
+   * budget trimmed the window this is past the requested start: the turns
+   * before it are still unread, and a client paging backward asks for the
+   * window that ends here.
+   */
+  offset?: number;
+  /**
+   * Where the next page forward starts — the position right after the last
+   * returned turn — when turns follow it. The budget never moves it: it trims
+   * the start of a window, never its end.
+   */
   nextCursor?: string;
   /**
    * Total number of turns available for the thread, regardless of the page

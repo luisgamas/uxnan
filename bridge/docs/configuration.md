@@ -170,8 +170,8 @@ only write-bounded by the conversation's access mode — see
 ## State files in `~/.uxnan/`
 
 `daemon-config.json`, `pairing-session.json`, `trusted-phones.json`,
-`threads/<threadId>.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
-`agent-processes.json`, `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and
+`threads/<threadId>/` (see below), `metrics.json`, `checkpoints.json`,
+`bridge.lock`, `agent-processes.json`, `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and
 the metrics sealing key live in the OS keychain, not on disk — for the bridge
 the CLI starts (`uxnan-bridge start`, `qr`). A bridge started from code
 (`startBridge()` in a test or a scratch run) keeps them in memory unless it
@@ -185,6 +185,21 @@ the desktop keeps the key in its own OS keychain and the host engine hands it
 over at each start. The first start copies what the keychain held, so the
 identity is kept; a file the key does not open stops the start (exit 1) and is
 left untouched — never replaced by a new identity.
+
+**Conversations** live one directory each: `threads/<threadId>/thread.json`
+(the summary and one header per turn — no messages), `turns/<turn>.json` (one
+turn's messages, rewritten when the turn ends) and, while a turn streams,
+`turns/<turn>.journal` (one JSON line per streamed event, appended; folded into
+the turn's file when it ends, or on the next start after a crash). A start reads
+only the `thread.json` files; a turn's messages are read when a client opens it,
+and served to it summarized (each run of steps — thoughts included — folded into
+one `work` segment, a page within 1 MiB — the detail comes from `turn/steps` /
+`turn/step`).
+Conversations of an older bridge are converted on the first start that finds
+them, and the originals kept aside — `threads.v1/<threadId>.json` (one file per
+conversation) and `threads.json.migrated` (all in one file) — to delete by hand
+once you no longer want them. Layout and rationale:
+`architecture/02a-system-architecture.md` §5.8.3.
 
 `agent-processes.json` is the running daemon's record of the agent processes it
 started — `{ "version": 1, "processes": [{ pid, command, args, cwd, startedAt,

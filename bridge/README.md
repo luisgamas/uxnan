@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-103_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-105_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -133,6 +133,14 @@ Codex, Claude and pi also emit durable assistant-response boundaries. The
 bridge reconciles terminal payloads additively, preserving every progress and
 final message in native order instead of replacing the turn with its last item.
 
+A conversation is served in bounded pages, however long it grows: each reply's
+prose whole, each run of steps — the agent's reasoning among them, stored as
+thoughts where it happened — as one summary (`work`: counts, failures, changed
+files, its last step), at most 1 MiB per `turn/list` page; the steps a client
+opens, a thought's whole text too, come from `turn/steps` / `turn/step`. No
+answer is ever larger than a frame: one that
+would be is answered with an error (`-32011`) and the connection stays up.
+
 The conversation is also shared with the agent's own clients. On every idle
 `turn/list`, the bridge merges completed native-session turns that were written
 outside Uxnan: Codex Desktop/CLI, OpenCode Desktop, Claude Code, pi, Zero and
@@ -235,13 +243,14 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **103 JSON-RPC methods +
-  25 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **105 JSON-RPC methods +
+  26 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
-- **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
-  `daemon-config.json` (incl. the `relay` endpoint), `relay.json` (how the relay
-  was set up), `pairing-session.json`, `threads/<threadId>.json`,
-  `metrics.json`,
+- **State.** Non-secret JSON under `~/.uxnan/` (atomic writes; a streaming
+  turn's journal is appended) — `daemon-config.json` (incl. the `relay`
+  endpoint), `relay.json` (how the relay was set up), `pairing-session.json`,
+  `threads/<threadId>/` (`thread.json` + one file per turn, see
+  [`docs/configuration.md`](docs/configuration.md)), `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
   `agent-processes.json` (the agent processes the running bridge started, so the
   next one can end those a hard-killed bridge left behind), `logs/`. `metrics.json` is the complete historical activity ledger; it keeps

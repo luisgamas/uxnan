@@ -5,10 +5,22 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { RpcError, type Turn } from '@uxnan/shared';
+import {
+  RpcError,
+  STEP_THINKING_PREVIEW_CHARS,
+  isWorkRunSegment,
+  type Turn,
+  type WorkRunSegment,
+} from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
 import type { ThreadChange } from '../../src/conversation/thread-store.js';
 import { rmrf } from '../helpers/fs.js';
+import { segmentTypes, stepsOf, thoughtsOf } from '../helpers/steps.js';
+
+/** The thread's sync revision now — what a merge that changed it reports. */
+async function revOf(store: ThreadStore, threadId: string): Promise<number | undefined> {
+  return (await store.getThread(threadId)).rev;
+}
 
 function newStore(): { store: ThreadStore; baseDir: string } {
   const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
@@ -44,6 +56,24 @@ test('a turn read right after a write was asked for sees that write', async () =
   assert.equal(read.continuedIn, second.turnId);
   const page = await store.listTurns(thread.id, undefined, 10, true);
   assert.equal(page.turns.find((t) => t.id === first.turnId)?.continuedIn, second.turnId);
+  await rmrf(baseDir);
+});
+
+test('settled waits for every write asked for before it', async () => {
+  // A cleanup that removes the store's folder must not race a write still
+  // on its way (it landed in a folder that was gone, on Windows CI).
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  void store.appendDelta(thread.id, turnId, 'late', 3);
+  void store.completeTurn(thread.id, turnId, undefined, 4);
+  await store.settled();
+  const turnsDir = join(baseDir, 'threads', thread.id, 'turns');
+  assert.deepEqual(
+    (await readdir(turnsDir)).filter((name) => name.endsWith('.tmp') || name.endsWith('.journal')),
+    [],
+  );
+  assert.equal((await store.getTurn(turnId)).status, 'completed');
   await rmrf(baseDir);
 });
 
@@ -146,7 +176,11 @@ test('reconcileNativeHistory links bridge turns and imports only native-only com
     ],
     30,
   );
-  assert.deepEqual(first, { changed: true, importedTurnIds: ['native#t1'] });
+  assert.deepEqual(first, {
+    changed: true,
+    importedTurnIds: ['native#t1'],
+    rev: await revOf(store, thread.id),
+  });
   const turns = await store.listTurns(thread.id);
   assert.equal(turns.total, 2);
   assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge UUID remains authoritative');
@@ -321,6 +355,7 @@ test('reconcileNativeHistory still imports a contained reply written outside the
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [later], 900_100), {
     changed: true,
     importedTurnIds: ['zero_1#t9'],
+    rev: await revOf(store, thread.id),
   });
   assert.equal((await store.listTurns(thread.id)).total, 2);
   await rmrf(baseDir);
@@ -387,6 +422,7 @@ test('reconcileNativeHistory drops rows an older read imported from a run the br
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [whole], 50), {
     changed: true,
     importedTurnIds: [],
+    rev: await revOf(store, thread.id),
   });
   const turns = await store.listTurns(thread.id);
   assert.deepEqual(
@@ -417,6 +453,7 @@ test('reconcileNativeHistory fills a turn the bridge closed before any reply, in
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 70_000), {
     changed: true,
     importedTurnIds: [],
+    rev: await revOf(store, thread.id),
   });
   const turns = (await store.listTurns(thread.id)).turns;
   assert.deepEqual(
@@ -451,6 +488,7 @@ test('reconcileNativeHistory folds a copy an older read imported into the empty 
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 70_000), {
     changed: true,
     importedTurnIds: [],
+    rev: await revOf(store, thread.id),
   });
   const turns = (await store.listTurns(thread.id)).turns;
   assert.deepEqual(
@@ -492,9 +530,9 @@ test('reconcileNativeHistory leaves an empty turn alone for an exchange outside 
 });
 
 /**
- * One file per conversation is what keeps a streamed token cheap: while every
- * thread shared one `threads.json`, each delta re-read and rewrote the whole
- * store (93 ms on a real 8.4 MB one) and throttled the reply behind the mutex.
+ * The oldest layout kept every conversation in one `threads.json`: each delta
+ * re-read and rewrote the whole store (93 ms on a real 8.4 MB one). It is
+ * converted to the current one on the first start that finds it.
  */
 const legacyThread = (id: string, title: string) => ({
   id,
@@ -511,7 +549,7 @@ async function seedLegacy(baseDir: string, threads: unknown[]): Promise<void> {
   await writeFile(join(baseDir, 'threads.json'), JSON.stringify(threads), 'utf-8');
 }
 
-test('a legacy single-file store migrates to one file per conversation', async () => {
+test('a legacy single-file store migrates to one directory per conversation', async () => {
   const { store, baseDir } = newStore();
   await seedLegacy(baseDir, [legacyThread('t-one', 'First'), legacyThread('t-two', 'Second')]);
 
@@ -523,7 +561,8 @@ test('a legacy single-file store migrates to one file per conversation', async (
   );
 
   const files = (await readdir(join(baseDir, 'threads'))).sort();
-  assert.deepEqual(files, ['t-one.json', 't-two.json']);
+  assert.deepEqual(files, ['t-one', 't-two']);
+  assert.equal(existsSync(join(baseDir, 'threads', 't-one', 'thread.json')), true);
   assert.equal(
     existsSync(join(baseDir, 'threads.json')),
     false,
@@ -568,7 +607,7 @@ test('a mutation rewrites only the conversation it touched', async () => {
 
   // Mark the other conversation's file by hand: if the store rewrites it, the
   // marker is gone — which is exactly the cost this layout exists to avoid.
-  const otherFile = join(baseDir, 'threads', `${two.id}.json`);
+  const otherFile = join(baseDir, 'threads', two.id, 'thread.json');
   const stored = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
   await writeFile(otherFile, JSON.stringify({ ...stored, marker: 'untouched' }), 'utf-8');
 
@@ -581,14 +620,15 @@ test('a mutation rewrites only the conversation it touched', async () => {
   await rmrf(baseDir);
 });
 
-test('deleting a conversation removes its file', async () => {
+test('deleting a conversation removes its files', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  const file = join(baseDir, 'threads', `${thread.id}.json`);
-  assert.equal(existsSync(file), true);
+  await store.startTurn(thread.id, 'ask', 2);
+  const dir = join(baseDir, 'threads', thread.id);
+  assert.equal(existsSync(join(dir, 'thread.json')), true);
 
   await store.deleteThread(thread.id);
-  assert.equal(existsSync(file), false);
+  assert.equal(existsSync(dir), false);
   assert.equal((await store.listThreads('p')).threads.length, 0);
   await rmrf(baseDir);
 });
@@ -609,7 +649,7 @@ test('a stored conversation survives a fresh store over the same directory', asy
   await rmrf(baseDir);
 });
 
-test('appendThinking accumulates reasoning and surfaces it on the message', async () => {
+test('appendThinking grows one thought in segments, before the answer it led to', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await store.startTurn(thread.id, 'ask', 2);
@@ -622,7 +662,10 @@ test('appendThinking accumulates reasoning and surfaces it on the message', asyn
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'Answer');
-  assert.equal(assistant?.thinking, 'Let me think.');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'thinking', text: 'Let me think.' },
+    { type: 'text', text: 'Answer' },
+  ]);
   await rmrf(baseDir);
 });
 
@@ -652,7 +695,7 @@ test('appendBlock accumulates structured blocks and surfaces them on the message
 
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
-  assert.deepEqual(assistant?.blocks, [
+  assert.deepEqual(stepsOf(assistant), [
     { type: 'command_execution', command: 'ls' },
     { type: 'diff', filename: 'a.dart' },
   ]);
@@ -673,9 +716,9 @@ test('segments preserve the interleaved text↔block order for re-sync', async (
 
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
-  // `content` stays the full merged text; `blocks` the structured blocks…
+  // `content` stays the full merged text…
   assert.equal(assistant?.content, 'Let me check.Done — all good.');
-  assert.deepEqual(assistant?.blocks, [{ type: 'command_execution', command: 'ls' }]);
+  assert.deepEqual(stepsOf(assistant), [{ type: 'command_execution', command: 'ls' }]);
   // …and `segments` carries the real production order (text, block, text) so the
   // phone can render the work log inline instead of stacking it above the prose.
   assert.deepEqual(assistant?.segments, [
@@ -686,7 +729,7 @@ test('segments preserve the interleaved text↔block order for re-sync', async (
   await rmrf(baseDir);
 });
 
-test('a plain-text turn ships no segments (lean wire shape)', async () => {
+test('a plain-text reply carries its one text run', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await store.startTurn(thread.id, 'ask', 2);
@@ -695,9 +738,8 @@ test('a plain-text turn ships no segments (lean wire shape)', async () => {
 
   const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'Just words.');
-  // No structured block landed → no `segments` (rendering from `content` alone
-  // is already correct), keeping the wire shape unchanged for text-only turns.
-  assert.equal(assistant?.segments, undefined);
+  // An assistant message always carries `segments`, prose-only ones too.
+  assert.deepEqual(assistant?.segments, [{ type: 'text', text: 'Just words.' }]);
   await rmrf(baseDir);
 });
 
@@ -940,8 +982,8 @@ test('appendBlock beforeText slots the block before the open text run', async ()
     { type: 'tool', name: 'Bash' },
   ]);
   assert.equal(assistant?.content, 'y si reporta tokens');
-  // `blocks` keeps plain arrival order regardless
-  assert.deepEqual(assistant?.blocks, [
+  // the steps keep their arrival order
+  assert.deepEqual(stepsOf(assistant), [
     { type: 'tool', name: 'Read' },
     { type: 'tool', name: 'Bash' },
   ]);
@@ -1036,8 +1078,8 @@ test('output arriving after a turn ended is ignored, not appended', async () => 
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'the answer');
-  assert.equal(assistant?.thinking ?? '', '');
-  assert.equal((assistant?.blocks ?? []).length, 0);
+  assert.deepEqual(thoughtsOf(assistant), []);
+  assert.equal(stepsOf(assistant).length, 0);
   await rmrf(baseDir);
 });
 
@@ -1087,7 +1129,7 @@ test('a settled step replaces the running one in place, in blocks and segments',
   await store.completeTurn(thread.id, turnId, undefined, 6);
 
   const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
-  assert.deepEqual(assistant?.blocks, [done]);
+  assert.deepEqual(stepsOf(assistant), [done]);
   assert.deepEqual(assistant?.segments, [done, { type: 'text', text: 'Listing done.' }]);
   await rmrf(baseDir);
 });
@@ -1113,7 +1155,7 @@ test('a turn that ends settles the steps its agent left running', async () => {
   await store.abortTurn(thread.id, stopped.turnId, 7);
 
   const blocksOf = async (turnId: string) =>
-    (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.blocks;
+    stepsOf((await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant'));
   assert.deepEqual(await blocksOf(completed.turnId), [
     { type: 'tool', toolName: 'Read', blockId: 't1', isError: false },
   ]);
@@ -1185,7 +1227,8 @@ test('imported rows load in the one shape; a wake-up row goes', async () => {
   assert.equal(reply.content, 'Looking.Done.');
   assert.deepEqual(
     (reply.segments ?? []).map((s) => (s as { type: string }).type),
-    ['text', 'command_execution', 'assistant_response_boundary', 'text'],
+    // As a page serves it: the step folded into its run.
+    ['text', 'work', 'assistant_response_boundary', 'text'],
   );
   await rmrf(baseDir);
 });
@@ -1231,7 +1274,7 @@ test('a message an older bridge took mid-turn gets its reply back', async () => 
   assert.equal(reply(1).content, 'Now the colors.');
   assert.deepEqual(
     (reply(0).segments ?? []).map((s) => (s as { type: string }).type),
-    ['text', 'command_execution'],
+    ['text', 'work'],
   );
   await rmrf(baseDir);
 });
@@ -1333,6 +1376,7 @@ test('reconcileNativeHistory does not import again an exchange a reader renumber
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [exchange('ses#t3')], 700), {
     changed: true,
     importedTurnIds: [],
+    rev: await revOf(store, thread.id),
   });
   assert.deepEqual(
     (await store.listTurns(thread.id)).turns.map((t) => t.id),
@@ -1429,5 +1473,111 @@ test('a setting reaches every client without counting as activity', async () => 
   assert.equal(after.model, 'provider/model');
   // Every one still reached the clients, as a change of its own.
   assert.equal(changes.length, 3);
+  await rmrf(baseDir);
+});
+
+test('blockIndex names where a block will stand, before it is written', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  const told: number[] = [];
+  // Each asked synchronously right before its write is queued, none awaited —
+  // the way the manager streams.
+  const block = (content: unknown, beforeText = false): Promise<void> => {
+    told.push(store.blockIndex(thread.id, turnId, content, beforeText)!);
+    return store.appendBlock(thread.id, turnId, content, 3, beforeText);
+  };
+  const writes = [
+    block({ type: 'command_execution', blockId: 'a', command: 'ls', status: 'running' }),
+    store.appendDelta(thread.id, turnId, 'Open ', 4),
+    block({ type: 'tool', blockId: 'b', toolName: 'Read' }, true),
+    store.appendDelta(thread.id, turnId, 'run.', 5),
+    block({ type: 'command_execution', blockId: 'a', command: 'ls', status: 'completed' }),
+    block({ type: 'plan', steps: [] }),
+    block({ type: 'diff', filename: 'x', diff: '', additions: 0, deletions: 0 }, true),
+    store.appendDelta(thread.id, turnId, '', 6),
+    store.appendDelta(thread.id, turnId, 'End.', 7),
+    block({ type: 'tool', blockId: 'c', toolName: 'Grep' }, true),
+  ];
+  await Promise.all(writes);
+  const segments = (await store.readReply(thread.id, turnId)).segments!;
+  assert.deepEqual(
+    told.map((i) => (segments[i] as { type: string }).type),
+    ['command_execution', 'tool', 'command_execution', 'plan', 'diff', 'tool'],
+  );
+  assert.deepEqual(told, [0, 1, 0, 3, 4, 5]);
+  await store.completeTurn(thread.id, turnId, undefined, 8);
+  assert.equal(
+    store.blockIndex(thread.id, turnId, { type: 'tool' }),
+    undefined,
+    'an ended turn takes no more blocks',
+  );
+  await rmrf(baseDir);
+});
+
+test('a page folds thoughts into their runs; readReply and the stored turn keep them whole', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  const thinking = 'r'.repeat(STEP_THINKING_PREVIEW_CHARS * 3);
+  await store.appendThinking(thread.id, turnId, thinking, 3);
+  await store.appendBlock(thread.id, turnId, { type: 'command_execution', command: 'ls' }, 4);
+  await store.appendThinking(thread.id, turnId, 'then', 5);
+  await store.appendDelta(thread.id, turnId, 'Done.', 6);
+  await store.completeTurn(thread.id, turnId, undefined, 7);
+
+  const page = (await store.listTurns(thread.id)).turns[0]!.messages[1]!;
+  assert.deepEqual(segmentTypes(page), ['work', 'text']);
+  const run = page.segments![0] as WorkRunSegment;
+  assert.ok(isWorkRunSegment(run));
+  assert.deepEqual([run.from, run.to, run.commands, run.thoughts], [0, 2, 1, 2]);
+  assert.deepEqual(run.last, { type: 'thinking', index: 2, text: 'then' });
+  assert.equal('thinking' in page, false);
+  const reply = await store.readReply(thread.id, turnId);
+  assert.deepEqual(thoughtsOf(reply), [thinking, 'then']);
+  assert.deepEqual(thoughtsOf((await store.getTurn(turnId)).messages[1]), [thinking, 'then']);
+  await assert.rejects(
+    store.readReply(thread.id, 'missing'),
+    (err: RpcError) => err.code === -32008,
+  );
+  await rmrf(baseDir);
+});
+
+test('blockIndex counts thoughts; a beforeText block after a thought is appended', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  const told: number[] = [];
+  const block = (content: unknown, beforeText = false): Promise<void> => {
+    told.push(store.blockIndex(thread.id, turnId, content, beforeText)!);
+    return store.appendBlock(thread.id, turnId, content, 3, beforeText);
+  };
+  // None awaited, the way the manager streams.
+  const writes = [
+    store.appendThinking(thread.id, turnId, 'plan ', 3),
+    store.appendThinking(thread.id, turnId, 'it', 3),
+    block({ type: 'command_execution', blockId: 'a', command: 'ls', status: 'running' }),
+    store.appendDelta(thread.id, turnId, 'Open ', 4),
+    store.appendThinking(thread.id, turnId, 'hm', 4),
+    // No open text run to slot before: it lands after the thought.
+    block({ type: 'tool', blockId: 'b', toolName: 'Read' }, true),
+    store.appendDelta(thread.id, turnId, 'run.', 5),
+    block({ type: 'tool', blockId: 'c', toolName: 'Grep' }, true),
+    block({ type: 'command_execution', blockId: 'a', command: 'ls', status: 'completed' }),
+  ];
+  await Promise.all(writes);
+  const reply = await store.readReply(thread.id, turnId);
+  assert.deepEqual(segmentTypes(reply), [
+    'thinking',
+    'command_execution',
+    'text',
+    'thinking',
+    'tool',
+    'tool',
+    'text',
+  ]);
+  assert.deepEqual(told, [1, 4, 5, 1]);
+  assert.deepEqual(thoughtsOf(reply), ['plan it', 'hm']);
+  await store.completeTurn(thread.id, turnId, undefined, 8);
   await rmrf(baseDir);
 });

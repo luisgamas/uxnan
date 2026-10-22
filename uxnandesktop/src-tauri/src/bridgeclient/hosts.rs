@@ -38,8 +38,6 @@ pub const HOST_NOTIFICATION_EVENT: &str = "bridge:host-notification";
 
 /// How often a host without a bridge is looked at again.
 const REDISCOVER_EVERY: Duration = Duration::from_secs(30);
-/// Longest wait between reconnects to a bridge that went away.
-const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// One host bridge's status, as the frontend receives it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -213,14 +211,14 @@ async fn run<R: tauri::Runtime>(
     let record = crate::ssh::bridge::discovery_path(home);
     let retry = bridges.retry_signal(host_id).await;
     let mut resume: Option<Resume> = None;
-    let mut backoff = Duration::from_millis(500);
+    let mut policy = super::reconnect::Reconnect::default();
     loop {
         bridges
             .set(app, host_id, generation, Status::Connecting)
             .await;
         let wait = match open(bridges, conn, engine, &record, resume.as_ref()).await {
             Ok((connection, mut events)) => {
-                backoff = Duration::from_millis(500);
+                let opened = std::time::Instant::now();
                 let hello = connection.hello().clone();
                 bridges
                     .set_connection(host_id, generation, Some(Arc::clone(&connection)))
@@ -238,19 +236,40 @@ async fn run<R: tauri::Runtime>(
                     )
                     .await;
                 attach_tools(app, &connection, engine).await;
-                while let Some(Event::Notification { message, .. }) = events.recv().await {
-                    let _ = app.emit(
-                        HOST_NOTIFICATION_EVENT,
-                        HostNotification {
-                            host_id: host_id.to_string(),
-                            message,
-                        },
-                    );
+                let mut closed_because = None;
+                while let Some(event) = events.recv().await {
+                    match event {
+                        Event::Notification { message, .. } => {
+                            let _ = app.emit(
+                                HOST_NOTIFICATION_EVENT,
+                                HostNotification {
+                                    host_id: host_id.to_string(),
+                                    message,
+                                },
+                            );
+                        }
+                        Event::Closed { reason } => {
+                            closed_because = reason;
+                            break;
+                        }
+                    }
                 }
                 resume = Some(connection.resume_point());
                 bridges.set_connection(host_id, generation, None).await;
-                // Promptly: a bridge that restarted (an update) is back soon.
-                Duration::from_millis(500)
+                let lived = opened.elapsed();
+                if let Some(reason) = closed_because {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Warn,
+                        "bridge",
+                        &format!(
+                            "host {host_id}: the bridge connection closed after {} ms: {reason}",
+                            lived.as_millis()
+                        ),
+                    );
+                }
+                // Promptly when it had been up a while (a bridge that restarted
+                // for an update is back soon); one that died at once backs off.
+                policy.after_close(lived)
             }
             Err((reason, detail)) => {
                 let absent = reason == Unavailable::NotRunning;
@@ -268,9 +287,7 @@ async fn run<R: tauri::Runtime>(
                 if absent {
                     REDISCOVER_EVERY
                 } else {
-                    let now = backoff;
-                    backoff = (backoff * 2).min(MAX_BACKOFF);
-                    now
+                    policy.after_failure()
                 }
             }
         };

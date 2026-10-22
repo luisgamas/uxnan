@@ -1,6 +1,44 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.3.2 | **Fecha:** 2026-10-15 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.4.2 | **Fecha:** 2026-10-22 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.4.2):** reasoning is a step, stored where it
+> happened. Each stretch of an agent's reasoning is a **`ThinkingSegment`
+> `{ type: 'thinking', text }`** in the assistant message's `segments`, in the
+> order it was thought; a message has no reasoning field of its own.
+> `thinking` is a `StepType`: a page folds thoughts into the `work` run they sit
+> in (a thought between two commands does not split it; the run counts
+> `thoughts`), a thought's `StepPreview` is its first 600 characters
+> (`STEP_THINKING_PREVIEW_CHARS`) with `textChars`, and `turn/step` gives it
+> whole. `stream/thinking/delta` is unchanged on the wire; every receiver
+> builds the segment by one rule (`appendThinkingSegment`): a chunk extends
+> the last segment when it is a thought, otherwise it opens a new one at the
+> end. **105 methods**, 26 notifications.
+>
+> **Executive summary (1.4.1):** one new notification,
+> **`stream/history/changed { threadId, rev }`** (`HistoryChangedParams`): the
+> stored turns of a thread changed outside a live turn because the bridge
+> merged the agent's own transcript (02a §5.8.8). The bridge watches the
+> threads connected clients read with `turn/list` and announces each merge
+> that changed something — also one run inside a client's `turn/list` — so a
+> client showing the conversation re-reads its newest page instead of polling.
+> **105 methods**, 26 notifications.
+>
+> **Executive summary (1.4.0):** bounded history — no page grows with a
+> conversation. `turn/list` and `turn/read` serve each assistant message with
+> its prose whole, every run of consecutive steps (`command_execution`, `diff`,
+> `tool`) folded into ONE `WorkRunSegment` (`type: 'work'`: stored index range
+> `from`/`to`, counts per kind, `failed`, `running`, changed `files`, a
+> `StepPreview` of the last step). `turn/list` also fits a byte budget (1 MiB,
+> newest turns first, at least one) and reports `offset`. What a page leaves
+> out comes on demand: **`turn/steps`** (previews of a range, 256 KiB per
+> answer, `next`) and **`turn/step`** (one stored block, whole). A step is addressed by its index in the stored
+> `segments`; `stream/content/block` carries it (`index`) and a step's preview
+> instead of the block. `Message.blocks` is gone — `segments` is always present
+> on an assistant message and is the one place a step lives. A response larger
+> than one frame of the smallest channel is answered with the new error
+> **`-32011` (`ResponseTooLarge`)**. The budgets are constants in
+> `shared/src/models/history.ts`. **105 methods**, 25 notifications.
 >
 > **Executive summary (1.3.2):** agent views can carry **typed blocks**. The
 > bridge's `view_show` and `view_check` accept `blocks` (ten types, validated by
@@ -191,7 +229,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 103 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 105 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge consume el paquete
 > compartido directamente y el relay empaqueta solo su subpath
@@ -199,12 +237,12 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 101 metodos request/response** + 25 notificaciones de streaming
+> **Total: 105 metodos request/response** + 26 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
 
-**Threads y turns (17):**
+**Threads y turns (22):**
 ```
 thread/list             -> lista de threads del PC, con filtro opcional. Cada Thread lleva, en vivo y sin persistir, `activeTurnId?` (el turno que corre ahora, igual que `TurnList.activeTurnId`): un cliente recien conectado sabe que conversaciones trabajan sin leer los turnos de cada una
 thread/read             -> datos completos de un thread (con el mismo `activeTurnId?` en vivo)
@@ -218,8 +256,10 @@ thread/archive          -> archivar thread (status -> archived, reversible). Ant
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns (misma liberacion previa que `thread/archive`)
                            Los tres aceptan `ageMs?` (`ThreadActionParams`): archivar/desarchivar se aplica solo si nadie cambio el estado despues; un borrado anterior a la ultima actividad del hilo se descarta (el hilo queda, y su sesion no se libera)
-turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta. **Native-session convergence:** on every idle read, the bridge merges durable completed turns written by another client into its stored history before applying this pagination. Bridge-owned rows keep their ids and richer metadata; external user/assistant pairs receive deterministic ids and are never inferred from a partial native turn. The wire result is unchanged.
-turn/read               -> datos de un turno especifico
+turn/list               -> turnos de un thread, oldest->newest, **tal como una pagina los sirve** (ver *Historial acotado* en §1.5). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, offset, nextCursor?, total?, activeTurnId?, queuedTurnIds?, queuePaused?, queuePausedReason?, queueDeliveringTurnId? }. La ventana pedida es `[cursor, cursor + limit)` (cursor = offset decimal; `limit` por defecto 20), o con `fromEnd:true` los ultimos `limit` turnos. **Presupuesto en bytes:** de esa ventana se sirven los turnos MAS NUEVOS cuyo JSON resumido cabe en `TURN_PAGE_MAX_BYTES` (1 MiB), siempre al menos el mas nuevo; la pagina termina siempre donde termina la ventana y puede empezar despues de donde empezaba. `offset` es la posicion (0-based) del primer turno servido: los anteriores siguen sin leerse, y un cliente que pagina hacia atras pide la ventana que termina en `offset`. `nextCursor` es la posicion justo despues del ultimo turno servido, presente cuando hay turnos despues; el presupuesto nunca la mueve (recorta el inicio de una ventana, nunca su final). `total` cuenta todos los turnos del hilo. Medido sobre una conversacion real de 46 MB (21 turnos, ~9 800 pasos): la pagina mas nueva paso de 46 MB a 1,0 MB (20 turnos; los 21 resumidos suman 1,1 MB). **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07, resumida desde 2026-10):** al re-attachear, el cliente **re-siembra SIEMPRE** su vista en vivo desde el turno en vuelo que este `turn/list` reporta — su prosa entera y sus rachas de pasos resumidas; los pasos de la racha abierta los pide con `turn/steps` si los muestra (el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el cliente ademas **reconcilia** el mensaje contra el registro autoritativo del bridge con un `turn/read` (best-effort). **Native-session convergence:** before paging, the bridge merges durable completed turns written by another client (the agent's own terminal, another app on the same native session) into its stored history. It is skipped while neither the transcript (its file's path, size and modification time) nor the thread changed since the last merge, so an unchanged 40 MB transcript is not read again on every open; a source that is not one file (OpenCode, read through its server) is merged on every idle read. Bridge-owned rows keep their ids and richer metadata; external user/assistant pairs receive deterministic ids and are never inferred from a partial native turn. **The read also watches the thread** for the client that sent it (15 minutes after its last read, while it stays connected): the bridge checks that transcript every 2 s (OpenCode every 10 s) and announces any merge that changes the stored turns — this one included — with `stream/history/changed { threadId, rev }`, so no client polls `turn/list` to see turns written outside Uxnan (02a §5.8.8).
+turn/read               -> un turno, tal como una pagina lo sirve (resumido, mismo shape que en `turn/list`). Params: { turnId }. Result: Turn
+turn/steps              -> los pasos guardados en `from`..`to` (inclusive) de la respuesta de un turno, como `StepPreview` — normalmente el rango de un `WorkRunSegment`. Params: { threadId, turnId, from, to } (enteros >= 0, `to >= from`). Result: StepPage { steps: StepPreview[], next? }: a lo sumo `STEP_PAGE_MAX_BYTES` (256 KiB) de previews, siempre al menos un paso; `next` es el `from` con el que pedir el resto cuando el presupuesto corto la respuesta. Lo que en el rango no es un paso se salta; un `to` mas alla del final lee hasta el final. `from` fuera del mensaje → -32008. Sirve igual para un turno en vuelo
+turn/step               -> un bloque guardado de la respuesta de un turno, entero (el comando y su salida completos, el diff con su cuerpo, la llamada con su entrada y resultado, un pensamiento `{ type:'thinking', text }` con todo su texto — no hay otro metodo para el razonamiento). Params: { threadId, turnId, index }. Result: { block }. Un indice fuera del mensaje o que apunta a una corrida de texto → -32008
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
 turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` nombra un archivo) (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
 view/read               -> la pagina de una vista de agente (`ViewContentBlock.viewId`, §5.8.20 de 02a). Params: { viewId } (32 hex). Result: ViewReadResult { viewId, title, html, bytes }: el HTML del agente (≤ 512 KiB, `VIEW_MAX_HTML_BYTES`) con la CSP sin red y el bootstrap de la vista ya insertados por el bridge, listo para renderizarse en un iframe con sandbox (desktop) o un WebView (telefono). Un id desconocido responde un error de recurso no encontrado. Los clientes lo piden solo cuando la vista entra en pantalla y lo guardan en memoria acotada.
@@ -531,6 +571,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 | `-32008` | Resource not found | `threadId` / `turnId` / `checkpointId` desconocido |
 | `-32009` | Agent busy | Ya hay un turno en vuelo en el thread y el llamante pidio NO encolar (`turn/send` con `queue:false`), o la cola del thread esta llena (10). Solo se emite ante un opt-out explicito: el default es encolar. Tambien lo devuelve `bridge/update` (data.reason `busy`) mientras algun cliente tiene un turno en curso: el bridge nunca se reinicia bajo uno |
 | `-32010` | Session held | La sesion del agente de la conversacion esta abierta en una terminal del desktop (`agent/hold`); `data` lleva la `AgentSessionHold`. El cliente muestra quien la tiene y puede pedirla (`agent/requestHandoff`) |
+| `-32011` | Response too large | La respuesta serializada supera lo que cabe en un frame del canal mas chico (`LOCAL_CONTROL_MAX_FRAME_BYTES`, 32 MiB, menos 1 KiB para el frame que la envuelve). El dispatcher del bridge (`HandlerRouter.dispatch`, por donde responden canal local, LAN y relay) la sustituye por este error: un frame mayor lo descarta el par y eso cierra la conexion. `data` lleva `{ bytes, limit }`. La conexion sigue viva |
 | `missing_transport` (en `PairingPayload`) | - | El payload no tiene ni `relay` ni `hosts` (validacion pairing) |
 
 ---
@@ -538,7 +579,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 ### 1.4 Notificaciones de streaming (bridge -> phone)
 
 > **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
-> (`StreamNotification`, 25 entradas). Son JSON-RPC notifications (sin `id`,
+> (`StreamNotification`, 26 entradas). Son JSON-RPC notifications (sin `id`,
 > unidireccionales). El telefono las decodifica via
 > `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
 > sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
@@ -547,7 +588,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 stream/turn/started         -> TurnStartedParams  { threadId, turnId }
 stream/message/delta        -> MessageDeltaParams { threadId, turnId, messageId, delta }
 stream/thinking/delta       -> ThinkingDeltaParams { threadId, turnId, messageId, delta }   (NUEVO 2026-06)
-stream/content/block        -> ContentBlockParams { threadId, turnId, messageId, content, beforeText? }  (NUEVO 2026-06; beforeText 2026-07)
+stream/content/block        -> ContentBlockParams { threadId, turnId, messageId, content, index, beforeText? }  (NUEVO 2026-06; beforeText 2026-07; index + vista previa 2026-10)
 stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId, text, usage?, continuedIn? }  (usage es TurnUsage; continuedIn: el turno donde siguio la ejecucion)
 stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
 stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
@@ -556,6 +597,7 @@ stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, pa
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
 stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
 stream/thread/deleted       -> ThreadDeletedParams { threadId, rev? }                       (NUEVO 2026-09)
+stream/history/changed      -> HistoryChangedParams { threadId, rev }                       (NUEVO 2026-10; el historial guardado del hilo cambio fuera de un turno vivo — el bridge fusiono la transcripcion del propio agente; quien muestra la conversacion relee su pagina mas nueva — 02a §5.8.8)
 stream/turn/created         -> TurnCreatedParams   { threadId, turn, clientTurnId? }        (NUEVO 2026-09)
 stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, timedOut? }  (NUEVO 2026-09)
 stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, timedOut? }  (NUEVO 2026-09)
@@ -596,7 +638,8 @@ notificaciones de 2026-09 cierran lo que faltaba para eso:
   respuesta. `clientTurnId` hace eco de `TurnSendParams.clientTurnId` (el id
   de la burbuja optimista del emisor, opaco, nunca persistido, ≤ 128
   caracteres) para que el emisor reconozca su propio mensaje — puede llegar
-  **antes** que la respuesta de `turn/send`.
+  **antes** que la respuesta de `turn/send`. El `turn` viaja resumido, como en
+  una pagina (§1.5 *Historial acotado*).
 - `stream/approval/resolved` y `stream/question/resolved` retiran la tarjeta en
   todos los clientes cuando alguno responde (o vence el plazo: `timedOut`).
   `answers` viaja para que un cliente que no respondio muestre lo elegido.
@@ -645,18 +688,38 @@ decision del usuario.
   igual que hace con cualquier turno desconocido.
 
 **Notas sobre los nuevos streams (2026-06):**
-- `stream/thinking/delta`: el agente emite "thinking" / "reasoning" como
-  un canal separado de la respuesta final; el telefono lo pliega en una
-  seccion colapsable "Thinking" arriba del turno (settings-gated,
-  default off).
+- `stream/thinking/delta`: un trozo del razonamiento del agente. No lleva
+  indice: todo receptor lo coloca con la MISMA regla con la que el bridge lo
+  guarda (2026-10, `appendThinkingSegment` en `shared/src/models/history.ts`)
+  — el trozo amplia el ultimo segmento del mensaje del asistente si es un
+  pensamiento (`{ type:'thinking', text }`), y si no abre uno nuevo AL FINAL
+  de `segments`; nunca se inserta antes de una corrida de texto abierta (a
+  diferencia de un bloque `beforeText`: el razonamiento propio del agente es
+  secuencial con su prosa). Un delta de texto posterior abre una corrida nueva;
+  un bloque posterior cae despues, en el `index` que trae su
+  `stream/content/block`, que ya cuenta el pensamiento. El bridge lo notifica
+  en orden de llegada con el texto y los bloques de alrededor (desde el
+  prefijo sincrono del manejador, como un bloque), asi que aplicar la regla
+  reconstruye los `segments` guardados. Un pensamiento no tiene estado: nunca
+  falla, y esta "en curso" solo mientras es el ULTIMO segmento de un turno
+  vivo — lo deriva cada cliente; nada en el cable lo marca. Los clientes lo
+  muestran como un paso dentro del grupo de trabajo, en su sitio.
 - `stream/content/block`: el `content` es un `MessageContent` polimorfico
   serializado (`command_execution` para Bash, `diff` para Edit/Write, un
   bloque `tool` clasificado (`kind` + `target`) para el resto, `subagent`
   para un subagente y `compaction` para un límite de
-  contexto realmente reportado por el agente). El telefono lo decodifica con
-  el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
-  **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
-  del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
+  contexto realmente reportado por el agente). **Un paso (`command_execution`,
+  `diff`, `tool`) llega como su `StepPreview`** — acotado igual que en una
+  pagina (§1.5 *Historial acotado*) — y cualquier otro bloque tal como se
+  guardo. Un pensamiento nunca llega por aqui: llega por
+  `stream/thinking/delta`. `index` (2026-10) es su posicion en los `segments` guardados del
+  mensaje: la direccion que toman `turn/steps` y `turn/step` y el
+  `from`/`to` que reporta un `work`. El bridge la calcula de forma sincrona
+  antes de escribir (`ThreadStore.blockIndex`), con las mismas reglas de
+  colocacion que la escritura, y no anuncia un bloque que el almacen no
+  aceptara (salida tardia tras el fin del turno). Asi los
+  comandos/herramientas/diffs del agente se renderizan en vivo y sobreviven a
+  un `turn/list` re-sync.
   - `blockId?` on the content (2026-09, additive): the step a block stands for.
     A later block of the **same turn** with the same `blockId` replaces it in
     place — in the bridge's store and in every client's live view — so a step
@@ -681,20 +744,22 @@ decision del usuario.
     `commentary` / `final_answer`; Claude and pi supply `unknown` boundaries.
     Clients preserve it in ordered segments, exclude it from copy/previews, and
     may collapse earlier completed responses without discarding their content.
-- `Message.segments?`: en el re-sync (`turn/list`) el bridge ya no entrega el
-  texto (`content`) y los bloques (`blocks`) por separado — eso perdia el
-  ORDEN en que se intercalaron y hacia que un turno recuperado mostrara todo
-  el Work log apilado ARRIBA de un unico parrafo. `segments` es el intercalado
-  ordenado (corridas de texto como `{type:'text',text}` + bloques verbatim, en
-  el orden de produccion del agente). Cuando viene, el telefono renderiza desde
-  el (Work log inline con la respuesta, igual que un turno en vivo); `content` +
-  `blocks` se mantienen para clientes viejos y para la reconciliacion del
-  re-sync (las corridas de texto de `segments` concatenan a `content`; sus
-  entradas no-texto son exactamente `blocks`). Wire-aditivo, emitido solo cuando
-  el turno trae algun bloque estructurado; ausente para turnos recuperados sin
-  orden (bridge viejo, o un turno importado por `session-history.ts`,
-  que aun entrega blocks-first). Producido por `thread-store.ts`, consumido por
-  el `thread_manager` movil (`_persistTurns` + `_seedLiveTurn`).
+- `Message.segments`: el intercalado ordenado (corridas de texto como
+  `{type:'text',text}`, pensamientos como `{type:'thinking',text}` + bloques,
+  en el orden de produccion del agente),
+  **siempre presente en un mensaje del asistente** (vacio mientras no dijo
+  nada) y nunca en otro. Es el UNICO lugar donde vive un paso: `Message.blocks`
+  desaparecio del contrato y del cable (2026-10), y el almacen lo guarda una
+  sola vez. Las corridas de texto concatenan a `content`. Tal como se GUARDA,
+  cada paso es una entrada y su indice es como se lo direcciona; tal como lo
+  SIRVE una pagina, cada racha de pasos es un `work` (§1.5). Producido por
+  `thread-store.ts` (turnos del bridge) y `session-history.ts` (turnos leidos
+  del registro propio del agente, en la misma forma: el razonamiento queda en
+  su orden real — bloques `thinking` de Claude Code y pi, items `reasoning` de
+  Codex, partes `reasoning` de OpenCode, `agent_thought_chunk` de Grok; Zero
+  no guarda razonamiento). Un hilo guardado por un bridge anterior, con un
+  `thinking` por mensaje sin posicion, lo recibe como UN pensamiento al
+  PRINCIPIO de `segments` en la conversion unica del almacen.
 - `stream/model/resolved`: el bridge informa la version concreta a la que
   un alias (ej. `opus` -> `claude-opus-5`) se resolvio para este turno,
   para que el picker del telefono pueda mostrar una fila "Active version"
@@ -713,6 +778,55 @@ otro lado):
 > de verdad TS vive en `../../shared/src/models/*.ts` y
 > `../../shared/src/agents/agent-capabilities.ts`. La copia Dart vive en
 > `uxnanmobile/lib/domain/entities/...` y `value_objects/...`.
+
+**Historial acotado** (`shared/src/models/history.ts`, 2026-10). Una pagina
+(`turn/list`, `turn/read`, `stream/turn/created`) sirve cada turno con
+`summarizeTurn`: la prosa entera; cada racha de pasos consecutivos como un
+`WorkRunSegment`; el resto de bloques (texto, `assistant_response_boundary`,
+plan, vista, aprobacion, pregunta, subagente, sistema, compactacion) tal como
+se guardo. Un paso es un `command_execution`, un `diff`, un `tool` o un
+pensamiento (`thinking`): un pensamiento entre dos comandos no parte su racha.
+Una racha termina en cualquier cosa que no sea
+un paso — tambien una corrida de texto en blanco o una frontera; un cliente que
+muestre como un grupo dos rachas separadas solo por eso puede fusionarlas
+(`turn/steps` salta lo que no es un paso en su rango). Presupuestos, exportados
+para los clientes: `TURN_PAGE_MAX_BYTES` 1 MiB, `STEP_PAGE_MAX_BYTES` 256 KiB,
+`STEP_COMMAND_PREVIEW_CHARS` 400, `STEP_OUTPUT_PREVIEW_CHARS` 1 200,
+`STEP_THINKING_PREVIEW_CHARS` 600 (caracteres = unidades UTF-16, el `length` de un
+string en JS/Dart). `stepFailed` / `stepRunning` son la unica regla de "fallo"
+y "en curso" (estado `error`/`isError`/`state.status: error`/`exitCode != 0`;
+`running`/`in_progress`, tambien en `state.status`); un pensamiento no tiene
+estado, asi que nunca cuenta en `failed` ni en `running` (en curso = ultimo
+segmento de un turno vivo, derivado por el cliente).
+```typescript
+interface WorkRunSegment {
+  type: 'work';
+  from: number; to: number;         // indices (inclusive) en los segments GUARDADOS
+  commands: number; edits: number; tools: number; thoughts: number;
+  failed: number; running: number;   // running nunca cuenta un pensamiento
+  files: { filename: string; additions: number; deletions: number }[]; // diffs fusionados por nombre, orden de primer toque
+  last: StepPreview;                // el ultimo paso de la racha
+}
+type StepPreview = CommandStepPreview | DiffStepPreview | ToolStepPreview | ThinkingStepPreview;
+// Todos: el bloque guardado con sus campos grandes recortados + `index` (su
+// posicion en los segments guardados) + `blockId?`. Los campos no listados
+// (`exitCode`, `toolId`, `kind`, `target`, …) pasan tal cual.
+interface CommandStepPreview { type: 'command_execution'; index: number;
+  command: string; commandChars?: number;   // primeros 400 caracteres; tamano completo si se recorto
+  output?: string; outputChars?: number;    // ULTIMOS 1 200 caracteres; idem
+  status?: string; exitCode?: number }
+interface DiffStepPreview { type: 'diff'; index: number; filename: string;
+  additions: number; deletions: number; status?: string;
+  diffChars?: number }                      // el cuerpo nunca viaja en una vista previa
+interface ToolStepPreview { type: 'tool'; index: number; toolName: string;
+  input: Record<string, unknown>; inputChars?: number; // strings a 400, arrays a 20, 4 niveles
+  output?: string; outputChars?: number; isError?: boolean; status?: string }
+interface ThinkingStepPreview { type: 'thinking'; index: number;
+  text: string; textChars?: number }        // primeros 600 caracteres (sin partir un par sustituto); tamano completo si se recorto
+interface ThinkingSegment { type: 'thinking'; text: string } // como se GUARDA en segments; entero via turn/step
+// Message en una pagina: `segments` resumidos como arriba (no hay campo de
+// razonamiento aparte: `Message.thinking`/`thinkingChars` desaparecieron 2026-10).
+```
 
 **`PairingPayload` v3** (en el QR / respuesta de `GET /pair/resolve`):
 ```typescript
@@ -990,7 +1104,8 @@ interface ApprovalRequestBlock {
   what it acted on, ready to show (a path relative to the project, a pattern, a
   URL, a query). Clients render from these and never from an agent's own tool
   names (`shared/src/models/tool.ts` → `ToolContentBlock`)
-- `thinking` (razonamiento del agente; colapsable, default off)
+- `thinking` (un tramo del razonamiento del agente, `ThinkingSegment`, en su
+  sitio dentro de `segments`; un paso del grupo de trabajo — 2026-10)
 - `assistant_response_boundary` (metadata separating native assistant messages;
   zero text, durable, excluded from copy/previews)
 - `image` (inline, base64)
@@ -1297,7 +1412,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-THREAD-11 | Un thread nuevo conserva el título del bridge; si sigue siendo placeholder al primer prompt, el móvil deriva y sincroniza un título breve sin sobrescribir títulos manuales ni renombrarlo en prompts posteriores |
 | RF-THREAD-12 | Una compactación de contexto confirmada por el protocolo del agente se persiste como bloque estructurado y se marca en la timeline; el sistema no infiere compactaciones desde texto, errores o variaciones de tokens |
 | RF-THREAD-13 | Multiple native assistant messages inside one turn are preserved in order; terminal reconciliation is additive, and completed earlier responses may collapse without deleting or rewriting them |
-| RF-THREAD-14 | While the active conversation is connected and idle, Mobile must discover completed turns written by another supported client within one polling interval, persist both user and assistant messages, and deduplicate Mobile-authored turns by turn id. External token streaming is not required. |
+| RF-THREAD-14 | While the active conversation is connected, Mobile must show completed turns written by another supported client when the bridge announces them (`stream/history/changed`) — without polling — persist both user and assistant messages, and deduplicate Mobile-authored turns by turn id. External token streaming is not required. |
 
 ### 4.4 RF-COMP: Composer
 

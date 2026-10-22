@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
-import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/widgets/message_scroll_rail.dart';
 
 /// The scroll-rail's derived view data for a conversation: one anchor per user
@@ -65,18 +64,15 @@ RailAnchors deriveRailAnchors(List<Message> messages) {
   );
 }
 
-/// A collapsed, single-line preview of a message's text (falling back to its
-/// plain-text projection), truncated to [maxLength].
-String railPreviewText(Message message, {required int maxLength}) {
-  final text = message.contents
-      .whereType<TextContent>()
-      .map((t) => t.text)
-      .where((t) => t.trim().isNotEmpty)
-      .join(' ');
-  final base = text.isEmpty ? message.plainText : text;
-  final collapsed = base.replaceAll(RegExp(r'\s+'), ' ').trim();
-  if (collapsed.length <= maxLength) return collapsed;
-  return '${collapsed.substring(0, maxLength).trimRight()}…';
+/// A collapsed, single-line preview of a message's text
+/// ([Message.previewText]), truncated to [maxLength].
+String railPreviewText(Message message, {required int maxLength}) =>
+    truncatePreview(message.previewText, maxLength);
+
+/// [preview] cut to [maxLength] characters, with an ellipsis when it was.
+String truncatePreview(String preview, int maxLength) {
+  if (preview.length <= maxLength) return preview;
+  return '${preview.substring(0, maxLength).trimRight()}…';
 }
 
 /// The final assistant reply text within the turn that follows the user message

@@ -7,6 +7,14 @@
 // not a desktop copy. What this adds is only view state: the optimistic bubble
 // of a message this window sent and has not seen echoed back yet — kept in the
 // outbox (`outbox.ts`) until the bridge has it, so it survives a restart.
+//
+// The history is bounded (architecture/02a §5.8.8, plans/046): a page carries
+// each settled run of steps as one `work` summary and the reasoning as a
+// preview, and a live step arrives as a bounded preview with its `index` in
+// the stored message. What the timeline opens — a run's steps, one step whole,
+// the whole reasoning — is asked for here and kept while the conversation
+// lives (`stepRun`, `fullStep`); it goes with it when no chat
+// shows it any more (`chat.release`).
 
 import type {
   ApprovalDecision,
@@ -30,6 +38,22 @@ import type {
   TurnCreatedParams,
   TurnUsage,
 } from '$shared/jsonrpc/notifications';
+import type {
+  TurnStepResult,
+  TurnStepsResult,
+} from '$shared/jsonrpc/methods';
+import {
+  appendThinkingSegment,
+  isStepPreview,
+  isThinkingSegment,
+  isWorkRunSegment,
+  stepFailed,
+  stepRunning,
+  type StepPreview,
+  type ThinkingStepPreview,
+  type WorkRunSegment,
+} from '$shared/models/history';
+import { SvelteMap } from 'svelte/reactivity';
 import type { BridgeNotification } from './client.svelte';
 import { streamCoalesceWindow } from './streamingMarkdown';
 import { readOutbox, writeOutbox, type OutboxEntry } from './outbox';
@@ -82,6 +106,7 @@ const TIMELINE_METHODS = new Set([
   'stream/model/resolved',
   'stream/approval/resolved',
   'stream/question/resolved',
+  'stream/history/changed',
 ]);
 
 /** Whether a notification belongs to some thread's timeline (vs. the thread list). */
@@ -111,11 +136,39 @@ function isTextSegment(segment: unknown): segment is { type: 'text'; text: strin
   return s.type === 'text' && typeof s.text === 'string';
 }
 
+/** Something the timeline asked the bridge for, as far as it got. */
+export interface Detail<T> {
+  value?: T;
+  loading: boolean;
+  /** Why it could not be had, as the bridge said it (`chatErrorText` words
+   *  it); the user may ask again. */
+  error?: string;
+}
+
+/** A run of steps the timeline opened, as `turn/steps` has served it so far:
+ *  `next` is where the rest starts, when its byte budget ended a page early. */
+export interface StepRun {
+  steps: StepPreview[];
+  next?: number;
+  loading: boolean;
+  error?: string;
+}
+
+/** Why a call failed, as the bridge said it. A failure is kept, never
+ *  retried by itself: an answer too large for the connection
+ *  (`ResponseTooLarge`) would be refused the same way again. */
+function failureOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class Conversation {
   readonly threadId: string;
   readonly #call: BridgeCall;
 
-  turns = $state<Turn[]>([]);
+  /** The loaded turns, oldest first. Raw: a turn is replaced whole (`#editTurn`),
+   *  never mutated in place, so a page of turns costs no deep proxies and a
+   *  streamed delta re-renders only the turn it lands in. */
+  turns = $state.raw<Turn[]>([]);
   total = $state(0);
   loading = $state(false);
   loadingOlder = $state(false);
@@ -139,9 +192,9 @@ export class Conversation {
    *  composer until they are answered here, on the phone, or time out. */
   openRequests = $derived.by<Record<string, unknown>[]>(() => {
     const turn = this.activeTurnId ? this.turns.find((t) => t.id === this.activeTurnId) : undefined;
-    const blocks = assistantOf(turn)?.blocks ?? [];
+    const segments = assistantOf(turn)?.segments ?? [];
     const open: Record<string, unknown>[] = [];
-    for (const raw of blocks) {
+    for (const raw of segments) {
       const block = record(raw);
       const req = block.request && typeof block.request === 'object' ? record(block.request) : block;
       if (block.type === 'approval' && typeof req.approvalId === 'string') {
@@ -160,6 +213,11 @@ export class Conversation {
 
   /** Where this thread's unsent messages are kept (`outboxKey`). */
   readonly #outbox: string;
+
+  /** Runs of steps opened in the timeline, by `runKey`. */
+  readonly #runs = new SvelteMap<string, StepRun>();
+  /** Steps read whole (`turn/step`), by `stepKey`. */
+  readonly #full = new SvelteMap<string, Detail<Record<string, unknown>>>();
 
   constructor(threadId: string, call: BridgeCall, outbox: string = threadId) {
     this.threadId = threadId;
@@ -198,7 +256,7 @@ export class Conversation {
       this.error = null;
       this.loaded = true;
     } catch (err) {
-      this.error = err instanceof Error ? err.message : String(err);
+      this.error = failureOf(err);
     } finally {
       this.loading = false;
     }
@@ -208,8 +266,14 @@ export class Conversation {
   adoptPage(page: TurnList): void {
     const turns = Array.isArray(page.turns) ? page.turns : [];
     this.total = typeof page.total === 'number' ? page.total : turns.length;
-    this.oldestOffset = Math.max(0, this.total - turns.length);
+    // The bridge fits a page in its byte budget by serving fewer of the
+    // oldest turns asked for: `offset` says where it really starts.
+    this.oldestOffset =
+      typeof page.offset === 'number' ? page.offset : Math.max(0, this.total - turns.length);
     this.turns = orderBySeq(turns);
+    // What was opened in a turn this page no longer holds is not shown again.
+    const kept = new Set(turns.map((t) => t.id));
+    this.#forgetDetail((turnId) => !kept.has(turnId));
     this.activeTurnId = page.activeTurnId ?? null;
     this.queue = {
       turnIds: page.queuedTurnIds ?? [],
@@ -245,9 +309,11 @@ export class Conversation {
       const known = new Set(this.turns.map((t) => t.id));
       const older = (page.turns ?? []).filter((t) => !known.has(t.id));
       this.turns = orderBySeq([...older, ...this.turns]);
-      this.oldestOffset = start;
+      // Trimmed to the byte budget, the page starts later than asked: the
+      // turns before it are the next page back.
+      this.oldestOffset = typeof page.offset === 'number' ? Math.max(start, page.offset) : start;
     } catch (err) {
-      this.error = err instanceof Error ? err.message : String(err);
+      this.error = failureOf(err);
     } finally {
       this.loadingOlder = false;
     }
@@ -298,6 +364,13 @@ export class Conversation {
     }
     this.flush();
     switch (notification.method) {
+      case 'stream/history/changed':
+        // The stored history changed outside a live turn (a turn written in
+        // the agent's own app, read back by the bridge's history watcher):
+        // the newest page is the truth again. A load already on its way asks
+        // once more by itself, since this counted as applied.
+        if (!this.loading) void this.load();
+        return;
       case 'stream/turn/created': {
         const params = p as unknown as TurnCreatedParams;
         if (!params.turn || typeof params.turn.id !== 'string') return;
@@ -309,42 +382,23 @@ export class Conversation {
         const turnId = str(p.turnId);
         if (!turnId) return;
         this.activeTurnId = turnId;
-        const turn = this.#find(turnId);
-        if (turn) turn.status = 'streaming';
-        else void this.#refreshTurn(turnId);
+        if (!this.#editTurn(turnId, (turn) => ({ ...turn, status: 'streaming' }))) {
+          void this.#refreshTurn(turnId);
+        }
         return;
       }
       case 'stream/content/block': {
         const params = p as unknown as ContentBlockParams;
         if (!params.content || typeof params.content !== 'object') return;
-        const message = this.#liveAssistant(params.turnId, params.messageId);
-        if (!message) return;
-        // A step that settles replaces the running one it started as, in place
-        // (`LiveBlock`, shared/src/models/tool.ts).
-        const blockId = blockIdOf(params.content);
-        if (blockId !== undefined) {
-          const same = (b: unknown) => blockIdOf(b) === blockId;
-          const blocks = blocksOf(message);
-          const segments = segmentsOf(message);
-          const inBlocks = blocks.findIndex(same);
-          const inSegments = segments.findIndex(same);
-          if (inBlocks >= 0 || inSegments >= 0) {
-            if (inBlocks >= 0) blocks[inBlocks] = params.content;
-            if (inSegments >= 0) segments[inSegments] = params.content;
-            return;
-          }
-        }
-        blocksOf(message).push(params.content);
-        const segments = segmentsOf(message);
-        // A block from a parallel activity lands BEFORE the text run that is
-        // still open, so a sentence is never split by an activity card — the
-        // same interleave the bridge persists.
-        const last = segments[segments.length - 1];
-        if (params.beforeText && isTextSegment(last)) {
-          segments.splice(segments.length - 1, 0, params.content);
-        } else {
-          segments.push(params.content);
-        }
+        const content = params.content as Record<string, unknown>;
+        const index = Number.isInteger(params.index) ? params.index : undefined;
+        this.#editAssistant(params.turnId, params.messageId, (message) => ({
+          ...message,
+          segments: placeBlock(message.segments ?? [], content, index, (run) =>
+            this.#cachedStep(params.turnId, run, index),
+          ),
+        }));
+        if (index !== undefined && isStepPreview(content)) this.#settleCached(params.turnId, content);
         return;
       }
       case 'stream/turn/completed': {
@@ -353,10 +407,8 @@ export class Conversation {
         this.#settle(params.turnId, 'completed');
         // It ended because a message reached the agent mid-answer: its reply
         // is the answer so far, and the run goes on in that message's turn.
-        if (params.continuedIn) {
-          const turn = this.#find(params.turnId);
-          if (turn) turn.continuedIn = params.continuedIn;
-        }
+        const continuedIn = params.continuedIn;
+        if (continuedIn) this.#editTurn(params.turnId, (turn) => ({ ...turn, continuedIn }));
         return;
       }
       case 'stream/turn/error':
@@ -365,11 +417,9 @@ export class Conversation {
       case 'stream/turn/aborted':
         this.#settle(str(p.turnId), 'aborted');
         return;
-      case 'stream/turn/cancelled': {
-        const turn = this.#find(str(p.turnId));
-        if (turn) turn.status = 'cancelled';
+      case 'stream/turn/cancelled':
+        this.#editTurn(str(p.turnId), (turn) => ({ ...turn, status: 'cancelled' }));
         return;
-      }
       case 'stream/queue/updated': {
         const params = p as unknown as QueueUpdatedParams;
         this.queue = {
@@ -414,7 +464,6 @@ export class Conversation {
     }
   }
 
-  /** Record an answer given here right away, before the bridge's echo. */
   /** Streamed text waiting for the next render, oldest first. */
   #buffered: { kind: 'text' | 'thinking'; turnId: string; messageId: string; delta: string }[] = [];
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -443,18 +492,133 @@ export class Conversation {
     const pending = this.#buffered;
     this.#buffered = [];
     for (const { kind, turnId, messageId, delta } of pending) {
-      const message = this.#liveAssistant(turnId, messageId);
-      if (!message) continue;
       if (kind === 'thinking') {
-        message.thinking = `${message.thinking ?? ''}${delta}`;
+        // The bridge's own rule (`appendThinkingSegment`): the reasoning grows
+        // its last thought, or opens one at the end — where it happened.
+        let grown: ThinkingStepPreview | undefined;
+        this.#editAssistant(turnId, messageId, (message) => {
+          const segments = appendThought(message.segments ?? [], delta);
+          const last = segments[segments.length - 1];
+          if (isWorkRunSegment(last) && last.last.type === 'thinking') grown = last.last;
+          return { ...message, segments };
+        });
+        // The same thought, read earlier from `turn/steps` or whole: behind now.
+        if (grown) this.#growCached(turnId, grown.index, delta);
         continue;
       }
-      message.content = `${typeof message.content === 'string' ? message.content : ''}${delta}`;
-      const segments = segmentsOf(message);
-      const last = segments[segments.length - 1];
-      if (isTextSegment(last)) last.text += delta;
-      else segments.push({ type: 'text', text: delta });
+      this.#editAssistant(turnId, messageId, (message) => {
+        const segments = [...(message.segments ?? [])];
+        const last = segments[segments.length - 1];
+        if (isTextSegment(last)) segments[segments.length - 1] = { ...last, text: last.text + delta };
+        else segments.push({ type: 'text', text: delta });
+        const content = `${typeof message.content === 'string' ? message.content : ''}${delta}`;
+        return { ...message, content, segments };
+      });
     }
+  }
+
+  // --- what the timeline opens ------------------------------------------------
+
+  /** A run's steps as far as they were read, when the timeline opened it. */
+  stepRun(turnId: string, run: WorkRunSegment): StepRun | undefined {
+    return this.#runs.get(runKey(turnId, run));
+  }
+
+  /**
+   * Read a run's steps (`turn/steps`): its first page, or — once one is here —
+   * the page that starts at `next`. Does nothing while a read is on its way,
+   * when every step is here, or after a failure unless `retry` (the user asked
+   * again): an answer the bridge could not give is never asked for in a loop.
+   */
+  async loadSteps(turnId: string, run: WorkRunSegment, retry = false): Promise<void> {
+    const key = runKey(turnId, run);
+    const known = this.#runs.get(key);
+    if (known && (known.loading || (known.error !== undefined && !retry))) return;
+    if (known && known.error === undefined && known.next === undefined) return;
+    const from = known?.next ?? run.from;
+    const before = known?.steps ?? [];
+    this.#runs.set(key, { steps: before, ...(known?.next !== undefined ? { next: known.next } : {}), loading: true });
+    try {
+      const page = await this.#call<TurnStepsResult>('turn/steps', {
+        threadId: this.threadId,
+        turnId,
+        from,
+        to: run.to,
+      });
+      const steps = (Array.isArray(page?.steps) ? page.steps : []).filter(isStepPreview);
+      const next = typeof page?.next === 'number' && page.next > from ? page.next : undefined;
+      this.#runs.set(key, { steps: [...before, ...steps], ...(next !== undefined ? { next } : {}), loading: false });
+    } catch (err) {
+      this.#runs.set(key, {
+        steps: before,
+        ...(known?.next !== undefined ? { next: known.next } : {}),
+        loading: false,
+        error: failureOf(err),
+      });
+    }
+  }
+
+  /** One step whole, when the timeline asked for it. */
+  fullStep(turnId: string, index: number): Detail<Record<string, unknown>> | undefined {
+    return this.#full.get(stepKey(turnId, index));
+  }
+
+  /** Read one step whole (`turn/step`): the full command, output or diff its
+   *  preview cut. Once; again after a failure only when the user asks. */
+  async loadFullStep(turnId: string, index: number, retry = false): Promise<void> {
+    const key = stepKey(turnId, index);
+    const known = this.#full.get(key);
+    if (known && (known.loading || known.value || (known.error !== undefined && !retry))) return;
+    this.#full.set(key, { loading: true });
+    try {
+      const { block } = await this.#call<TurnStepResult>('turn/step', {
+        threadId: this.threadId,
+        turnId,
+        index,
+      });
+      const value = block && typeof block === 'object' ? (block as Record<string, unknown>) : {};
+      this.#full.set(key, { value, loading: false });
+    } catch (err) {
+      this.#full.set(key, { loading: false, error: failureOf(err) });
+    }
+  }
+
+  /** The preview a run's cached steps hold for [index], if read. */
+  #cachedStep(turnId: string, run: WorkRunSegment, index: number | undefined): StepPreview | undefined {
+    if (index === undefined) return undefined;
+    return this.#runs.get(runKey(turnId, run))?.steps.find((s) => s.index === index);
+  }
+
+  /** A thought read earlier (a run's step, or whole) was thought on. */
+  #growCached(turnId: string, index: number, delta: string): void {
+    this.#full.delete(stepKey(turnId, index));
+    for (const [key, run] of this.#runs) {
+      if (!key.startsWith(`${turnId}#`)) continue;
+      const at = run.steps.findIndex((s) => s.index === index && s.type === 'thinking');
+      if (at < 0) continue;
+      const steps = [...run.steps];
+      steps[at] = growThought(steps[at] as ThinkingStepPreview, delta);
+      this.#runs.set(key, { ...run, steps });
+    }
+  }
+
+  /** A step settled live: the copies of it read earlier are behind now. */
+  #settleCached(turnId: string, step: StepPreview): void {
+    this.#full.delete(stepKey(turnId, step.index));
+    for (const [key, run] of this.#runs) {
+      if (!key.startsWith(`${turnId}#`)) continue;
+      const at = run.steps.findIndex((s) => s.index === step.index);
+      if (at < 0) continue;
+      const steps = [...run.steps];
+      steps[at] = step;
+      this.#runs.set(key, { ...run, steps });
+    }
+  }
+
+  /** Drop what was opened in the turns [gone] says no longer hold it. */
+  #forgetDetail(gone: (turnId: string) => boolean): void {
+    for (const key of [...this.#runs.keys()]) if (gone(turnIdOfKey(key))) this.#runs.delete(key);
+    for (const key of [...this.#full.keys()]) if (gone(turnIdOfKey(key))) this.#full.delete(key);
   }
 
   settleApprovalLocally(approvalId: string, decision: ApprovalDecision): void {
@@ -479,55 +643,76 @@ export class Conversation {
 
   /** Insert or replace a turn by id, keeping the bridge's order (`Turn.seq`,
    *  never arrival order: a turn this window missed and read later still lands
-   *  in its place); returns whether it was new. */
+   *  in its place); returns whether it was new. The bridge's record of a turn
+   *  may fold its steps differently (a run that went on live is one now), so
+   *  what was opened in it is read again when asked. */
   #upsert(turn: Turn): boolean {
     const index = this.turns.findIndex((t) => t.id === turn.id);
     const isNew = index === -1;
     const next = isNew ? [...this.turns, turn] : this.turns.map((t, i) => (i === index ? turn : t));
     this.turns = orderBySeq(next);
+    if (!isNew) this.#forgetDetail((turnId) => turnId === turn.id);
     return isNew;
   }
 
-  /** The assistant message of a streaming turn, created when the stream is the
-   *  first thing this window hears about it (it joined mid-turn). */
-  #liveAssistant(turnId: string | undefined, messageId: string | undefined): Message | undefined {
-    if (!turnId) return undefined;
-    let turn = this.#find(turnId);
-    if (!turn) {
+  /** Replace a turn with [edit] of it; false when no such turn is loaded. The
+   *  one way a loaded turn changes (`turns` is raw). */
+  #editTurn(turnId: string | undefined, edit: (turn: Turn) => Turn): boolean {
+    const index = turnId ? this.turns.findIndex((t) => t.id === turnId) : -1;
+    if (index < 0) return false;
+    const next = [...this.turns];
+    next[index] = edit(next[index]);
+    this.turns = next;
+    return true;
+  }
+
+  /** Replace the assistant message of a streaming turn with [edit] of it —
+   *  created when the stream is the first thing this window hears about the
+   *  turn (it joined mid-turn) or about its answer. */
+  #editAssistant(
+    turnId: string | undefined,
+    messageId: string | undefined,
+    edit: (message: Message) => Message,
+  ): void {
+    if (!turnId) return;
+    if (!this.#find(turnId)) {
       // A turn this window never saw created (it connected mid-turn): hold the
       // stream in a placeholder and read the real record in the background.
-      turn = {
-        id: turnId,
-        threadId: this.threadId,
-        status: 'streaming',
-        messages: [],
-        createdAt: Date.now(),
-      };
-      this.turns = [...this.turns, turn];
-      turn = this.turns[this.turns.length - 1];
+      this.turns = [
+        ...this.turns,
+        { id: turnId, threadId: this.threadId, status: 'streaming', messages: [], createdAt: Date.now() },
+      ];
       void this.#refreshTurn(turnId, true);
     }
-    if (this.activeTurnId === null && turn.status !== 'completed') this.activeTurnId = turnId;
-    let message = assistantOf(turn);
-    if (!message) {
-      turn.messages.push({
-        id: messageId ?? `${turnId}-assistant`,
-        turnId,
-        role: 'assistant',
-        content: '',
-        createdAt: Date.now(),
-      });
-      message = turn.messages[turn.messages.length - 1];
+    if (this.activeTurnId === null && this.#find(turnId)?.status !== 'completed') {
+      this.activeTurnId = turnId;
     }
-    return message;
+    this.#editTurn(turnId, (turn) => {
+      const at = turn.messages.findIndex((m) => m.role === 'assistant');
+      const messages = [...turn.messages];
+      if (at >= 0) {
+        messages[at] = edit(messages[at]);
+      } else {
+        messages.push(
+          edit({
+            id: messageId ?? `${turnId}-assistant`,
+            turnId,
+            role: 'assistant',
+            content: '',
+            segments: [],
+            createdAt: Date.now(),
+          }),
+        );
+      }
+      return { ...turn, messages };
+    });
   }
 
   /** A turn ended: stop the live state, then adopt the bridge's stored record
    *  (authoritative — the live view may have missed a frame). */
   #settle(turnId: string | undefined, status: Turn['status']): void {
     if (!turnId) return;
-    const turn = this.#find(turnId);
-    if (turn) turn.status = status;
+    this.#editTurn(turnId, (turn) => ({ ...turn, status }));
     if (this.activeTurnId === turnId) this.activeTurnId = null;
     void this.#refreshTurn(turnId);
   }
@@ -557,20 +742,150 @@ export class Conversation {
 }
 
 /**
- * A message's `segments`, created in place when absent. Read back through the
- * message rather than using the assigned literal: `message` is a reactive
- * proxy, and `(m.segments ??= [])` evaluates to the raw array, not the proxied
- * one stored — pushing into that loses the write.
+ * [segments] with a reasoning chunk added by the bridge's one rule
+ * (`appendThinkingSegment`). A page may have folded the thought still being
+ * written into a run (its `last`): the bridge grows that stored thought, so
+ * the chunk grows the same row — its preview's text, or, when the preview was
+ * cut, the size `turn/step` will read in full.
  */
-function segmentsOf(message: Message): unknown[] {
-  if (!Array.isArray(message.segments)) message.segments = [];
-  return message.segments as unknown[];
+function appendThought(segments: readonly unknown[], delta: string): unknown[] {
+  const out = [...segments];
+  const last = out[out.length - 1];
+  if (isWorkRunSegment(last) && last.last.type === 'thinking') {
+    out[out.length - 1] = { ...last, last: growThought(last.last, delta) };
+    return out;
+  }
+  if (isThinkingSegment(last)) out[out.length - 1] = { ...last };
+  appendThinkingSegment(out, delta);
+  return out;
 }
 
-/** A message's `blocks`, created in place when absent (see {@link segmentsOf}). */
-function blocksOf(message: Message): unknown[] {
-  if (!Array.isArray(message.blocks)) message.blocks = [];
-  return message.blocks as unknown[];
+/** A thought's preview after [delta] was thought on: its text, or — cut — its full size. */
+function growThought(preview: ThinkingStepPreview, delta: string): ThinkingStepPreview {
+  return typeof preview.textChars === 'number'
+    ? { ...preview, textChars: preview.textChars + delta.length }
+    : { ...preview, text: preview.text + delta };
+}
+
+/** Where a run's steps are kept: the turn and the stored range it covers. */
+function runKey(turnId: string, run: WorkRunSegment): string {
+  return `${turnId}#${run.from}-${run.to}`;
+}
+
+/** Where one whole step is kept. */
+function stepKey(turnId: string, index: number): string {
+  return `${turnId}#${index}`;
+}
+
+function turnIdOfKey(key: string): string {
+  return key.slice(0, key.lastIndexOf('#'));
+}
+
+/**
+ * The stored index each of a page's [segments] starts at, and how many stored
+ * entries it spans: a summarized run spans its range, a step preview sits at
+ * its own `index`, and anything else (text, a plan, an approval…) is one entry
+ * right after the one before. The known indexes re-anchor the count, so a
+ * blank text run the page and the store counted differently cannot shift what
+ * follows it.
+ */
+function storedSpans(segments: readonly unknown[]): { start: number; end: number }[] {
+  let next = 0;
+  return segments.map((segment) => {
+    let start = next;
+    let end = next;
+    if (isWorkRunSegment(segment)) {
+      start = segment.from;
+      end = segment.to;
+    } else if (isStepPreview(segment)) {
+      start = end = segment.index;
+    }
+    next = end + 1;
+    return { start, end };
+  });
+}
+
+/**
+ * [segments] with a live block placed where the bridge stored it:
+ *
+ *  - the block that settles one already shown (same `blockId`, or the same
+ *    approval or question) replaces it in place;
+ *  - a step at an index a summarized run covers updates that run — its
+ *    running and failed counts, its last step — since the steps themselves
+ *    are not here ([known] is the run's copy of the step, when it was read);
+ *  - anything else goes in at its `index`: after what comes before it, which
+ *    is the end of the answer, or before the text run still being written
+ *    when a parallel activity produced it (the interleave the bridge stores).
+ *
+ * Without an index (nothing the bridge sends) it goes at the end.
+ */
+export function placeBlock(
+  segments: readonly unknown[],
+  block: Record<string, unknown>,
+  index: number | undefined,
+  known: (run: WorkRunSegment) => StepPreview | undefined = () => undefined,
+): unknown[] {
+  const out = [...segments];
+  const blockId = blockIdOf(block);
+  if (blockId !== undefined) {
+    const same = out.findIndex((s) => !isWorkRunSegment(s) && blockIdOf(s) === blockId);
+    if (same >= 0) {
+      out[same] = block;
+      return out;
+    }
+  }
+  if (index === undefined) {
+    out.push(block);
+    return out;
+  }
+  const spans = storedSpans(out);
+  for (let i = 0; i < out.length; i++) {
+    const { start, end } = spans[i];
+    const segment = out[i];
+    if (isWorkRunSegment(segment) && index >= start && index <= end) {
+      if (isStepPreview(block)) out[i] = settleInRun(segment, block, known(segment));
+      return out;
+    }
+    if (isStepPreview(segment) && segment.index === index) {
+      out[i] = block;
+      return out;
+    }
+    if (start >= index) {
+      out.splice(i, 0, block);
+      return out;
+    }
+  }
+  out.push(block);
+  return out;
+}
+
+/** A step preview read field by field, as the shared rules read a step. */
+function fieldsOf(step: StepPreview): Record<string, unknown> {
+  return step as unknown as Record<string, unknown>;
+}
+
+/**
+ * A summarized run after one of its steps changed live. Only a step that was
+ * live can change (a `LiveBlock` settling), so when its earlier copy is not
+ * here — it is neither the run's `last` nor among steps read — it was the
+ * running one.
+ */
+function settleInRun(run: WorkRunSegment, step: StepPreview, read: StepPreview | undefined): WorkRunSegment {
+  const before = run.last.index === step.index ? run.last : read;
+  const wasRunning = before ? stepRunning(fieldsOf(before)) : true;
+  const wasFailed = before ? stepFailed(fieldsOf(before)) : false;
+  const count = (now: boolean, was: boolean) => (now ? 1 : 0) - (was ? 1 : 0);
+  const files =
+    step.type === 'diff' && step.filename && !run.files.some((f) => f.filename === step.filename)
+      ? [...run.files, { filename: step.filename, additions: step.additions, deletions: step.deletions }]
+      : run.files;
+  return {
+    ...run,
+    running: Math.max(0, run.running + count(stepRunning(fieldsOf(step)), wasRunning)),
+    failed: Math.max(0, run.failed + count(stepFailed(fieldsOf(step)), wasFailed)),
+    files,
+    last: run.last.index === step.index ? step : run.last,
+  };
 }
 
 /** The assistant message of a turn, if it has one. */

@@ -13,6 +13,7 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/services/work_runs.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
@@ -1948,15 +1949,17 @@ _TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
   if (snapshot == null) return null;
   for (final message in snapshot.messages.reversed) {
     if (message.role != MessageRole.assistant) continue;
-    final diffs = message.contents.whereType<DiffContent>().toList();
-    if (diffs.isEmpty) continue;
+    // The same files the turn's changed-files list shows: its edits and its
+    // summarized runs' files, merged by name.
+    final files = changedFilesOf(message.contents);
+    if (files.isEmpty) continue;
     var additions = 0;
     var deletions = 0;
-    for (final diff in diffs) {
-      additions += diff.additions;
-      deletions += diff.deletions;
+    for (final file in files) {
+      additions += file.additions;
+      deletions += file.deletions;
     }
-    return (additions: additions, deletions: deletions, files: diffs.length);
+    return (additions: additions, deletions: deletions, files: files.length);
   }
   return null;
 }

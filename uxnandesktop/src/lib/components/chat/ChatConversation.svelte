@@ -10,7 +10,7 @@
   // and the access mode (`ChatAccessMenu`). Anything waiting on the user — an open approval or
   // question, follow-ups queued behind the running turn — is pinned above the
   // composer (the dock) until it is answered, here or on the phone.
-  import { tick, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
@@ -60,6 +60,7 @@
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
   import { railAnchors } from "$lib/bridge/railAnchors";
   import ChatScrollRail from "./ChatScrollRail.svelte";
+  import { chatErrorText } from "./chatError";
   import { provideViewComposer } from "./viewComposer.svelte";
   import {
     EVERYTHING,
@@ -88,10 +89,13 @@
   const terminalSessions = terminalSessionsFor(chat.target);
 
 
-  // Created (and loaded) once, when the pane mounts — never inside a
+  // Opened (and loaded) once, when the pane mounts — never inside a
   // `$derived`, which may not write state. `ChatPane` re-keys this component
-  // per thread, so one instance always shows one conversation.
-  const conversation = chat.conversation(untrack(() => threadId));
+  // per thread, so one instance always shows one conversation, and lets it go
+  // when it unmounts (a closed tab).
+  const shownThread = untrack(() => threadId);
+  const conversation = chat.open(shownThread);
+  onDestroy(() => chat.release(shownThread));
 
   // --- the composer's text ---------------------------------------------------
   // Kept as the tab's draft (persisted with the layout), a beat after typing
@@ -570,7 +574,7 @@
               <Spinner class={cn(icon.nav, "text-muted-foreground")} />
             </div>
           {:else if conversation.error && !conversation.loaded}
-            <p class={cn(text.meta, "text-center")}>{conversation.error}</p>
+            <p class={cn(text.meta, "text-center")}>{chatErrorText(conversation.error)}</p>
           {:else if shown.length === 0 && conversation.pending.length === 0}
             <p class={cn(text.meta, "py-10 text-center")}>{i18n.t("chat.emptyThread")}</p>
           {/if}

@@ -10,6 +10,18 @@
   // a ready-to-show `target`, shared/models/tool.ts), so this row never learns
   // an agent's own tool names. Everything arrives from the bridge, so every
   // field is read defensively.
+  //
+  // A step arrives as its bounded preview (plans/046): a command's start, its
+  // output's end, an edit without its diff — each cut field with its full size
+  // beside it. Opening an edit reads its diff (`turn/step`); a cut command or
+  // output shows what the preview holds and offers the rest.
+  //
+  // A thought (a stretch of the agent's reasoning, in its place among the
+  // steps) reads as "Thinking" while it is being written and "Thought" after,
+  // followed by its own text on one line; open, it is Markdown in a box that
+  // scrolls — following the newest words while they stream, unless the reader
+  // scrolled up (back at the bottom, it follows again).
+  import { untrack } from "svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Icon } from "$lib/components/ui/icon";
   import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
@@ -22,9 +34,14 @@
   import GlobalSearchIcon from "@hugeicons/core-free-icons/GlobalSearchIcon";
   import PlugSocketIcon from "@hugeicons/core-free-icons/PlugSocketIcon";
   import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+  import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+  import MarkdownView from "$lib/components/MarkdownView.svelte";
   import DiffView from "$lib/components/DiffView.svelte";
   import { toUnifiedPatch } from "$lib/bridge/diffPatch";
-  import { activityFailed, activityRunning } from "$lib/bridge/timeline";
+  import { stepFailed, stepRunning, type StepPreview } from "$shared/models/history";
+  import { plainLine } from "$lib/bridge/timeline";
+  import type { Conversation } from "$lib/bridge/conversation.svelte";
+  import ChatOnDemand from "./ChatOnDemand.svelte";
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
@@ -33,21 +50,32 @@
   import ShimmerText from "../ShimmerText.svelte";
 
   let {
-    block,
+    block: step,
     live = true,
+    writing = false,
+    turnId,
+    conversation,
   }: {
-    block: Record<string, unknown>;
+    /** The step: a preview (`StepPreview`) or a block as stored. */
+    block: Record<string, unknown> | StepPreview;
     /** The step's turn is still running: only then is a running step animated. */
     live?: boolean;
+    /** A thought the agent is writing now (its turn's last part) — a thought
+     *  has no status of its own, so its turn says so. */
+    writing?: boolean;
+    /** Where the whole step is read from, when its preview was cut. */
+    turnId?: string;
+    conversation?: Conversation;
   } = $props();
+  const block = $derived(step as unknown as Record<string, unknown>);
 
   let open = $state(false);
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
   const type = $derived(str(block.type));
-  const running = $derived(live && activityRunning(block));
-  const failed = $derived(activityFailed(block));
+  const running = $derived(live && (stepRunning(block) || (block.type === "thinking" && writing)));
+  const failed = $derived(stepFailed(block));
 
   /** How each kind of tool call reads, and the icon it takes. */
   const TOOL_VIEWS: Record<string, { glyph: typeof Wrench01Icon; verb: MessageKey }> = {
@@ -66,6 +94,13 @@
 
   const view = $derived.by(() => {
     switch (type) {
+      case "thinking":
+        return {
+          glyph: BrainIcon,
+          verb: i18n.t(running ? "chat.verbThinking" : "chat.verbThought"),
+          detail: plainLine(str(block.text)),
+          mono: false,
+        };
       case "command_execution":
         return {
           glyph: CommandLineIcon,
@@ -98,10 +133,56 @@
     }
   });
 
-  const output = $derived(type === "diff" ? "" : str(block.output));
-  const patch = $derived(type === "diff" ? toUnifiedPatch(str(block.filename), str(block.diff)) : null);
-  const expandable = $derived(!!output || !!patch);
+  // --- the whole step, read when asked for ----------------------------------
+  const index = $derived(num(block.index));
+  /** The stored step this preview stands for, as `turn/step` read it. */
+  const whole = $derived(
+    conversation && turnId && index !== null ? conversation.fullStep(turnId, index) : undefined,
+  );
+  function loadWhole(retry: boolean) {
+    if (conversation && turnId && index !== null) void conversation.loadFullStep(turnId, index, retry);
+  }
+  const canRead = $derived(!!conversation && !!turnId && index !== null);
+  const outputCut = $derived(num(block.outputChars) !== null && !whole?.value);
+  const thoughtCut = $derived(num(block.textChars) !== null && !whole?.value);
+  /** A thought's text: whole once read, its preview until then. */
+  const thought = $derived(type === "thinking" ? str(whole?.value?.text ?? block.text) : "");
+  const commandCut = $derived(num(block.commandChars) !== null && !whole?.value);
+
+  const output = $derived(
+    type === "diff" || type === "thinking" ? "" : str(whole?.value?.output ?? block.output),
+  );
+  /** The whole command, once read — the row only had room for its start. */
+  const command = $derived(
+    type === "command_execution" && num(block.commandChars) !== null ? str(whole?.value?.command) : "",
+  );
+  /** A diff's body never rides a preview: only the step read whole has it. */
+  const body = $derived(type === "diff" ? str(whole?.value?.diff ?? block.diff) : "");
+  const hasDiff = $derived(type === "diff" && (!!body || (num(block.diffChars) ?? 0) > 0));
+  const patch = $derived(body ? toUnifiedPatch(str(block.filename), body) : null);
+  const expandable = $derived(
+    !!output || hasDiff || !!thought.trim() || (canRead && (outputCut || commandCut)),
+  );
   const exit = $derived(num(block.exitCode));
+
+  // A thought being written follows its newest words, unless the reader
+  // scrolled up to read; back at the bottom, it follows again.
+  let thoughtBox = $state<HTMLElement | null>(null);
+  let pinned = true;
+  function onThoughtScroll() {
+    if (!thoughtBox) return;
+    pinned = thoughtBox.scrollHeight - thoughtBox.scrollTop - thoughtBox.clientHeight < 8;
+  }
+  $effect(() => {
+    void thought;
+    if (!thoughtBox || !running || !pinned) return;
+    thoughtBox.scrollTop = thoughtBox.scrollHeight;
+  });
+
+  // Opening an edit is asking for its diff.
+  $effect(() => {
+    if (open && type === "diff" && !body && canRead) untrack(() => loadWhole(false));
+  });
 </script>
 
 <Collapsible.Root bind:open>
@@ -142,12 +223,40 @@
     />
   </Collapsible.Trigger>
   <Collapsible.Content>
-    {#if patch}
-      <div class="mx-2 my-1 h-72 overflow-hidden rounded-md border border-border/60">
-        <DiffView diff={patch} />
+    {#if type === "thinking"}
+      <div bind:this={thoughtBox} onscroll={onThoughtScroll} class={cn(chat.thought, "mx-2 my-1")}>
+        <MarkdownView source={thoughtCut ? `${thought}…` : thought} inline quiet />
       </div>
-    {:else if output}
-      <pre class={cn(chat.output, "mx-2 my-1")}>{output}</pre>
+      {#if thoughtCut && canRead && !running}
+        <div class="mx-2 mb-1 flex flex-col">
+          <ChatOnDemand detail={whole} label={i18n.t("chat.showFullThinking")} onload={loadWhole} />
+        </div>
+      {/if}
+    {:else if type === "diff"}
+      {#if patch}
+        <div class="mx-2 my-1 h-72 overflow-hidden rounded-md border border-border/60">
+          <DiffView diff={patch} />
+        </div>
+      {:else}
+        <ChatOnDemand detail={whole ?? { loading: true }} onload={loadWhole} />
+      {/if}
+    {:else}
+      {#if command}
+        <pre class={cn(chat.output, "mx-2 my-1")}>{command}</pre>
+      {/if}
+      {#if output}
+        <!-- A cut output is its end: the ellipsis says something came before. -->
+        <pre class={cn(chat.output, "mx-2 my-1")}>{outputCut ? `…\n${output}` : output}</pre>
+      {/if}
+      {#if canRead && (outputCut || commandCut)}
+        <div class="mx-2 mb-1 flex flex-col">
+          <ChatOnDemand
+            detail={whole}
+            label={i18n.t(outputCut ? "chat.showFullOutput" : "chat.showFullCommand")}
+            onload={loadWhole}
+          />
+        </div>
+      {/if}
     {/if}
   </Collapsible.Content>
 </Collapsible.Root>

@@ -437,27 +437,40 @@ void main() {
     });
   });
 
-  group('classifyRaw', () {
+  group('decodeFrame', () {
     Uint8List bytes(Object json) =>
         Uint8List.fromList(utf8.encode(jsonEncode(json)));
 
     test('classifies handshake, envelope, rpc and unknown frames', () {
       expect(
-        layer.classifyRaw(bytes({'kind': 'serverHello'})),
+        layer.decodeFrame(bytes({'kind': 'serverHello'})).kind,
         SecureMessageKind.handshake,
       );
       expect(
-        layer.classifyRaw(bytes({'kind': 'encryptedEnvelope'})),
+        layer.decodeFrame(bytes({'kind': 'encryptedEnvelope'})).kind,
         SecureMessageKind.envelope,
       );
       expect(
-        layer.classifyRaw(bytes({'jsonrpc': '2.0', 'id': '1'})),
+        layer.decodeFrame(bytes({'jsonrpc': '2.0', 'id': '1'})).kind,
         SecureMessageKind.rpc,
       );
       expect(
-        layer.classifyRaw(Uint8List.fromList([0, 1, 2, 3])),
+        layer.decodeFrame(Uint8List.fromList([0, 1, 2, 3])).kind,
         SecureMessageKind.unknown,
       );
+      expect(layer.decodeFrame(bytes([1, 2])).kind, SecureMessageKind.unknown);
+    });
+
+    test('hands back the decoded JSON so nothing decodes the frame again', () {
+      final frame = layer.decodeFrame(
+        bytes({'kind': 'encryptedEnvelope', 'sessionId': 's', 'seq': 3}),
+      );
+      expect(frame.json, {
+        'kind': 'encryptedEnvelope',
+        'sessionId': 's',
+        'seq': 3,
+      });
+      expect(layer.decodeFrame(Uint8List.fromList([0])).json, isNull);
     });
   });
 }

@@ -71,6 +71,14 @@ export {
   type SessionHistoryOptions,
 } from './conversation/session-history.js';
 export {
+  NativeHistoryWatcher,
+  HISTORY_INTEREST_MS,
+  HISTORY_UNSIGNED_INTERVAL_MS,
+  HISTORY_WATCH_INTERVAL_MS,
+  type NativeHistoryWatcherOptions,
+  type WatcherTimers,
+} from './conversation/native-history-watcher.js';
+export {
   PairingCodeService,
   type PairingCodeServiceOptions,
   PAIRING_WINDOW_MS,

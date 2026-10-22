@@ -23,6 +23,7 @@ import type {
   Turn,
   TurnList,
 } from '../models/thread.js';
+import type { StepPage } from '../models/history.js';
 import type {
   GitBranchList,
   GitBranchResult,
@@ -151,6 +152,36 @@ export interface TurnListParams {
    * page backward from there using `total`.
    */
   fromEnd?: boolean;
+}
+/**
+ * `turn/steps`: the previews of the steps stored at `from`..`to` (inclusive)
+ * of a turn's assistant message — typically one `WorkRunSegment`'s range.
+ * Entries in the range that are not steps are skipped; a `to` past the end
+ * reads to the end.
+ */
+export interface TurnStepsParams {
+  threadId: string;
+  turnId: string;
+  from: number;
+  to: number;
+}
+/**
+ * At most `STEP_PAGE_MAX_BYTES` of previews, always at least one step; `next`
+ * is the `from` to ask with for the rest when the budget ended it early.
+ */
+export type TurnStepsResult = StepPage;
+/**
+ * `turn/step`: one block of a turn's assistant message, whole, by its stored
+ * index — a command, an edit, a tool call or a thought (`ThinkingSegment`).
+ */
+export interface TurnStepParams {
+  threadId: string;
+  turnId: string;
+  index: number;
+}
+/** The block exactly as stored: the whole command, output, diff, tool call or thought. */
+export interface TurnStepResult {
+  block: unknown;
 }
 /** `turn/attachment`: one image a user message carries (`Message.attachments`). */
 export interface TurnAttachmentParams {
@@ -518,7 +549,12 @@ export interface JsonRpcMethodRegistry {
   'thread/unarchive': { params: ThreadActionParams; result: Thread };
   'thread/delete': { params: ThreadActionParams; result: void };
   'turn/list': { params: TurnListParams; result: TurnList };
+  /** One turn, as a page serves it (`summarizeTurn`). */
   'turn/read': { params: { turnId: string }; result: Turn };
+  /** Previews of a run of steps, within `STEP_PAGE_MAX_BYTES`. */
+  'turn/steps': { params: TurnStepsParams; result: TurnStepsResult };
+  /** One stored block, whole. */
+  'turn/step': { params: TurnStepParams; result: TurnStepResult };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
   // Stops a RUNNING turn, or takes a QUEUED one off the queue (→ `cancelled`).
   'turn/cancel': { params: { threadId: string; turnId: string }; result: void };

@@ -71,6 +71,19 @@ enum SecureMessageKind {
   unknown,
 }
 
+/// An inbound frame, decoded once: what it is and its JSON ([json] is null
+/// when it was not a JSON object at all).
+class InboundFrame {
+  /// Creates an [InboundFrame].
+  const InboundFrame(this.kind, [this.json]);
+
+  /// What the frame is.
+  final SecureMessageKind kind;
+
+  /// The frame's JSON object.
+  final Map<String, dynamic>? json;
+}
+
 /// Performs the E2EE handshake and opens encrypted [SecureChannel]s.
 ///
 /// Implements the phone side of the protocol in
@@ -199,24 +212,33 @@ class SecureTransportLayer {
   SecureChannel openChannel(SecureSession session) =>
       SecureChannel(session, envelopeCrypto: _envelope);
 
-  /// Classifies a raw inbound frame without decrypting it.
-  SecureMessageKind classifyRaw(Uint8List data) {
+  /// Decodes a raw inbound frame once and says what it is, without
+  /// decrypting it. The decoded JSON rides along so nothing decodes the same
+  /// bytes again: an envelope is built from [InboundFrame.json] directly.
+  InboundFrame decodeFrame(Uint8List data) {
+    final Object? decoded;
     try {
-      final decoded = jsonDecode(utf8.decode(data));
-      if (decoded is! Map) return SecureMessageKind.unknown;
-      final kind = decoded['kind'];
-      if (kind == SecureEnvelope.kind) return SecureMessageKind.envelope;
-      if (kind == ServerHello.kind ||
-          kind == Ready.kind ||
-          kind == ClientHello.kind ||
-          kind == ClientAuth.kind) {
-        return SecureMessageKind.handshake;
-      }
-      if (decoded['jsonrpc'] != null) return SecureMessageKind.rpc;
-      return SecureMessageKind.unknown;
+      decoded = jsonDecode(utf8.decode(data));
     } on FormatException {
-      return SecureMessageKind.unknown;
+      return const InboundFrame(SecureMessageKind.unknown);
     }
+    if (decoded is! Map<String, dynamic>) {
+      return const InboundFrame(SecureMessageKind.unknown);
+    }
+    final kind = decoded['kind'];
+    if (kind == SecureEnvelope.kind) {
+      return InboundFrame(SecureMessageKind.envelope, decoded);
+    }
+    if (kind == ServerHello.kind ||
+        kind == Ready.kind ||
+        kind == ClientHello.kind ||
+        kind == ClientAuth.kind) {
+      return InboundFrame(SecureMessageKind.handshake, decoded);
+    }
+    if (decoded['jsonrpc'] != null) {
+      return InboundFrame(SecureMessageKind.rpc, decoded);
+    }
+    return InboundFrame(SecureMessageKind.unknown, decoded);
   }
 
   void _verifyServerHello(

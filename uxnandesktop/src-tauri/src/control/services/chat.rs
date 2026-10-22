@@ -25,6 +25,8 @@ const MESSAGE_MAX: usize = 64 * 1024;
 const READ_TURNS_MAX: u64 = 20;
 /// How much of one answer `chat/read` returns (its end is kept).
 const ANSWER_MAX: usize = 16 * 1024;
+/// How many steps `chat/read` lists for one turn: its newest ones.
+const STEPS_MAX: usize = 100;
 /// The longest one `chat/wait` call waits (the same bound as `agent/wait`).
 const WAIT_MAX: Duration = Duration::from_secs(15);
 /// How often `chat/wait` asks the bridge.
@@ -308,6 +310,8 @@ fn text_of(message: &Value) -> String {
 }
 
 /// One step of an answer in a line: `ran npm test (exit 1)`, `edited src/a.ts +3 −1`.
+/// A thought (the agent's reasoning, a step of its own) is not listed: what
+/// `chat/read` reports is what the agent did and said.
 fn step_line(block: &Value) -> Option<String> {
     let str_of = |k: &str| block.get(k).and_then(Value::as_str).unwrap_or("");
     let running = str_of("status") == "running"
@@ -369,12 +373,185 @@ fn step_line(block: &Value) -> Option<String> {
     Some(format!("{line}{suffix}"))
 }
 
+/// The assistant message of a turn, when it has one.
+fn assistant_of(turn: &Value) -> Option<&Value> {
+    turn.get("messages")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
+}
+
+/// The ordered parts of an answer (`segments`, as a page serves them).
+fn segments_of(assistant: Option<&Value>) -> &[Value] {
+    assistant
+        .and_then(|m| m.get("segments"))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
+
+/// A page's summary of a run of steps (`type: "work"`,
+/// shared/src/models/history.ts): its stored index range and its size.
+fn work_run(segment: &Value) -> Option<(u64, u64, usize)> {
+    if segment.get("type").and_then(Value::as_str) != Some("work") {
+        return None;
+    }
+    let from = segment.get("from").and_then(Value::as_u64)?;
+    let to = segment.get("to").and_then(Value::as_u64)?;
+    (to >= from).then(|| {
+        (
+            from,
+            to,
+            usize::try_from(to - from + 1).unwrap_or(usize::MAX),
+        )
+    })
+}
+
+/// One part of the steps `chat/read` lists for a turn, before the bridge is
+/// asked for anything: a step line read off the page, or a stored range of
+/// steps to read with `turn/steps`.
+#[derive(Debug, PartialEq)]
+enum StepPiece {
+    Line(String),
+    Range { from: u64, to: u64 },
+}
+
+/// Which steps of an answer `chat/read` lists: its newest [`STEPS_MAX`], in
+/// order — a page folds each run of steps into one summary, so the newest
+/// part of a run becomes a range to read — and how many earlier ones it
+/// leaves out.
+fn plan_steps(segments: &[Value], max: usize) -> (Vec<StepPiece>, usize) {
+    let mut left = max;
+    let mut skipped = 0;
+    let mut pieces = Vec::new();
+    for segment in segments.iter().rev() {
+        if let Some((_, to, size)) = work_run(segment) {
+            let take = size.min(left);
+            left -= take;
+            skipped += size - take;
+            if take > 0 {
+                pieces.push(StepPiece::Range {
+                    from: to + 1 - take as u64,
+                    to,
+                });
+            }
+        } else if let Some(line) = step_line(segment) {
+            if left == 0 {
+                skipped += 1;
+            } else {
+                left -= 1;
+                pieces.push(StepPiece::Line(line));
+            }
+        }
+    }
+    pieces.reverse();
+    (pieces, skipped)
+}
+
+/// What a run of steps amounts to, when its steps could not be read:
+/// `ran 12 commands, 3 edits, 1 tool call (1 failed)`.
+fn run_line(segment: &Value) -> String {
+    let count = |k: &str| segment.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let plural = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let mut parts = Vec::new();
+    for (key, one, many) in [
+        ("commands", "command", "commands"),
+        ("edits", "edit", "edits"),
+        ("tools", "tool call", "tool calls"),
+    ] {
+        if count(key) > 0 {
+            parts.push(plural(count(key), one, many));
+        }
+    }
+    let failed = count("failed");
+    format!(
+        "ran {}{}",
+        parts.join(", "),
+        if failed > 0 {
+            format!(" ({failed} failed)")
+        } else {
+            String::new()
+        }
+    )
+}
+
+/// The step lines of a turn's answer: its newest [`STEPS_MAX`] steps, the
+/// ones a page summarized read with `turn/steps` (previews: a command is its
+/// first 400 characters), after a `… N earlier steps` line when there were
+/// more. A range the bridge cannot serve reads as its run's counts.
+async fn step_lines<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    thread: &str,
+    turn: &Value,
+) -> Vec<String> {
+    let segments = segments_of(assistant_of(turn));
+    let (pieces, skipped) = plan_steps(segments, STEPS_MAX);
+    let turn_id = turn.get("id").and_then(Value::as_str).unwrap_or("");
+    let mut lines = Vec::new();
+    if skipped > 0 {
+        lines.push(format!(
+            "… {skipped} earlier step{}",
+            if skipped == 1 { "" } else { "s" }
+        ));
+    }
+    for piece in pieces {
+        match piece {
+            StepPiece::Line(line) => lines.push(line),
+            StepPiece::Range { from, to } => match read_range(app, thread, turn_id, from, to).await
+            {
+                Ok(steps) => lines.extend(steps.iter().filter_map(step_line)),
+                Err(_) => {
+                    let run = segments
+                        .iter()
+                        .find(|s| work_run(s).is_some_and(|(f, t, _)| f <= from && to <= t));
+                    if let Some(run) = run {
+                        lines.push(run_line(run));
+                    }
+                }
+            },
+        }
+    }
+    lines.iter().map(|l| redact(l)).collect()
+}
+
+/// The step previews stored at `from..=to` of a turn's answer, following
+/// `turn/steps`' `next` until the range is read.
+async fn read_range<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    thread: &str,
+    turn: &str,
+    from: u64,
+    to: u64,
+) -> Result<Vec<Value>, RpcError> {
+    let mut steps = Vec::new();
+    let mut at = from;
+    loop {
+        let page = call(
+            app,
+            "turn/steps",
+            json!({ "threadId": thread, "turnId": turn, "from": at, "to": to }),
+        )
+        .await?;
+        steps.extend(
+            page.get("steps")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .cloned(),
+        );
+        match page.get("next").and_then(Value::as_u64) {
+            Some(next) if next > at && next <= to => at = next,
+            _ => return Ok(steps),
+        }
+    }
+}
+
 /// A turn as `chat/read` shows it: what was asked, what the agent answered,
-/// the steps it took and why it failed, if it did — secrets redacted. An
-/// answer longer than [`ANSWER_MAX`] keeps its end, unless `answer_from` asks
-/// for the part that starts at that byte; `answerLength` lets a caller page
-/// through the whole of it.
-fn turn_view(turn: &Value, answer_from: Option<usize>) -> Value {
+/// the steps it took ([`step_lines`]) and why it failed, if it did — secrets
+/// redacted. An answer longer than [`ANSWER_MAX`] keeps its end, unless
+/// `answer_from` asks for the part that starts at that byte; `answerLength`
+/// lets a caller page through the whole of it.
+fn turn_view(turn: &Value, answer_from: Option<usize>, steps: Vec<String>) -> Value {
     let messages = turn.get("messages").and_then(Value::as_array);
     let by_role = |role: &str| {
         messages
@@ -387,25 +564,14 @@ fn turn_view(turn: &Value, answer_from: Option<usize>) -> Value {
     let full = assistant.map(text_of).unwrap_or_default();
     let length = full.len();
     let (answer, from) = answer_window(&full, answer_from);
-    let errors: Vec<String> = assistant
-        .and_then(|m| m.get("blocks"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let errors: Vec<String> = segments_of(assistant)
+        .iter()
         .filter(|b| {
             b.get("type").and_then(Value::as_str) == Some("system")
                 && b.get("kind").and_then(Value::as_str) == Some("error")
         })
         .filter_map(|b| b.get("text").and_then(Value::as_str))
         .map(redact)
-        .collect();
-    let steps: Vec<String> = assistant
-        .and_then(|m| m.get("blocks"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(step_line)
-        .map(|l| redact(&l))
         .collect();
     let mut view = json!({
         "id": turn.get("id").cloned().unwrap_or(Value::Null),
@@ -456,15 +622,7 @@ fn chat_state(active: bool, last_turn: Option<&Value>) -> &'static str {
         return "idle";
     }
     let last_step = last_turn
-        .and_then(|t| t.get("messages"))
-        .and_then(Value::as_array)
-        .and_then(|m| {
-            m.iter()
-                .find(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
-        })
-        .and_then(|a| a.get("segments").or_else(|| a.get("blocks")))
-        .and_then(Value::as_array)
-        .and_then(|s| s.last())
+        .and_then(|t| segments_of(assistant_of(t)).last())
         .and_then(|b| b.get("type"))
         .and_then(Value::as_str);
     match last_step {
@@ -514,10 +672,15 @@ pub async fn read<R: tauri::Runtime>(
         .and_then(Value::as_u64)
         .map(|f| usize::try_from(f).unwrap_or(usize::MAX));
     let (turns, active) = recent(app, &id, n).await?;
+    let mut views = Vec::with_capacity(turns.len());
+    for turn in &turns {
+        let steps = step_lines(app, &id, turn).await;
+        views.push(turn_view(turn, answer_from, steps));
+    }
     Ok(json!({
         "chat": id,
         "state": chat_state(active, turns.last()),
-        "turns": turns.iter().map(|t| turn_view(t, answer_from)).collect::<Vec<_>>(),
+        "turns": views,
     }))
 }
 
@@ -625,47 +788,107 @@ mod tests {
         );
     }
 
+    /// The pieces' lines, for a plan with no range to read.
+    fn lines(pieces: &[StepPiece]) -> Vec<&str> {
+        pieces
+            .iter()
+            .map(|p| match p {
+                StepPiece::Line(l) => l.as_str(),
+                StepPiece::Range { .. } => "<range>",
+            })
+            .collect()
+    }
+
     #[test]
     fn a_turn_reads_as_its_prompt_answer_and_steps_with_secrets_redacted() {
+        // A live turn: its steps arrive as previews, in its segments.
         let turn = json!({
             "id": "t1", "status": "completed",
             "messages": [
                 { "role": "user", "content": "run the tests" },
                 { "role": "assistant", "content": "All green. token=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-                  "blocks": [
-                    { "type": "command_execution", "command": "npm test", "exitCode": 1 },
-                    { "type": "diff", "filename": "src/a.ts", "additions": 3, "deletions": 1 },
-                    { "type": "tool", "toolName": "view_file", "kind": "read", "target": "notes.txt" },
-                    { "type": "tool", "toolName": "Grep", "kind": "search", "target": "alpha", "status": "running" },
+                  "segments": [
+                    { "type": "thinking", "text": "Run the tests first." },
+                    { "type": "command_execution", "index": 1, "command": "npm test", "exitCode": 1 },
+                    { "type": "diff", "index": 1, "filename": "src/a.ts", "additions": 3, "deletions": 1 },
+                    { "type": "tool", "index": 2, "toolName": "view_file", "kind": "read", "target": "notes.txt" },
+                    { "type": "tool", "index": 3, "toolName": "Grep", "kind": "search", "target": "alpha", "status": "running" },
                     { "type": "subagent", "state": { "name": "Audit", "status": "completed" } },
+                    { "type": "text", "text": "All green." },
                     { "type": "assistant_response_boundary" }
                   ] }
             ]
         });
-        let v = turn_view(&turn, None);
-        assert_eq!(v["prompt"], "run the tests");
-        assert!(!v["answer"]
-            .as_str()
-            .unwrap()
-            .contains("ghp_abcdefghijklmnopqrstuvwxyz0123456789"));
+        let (pieces, skipped) = plan_steps(segments_of(assistant_of(&turn)), STEPS_MAX);
+        assert_eq!(skipped, 0);
         assert_eq!(
-            v["steps"],
-            json!([
+            lines(&pieces),
+            [
                 "ran npm test (failed)",
                 "edited src/a.ts +3 −1",
                 "read notes.txt",
                 "searched alpha (running)",
                 "subagent: Audit (completed)"
-            ])
+            ]
         );
+        let v = turn_view(&turn, None, vec!["ran npm test (failed)".into()]);
+        assert_eq!(v["prompt"], "run the tests");
+        assert!(!v["answer"]
+            .as_str()
+            .unwrap()
+            .contains("ghp_abcdefghijklmnopqrstuvwxyz0123456789"));
+        assert_eq!(v["steps"], json!(["ran npm test (failed)"]));
         let long = json!({ "messages": [{ "role": "assistant", "content": "x".repeat(ANSWER_MAX + 10) }] });
-        let end = turn_view(&long, None);
+        let end = turn_view(&long, None, Vec::new());
         assert!(end["answer"].as_str().unwrap().starts_with("… "));
         assert_eq!(end["answerFrom"], 10);
         assert_eq!(end["answerLength"], ANSWER_MAX + 10);
-        let head = turn_view(&long, Some(0));
+        let head = turn_view(&long, Some(0), Vec::new());
         assert!(head["answer"].as_str().unwrap().ends_with(" …"));
         assert_eq!(head["answerFrom"], 0);
+    }
+
+    #[test]
+    fn a_summarized_run_is_read_for_its_newest_steps_and_the_rest_counted() {
+        // A page: a step before a run of 150 (indexes 1..=150), then an
+        // approval. The newest 100 steps: the approval and the run's last 99.
+        let segments = vec![
+            json!({ "type": "command_execution", "index": 0, "command": "ls" }),
+            json!({ "type": "work", "from": 1, "to": 150, "commands": 150, "edits": 0, "tools": 0,
+                    "failed": 0, "running": 0, "files": [], "last": { "type": "command_execution", "index": 150, "command": "make" } }),
+            json!({ "type": "text", "text": "Need to install." }),
+            json!({ "type": "approval", "approvalId": "a", "action": "Bash: npm i" }),
+        ];
+        let (pieces, skipped) = plan_steps(&segments, STEPS_MAX);
+        assert_eq!(
+            pieces,
+            vec![
+                StepPiece::Range { from: 52, to: 150 },
+                StepPiece::Line("asked to approve: Bash: npm i".into()),
+            ]
+        );
+        // The first step and the run's first 51.
+        assert_eq!(skipped, 52);
+        // Room for everything: the whole run, and the step before it.
+        let (all, none) = plan_steps(&segments, 1000);
+        assert_eq!(none, 0);
+        assert_eq!(all[1], StepPiece::Range { from: 1, to: 150 });
+        assert_eq!(lines(&all)[0], "ran ls");
+    }
+
+    #[test]
+    fn a_run_the_bridge_cannot_serve_reads_as_its_counts() {
+        let run = json!({ "type": "work", "from": 0, "to": 15, "commands": 12, "edits": 3, "tools": 1, "failed": 1 });
+        assert_eq!(
+            run_line(&run),
+            "ran 12 commands, 3 edits, 1 tool call (1 failed)"
+        );
+        assert_eq!(work_run(&run), Some((0, 15, 16)));
+        assert_eq!(
+            work_run(&json!({ "type": "work", "from": 3, "to": 1 })),
+            None
+        );
+        assert_eq!(work_run(&json!({ "type": "text" })), None);
     }
 
     #[test]
@@ -685,16 +908,17 @@ mod tests {
     #[test]
     fn a_failed_turn_says_why_and_a_view_is_a_step() {
         let failed = json!({ "messages": [{ "role": "assistant", "content": "",
-            "blocks": [
+            "segments": [
                 { "type": "system", "kind": "error", "text": "failed to start codex app-server" },
                 { "type": "system", "kind": "warning", "text": "slow" },
                 { "type": "view", "viewId": "0123456789abcdef0123456789abcdef", "title": "Usage" }
             ] }] });
-        let v = turn_view(&failed, None);
+        let v = turn_view(&failed, None, Vec::new());
         assert_eq!(v["error"], "failed to start codex app-server");
-        assert_eq!(v["steps"], json!(["showed the view Usage"]));
+        let (pieces, _) = plan_steps(segments_of(assistant_of(&failed)), STEPS_MAX);
+        assert_eq!(lines(&pieces), ["showed the view Usage"]);
         let fine = json!({ "messages": [{ "role": "assistant", "content": "ok" }] });
-        assert!(turn_view(&fine, None).get("error").is_none());
+        assert!(turn_view(&fine, None, Vec::new()).get("error").is_none());
     }
 
     #[test]
@@ -705,6 +929,10 @@ mod tests {
         let working = json!({ "messages": [{ "role": "assistant",
             "segments": [{ "type": "command_execution", "command": "ls", "status": "running" }] }] });
         assert_eq!(chat_state(true, Some(&working)), "working");
+        // A page folds the running steps into a run: still working.
+        let folded = json!({ "messages": [{ "role": "assistant",
+            "segments": [{ "type": "work", "from": 0, "to": 4, "running": 1 }] }] });
+        assert_eq!(chat_state(true, Some(&folded)), "working");
         assert_eq!(chat_state(false, Some(&asking)), "idle");
         assert_eq!(chat_state(true, None), "working");
     }

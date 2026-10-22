@@ -11,7 +11,6 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
-import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -335,63 +334,39 @@ void main() {
   );
 
   test(
-    'connected active conversation polls for external native-session turns',
+    "the bridge's history notification brings in turns written elsewhere",
     () async {
-      final phases = StreamController<ConnectionPhase>.broadcast();
-      Object result = <String, dynamic>{
-        'turns': const <Object?>[],
-        'total': 0,
+      await manager.selectThread('th1');
+      await _settle();
+      turnListResult = {
+        'turns': [
+          {
+            'id': 'native-session#t2',
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'later external prompt',
+                'createdAt': 2000,
+              },
+              {
+                'role': 'assistant',
+                'content': 'later external answer',
+                'createdAt': 2001,
+              },
+            ],
+          },
+        ],
+        'total': 1,
       };
-      final pollingManager = ThreadManager(
-        threadRepository: threadRepo,
-        messageRepository: messageRepo,
-        domainEvents: events.stream,
-        connectionPhases: phases.stream,
-        externalSyncInterval: const Duration(milliseconds: 10),
-        sendRequest: (method, [params]) async => RpcMessage.response(
-          id: 'poll',
-          result: method == 'turn/list' ? result : const <String, dynamic>{},
-        ),
-      );
-      try {
-        await pollingManager.selectThread('th1');
-        await _settle();
-        result = {
-          'turns': [
-            {
-              'id': 'native-session#t2',
-              'status': 'completed',
-              'messages': [
-                {
-                  'role': 'user',
-                  'content': 'later external prompt',
-                  'createdAt': 2000,
-                },
-                {
-                  'role': 'assistant',
-                  'content': 'later external answer',
-                  'createdAt': 2001,
-                },
-              ],
-            },
-          ],
-          'total': 1,
-        };
-        phases.add(ConnectionPhase.connected);
-        await Future<void>.delayed(const Duration(milliseconds: 80));
+      events.add(const HistoryChangedEvent(threadId: 'th1', rev: 7));
+      await _settle();
 
-        final messages = await messageRepo.getMessages('th1');
-        expect(
-          messages.map(_text),
-          containsAll([
-            'later external prompt',
-            'later external answer',
-          ]),
-        );
-      } finally {
-        await pollingManager.dispose();
-        await phases.close();
-      }
+      final messages = await messageRepo.getMessages('th1');
+      expect(
+        messages.map(_text),
+        containsAll(['later external prompt', 'later external answer']),
+      );
     },
   );
 
@@ -1078,26 +1053,15 @@ void main() {
     expect(repaired.contents[2], isA<TextContent>());
   });
 
-  test('resync without segments falls back to blocks-first layout', () async {
-    // An older bridge (or the on-disk history fallback) sends `content` +
-    // `blocks` only — no `segments`. The recovered bubble keeps the prior
-    // behaviour: structured blocks first, then the merged text.
+  test('resync without segments keeps the text alone', () async {
+    // A reply that carries no ordered `segments` (it only said something):
+    // its text is the whole answer.
     turnListResult = {
       'turns': [
         {
           'id': 'turnB',
           'messages': [
-            {
-              'role': 'assistant',
-              'content': 'All set.',
-              'blocks': [
-                {
-                  'type': 'command_execution',
-                  'command': 'ls',
-                  'status': 'completed',
-                },
-              ],
-            },
+            {'role': 'assistant', 'content': 'All set.'},
           ],
         },
       ],
@@ -1108,10 +1072,7 @@ void main() {
 
     final msg =
         manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnB');
-    expect(msg.contents.length, 2);
-    expect(msg.contents[0], isA<CommandExecutionContent>());
-    expect(msg.contents[1], isA<TextContent>());
-    expect((msg.contents[1] as TextContent).text, 'All set.');
+    expect(msg.contents, const [TextContent('All set.')]);
   });
 
   test('resync seeds the re-attached live buffer with interleaved segments',

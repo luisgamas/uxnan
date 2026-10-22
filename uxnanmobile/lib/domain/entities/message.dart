@@ -3,6 +3,11 @@ import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 
+/// [text] on one line: every run of whitespace collapsed to one space, the
+/// ends trimmed — the one rule every preview of a message follows.
+String collapsePreviewText(String text) =>
+    text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
 /// A message in a conversation timeline (spec 02a §5.1.1).
 class Message extends Equatable {
   /// Creates a [Message].
@@ -41,7 +46,10 @@ class Message extends Equatable {
   /// Monotonic ordering index within the thread.
   final int orderIndex;
 
-  /// Content fingerprint used for deduplication, if computed.
+  /// What the message was built from, when it came from the bridge's
+  /// history: a fingerprint of the wire message (`jsonFingerprint`), so a
+  /// re-sync that receives the same message again skips decoding and
+  /// rewriting it. Null for a message built on this phone.
   final String? fingerprint;
 
   /// Creation timestamp.
@@ -65,6 +73,18 @@ class Message extends Equatable {
 
   /// Concatenated plain-text projection of all content blocks.
   String get plainText => contents.map((c) => c.asPlainText).join('\n');
+
+  /// The message's text on one line, for a preview: its text runs (or, with
+  /// none, its plain-text projection) with every run of whitespace collapsed
+  /// to one space. Untruncated — each surface cuts it to its own length.
+  String get previewText {
+    final text = contents
+        .whereType<TextContent>()
+        .map((t) => t.text)
+        .where((t) => t.trim().isNotEmpty)
+        .join(' ');
+    return collapsePreviewText(text.isEmpty ? plainText : text);
+  }
 
   /// Whether any content block is still streaming.
   bool get isStreaming =>

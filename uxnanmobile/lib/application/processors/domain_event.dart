@@ -74,8 +74,9 @@ class ThinkingDeltaEvent extends DomainEvent {
   List<Object?> get props => [turnId, threadId, delta];
 }
 
-/// A structured content block (command/diff/tool) produced during the turn,
-/// already decoded into a [MessageContent] (`stream/content/block`).
+/// A block the agent produced during the turn, already decoded into a
+/// [MessageContent] (`stream/content/block`). A step (command, edit, tool
+/// call) arrives as its bounded preview, with its stored [index].
 class ContentBlockEvent extends DomainEvent {
   /// Creates a [ContentBlockEvent].
   const ContentBlockEvent({
@@ -84,6 +85,7 @@ class ContentBlockEvent extends DomainEvent {
     this.threadId,
     this.beforeText = false,
     this.blockId,
+    this.index,
   });
 
   /// The turn that produced the block.
@@ -109,8 +111,14 @@ class ContentBlockEvent extends DomainEvent {
   /// step shows as it starts (running) and settles where it stood.
   final String? blockId;
 
+  /// Where the bridge stored the block: its index in the turn's assistant
+  /// `segments` (the address `turn/step` takes). A step whose index falls in
+  /// a run the live view already holds summarized is that run's own step.
+  final int? index;
+
   @override
-  List<Object?> get props => [turnId, threadId, content, beforeText, blockId];
+  List<Object?> get props =>
+      [turnId, threadId, content, beforeText, blockId, index];
 }
 
 /// A turn finished successfully.
@@ -459,6 +467,24 @@ class TurnCreatedEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [turn, clientTurnId, threadId];
+}
+
+/// The bridge merged turns written outside it — the agent's own terminal,
+/// another app on the same native session — into a conversation's history
+/// (`stream/history/changed`, architecture/02a §5.8.8 *The history watcher*).
+/// A client showing that conversation re-reads its newest page; nothing polls.
+class HistoryChangedEvent extends DomainEvent {
+  /// Creates a [HistoryChangedEvent].
+  const HistoryChangedEvent({required this.threadId, this.rev});
+
+  /// The conversation whose history changed.
+  final String threadId;
+
+  /// The thread's sync revision after the merge, when the bridge sent it.
+  final int? rev;
+
+  @override
+  List<Object?> get props => [threadId, rev];
 }
 
 /// A pending approval stopped being pending (`stream/approval/resolved`):

@@ -40,6 +40,7 @@ class IncomingMessageProcessor {
           threadId,
           params['content'],
           beforeText: params['beforeText'] == true,
+          index: params['index'],
         ),
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
@@ -114,6 +115,12 @@ class IncomingMessageProcessor {
               ? params['devices'] as List<Object?>
               : const [],
         ),
+      'stream/history/changed' => threadId is String && threadId.isNotEmpty
+          ? HistoryChangedEvent(
+              threadId: threadId,
+              rev: params['rev'] is int ? params['rev'] as int : null,
+            )
+          : const UnknownDomainEvent(method: 'stream/history/changed'),
       'stream/turn/created' => _turnCreated(
           params['turn'],
           threadId,
@@ -159,11 +166,14 @@ class IncomingMessageProcessor {
   /// [UnknownDomainEvent] when the content isn't a decodable block.
   /// [beforeText] marks a block from a parallel/background activity that must
   /// be ordered before the open text run (see [ContentBlockEvent.beforeText]).
+  /// [index] is where the bridge stored it; a step's preview carries the same
+  /// index, which is what is kept.
   DomainEvent _contentBlock(
     String turnId,
     String? threadId,
     Object? content, {
     bool beforeText = false,
+    Object? index,
   }) {
     if (content is Map) {
       // An approval or a question is one request whatever copy of it arrives,
@@ -178,9 +188,20 @@ class IncomingMessageProcessor {
       return ContentBlockEvent(
         turnId: turnId,
         threadId: threadId,
-        content: MessageContent.fromJson(content.cast<String, dynamic>()),
+        content: MessageContent.fromJson({
+          ...content.cast<String, dynamic>(),
+          // A step's preview carries its index already; the notification's
+          // own is the same address, kept on a step that lacks it.
+          if (index is int &&
+              index >= 0 &&
+              content['index'] == null &&
+              const {'command_execution', 'diff', 'tool'}
+                  .contains(content['type']))
+            'index': index,
+        }),
         beforeText: beforeText,
         blockId: blockId is String && blockId.isNotEmpty ? blockId : null,
+        index: index is int && index >= 0 ? index : null,
       );
     }
     return const UnknownDomainEvent(method: 'stream/content/block');

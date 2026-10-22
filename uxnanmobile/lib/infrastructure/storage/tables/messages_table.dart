@@ -39,6 +39,11 @@ class MessagesTable extends Table {
   /// (`Turn.completedAt - Turn.createdAt`), once the turn has ended.
   IntColumn get turnDurationMs => integer().nullable()();
 
+  /// The start of the message's text (`Message.previewText`, cut to
+  /// `MessagePreviewLimits.columnLength`), written with it so a thread row's
+  /// preview is read without decoding any message's contents.
+  TextColumn get previewText => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

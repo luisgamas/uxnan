@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DaemonState, DEFAULT_DAEMON_CONFIG, renameWithRetry } from '../src/index.js';
+import { turnFileStem } from '../src/daemon-state.js';
 import { rmrf } from './helpers/fs.js';
 
 function freshState(): DaemonState {
@@ -147,4 +149,83 @@ test('writeJson leaves no temp sibling when the rename ultimately fails', async 
   assert.deepEqual(left, [], 'the temp file is cleaned up on failure');
   assert.deepEqual(await state.readJson('threads.json'), { v: 1 });
   await rmrf(state.baseDir);
+});
+
+test('turnFileStem keeps a UUID and encodes any other id into a safe, distinct name', () => {
+  const uuid = randomUUID();
+  assert.equal(turnFileStem(uuid), uuid);
+  const imported = turnFileStem('session#t3');
+  assert.match(imported, /^_[A-Za-z0-9_-]+$/);
+  assert.notEqual(turnFileStem('a.b'), turnFileStem('a_b'));
+  assert.notEqual(turnFileStem('../x'), '../x');
+});
+
+test('a conversation directory: index, turn files and an append-only journal', async () => {
+  const state = freshState();
+  try {
+    assert.deepEqual(await state.readThreadIndexes(), []);
+    assert.equal(await state.hasThreadIndex('th'), false);
+    await state.writeThreadIndex('th', '{"id":"th"}');
+    assert.equal(await state.hasThreadIndex('th'), true);
+    assert.deepEqual(await state.readThreadIndexes(), [{ threadId: 'th', text: '{"id":"th"}' }]);
+
+    assert.equal(await state.readTurnFile('th', 's#t0'), null);
+    await state.writeTurnFile('th', 's#t0', '{"events":0}');
+    assert.equal(await state.readTurnFile('th', 's#t0'), '{"events":0}');
+
+    assert.equal(await state.readTurnJournal('th', 's#t0'), null);
+    await state.appendTurnJournal('th', 's#t0', 'one\n');
+    await state.appendTurnJournal('th', 's#t0', 'two\n');
+    assert.equal(await state.readTurnJournal('th', 's#t0'), 'one\ntwo\n');
+    await state.removeTurnJournal('th', 's#t0');
+    assert.equal(await state.readTurnJournal('th', 's#t0'), null);
+    assert.equal(await state.readTurnFile('th', 's#t0'), '{"events":0}');
+
+    await state.appendTurnJournal('th', 's#t0', 'again\n');
+    await state.removeTurnFiles('th', 's#t0');
+    assert.equal(await state.readTurnFile('th', 's#t0'), null);
+    assert.equal(await state.readTurnJournal('th', 's#t0'), null);
+
+    await state.removeThread('th');
+    assert.deepEqual(await state.readThreadIndexes(), []);
+    await assert.rejects(state.writeThreadIndex('../escape', '{}'), /unsafe thread id/);
+  } finally {
+    await rmrf(state.baseDir);
+  }
+});
+
+test('readThreadIndexes skips a conversation directory without an index', async () => {
+  const state = freshState();
+  try {
+    await state.writeTurnFile('half', 't', '{}');
+    await state.writeThreadIndex('whole', '{}');
+    assert.deepEqual(
+      (await state.readThreadIndexes()).map((entry) => entry.threadId),
+      ['whole'],
+    );
+  } finally {
+    await rmrf(state.baseDir);
+  }
+});
+
+test('a previous-layout conversation file is listed, read and moved to threads.v1', async () => {
+  const state = freshState();
+  try {
+    await mkdir(state.threadsDir, { recursive: true });
+    await writeFile(join(state.threadsDir, 'old.json'), '{"id":"old"}');
+    await writeFile(join(state.threadsDir, 'broken.json'), '{not json');
+    await state.writeThreadIndex('new', '{}');
+    assert.deepEqual((await state.v1ThreadIds()).sort(), ['broken', 'old']);
+    assert.deepEqual(await state.readV1ThreadFile('old'), { id: 'old' });
+    assert.equal(await state.readV1ThreadFile('broken'), null);
+
+    await state.retireV1ThreadFile('old');
+    assert.deepEqual(await state.v1ThreadIds(), ['broken']);
+    assert.equal(
+      await readFile(join(state.baseDir, 'threads.v1', 'old.json'), 'utf-8'),
+      '{"id":"old"}',
+    );
+  } finally {
+    await rmrf(state.baseDir);
+  }
 });

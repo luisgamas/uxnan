@@ -8,6 +8,7 @@ import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/bridge_replica.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart'
     show FileBrowserManager;
+import 'package:uxnan/application/managers/file_edits_loader.dart';
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/phone_name_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
@@ -42,6 +43,7 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/repositories/i_agent_view_repository.dart';
+import 'package:uxnan/domain/repositories/i_turn_detail_repository.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
@@ -64,6 +66,7 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/domain/value_objects/usage_summary.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
 import 'package:uxnan/infrastructure/repositories/bridge_agent_view_repository.dart';
+import 'package:uxnan/infrastructure/repositories/bridge_turn_detail_repository.dart';
 import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -126,6 +129,18 @@ final agentViewRepositoryProvider = Provider<IAgentViewRepository>((ref) {
   final coordinator = ref.watch(sessionCoordinatorProvider);
   return BridgeAgentViewRepository(coordinator.sendRequest);
 });
+
+/// Reads what a page of history leaves out — a run's steps, a step whole,
+/// the whole reasoning — and keeps the last few answers in RAM.
+final turnDetailRepositoryProvider = Provider<ITurnDetailRepository>((ref) {
+  final coordinator = ref.watch(sessionCoordinatorProvider);
+  return BridgeTurnDetailRepository(coordinator.sendRequest);
+});
+
+/// Gathers a changed file's edits, with their bodies, for its diff.
+final fileEditsLoaderProvider = Provider<FileEditsLoader>(
+  (ref) => FileEditsLoader(ref.watch(turnDetailRepositoryProvider)),
+);
 
 /// Current connection phase, as a stream for the UI.
 final connectionPhaseProvider = StreamProvider<ConnectionPhase>(

@@ -169,6 +169,60 @@ void main() {
 
       expect((await repo.getMessages('th1')).single.role, MessageRole.system);
     });
+    test('a head carries everything but the contents', () async {
+      await repo.saveMessage(
+        Message(
+          id: 'a',
+          threadId: 'th1',
+          turnId: 't1',
+          role: MessageRole.assistant,
+          contents: const [TextContent('done')],
+          deliveryState: MessageDeliveryState.failed,
+          orderIndex: 7,
+          createdAt: DateTime.fromMillisecondsSinceEpoch(5000),
+          fingerprint: 'fp',
+          continuedIn: 't2',
+          turnDuration: const Duration(seconds: 9),
+        ),
+      );
+      final head = (await repo.getMessageHeadsForTurns('th1', {'t1'})).single;
+      expect(head.id, 'a');
+      expect(head.role, MessageRole.assistant);
+      expect(head.deliveryState, MessageDeliveryState.failed);
+      expect(head.orderIndex, 7);
+      expect(head.createdAt.millisecondsSinceEpoch, 5000);
+      expect(head.fingerprint, 'fp');
+      expect(head.continuedIn, 't2');
+      expect(head.turnDuration, const Duration(seconds: 9));
+    });
+
+    test('keeps the start of the text beside it for the latest reply',
+        () async {
+      await repo.saveMessages([
+        _msg('a1', order: 1, contents: const [TextContent('first')]),
+        _msg(
+          'a2',
+          order: 2,
+          contents: const [
+            WorkRunContent(from: 0, to: 3, commands: 4),
+            TextContent('  second\n\nreply  '),
+          ],
+        ),
+        _msg('a3', order: 3, contents: const [TextContent('   ')]),
+        _msg(
+          'long',
+          order: 1,
+          threadId: 'th2',
+          contents: [
+            TextContent('x' * 1000),
+          ],
+        ),
+      ]);
+      expect(await repo.latestReplyPreview('th1'), 'second reply');
+      expect((await repo.latestReplyPreview('th2'))!.length, 280);
+      expect(await repo.latestReplyPreview('none'), isNull);
+    });
+
     test('reads only the turns, states and range it is asked for', () async {
       await repo.saveMessages([
         for (var i = 1; i <= 10; i++) _msg('m$i', order: i, turnId: 'turn$i'),
@@ -203,10 +257,25 @@ void main() {
       );
       expect(await repo.getMessagesForTurns('th1', const {}), isEmpty);
       expect(
-        (await repo.getMessagesFrom('th1', fromOrderIndex: 10))
+        (await repo.getMessageHeadsFrom('th1', fromOrderIndex: 10))
             .map((m) => m.id),
         ['m10', 'echo', 'q'],
       );
+      expect(
+        (await repo.getMessageHeadsForTurns(
+          'th1',
+          {'turn9'},
+          includeUnstamped: true,
+        ))
+            .map((m) => m.id),
+        ['m9', 'echo'],
+      );
+      expect(await repo.getMessageHeadsForTurns('th1', const {}), isEmpty);
+      expect(
+        (await repo.getMessagesByIds({'m3', 'q'})).map((m) => m.id).toSet(),
+        {'m3', 'q'},
+      );
+      expect(await repo.getMessagesByIds(const {}), isEmpty);
       expect(await repo.orderBounds('th1'), (min: 1, max: 12));
       expect(await repo.orderBounds('nothing'), isNull);
       expect(

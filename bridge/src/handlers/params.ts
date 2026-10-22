@@ -94,6 +94,15 @@ export function requireSafe(params: unknown, key: string): string {
   return value;
 }
 
+/** A position — a non-negative integer — under [key]. */
+export function requireIndex(params: unknown, key: string): number {
+  const value = asObject(params)[key];
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw RpcError.invalidParams(`expected a non-negative integer '${key}'`);
+  }
+  return value;
+}
+
 export function requireArray(params: unknown, key: string): unknown[] {
   const value = asObject(params)[key];
   if (!Array.isArray(value)) {

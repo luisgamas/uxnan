@@ -5,11 +5,14 @@
  * - Malformed envelopes → -32600 (invalid request).
  * - Handlers may throw {@link RpcError} (mapped to its code) or any error
  *   (mapped to -32603 internal error).
+ * - An answer too large for the smallest channel → -32011 (response too
+ *   large) in its place, so no transport ever sends a frame its peer drops.
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (handler-router).
  */
 import {
   JsonRpcErrorCode,
+  LOCAL_CONTROL_MAX_FRAME_BYTES,
   RpcError,
   isKnownMethod,
   makeErrorResponse,
@@ -35,6 +38,17 @@ export interface RequestSession {
    *  (`desktop/attach`) check it. */
   local?: string;
 }
+
+/**
+ * The largest answer, serialized, the bridge sends: what fits one frame of its
+ * smallest channel (the local control channel, {@link LOCAL_CONTROL_MAX_FRAME_BYTES})
+ * with room for the frame around it. A bigger frame is dropped by the peer,
+ * and a dropped frame closes the connection — the client reconnects, asks
+ * again and gets the same answer, forever. Every transport (local control,
+ * LAN, relay) answers through {@link HandlerRouter.dispatch}, so this one
+ * check covers them all.
+ */
+export const MAX_RESPONSE_BYTES = LOCAL_CONTROL_MAX_FRAME_BYTES - 1024;
 
 export type RpcHandler = (
   params: unknown,
@@ -65,12 +79,30 @@ export class HandlerRouter {
       return makeErrorResponse(id, RpcError.methodNotFound(method).toErrorObject());
     }
     const handler = this.#handlers.get(method)!;
+    let response: JsonRpcResponse;
     try {
       const result = await handler(request.params, this.#ctx, session);
-      return makeResponse(id, result ?? null);
+      response = makeResponse(id, result ?? null);
     } catch (err) {
       return makeErrorResponse(id, this.#toErrorObject(err));
     }
+    return this.#bounded(method, response);
+  }
+
+  /** [response], or a {@link JsonRpcErrorCode.ResponseTooLarge} error when it would not fit a frame. */
+  #bounded(method: string, response: JsonRpcResponse): JsonRpcResponse {
+    const bytes = Buffer.byteLength(JSON.stringify(response), 'utf8');
+    if (bytes <= MAX_RESPONSE_BYTES) return response;
+    // Sizes only: the answer is the user's data.
+    this.#ctx.logger.warn(`${method}: answer of ${bytes} bytes is over ${MAX_RESPONSE_BYTES}`);
+    return makeErrorResponse(
+      response.id,
+      new RpcError(
+        JsonRpcErrorCode.ResponseTooLarge,
+        `The answer to ${method} is too large to send (${bytes} bytes)`,
+        { bytes, limit: MAX_RESPONSE_BYTES },
+      ).toErrorObject(),
+    );
   }
 
   /** Validate a raw (untrusted) message envelope, then dispatch it. */

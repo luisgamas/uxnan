@@ -5,6 +5,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Bounded history** (`models/history.ts`). `WorkRunSegment` (`type: 'work'`:
+  `from`/`to` in the stored `segments`, `commands`, `edits`, `tools`,
+  `thoughts`, `failed`, `running`, `files`, `last`) and `StepPreview` (a step
+  with its command cut to 400 characters, its output to its last 1 200, an
+  edit without its body, a tool's input bounded, a thought cut to its first
+  600, plus `index` and the full size of each cut field), and the pure
+  functions that make them — `summarizeTurn`, `summarizeMessage`,
+  `summarizeSegments`, `previewStep`, `previewStepRange`, `isStep`,
+  `stepFailed`, `stepRunning`, the guards `isWorkRunSegment` / `isStepPreview`,
+  `jsonBytes` / `utf8Length` — and the budgets: `TURN_PAGE_MAX_BYTES` (1 MiB),
+  `STEP_PAGE_MAX_BYTES` (256 KiB), `STEP_COMMAND_PREVIEW_CHARS` (400),
+  `STEP_OUTPUT_PREVIEW_CHARS` (1 200), `STEP_THINKING_PREVIEW_CHARS` (600).
+- **Reasoning as steps where they happened**: `ThinkingSegment`
+  (`{ type: 'thinking', text }`), stored in an assistant message's `segments`
+  in the order it was thought, and `thinking` joins `StepType` / `STEP_TYPES`
+  (a thought between two commands stays in their `work` run;
+  `ThinkingStepPreview { type: 'thinking', index, text, textChars? }`).
+  `appendThinkingSegment(segments, delta)` is the one placement rule the
+  bridge and every client apply to `stream/thinking/delta`: grow the last
+  segment when it is a thought, otherwise open one at the end (never before
+  an open text run). `isThinkingSegment`. A thought never fails and has no
+  status; a client shows it running while it is the last segment of a live
+  turn.
+- **Two methods**: `turn/steps` (`TurnStepsParams` → `StepPage`) and
+  `turn/step` (`TurnStepParams` → `TurnStepResult`, any stored block whole — a
+  thought's full text too). 105 methods.
+- **`JsonRpcErrorCode.ResponseTooLarge` (`-32011`)**: an answer too large for
+  one frame of the smallest channel.
+- `TurnList.offset`, `ContentBlockParams.index`.
+- **`stream/history/changed`** (`StreamNotification.HistoryChanged`,
+  `HistoryChangedParams { threadId, rev }`): the stored turns of a thread
+  changed outside a live turn because the bridge merged the agent's own
+  transcript; a client showing the conversation re-reads its newest page
+  (architecture/02a §5.8.8). 26 notifications.
+
+### Changed
+
+- A page's `Message.segments` folds each run of steps into a `work` segment;
+  `stream/content/block` carries a step as its `StepPreview`; `segments` is
+  always present on an assistant message.
+- `ThinkingDeltaParams` documents where its chunk goes (no `index`: the
+  receiver applies `appendThinkingSegment`).
+
+### Removed
+
+- **`Message.blocks`.** `segments` is the one place a step lives.
+- **`Message.thinking`.** One reasoning string per message, with no place in
+  it, is gone: the reasoning is the message's `thinking` segments.
+
 ## [0.0.34-alpha.20261015] - 20261015
 ### Added
 

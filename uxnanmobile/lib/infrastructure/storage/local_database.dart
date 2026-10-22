@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:uxnan/infrastructure/storage/message_preview_limits.dart';
 import 'package:uxnan/infrastructure/storage/tables/composer_drafts_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/connection_sessions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/git_action_log_table.dart';
@@ -12,6 +13,19 @@ import 'package:uxnan/infrastructure/storage/tables/trusted_devices_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/turns_table.dart';
 
 part 'local_database.g.dart';
+
+/// Fills `preview_text` for the messages stored before v13: each message's
+/// non-blank text runs joined by a space, cut to the column's length (the one
+/// variable). SQLite's JSON functions read the contents in place.
+const String _backfillMessagePreviews = r"""
+UPDATE messages_table SET preview_text = substr((
+  SELECT group_concat(json_extract(part.value, '$.text'), ' ')
+  FROM json_each(messages_table.contents_json) AS part
+  WHERE json_extract(part.value, '$.type') = 'text'
+    AND trim(json_extract(part.value, '$.text')) != ''
+), 1, ?)
+WHERE json_valid(contents_json)
+""";
 
 /// The app's local SQLite database (drift).
 ///
@@ -40,7 +54,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +161,17 @@ class UxnanDatabase extends _$UxnanDatabase {
             await m.addColumn(
               trustedDevicesTable,
               trustedDevicesTable.relayEnabled,
+            );
+          }
+          // v13: a message keeps the start of its text beside it, so a thread
+          // row shows its last reply without decoding message contents. The
+          // rows already stored get theirs from their text runs, computed by
+          // SQLite itself — a one-time pass that never decodes a row in Dart.
+          if (from < 13) {
+            await m.addColumn(messagesTable, messagesTable.previewText);
+            await customStatement(
+              _backfillMessagePreviews,
+              [MessagePreviewLimits.columnLength],
             );
           }
         },

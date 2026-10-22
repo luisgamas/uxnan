@@ -1,7 +1,7 @@
 /**
  * JSON-RPC 2.0 error codes used across the Uxnan ecosystem.
  *
- * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32010).
+ * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32011).
  * Source: architecture/02b-contracts-and-requirements.md.
  */
 export const JsonRpcErrorCode = {
@@ -33,6 +33,15 @@ export const JsonRpcErrorCode = {
    * lets it go. `data` carries the {@link AgentSessionHold}.
    */
   SessionHeld: -32010,
+  /**
+   * The answer to this request, serialized, is larger than the smallest
+   * channel a client may be on accepts in one frame
+   * (`LOCAL_CONTROL_MAX_FRAME_BYTES`). The bridge answers this error instead
+   * of a frame its peer would drop — dropping it closes the connection — so
+   * the connection stays up and the caller learns why. `data` carries
+   * `{ bytes, limit }`.
+   */
+  ResponseTooLarge: -32011,
 } as const;
 
 export type JsonRpcErrorCode = (typeof JsonRpcErrorCode)[keyof typeof JsonRpcErrorCode];
@@ -55,6 +64,7 @@ export const JSON_RPC_ERROR_MESSAGES: Record<JsonRpcErrorCode, string> = {
   [JsonRpcErrorCode.ResourceNotFound]: 'Resource not found',
   [JsonRpcErrorCode.AgentBusy]: 'Agent busy',
   [JsonRpcErrorCode.SessionHeld]: 'Session open in a terminal',
+  [JsonRpcErrorCode.ResponseTooLarge]: 'Response too large',
 };
 
 /** Shape of the `error` member of a JSON-RPC error response. */

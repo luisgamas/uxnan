@@ -128,10 +128,13 @@ export interface OpenCodeModel {
  */
 export interface OpenCodeHistoryMessage {
   role: 'user' | 'assistant';
+  /** The prose, its runs concatenated. */
   text: string;
-  thinking?: string;
-  /** Structured tool blocks the message produced (`opencodeToolBlock`). */
-  blocks?: unknown[];
+  /**
+   * An assistant message's prose runs, thoughts and tool blocks
+   * (`opencodeToolBlock`) in the order of its parts (`ReplySegments`).
+   */
+  segments?: unknown[];
   /** Epoch ms. */
   createdAt: number;
 }
