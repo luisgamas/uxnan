@@ -208,6 +208,7 @@ class PushRegistrar {
             ThreadUpdatedEvent() ||
             ThreadDeletedEvent() ||
             TurnCreatedEvent() ||
+            HistoryChangedEvent() ||
             ApprovalResolvedEvent() ||
             QuestionResolvedEvent() ||
             QueueUpdatedEvent() ||

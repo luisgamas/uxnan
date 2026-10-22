@@ -1610,11 +1610,29 @@ abstract class AppLocalizations {
   /// **'Send a message to start the conversation.'**
   String get conversationEmptyBody;
 
-  /// Header of the collapsible section showing the agent's reasoning.
+  /// A work-log row for a thought the agent is writing right now.
   ///
   /// In en, this message translates to:
   /// **'Thinking'**
   String get conversationThinking;
+
+  /// A work-log row for a finished stretch of the agent's reasoning, followed by its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Thought'**
+  String get conversationThought;
+
+  /// Opens a thought the conversation shows only the start of.
+  ///
+  /// In en, this message translates to:
+  /// **'Show full thought'**
+  String get conversationThoughtFull;
+
+  /// Part of a work log's summary: how many stretches of reasoning it holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 thought} other{{count} thoughts}}'**
+  String conversationWorkThoughts(int count);
 
   /// Header of the collapsible list of commands/tools an agent turn ran.
   ///
@@ -6421,6 +6439,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Load interactive view'**
   String get conversationViewLoadInteractive;
+
+  /// In an opened work log whose steps are summarized: they are fetched from the PC, which is not connected now.
+  ///
+  /// In en, this message translates to:
+  /// **'The steps load when your computer is connected.'**
+  String get conversationWorkLogOffline;
+
+  /// In an opened work log: fetching its steps from the PC failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the steps.'**
+  String get conversationWorkLogLoadFailed;
+
+  /// Loads the next page of a long work log's steps.
+  ///
+  /// In en, this message translates to:
+  /// **'Show more steps'**
+  String get conversationWorkLogMore;
+
+  /// Part of a work log's summary: how many shell commands it ran.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 command} other{{count} commands}}'**
+  String conversationWorkCommands(int count);
+
+  /// Part of a work log's summary: how many tool calls it made.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tool call} other{{count} tool calls}}'**
+  String conversationWorkTools(int count);
+
+  /// Part of a work log's summary: how many of its steps failed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} failed'**
+  String conversationWorkFailed(int count);
+
+  /// A collapsed work log whose latest step was an edit of a file.
+  ///
+  /// In en, this message translates to:
+  /// **'Edited {file}'**
+  String conversationEditedFile(String file);
+
+  /// Opens a command whose output (or command line) the conversation shows only in part.
+  ///
+  /// In en, this message translates to:
+  /// **'Show full output'**
+  String get conversationStepFullOutput;
+
+  /// Above a command's output when only its end is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Last {shown} of {total} characters'**
+  String conversationStepOutputTail(int shown, int total);
+
+  /// Below a diff cut short in the conversation.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more line} other{{count} more lines}}'**
+  String conversationDiffMoreLines(int count);
+
+  /// Title of the screen showing one command the agent ran, whole.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get turnDetailCommandTitle;
+
+  /// Section of a command's screen: what it printed.
+  ///
+  /// In en, this message translates to:
+  /// **'Output'**
+  String get turnDetailOutputHeader;
+
+  /// A finished command's exit code, beside its output.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit code {code}'**
+  String turnDetailExitCode(int code);
+
+  /// Section of a tool call's screen: what the agent passed it.
+  ///
+  /// In en, this message translates to:
+  /// **'Input'**
+  String get turnDetailInputHeader;
+
+  /// Section of a tool call's screen: what it returned.
+  ///
+  /// In en, this message translates to:
+  /// **'Result'**
+  String get turnDetailResultHeader;
+
+  /// Above each edit of one file on its diff screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit {index} of {total}'**
+  String turnDetailEditHeader(int index, int total);
+
+  /// A detail screen whose content comes from the PC, which is not connected now.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to your computer to see this.'**
+  String get turnDetailOffline;
+
+  /// The bridge refused to send a step because it does not fit one message.
+  ///
+  /// In en, this message translates to:
+  /// **'This is too large to send to your phone.'**
+  String get turnDetailTooLarge;
+
+  /// A detail screen whose content could not be fetched from the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this.'**
+  String get turnDetailFailed;
+
+  /// A detail screen whose content turned out empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to show.'**
+  String get turnDetailEmpty;
+
+  /// Snackbar after copying a detail screen's whole text.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get turnDetailCopied;
 }
 
 class _AppLocalizationsDelegate

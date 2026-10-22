@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -12,6 +14,27 @@ const _trustedDevicesV11 = 'CREATE TABLE "trusted_devices_table" ( '
     '"hosts" TEXT NULL, "session_id" TEXT NOT NULL, '
     '"paired_at_ms" INTEGER NOT NULL, "last_seen_ms" INTEGER NULL, '
     '"last_applied_bridge_outbound_seq" INTEGER NULL, '
+    'PRIMARY KEY ("mac_device_id"))';
+
+/// The messages table exactly as schemas v11 and v12 created it.
+const _messagesV11 = 'CREATE TABLE "messages_table" ("id" TEXT NOT NULL, '
+    '"thread_id" TEXT NOT NULL, "turn_id" TEXT NOT NULL, '
+    '"role" TEXT NOT NULL, "contents_json" TEXT NOT NULL, '
+    '"delivery_state" TEXT NOT NULL, "order_index" INTEGER NOT NULL, '
+    '"fingerprint" TEXT NULL, "created_at_ms" INTEGER NOT NULL, '
+    '"continued_in" TEXT NULL, "turn_duration_ms" INTEGER NULL, '
+    'PRIMARY KEY ("id"))';
+
+/// The trusted devices table as schema v12 created it.
+const _trustedDevicesV12 = 'CREATE TABLE "trusted_devices_table" ( '
+    '"mac_device_id" TEXT NOT NULL, '
+    '"display_name" TEXT NOT NULL, '
+    '"hosts" TEXT NULL, "session_id" TEXT NOT NULL, '
+    '"paired_at_ms" INTEGER NOT NULL, "last_seen_ms" INTEGER NULL, '
+    '"last_applied_bridge_outbound_seq" INTEGER NULL, '
+    '"relay_url" TEXT NULL, "relay_routing_id" TEXT NULL, '
+    '"relay_enabled" INTEGER NOT NULL DEFAULT 0 '
+    'CHECK ("relay_enabled" IN (0, 1)), '
     'PRIMARY KEY ("mac_device_id"))';
 
 /// Upgrades of an existing on-device database (`UxnanDatabase.migration`).
@@ -123,6 +146,7 @@ void main() {
         setup: (raw) {
           raw
             ..execute(_trustedDevicesV11)
+            ..execute(_messagesV11)
             ..execute(
               'INSERT INTO trusted_devices_table '
               'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -150,5 +174,58 @@ void main() {
     expect(row.relayUrl, isNull);
     expect(row.relayRoutingId, isNull);
     expect(row.relayEnabled, isFalse);
+  });
+
+  test('a v12 database gains the reply preview, filled from its text runs',
+      () async {
+    final legacy = UxnanDatabase.forTesting(
+      NativeDatabase.memory(
+        setup: (raw) {
+          void insert(String id, String role, String contents) => raw.execute(
+                'INSERT INTO messages_table '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                  id,
+                  'th1',
+                  't1',
+                  role,
+                  contents,
+                  'delivered',
+                  1,
+                  null,
+                  1000,
+                  null,
+                  null,
+                ],
+              );
+          raw
+            ..execute(_messagesV11)
+            ..execute(_trustedDevicesV12);
+          insert(
+            'a',
+            'assistant',
+            jsonEncode([
+              {'type': 'thinking', 'text': 'hidden'},
+              {'type': 'text', 'text': 'Let me look.'},
+              {'type': 'command_execution', 'command': 'ls'},
+              {'type': 'text', 'text': '  '},
+              {'type': 'text', 'text': 'Done.'},
+            ]),
+          );
+          insert('b', 'assistant', 'not json');
+          raw.execute('PRAGMA user_version = 12');
+        },
+      ),
+    );
+    addTearDown(legacy.close);
+
+    final rows = await legacy.select(legacy.messagesTable).get();
+    final byId = {for (final row in rows) row.id: row.previewText};
+    expect(byId['a'], 'Let me look. Done.');
+    expect(byId['b'], isNull);
+    expect(
+      await DriftMessageRepository(legacy).latestReplyPreview('th1'),
+      'Let me look. Done.',
+    );
   });
 }

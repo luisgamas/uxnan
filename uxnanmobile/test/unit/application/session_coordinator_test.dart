@@ -30,6 +30,7 @@ import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/crypto/handshake_crypto.dart';
 import 'package:uxnan/infrastructure/crypto/key_generation.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
+import 'package:uxnan/infrastructure/transport/json_payload_decoder.dart';
 import 'package:uxnan/infrastructure/transport/relay_client.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -561,6 +562,7 @@ void main() {
     DelayFn? delay,
     RelayEndpoint? relay = _relay,
     List<String> hosts = const [],
+    JsonPayloadDecoder payloadDecoder = const JsonPayloadDecoder(),
   }) async {
     bridgeId = await keygen.generateIdentityKeyPair();
     final phoneId = await keygen.generateIdentityKeyPair();
@@ -579,6 +581,7 @@ void main() {
       ),
       delay: delay ?? (_) async {}, // elide backoff in tests by default
       directRetryDebounce: const Duration(milliseconds: 10),
+      payloadDecoder: payloadDecoder,
     );
     if (setActive) {
       // A PC is active only once it is paired, so its record is stored.
@@ -709,6 +712,58 @@ void main() {
     final notification = await received;
     expect(notification.method, 'stream/turn/started');
     expect(notification.isNotification, isTrue);
+  });
+
+  test(
+      'a large frame decoding in the background is never overtaken by a '
+      'small one that arrived after it', () async {
+    var background = 0;
+    final harness = await build(
+      echo,
+      payloadDecoder: JsonPayloadDecoder(
+        isolateThreshold: 1024,
+        // Slower than any small frame, like a page decoding off-isolate.
+        runInBackground: (work) async {
+          background++;
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+          return work();
+        },
+      ),
+    );
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+
+    final received = harness.coordinator.incomingMessages
+        .take(3)
+        .map((m) => m.method)
+        .toList()
+        .timeout(const Duration(seconds: 5));
+    final bridge = harness.selector.currentBridge!;
+    await bridge.pushNotification(
+      RpcMessage.notification(
+        method: 'stream/turn/created',
+        params: {'turnId': 't1', 'padding': 'x' * 4096},
+      ),
+    );
+    await bridge.pushNotification(
+      RpcMessage.notification(
+        method: 'stream/message/delta',
+        params: const {'turnId': 't1', 'delta': 'after'},
+      ),
+    );
+    await bridge.pushNotification(
+      RpcMessage.notification(
+        method: 'stream/turn/completed',
+        params: const {'turnId': 't1'},
+      ),
+    );
+
+    expect(await received, [
+      'stream/turn/created',
+      'stream/message/delta',
+      'stream/turn/completed',
+    ]);
+    expect(background, 1);
   });
 
   test('disconnect moves to the disconnected phase', () async {

@@ -24,6 +24,7 @@ import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/transport/backoff_calculator.dart';
+import 'package:uxnan/infrastructure/transport/json_payload_decoder.dart';
 import 'package:uxnan/infrastructure/transport/outbound_message_buffer.dart';
 import 'package:uxnan/infrastructure/transport/request_correlator.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
@@ -59,6 +60,7 @@ class SessionCoordinator {
     DelayFn? delay,
     int maxReconnectAttempts = 10,
     Duration directRetryDebounce = const Duration(seconds: 1),
+    JsonPayloadDecoder payloadDecoder = const JsonPayloadDecoder(),
   })  : _secureTransport = secureTransport,
         _transportSelector = transportSelector,
         _identityResolver = identityResolver,
@@ -71,7 +73,8 @@ class SessionCoordinator {
         _uuid = uuid ?? const Uuid(),
         _delay = delay ?? Future<void>.delayed,
         _maxReconnectAttempts = maxReconnectAttempts,
-        _directRetryDebounce = directRetryDebounce {
+        _directRetryDebounce = directRetryDebounce,
+        _payloadDecoder = payloadDecoder {
     // Close any session left open by a previous run (an app kill without a
     // clean disconnect) so its time is bounded at the last-known-alive moment.
     final repo = _connectionSessionRepository;
@@ -93,6 +96,13 @@ class SessionCoordinator {
   final DelayFn _delay;
   final int _maxReconnectAttempts;
   final Duration _directRetryDebounce;
+  final JsonPayloadDecoder _payloadDecoder;
+
+  /// Inbound frames, one at a time, in arrival order. A frame is decrypted
+  /// and decoded before the next one starts, so a large page decoding off the
+  /// UI isolate is never overtaken by a delta that arrived after it — and
+  /// the envelope sequence advances strictly in order.
+  Future<void> _inbound = Future<void>.value();
 
   final BehaviorSubject<ConnectionPhase> _connectionPhase =
       BehaviorSubject<ConnectionPhase>.seeded(ConnectionPhase.disconnected);
@@ -1080,25 +1090,37 @@ class SessionCoordinator {
     );
   }
 
-  Future<void> _handleRaw(Uint8List raw) async {
+  /// Queues [raw] behind every frame that arrived before it (see
+  /// [_inbound]), with the channel live when it arrived: a frame of a
+  /// connection already replaced is never read with its successor's keys.
+  void _handleRaw(Uint8List raw) {
     final channel = _channel;
     if (channel == null) return;
-    if (_secureTransport.classifyRaw(raw) != SecureMessageKind.envelope) return;
+    _inbound = _inbound.then((_) => _receive(raw, channel));
+  }
+
+  /// Decodes one frame — each layer exactly once: the frame's JSON, then the
+  /// decrypted payload's, off the UI isolate when it is large — and routes it.
+  Future<void> _receive(Uint8List raw, SecureChannel channel) async {
+    final frame = _secureTransport.decodeFrame(raw);
+    final json = frame.json;
+    if (frame.kind != SecureMessageKind.envelope || json == null) return;
     try {
-      final envelope = SecureEnvelope.fromJson(
-        jsonDecode(utf8.decode(raw)) as Map<String, dynamic>,
-      );
+      final envelope = SecureEnvelope.fromJson(json);
       final plaintext = await channel.decrypt(envelope);
       final message = RpcMessage.fromJson(
-        jsonDecode(utf8.decode(plaintext)) as Map<String, dynamic>,
+        await _payloadDecoder.decodeObject(plaintext),
       );
       if (message.isResponse) {
         _correlator.resolve(message);
-      } else {
+      } else if (!_incoming.isClosed) {
         _incoming.add(message);
       }
     } on TransportException catch (error) {
       AppLogger.warn('Dropping inbound frame: ${error.message}');
+    } on Object catch (error, stackTrace) {
+      // A malformed frame must never stop the frames queued behind it.
+      AppLogger.warn('Dropping an unreadable inbound frame', error, stackTrace);
     }
   }
 

@@ -393,8 +393,18 @@
   "conversationEmptyBody": "Send a message to start the conversation.",
   "conversationThinking": "Thinking",
   "@conversationThinking": {
-    "description": "Header of the collapsible section showing the agent's reasoning."
+    "description": "A work-log row for a thought the agent is writing right now."
   },
+  "conversationThought": "Thought",
+  "@conversationThought": {
+    "description": "A work-log row for a finished stretch of the agent's reasoning, followed by its text."
+  },
+  "conversationThoughtFull": "Show full thought",
+  "@conversationThoughtFull": {
+    "description": "Opens a thought the conversation shows only the start of."
+  },
+  "conversationWorkThoughts": "{count, plural, =1{1 thought} other{{count} thoughts}}",
+  "@conversationWorkThoughts": {"description": "Part of a work log's summary: how many stretches of reasoning it holds.", "placeholders": {"count": {"type": "int"}}},
   "conversationWorkLog": "Work log",
   "@conversationWorkLog": {
     "description": "Header of the collapsible list of commands/tools an agent turn ran."
@@ -2196,5 +2206,47 @@
   "conversationViewDelete": "Delete",
   "conversationViewSaveNote": "Save note",
   "conversationViewCouldNotLoadRetry": "Could not load view · Retry",
-  "conversationViewLoadInteractive": "Load interactive view"
+  "conversationViewLoadInteractive": "Load interactive view",
+  "conversationWorkLogOffline": "The steps load when your computer is connected.",
+  "@conversationWorkLogOffline": {"description": "In an opened work log whose steps are summarized: they are fetched from the PC, which is not connected now."},
+  "conversationWorkLogLoadFailed": "Couldn't load the steps.",
+  "@conversationWorkLogLoadFailed": {"description": "In an opened work log: fetching its steps from the PC failed."},
+  "conversationWorkLogMore": "Show more steps",
+  "@conversationWorkLogMore": {"description": "Loads the next page of a long work log's steps."},
+  "conversationWorkCommands": "{count, plural, =1{1 command} other{{count} commands}}",
+  "@conversationWorkCommands": {"description": "Part of a work log's summary: how many shell commands it ran.", "placeholders": {"count": {"type": "int"}}},
+  "conversationWorkTools": "{count, plural, =1{1 tool call} other{{count} tool calls}}",
+  "@conversationWorkTools": {"description": "Part of a work log's summary: how many tool calls it made.", "placeholders": {"count": {"type": "int"}}},
+  "conversationWorkFailed": "{count} failed",
+  "@conversationWorkFailed": {"description": "Part of a work log's summary: how many of its steps failed.", "placeholders": {"count": {"type": "int"}}},
+  "conversationEditedFile": "Edited {file}",
+  "@conversationEditedFile": {"description": "A collapsed work log whose latest step was an edit of a file.", "placeholders": {"file": {"type": "String", "example": "main.dart"}}},
+  "conversationStepFullOutput": "Show full output",
+  "@conversationStepFullOutput": {"description": "Opens a command whose output (or command line) the conversation shows only in part."},
+  "conversationStepOutputTail": "Last {shown} of {total} characters",
+  "@conversationStepOutputTail": {"description": "Above a command's output when only its end is shown.", "placeholders": {"shown": {"type": "int", "format": "decimalPattern"}, "total": {"type": "int", "format": "decimalPattern"}}},
+  "conversationDiffMoreLines": "{count, plural, =1{1 more line} other{{count} more lines}}",
+  "@conversationDiffMoreLines": {"description": "Below a diff cut short in the conversation.", "placeholders": {"count": {"type": "int"}}},
+  "turnDetailCommandTitle": "Command",
+  "@turnDetailCommandTitle": {"description": "Title of the screen showing one command the agent ran, whole."},
+  "turnDetailOutputHeader": "Output",
+  "@turnDetailOutputHeader": {"description": "Section of a command's screen: what it printed."},
+  "turnDetailExitCode": "Exit code {code}",
+  "@turnDetailExitCode": {"description": "A finished command's exit code, beside its output.", "placeholders": {"code": {"type": "int"}}},
+  "turnDetailInputHeader": "Input",
+  "@turnDetailInputHeader": {"description": "Section of a tool call's screen: what the agent passed it."},
+  "turnDetailResultHeader": "Result",
+  "@turnDetailResultHeader": {"description": "Section of a tool call's screen: what it returned."},
+  "turnDetailEditHeader": "Edit {index} of {total}",
+  "@turnDetailEditHeader": {"description": "Above each edit of one file on its diff screen.", "placeholders": {"index": {"type": "int"}, "total": {"type": "int"}}},
+  "turnDetailOffline": "Connect to your computer to see this.",
+  "@turnDetailOffline": {"description": "A detail screen whose content comes from the PC, which is not connected now."},
+  "turnDetailTooLarge": "This is too large to send to your phone.",
+  "@turnDetailTooLarge": {"description": "The bridge refused to send a step because it does not fit one message."},
+  "turnDetailFailed": "Couldn't load this.",
+  "@turnDetailFailed": {"description": "A detail screen whose content could not be fetched from the PC."},
+  "turnDetailEmpty": "Nothing to show.",
+  "@turnDetailEmpty": {"description": "A detail screen whose content turned out empty."},
+  "turnDetailCopied": "Copied to clipboard",
+  "@turnDetailCopied": {"description": "Snackbar after copying a detail screen's whole text."}
 }

@@ -90,6 +90,24 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
 - **Simulated bridge.** Transport/coordinator tests run a persistent in-memory
   "bridge" peer to exercise the handshake, RPC round-trips, notifications and
   reconnect without a network.
+- **Bounded history (plans/046).** Pages, previews and `work` runs are fed in
+  the exact `shared/src/models/history.ts` shapes:
+  `thread_manager_history_test` (runs with their thoughts stored as served, a
+  delta growing the thought it continues or opening one at the end, an
+  unchanged answer never rewritten, paging from `offset`, a `-32011` page
+  kept local, a mid-turn run plus later live steps stored as one run; and the
+  history watcher: no timer re-reads, `stream/history/changed` re-reads the
+  open conversation once, a burst during a read is one follow-up, another
+  thread's change is ignored),
+  `work_runs_test` (`appendThinkingSegment`, thought folding),
+  `bridge_turn_detail_repository_test`,
+  `file_edits_loader_test`, and `bounded_history_widgets_test` (a run's steps
+  read only when its log opens, offline then on reconnect, the lazy detail
+  screen, thought rows: one line, opened in place, a live one pinned to its
+  end, a cut one opened whole). `session_coordinator_test` injects a slow
+  background decoder and asserts a large frame is never overtaken by the small
+  ones behind it;
+  `json_payload_decoder_test` also runs a real `Isolate.run`.
 - **Crypto vectors.** The E2EE primitives are checked against RFC 8032/7748/5869
   and NIST AES-GCM vectors. Plus a **cross-language interop vector** for the
   envelope AAD: a fixed key/nonce/AAD/plaintext whose ciphertext+tag are produced

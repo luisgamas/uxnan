@@ -461,7 +461,7 @@ The pending-question set is the piece that makes it useful in a list:
 `ThreadManager.awaitingInputStream` records the approval/question blocks as they
 arrive **for every thread**, not just the open one, and clears them when the user
 answers or the turn ends. It is in-memory only, and rebuilt on resync because
-`turn/list` replays the blocks.
+`turn/list` serves those blocks as stored (only steps are summarized).
 
 ## Dependency injection / provider graph
 
@@ -488,7 +488,16 @@ and composed in `application_providers.dart`. The important ones:
 
 1. `SessionCoordinator` connects, performs the E2EE handshake, and opens a
    `SecureChannel`. Outbound RPCs go through `sendRequest`; inbound frames are
-   exposed as the `incomingMessages` stream.
+   exposed as the `incomingMessages` stream. **Each frame is decoded once per
+   layer, one frame at a time:** `SecureTransportLayer.decodeFrame` parses the
+   frame's JSON once and hands it on (the envelope is built from it), the
+   channel decrypts, and `JsonPayloadDecoder` parses the plaintext — on a
+   background isolate (`Isolate.run`) when it is 64 KiB or more, a page of
+   history; in place for everything smaller. Frames queue behind each other
+   (`_inbound`), each finished before the next starts, so a page decoding off
+   the UI isolate is never overtaken by a delta that arrived after it, and the
+   envelope sequence advances in order. A frame that cannot be read is
+   dropped without stopping the ones behind it.
 2. `IncomingMessageProcessor` classifies inbound notifications into typed
    `DomainEvent`s (turn started/delta/completed/error/aborted, git progress).
 3. `BridgeReplica` keeps what the bridge owns — conversations, projects, the
@@ -550,12 +559,17 @@ and composed in `application_providers.dart`. The important ones:
 5. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
-6. While the channel is connected, `ThreadManager` polls `turn/list` for the
-   active idle conversation every three seconds. The bridge reconciles the
-   agent-owned native transcript first, so completed turns written from another
-   supported client arrive as ordinary user + assistant messages. Concurrent
-   reconnect/navigation/resume reads are deduplicated, local user messages are
-   matched by turn id, and no polling occurs while the bridge owns a live turn.
+6. **Nothing polls.** The bridge watches the native transcript of every
+   conversation a client reads and announces a merge with
+   `stream/history/changed { threadId, rev }` (architecture/02a §5.8.8, *The
+   history watcher*). For the open conversation, `ThreadManager` re-reads the
+   newest page — the same bounded resync as opening it — so completed turns
+   written from another supported client arrive as ordinary user + assistant
+   messages; a change to a conversation that is not open is ignored (it is read
+   when it opens). Reads are deduplicated: one already in flight takes at most
+   one queued follow-up, so a change announced mid-read is never lost and a
+   burst is one more read. Reconnect, resume and navigation still re-read at
+   once, and local user messages are matched by turn id.
    A newest-page read also **drops the messages of a turn the bridge no longer
    reports** — the bridge owns which turns a thread has, and without this a turn
    it removed (a duplicate its own history import had created) would render from
@@ -590,6 +604,62 @@ Conversation titles come from the bridge only: a provisional one from the first
 prompt, then a generated one, the same for the phone and the desktop. The app
 never renames on its own; a manual rename (`thread/rename`) is the user's and
 the bridge never overwrites it.
+
+## Bounded history (plans/046)
+
+No cost of opening or following a conversation grows with its length. The
+bridge serves a page the way it reads (architecture/02a §5.8.3, *What a page
+carries*), and the phone keeps that shape end to end:
+
+- **Stored as served.** A reply's contents are its text runs, its other blocks,
+  and each run of steps (commands, edits, tool calls, thoughts) as one
+  `WorkRunContent` (`type: 'work'`: stored index range, counts — `thoughts`
+  among them — failed, running, changed files, a preview of its last step).
+  There is no `Message.blocks` and no reasoning of the turn as a whole: a
+  stretch of reasoning is a `ThinkingContent` step where it happened, built
+  live from `stream/thinking/delta` by the bridge's one rule
+  (`appendThinkingSegment`: grow the last segment if it is a thought, else open
+  one at the end), and live only while it is the last segment of the running
+  turn. A live turn holds its steps one by one — the bounded previews
+  `stream/content/block` sends with their stored `index`, and thoughts with the
+  index their position gives them — a step whose index a run seeded by a
+  mid-turn resync covers settles into that run (`absorbStep`), a delta
+  continuing the thought a seeded run ends on grows that run's preview, and
+  the turn is folded (`foldWorkRuns`, a thought's preview cut to 600
+  characters with `textChars`) before it is stored — so a run summarized
+  mid-turn and the steps after it end as one. The rules mirror `shared/src/models/history.ts` in
+  `domain/services/work_runs.dart`; the budgets in `HistoryBudget`.
+- **Detail on demand.** `ITurnDetailRepository` (`BridgeTurnDetailRepository`,
+  a small in-memory LRU) reads `turn/steps` and `turn/step`. A work log asks
+  for a summarized run's steps only when it opens, a page at a time (*Show
+  more steps*); a cut command or thought opens whole; a changed file's diff is
+  gathered by `FileEditsLoader` (its edits found in the runs' steps, each body
+  read by index). Anything whole opens on `TurnDetailScreen`, which lays the
+  text out lazily — one row per line, long lines cut into 1 000-character rows
+  — however large it is. Offline, a run shows what it amounts to and loads once
+  the computer is connected; a `-32011` refusal shows "too large", never a
+  retry loop.
+- **Cheap re-syncs.** `_persistTurns` reads the page's stored messages as
+  heads (`getMessageHeadsForTurns`, no contents decoded); an assistant answer
+  carries the fingerprint of the wire message it was built from
+  (`jsonFingerprint`, `Message.fingerprint`), so an unchanged one is neither
+  decoded nor rewritten, and one that only moved is read whole alone. Pruning
+  dropped turns reads heads too. Paging backward starts where the page did
+  (`TurnList.offset`), because the bridge trims a window to fit 1 MiB. A
+  refused newest page (`-32011`) leaves the conversation as it was. A
+  conversation is re-read only when something says it changed (the history
+  watcher's notification, a reconnect, a resume, opening it) — never on a
+  timer.
+- **Thoughts in the work log.** A thought is a row among the commands: one
+  line — **Thinking** with the shimmer while it is written, else **Thought**
+  and its own text flattened — that opens in place as Markdown in a box at most
+  240 dp tall, which follows the newest text while it streams until the reader
+  scrolls up (`_ThoughtRow` / `_ThoughtBody`). The *show the agent's reasoning*
+  setting hides these rows. A thought is never a thread-row preview (only text
+  runs are), and it is part of the wire message an answer's fingerprint covers.
+- **Cheap thread rows.** A message stores the start of its text beside it
+  (`preview_text`, schema v13, backfilled by SQLite's JSON functions);
+  `threadPreviewProvider` reads one indexed row per visible thread.
 
 ## Patterns worth knowing
 

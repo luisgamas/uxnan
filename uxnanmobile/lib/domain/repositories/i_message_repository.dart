@@ -1,4 +1,5 @@
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/entities/message_head.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 
 /// Contract for persisting and observing [Message]s (spec 02a §5.1.4).
@@ -59,11 +60,31 @@ abstract class IMessageRepository {
     bool includeUnstamped = false,
   });
 
-  /// The messages of [threadId] at or after [fromOrderIndex], ascending.
-  Future<List<Message>> getMessagesFrom(
+  /// The heads of the messages of [threadId] that belong to any of
+  /// [turnIds] — plus, when [includeUnstamped], the local echoes not yet
+  /// stamped with a turn — ascending by index, read without decoding any
+  /// contents. What a re-sync reconciles a page against.
+  Future<List<MessageHead>> getMessageHeadsForTurns(
+    String threadId,
+    Set<String> turnIds, {
+    bool includeUnstamped = false,
+  });
+
+  /// The heads of the messages of [threadId] at or after [fromOrderIndex],
+  /// ascending, read without decoding any contents.
+  Future<List<MessageHead>> getMessageHeadsFrom(
     String threadId, {
     required int fromOrderIndex,
   });
+
+  /// The messages with these [ids], whole (any order). For the few a
+  /// re-sync rewrites after reading only their heads.
+  Future<List<Message>> getMessagesByIds(Set<String> ids);
+
+  /// The start of the text of [threadId]'s latest assistant message that has
+  /// any (`Message.previewText`, as stored beside it), read without decoding
+  /// any contents; null when none has.
+  Future<String?> latestReplyPreview(String threadId);
 
   /// The lowest and highest `orderIndex` in [threadId]; `null` when it holds
   /// no messages.

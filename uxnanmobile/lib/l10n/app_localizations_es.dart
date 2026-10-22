@@ -917,7 +917,24 @@ class AppLocalizationsEs extends AppLocalizations {
       'Envía un mensaje para iniciar la conversación.';
 
   @override
-  String get conversationThinking => 'Razonamiento';
+  String get conversationThinking => 'Pensando';
+
+  @override
+  String get conversationThought => 'Pensamiento';
+
+  @override
+  String get conversationThoughtFull => 'Ver pensamiento completo';
+
+  @override
+  String conversationWorkThoughts(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pensamientos',
+      one: '1 pensamiento',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get conversationWorkLog => 'Registro de actividad';
@@ -3708,4 +3725,117 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get conversationViewLoadInteractive => 'Cargar vista interactiva';
+
+  @override
+  String get conversationWorkLogOffline =>
+      'Los pasos se cargan cuando tu computadora esté conectada.';
+
+  @override
+  String get conversationWorkLogLoadFailed =>
+      'No se pudieron cargar los pasos.';
+
+  @override
+  String get conversationWorkLogMore => 'Mostrar más pasos';
+
+  @override
+  String conversationWorkCommands(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count comandos',
+      one: '1 comando',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String conversationWorkTools(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count herramientas',
+      one: '1 herramienta',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String conversationWorkFailed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count con error',
+      one: '1 con error',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String conversationEditedFile(String file) {
+    return 'Editó $file';
+  }
+
+  @override
+  String get conversationStepFullOutput => 'Ver salida completa';
+
+  @override
+  String conversationStepOutputTail(int shown, int total) {
+    final intl.NumberFormat shownNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String shownString = shownNumberFormat.format(shown);
+    final intl.NumberFormat totalNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String totalString = totalNumberFormat.format(total);
+
+    return 'Últimos $shownString de $totalString caracteres';
+  }
+
+  @override
+  String conversationDiffMoreLines(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count líneas más',
+      one: '1 línea más',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get turnDetailCommandTitle => 'Comando';
+
+  @override
+  String get turnDetailOutputHeader => 'Salida';
+
+  @override
+  String turnDetailExitCode(int code) {
+    return 'Código de salida $code';
+  }
+
+  @override
+  String get turnDetailInputHeader => 'Entrada';
+
+  @override
+  String get turnDetailResultHeader => 'Resultado';
+
+  @override
+  String turnDetailEditHeader(int index, int total) {
+    return 'Edición $index de $total';
+  }
+
+  @override
+  String get turnDetailOffline => 'Conéctate a tu computadora para ver esto.';
+
+  @override
+  String get turnDetailTooLarge =>
+      'Es demasiado grande para enviarlo a tu teléfono.';
+
+  @override
+  String get turnDetailFailed => 'No se pudo cargar.';
+
+  @override
+  String get turnDetailEmpty => 'No hay nada que mostrar.';
+
+  @override
+  String get turnDetailCopied => 'Copiado al portapapeles';
 }

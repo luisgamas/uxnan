@@ -317,4 +317,123 @@ void main() {
       expect((decoded as UnknownContent).type, 'unknown');
     });
   });
+
+  group('bounded history (plans/046)', () {
+    test('step previews keep their index and the sizes of what was cut', () {
+      final command = MessageContent.fromJson({
+        'type': 'command_execution',
+        'index': 4,
+        'command': 'cat big',
+        'commandChars': 18000,
+        'output': 'tail',
+        'outputChars': 90000,
+        'status': 'completed',
+        'exitCode': 0,
+      }) as CommandExecutionContent;
+      expect(
+        (command.index, command.commandChars, command.outputChars),
+        (4, 18000, 90000),
+      );
+      expect(command.isCut, isTrue);
+      expect(roundTrip(command), command);
+
+      final edit = MessageContent.fromJson({
+        'type': 'diff',
+        'index': 5,
+        'filename': 'a.dart',
+        'additions': 3,
+        'deletions': 1,
+        'diffChars': 400,
+      }) as DiffContent;
+      expect((edit.index, edit.diffChars, edit.hasBody), (5, 400, false));
+      expect(roundTrip(edit), edit);
+
+      final tool = MessageContent.fromJson({
+        'type': 'tool',
+        'index': 6,
+        'toolName': 'Read',
+        'input': {'path': 'a'},
+        'inputChars': 900,
+        'output': 'x',
+        'outputChars': 5000,
+      }) as ToolUseContent;
+      expect((tool.index, tool.inputChars, tool.outputChars), (6, 900, 5000));
+      expect(tool.isCut, isTrue);
+      expect(roundTrip(tool), tool);
+
+      const whole = CommandExecutionContent(
+        command: 'ls',
+        status: CommandStatus.completed,
+      );
+      expect(whole.isCut, isFalse);
+    });
+
+    test('a thought is a positioned step with its full length', () {
+      final thought = MessageContent.fromJson({
+        'type': 'thinking',
+        'index': 3,
+        'text': 'start',
+        'textChars': 9000,
+      }) as ThinkingContent;
+      expect(
+        (thought.index, thought.textChars, thought.isCut),
+        (3, 9000, true),
+      );
+      expect(roundTrip(thought), thought);
+      expect(const ThinkingContent('all of it').isCut, isFalse);
+      // Live-only: never stored.
+      expect(
+        const ThinkingContent('x', isStreaming: true).toJson(),
+        {'type': 'thinking', 'text': 'x'},
+      );
+    });
+
+    test('a work run decodes from the page and round-trips', () {
+      final run = MessageContent.fromJson({
+        'type': 'work',
+        'from': 2,
+        'to': 9,
+        'commands': 5,
+        'edits': 2,
+        'tools': 1,
+        'thoughts': 2,
+        'failed': 1,
+        'running': 0,
+        'files': [
+          {'filename': 'a.dart', 'additions': 3, 'deletions': 1},
+          {'additions': 1},
+        ],
+        'last': {
+          'type': 'diff',
+          'index': 9,
+          'filename': 'a.dart',
+          'additions': 1,
+          'deletions': 0,
+        },
+      }) as WorkRunContent;
+      expect((run.from, run.to, run.logSteps, run.failed), (2, 9, 8, 1));
+      expect(run.files.single.filename, 'a.dart');
+      expect(run.last, isA<DiffContent>());
+      expect(run.asPlainText, isEmpty);
+      expect(roundTrip(run), run);
+    });
+
+    test('a work run that breaks the contract stays unknown', () {
+      for (final json in [
+        {'type': 'work', 'from': 5, 'to': 2},
+        {
+          'type': 'work',
+          'from': 1,
+          'to': 2,
+          'commands': -1,
+          'edits': 0,
+          'tools': 0,
+          'failed': 0,
+          'running': 0,
+        },
+      ]) {
+        expect(MessageContent.fromJson(json), isA<UnknownContent>());
+      }
+    });
+  });
 }

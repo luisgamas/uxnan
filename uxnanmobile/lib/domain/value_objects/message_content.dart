@@ -41,6 +41,7 @@ sealed class MessageContent {
       PlanContent.typeName => PlanContent.fromJson(json),
       SubagentContent.typeName => SubagentContent.fromJson(json),
       QuestionContent.typeName => QuestionContent.fromJson(json),
+      WorkRunContent.typeName => WorkRunContent.decode(json),
       ViewContent.typeName => _decodeView(json),
       _ => UnknownContent(
           type: json['type'] is String ? json['type'] as String : 'unknown',
@@ -266,27 +267,53 @@ class TextContent extends MessageContent with EquatableMixin {
   List<Object?> get props => [text, isStreaming];
 }
 
-/// The agent's reasoning ("thinking") for a turn.
+/// A stretch of the agent's reasoning ("thinking"), where it happened among
+/// the reply's segments (`ThinkingSegment`, shared/src/models/history.ts):
+/// before the command it led to, between two text runs.
 ///
-/// Rendered in a collapsible section (gated by a user setting), kept out of the
-/// plain-text projection so it never leaks into previews, copy or
-/// fingerprints — it's meta, not the answer.
+/// A step of the agent's work like a command: a page folds it into the run it
+/// sits in, and carries it as a *preview* — its first
+/// `HistoryBudget.stepThinkingPreviewChars` characters, with [textChars]
+/// saying how long the whole is — which `turn/step` serves whole by [index].
+/// Built live from `stream/thinking/delta` by one rule
+/// (`appendThinkingSegment`). It has no status: [isStreaming] says it is the
+/// last segment of a turn still running, which only the live view knows.
+///
+/// Kept out of the plain-text projection so it never leaks into previews,
+/// copy or fingerprints — it's meta, not the answer.
 class ThinkingContent extends MessageContent with EquatableMixin {
   /// Creates a [ThinkingContent].
-  const ThinkingContent(this.text, {this.isStreaming = false});
+  const ThinkingContent(
+    this.text, {
+    this.isStreaming = false,
+    this.index,
+    this.textChars,
+  });
 
   /// Decodes a [ThinkingContent].
   factory ThinkingContent.fromJson(Map<String, dynamic> json) =>
       ThinkingContent(
         json['text'] as String? ?? '',
-        isStreaming: json['isStreaming'] as bool? ?? false,
+        index: _nonNegativeInt(json['index']),
+        textChars: _nonNegativeInt(json['textChars']),
       );
 
-  /// The reasoning text.
+  /// The thought — all of it, or its start when [textChars] says there is
+  /// more.
   final String text;
 
-  /// Whether the reasoning is still streaming in.
+  /// Whether the agent is still writing it (the live view's, never stored).
   final bool isStreaming;
+
+  /// Where it is stored: its index in the turn's assistant `segments`, the
+  /// address `turn/step` takes.
+  final int? index;
+
+  /// The whole thought's length, present only when [text] is its start.
+  final int? textChars;
+
+  /// Whether this is a preview with more to fetch (`turn/step`).
+  bool get isCut => textChars != null;
 
   /// Wire type discriminator.
   static const String typeName = 'thinking';
@@ -301,11 +328,12 @@ class ThinkingContent extends MessageContent with EquatableMixin {
   Map<String, dynamic> toJson() => {
         'type': typeName,
         'text': text,
-        'isStreaming': isStreaming,
+        if (index != null) 'index': index,
+        if (textChars != null) 'textChars': textChars,
       };
 
   @override
-  List<Object?> get props => [text, isStreaming];
+  List<Object?> get props => [text, isStreaming, index, textChars];
 }
 
 /// A code block.
@@ -522,6 +550,12 @@ enum ToolKind {
 }
 
 /// An agent tool invocation and its result.
+///
+/// A step of the agent's work: pages and live notifications carry it as a
+/// *preview* (`StepPreview`, shared/src/models/history.ts) — its [input]
+/// bounded and its [output] cut to its tail, with [inputChars] /
+/// [outputChars] saying how large each whole is — and `turn/step` serves it
+/// whole by its [index].
 class ToolUseContent extends MessageContent with EquatableMixin {
   /// Creates a [ToolUseContent].
   const ToolUseContent({
@@ -533,6 +567,9 @@ class ToolUseContent extends MessageContent with EquatableMixin {
     this.kind = ToolKind.other,
     this.target,
     this.running = false,
+    this.index,
+    this.inputChars,
+    this.outputChars,
   });
 
   /// Decodes a [ToolUseContent].
@@ -545,6 +582,9 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         kind: ToolKind.fromWire(json['kind']),
         target: json['target'] as String?,
         running: json['status'] == 'running',
+        index: _nonNegativeInt(json['index']),
+        inputChars: _nonNegativeInt(json['inputChars']),
+        outputChars: _nonNegativeInt(json['outputChars']),
       );
 
   /// Tool name, as the agent calls it.
@@ -571,6 +611,20 @@ class ToolUseContent extends MessageContent with EquatableMixin {
   /// Whether the call is still in flight (a later block replaces it).
   final bool running;
 
+  /// Where the step is stored: its index in the turn's assistant `segments`,
+  /// the address `turn/step` takes. Null on a step this app read before the
+  /// bridge addressed steps.
+  final int? index;
+
+  /// The whole input's serialized length, present only when [input] was cut.
+  final int? inputChars;
+
+  /// The whole result's length, present only when [output] is its tail.
+  final int? outputChars;
+
+  /// Whether this is a preview with more to fetch (`turn/step`).
+  bool get isCut => inputChars != null || outputChars != null;
+
   /// Wire type discriminator.
   static const String typeName = 'tool';
 
@@ -591,14 +645,32 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         'kind': kind.wire,
         if (target != null) 'target': target,
         if (running) 'status': 'running',
+        if (index != null) 'index': index,
+        if (inputChars != null) 'inputChars': inputChars,
+        if (outputChars != null) 'outputChars': outputChars,
       };
 
   @override
-  List<Object?> get props =>
-      [toolName, toolId, input, output, isError, kind, target, running];
+  List<Object?> get props => [
+        toolName,
+        toolId,
+        input,
+        output,
+        isError,
+        kind,
+        target,
+        running,
+        index,
+        inputChars,
+        outputChars,
+      ];
 }
 
-/// A unified diff for a single file.
+/// A unified diff for a single file: one edit the agent made.
+///
+/// Pages and live notifications carry an edit as a *preview* — its name and
+/// line counts, never its body ([diff] is empty and [diffChars] says how long
+/// the body is) — and `turn/step` serves it whole by its [index].
 class DiffContent extends MessageContent with EquatableMixin {
   /// Creates a [DiffContent].
   const DiffContent({
@@ -606,14 +678,18 @@ class DiffContent extends MessageContent with EquatableMixin {
     required this.diff,
     this.additions = 0,
     this.deletions = 0,
+    this.index,
+    this.diffChars,
   });
 
   /// Decodes a [DiffContent].
   factory DiffContent.fromJson(Map<String, dynamic> json) => DiffContent(
         filename: json['filename'] as String? ?? '',
         diff: json['diff'] as String? ?? '',
-        additions: json['additions'] as int? ?? 0,
-        deletions: json['deletions'] as int? ?? 0,
+        additions: _nonNegativeInt(json['additions']) ?? 0,
+        deletions: _nonNegativeInt(json['deletions']) ?? 0,
+        index: _nonNegativeInt(json['index']),
+        diffChars: _nonNegativeInt(json['diffChars']),
       );
 
   /// File the diff applies to.
@@ -627,6 +703,17 @@ class DiffContent extends MessageContent with EquatableMixin {
 
   /// Number of deleted lines.
   final int deletions;
+
+  /// Where the edit is stored: its index in the turn's assistant `segments`,
+  /// the address `turn/step` takes. Null on an edit this app read before the
+  /// bridge addressed steps.
+  final int? index;
+
+  /// The body's length when this is a preview without it.
+  final int? diffChars;
+
+  /// Whether the body is here to show; otherwise `turn/step` serves it.
+  bool get hasBody => diff.isNotEmpty;
 
   /// Wire type discriminator.
   static const String typeName = 'diff';
@@ -644,10 +731,13 @@ class DiffContent extends MessageContent with EquatableMixin {
         'diff': diff,
         'additions': additions,
         'deletions': deletions,
+        if (index != null) 'index': index,
+        if (diffChars != null) 'diffChars': diffChars,
       };
 
   @override
-  List<Object?> get props => [filename, diff, additions, deletions];
+  List<Object?> get props =>
+      [filename, diff, additions, deletions, index, diffChars];
 }
 
 /// A Mermaid diagram.
@@ -732,6 +822,12 @@ class SystemContent extends MessageContent with EquatableMixin {
 }
 
 /// A command execution and its (possibly streaming) output.
+///
+/// A step of the agent's work: pages and live notifications carry it as a
+/// *preview* — the command's first `HistoryBudget.stepCommandPreviewChars`
+/// characters and the output's last `HistoryBudget.stepOutputPreviewChars`,
+/// with [commandChars] / [outputChars] saying how long each whole is — and
+/// `turn/step` serves it whole by its [index].
 class CommandExecutionContent extends MessageContent with EquatableMixin {
   /// Creates a [CommandExecutionContent].
   const CommandExecutionContent({
@@ -739,6 +835,9 @@ class CommandExecutionContent extends MessageContent with EquatableMixin {
     required this.status,
     this.output,
     this.exitCode,
+    this.index,
+    this.commandChars,
+    this.outputChars,
   });
 
   /// Decodes a [CommandExecutionContent].
@@ -747,7 +846,10 @@ class CommandExecutionContent extends MessageContent with EquatableMixin {
         command: json['command'] as String? ?? '',
         status: _statusFromName(json['status'] as String?),
         output: json['output'] as String?,
-        exitCode: json['exitCode'] as int?,
+        exitCode: json['exitCode'] is int ? json['exitCode'] as int : null,
+        index: _nonNegativeInt(json['index']),
+        commandChars: _nonNegativeInt(json['commandChars']),
+        outputChars: _nonNegativeInt(json['outputChars']),
       );
 
   /// The command line.
@@ -761,6 +863,20 @@ class CommandExecutionContent extends MessageContent with EquatableMixin {
 
   /// Execution status.
   final CommandStatus status;
+
+  /// Where the step is stored: its index in the turn's assistant `segments`,
+  /// the address `turn/step` takes. Null on a step this app read before the
+  /// bridge addressed steps.
+  final int? index;
+
+  /// The whole command's length, present only when [command] is its start.
+  final int? commandChars;
+
+  /// The whole output's length, present only when [output] is its tail.
+  final int? outputChars;
+
+  /// Whether this is a preview with more to fetch (`turn/step`).
+  bool get isCut => commandChars != null || outputChars != null;
 
   /// Wire type discriminator.
   static const String typeName = 'command_execution';
@@ -785,10 +901,14 @@ class CommandExecutionContent extends MessageContent with EquatableMixin {
         'status': status.name,
         if (output != null) 'output': output,
         if (exitCode != null) 'exitCode': exitCode,
+        if (index != null) 'index': index,
+        if (commandChars != null) 'commandChars': commandChars,
+        if (outputChars != null) 'outputChars': outputChars,
       };
 
   @override
-  List<Object?> get props => [command, output, exitCode, status];
+  List<Object?> get props =>
+      [command, output, exitCode, status, index, commandChars, outputChars];
 }
 
 /// A pending approval the agent requests before performing an action
@@ -1272,6 +1392,208 @@ SubagentActionKind _subagentKindFromName(String? name) {
     if (value.name == name) return value;
   }
   return SubagentActionKind.unknown;
+}
+
+/// A file a run of steps changed, once, with its line counts summed
+/// (`ChangedFileSummary`, shared/src/models/history.ts).
+class ChangedFileSummary extends Equatable {
+  /// Creates a [ChangedFileSummary].
+  const ChangedFileSummary({
+    required this.filename,
+    this.additions = 0,
+    this.deletions = 0,
+  });
+
+  /// The file, as the agent named it.
+  final String filename;
+
+  /// Lines its edits added.
+  final int additions;
+
+  /// Lines its edits removed.
+  final int deletions;
+
+  /// Serializes the summary.
+  Map<String, dynamic> toJson() => {
+        'filename': filename,
+        'additions': additions,
+        'deletions': deletions,
+      };
+
+  @override
+  List<Object?> get props => [filename, additions, deletions];
+}
+
+/// A run of consecutive steps (commands, edits, tool calls) of an assistant
+/// message, as a page of history serves it in place of the steps themselves
+/// (`WorkRunSegment`, shared/src/models/history.ts): what the run amounts to,
+/// its changed [files] and a preview of its [last] step. The steps come on
+/// demand with `turn/steps` over [from]..[to].
+class WorkRunContent extends MessageContent with EquatableMixin {
+  /// Creates a [WorkRunContent].
+  const WorkRunContent({
+    required this.from,
+    required this.to,
+    this.commands = 0,
+    this.edits = 0,
+    this.tools = 0,
+    this.thoughts = 0,
+    this.failed = 0,
+    this.running = 0,
+    this.files = const [],
+    this.last,
+  });
+
+  /// Decodes a `work` segment; one that breaks the contract (a missing or
+  /// negative count, `from` past `to`) stays an [UnknownContent], so it is
+  /// kept and never mistaken for a run it is not.
+  static MessageContent decode(Map<String, dynamic> json) {
+    final from = _nonNegativeInt(json['from']);
+    final to = _nonNegativeInt(json['to']);
+    final counts = [
+      for (final key in const [
+        'commands',
+        'edits',
+        'tools',
+        'thoughts',
+        'failed',
+        'running',
+      ])
+        _nonNegativeInt(json[key]),
+    ];
+    if (from == null || to == null || from > to || counts.contains(null)) {
+      return UnknownContent(type: typeName, raw: json);
+    }
+    final rawLast = json['last'];
+    final last = rawLast is Map
+        ? MessageContent.fromJson(rawLast.cast<String, dynamic>())
+        : null;
+    return WorkRunContent(
+      from: from,
+      to: to,
+      commands: counts[0]!,
+      edits: counts[1]!,
+      tools: counts[2]!,
+      thoughts: counts[3]!,
+      failed: counts[4]!,
+      running: counts[5]!,
+      files: [
+        if (json['files'] is List)
+          for (final file in json['files'] as List)
+            if (file is Map && file['filename'] is String)
+              ChangedFileSummary(
+                filename: file['filename'] as String,
+                additions: _nonNegativeInt(file['additions']) ?? 0,
+                deletions: _nonNegativeInt(file['deletions']) ?? 0,
+              ),
+      ],
+      last: last is CommandExecutionContent ||
+              last is DiffContent ||
+              last is ToolUseContent ||
+              last is ThinkingContent
+          ? last
+          : null,
+    );
+  }
+
+  /// Index (in the stored `segments`) of the run's first step.
+  final int from;
+
+  /// Index (in the stored `segments`) of the run's last step — inclusive.
+  final int to;
+
+  /// How many of its steps are shell commands.
+  final int commands;
+
+  /// How many are edits.
+  final int edits;
+
+  /// How many are other tool calls.
+  final int tools;
+
+  /// How many are stretches of reasoning.
+  final int thoughts;
+
+  /// How many failed.
+  final int failed;
+
+  /// How many are still running.
+  final int running;
+
+  /// The files its edits touched, merged by name, in first-touched order.
+  final List<ChangedFileSummary> files;
+
+  /// Its last step, as a preview: a [CommandExecutionContent], a
+  /// [DiffContent], a [ToolUseContent] or a [ThinkingContent].
+  final MessageContent? last;
+
+  /// The steps a work log lists for it — its commands, tool calls and
+  /// thoughts; its edits are listed with the turn's changed files.
+  int get logSteps => commands + tools + thoughts;
+
+  /// Wire type discriminator.
+  static const String typeName = 'work';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'from': from,
+        'to': to,
+        'commands': commands,
+        'edits': edits,
+        'tools': tools,
+        'thoughts': thoughts,
+        'failed': failed,
+        'running': running,
+        'files': [for (final file in files) file.toJson()],
+        if (last != null) 'last': last!.toJson(),
+      };
+
+  /// Returns a copy with the given fields replaced.
+  WorkRunContent copyWith({
+    int? from,
+    int? to,
+    int? commands,
+    int? edits,
+    int? tools,
+    int? thoughts,
+    int? failed,
+    int? running,
+    List<ChangedFileSummary>? files,
+    MessageContent? last,
+  }) =>
+      WorkRunContent(
+        from: from ?? this.from,
+        to: to ?? this.to,
+        commands: commands ?? this.commands,
+        edits: edits ?? this.edits,
+        tools: tools ?? this.tools,
+        thoughts: thoughts ?? this.thoughts,
+        failed: failed ?? this.failed,
+        running: running ?? this.running,
+        files: files ?? this.files,
+        last: last ?? this.last,
+      );
+
+  @override
+  List<Object?> get props => [
+        from,
+        to,
+        commands,
+        edits,
+        tools,
+        thoughts,
+        failed,
+        running,
+        files,
+        last,
+      ];
 }
 
 /// A content type this app version does not model yet.

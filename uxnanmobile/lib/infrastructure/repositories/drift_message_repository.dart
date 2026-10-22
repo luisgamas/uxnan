@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uxnan/core/extensions/enum_ext.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/entities/message_head.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
+import 'package:uxnan/infrastructure/storage/message_preview_limits.dart';
 
 /// drift-backed implementation of [IMessageRepository] (spec 02c §10.3).
 ///
@@ -117,19 +119,96 @@ class DriftMessageRepository implements IMessageRepository {
   }
 
   @override
-  Future<List<Message>> getMessagesFrom(
+  Future<List<MessageHead>> getMessageHeadsForTurns(
+    String threadId,
+    Set<String> turnIds, {
+    bool includeUnstamped = false,
+  }) {
+    final wanted = {...turnIds, if (includeUnstamped) ''};
+    if (wanted.isEmpty) return Future.value(const []);
+    final table = _db.messagesTable;
+    return _heads(table.threadId.equals(threadId) & table.turnId.isIn(wanted));
+  }
+
+  @override
+  Future<List<MessageHead>> getMessageHeadsFrom(
     String threadId, {
     required int fromOrderIndex,
-  }) async {
+  }) {
+    final table = _db.messagesTable;
+    return _heads(
+      table.threadId.equals(threadId) &
+          table.orderIndex.isBiggerOrEqualValue(fromOrderIndex),
+    );
+  }
+
+  @override
+  Future<List<Message>> getMessagesByIds(Set<String> ids) async {
+    if (ids.isEmpty) return const [];
     final rows = await (_db.select(_db.messagesTable)
-          ..where(
-            (m) =>
-                m.threadId.equals(threadId) &
-                m.orderIndex.isBiggerOrEqualValue(fromOrderIndex),
-          )
-          ..orderBy([(m) => OrderingTerm.asc(m.orderIndex)]))
+          ..where((m) => m.id.isIn(ids)))
         .get();
     return rows.map(_rowToMessage).toList();
+  }
+
+  @override
+  Future<String?> latestReplyPreview(String threadId) async {
+    final table = _db.messagesTable;
+    final query = _db.selectOnly(table)
+      ..addColumns([table.previewText])
+      ..where(
+        table.threadId.equals(threadId) &
+            table.role.equals(MessageRole.assistant.name) &
+            table.previewText.isNotNull() &
+            table.previewText.equals('').not(),
+      )
+      ..orderBy([OrderingTerm.desc(table.orderIndex)])
+      ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.read(table.previewText);
+  }
+
+  /// The heads of the rows matching [filter], ascending by index — every
+  /// column but the contents, which are never read.
+  Future<List<MessageHead>> _heads(Expression<bool> filter) async {
+    final table = _db.messagesTable;
+    final query = _db.selectOnly(table)
+      ..addColumns([
+        table.id,
+        table.turnId,
+        table.role,
+        table.deliveryState,
+        table.orderIndex,
+        table.createdAtMs,
+        table.fingerprint,
+        table.continuedIn,
+        table.turnDurationMs,
+      ])
+      ..where(filter)
+      ..orderBy([OrderingTerm.asc(table.orderIndex)]);
+    final rows = await query.get();
+    return [
+      for (final row in rows)
+        MessageHead(
+          id: row.read(table.id)!,
+          turnId: row.read(table.turnId)!,
+          role: MessageRole.values
+              .byNameOr(row.read(table.role)!, MessageRole.system),
+          deliveryState: MessageDeliveryState.values.byNameOr(
+            row.read(table.deliveryState)!,
+            MessageDeliveryState.delivered,
+          ),
+          orderIndex: row.read(table.orderIndex)!,
+          createdAt:
+              DateTime.fromMillisecondsSinceEpoch(row.read(table.createdAtMs)!),
+          fingerprint: row.read(table.fingerprint),
+          continuedIn: row.read(table.continuedIn),
+          turnDuration: switch (row.read(table.turnDurationMs)) {
+            final int ms => Duration(milliseconds: ms),
+            null => null,
+          },
+        ),
+    ];
   }
 
   @override
@@ -161,7 +240,17 @@ class DriftMessageRepository implements IMessageRepository {
       createdAtMs: Value(message.createdAt.millisecondsSinceEpoch),
       continuedIn: Value(message.continuedIn),
       turnDurationMs: Value(message.turnDuration?.inMilliseconds),
+      previewText: Value(_storedPreview(message)),
     );
+  }
+
+  /// The start of [message]'s text kept beside it, or null when it has none.
+  static String? _storedPreview(Message message) {
+    final preview = message.previewText;
+    if (preview.isEmpty) return null;
+    return preview.length <= MessagePreviewLimits.columnLength
+        ? preview
+        : preview.substring(0, MessagePreviewLimits.columnLength);
   }
 
   Message _rowToMessage(MessageRow row) {
