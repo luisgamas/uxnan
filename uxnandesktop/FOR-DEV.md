@@ -30,12 +30,12 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,108 Rust tests (693 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
+`docs/chat.md`). 1,125 Rust tests (710 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (29 against the daemon itself) + 45
 integration), of which 55 are ignored probes that need something real to talk to
 (48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 1,881 frontend Vitest tests across two
+GitHub tests) + 1,914 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1011,6 +1011,23 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 **chat tabs** drive the bridge's conversations next to the phone
 (`docs/chat.md`). What remains is below.
 
+### Chat tabs — the bounded history contract (plans/046 phase 3) ☐
+- [ ] **Validate against a real bridge serving summarized pages.** The chat
+      tab reads the bounded history (`work` runs, step previews placed by
+      `index`, thoughts built in place by `appendThinkingSegment`, `turn/steps` /
+      `turn/step` on demand, pages
+      that start at `offset`, `ResponseTooLarge` shown as the chat's error —
+      `docs/chat.md` → *A long conversation's work*) and `chat/read` lists a
+      turn's newest steps through `turn/steps`, all tested against stand-ins
+      shaped by `shared/src/models/history.ts`, and drawn in a browser preview
+      for review. Still owed: a supervised run against a scratch bridge of this
+      branch (a long real conversation, a turn joined mid-way, `uxnan-cli chat
+      read`), and the maintainer's visual review (AGENTS.md → *UI changes*).
+- [ ] **Regenerate the `uxnan-control` skill** (repo `luisgamas/skills`): the
+      `chat/read` entry's `steps` description changed (`docs/control-api.md` →
+      *For the agent*); `references/catalog.md` is regenerated from
+      `uxnan-cli skills get control --full`, never hand-edited.
+
 ### Chat tabs — parity with the phone's conversation screen
 - [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
       chat tab, the new-chat setup and Settings → Bridge & mobile were built and
@@ -1766,7 +1783,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,108 Rust + 1,881 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,125 Rust + 1,914 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

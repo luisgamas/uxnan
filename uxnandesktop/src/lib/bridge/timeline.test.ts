@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { WorkRunSegment } from "$shared/models/history";
 import {
-  activityFailed,
-  activityRunning,
   changedFiles,
   formatElapsed,
   groupParts,
   isActivity,
+  lastStepOf,
+  plainLine,
   requestIdOf,
+  runSize,
   splitAnswer,
   summarizeWork,
   textOf,
@@ -24,6 +26,21 @@ const diff = (filename: string, additions = 1, deletions = 0) => ({
   deletions,
 });
 const text = (t: string) => ({ type: "text", text: t });
+/** A settled run as a page serves it (shared/src/models/history.ts). */
+const run = (from: number, to: number, extra: Partial<WorkRunSegment> = {}): WorkRunSegment => ({
+  type: "work",
+  from,
+  to,
+  commands: to - from + 1,
+  edits: 0,
+  tools: 0,
+  thoughts: 0,
+  failed: 0,
+  running: 0,
+  files: [],
+  last: { type: "command_execution", index: to, command: "ls" },
+  ...extra,
+});
 
 describe("textOf / isActivity", () => {
   it("reads text runs and tells activity from everything else", () => {
@@ -31,6 +48,10 @@ describe("textOf / isActivity", () => {
     expect(textOf({ type: "text" })).toBeNull();
     expect(textOf(null)).toBeNull();
     expect(isActivity(cmd("ls"))).toBe(true);
+    expect(isActivity(run(1, 3))).toBe(true);
+    expect(isActivity({ type: "thinking", text: "hm" })).toBe(true);
+    // A `work` part that is not a run summary is not work.
+    expect(isActivity({ type: "work" })).toBe(false);
     // A subagent is its own card, not a step of the work log.
     expect(isActivity({ type: "subagent" })).toBe(false);
     expect(isActivity({ type: "approval" })).toBe(false);
@@ -49,7 +70,16 @@ describe("groupParts", () => {
       text("Done."),
     ]);
     expect(items.map((i) => i.kind)).toEqual(["text", "work", "block", "work", "text"]);
-    expect(items[1]).toMatchObject({ kind: "work", blocks: [{ command: "ls" }, { filename: "a.ts" }] });
+    expect(items[1]).toMatchObject({ kind: "work", parts: [{ command: "ls" }, { filename: "a.ts" }] });
+  });
+
+  it("joins a summarized run and the live steps after it into one group", () => {
+    // A window that read the turn mid-way: the page's summary, then the steps
+    // streamed since — and a blank text run between them stays invisible.
+    const live = { type: "command_execution", index: 5, command: "npm test", status: "running" };
+    const items = groupParts([text("Working."), run(1, 3), text(""), live]);
+    expect(items.map((i) => i.kind)).toEqual(["text", "work"]);
+    expect(items[1]).toEqual({ kind: "work", parts: [run(1, 3), live] });
   });
 
   it("keeps an answer that closes with a response boundary as the answer", () => {
@@ -136,33 +166,50 @@ describe("splitAnswer", () => {
   });
 });
 
-describe("activity state", () => {
-  it("recognizes failures from the status, the exit code and a tool error", () => {
-    expect(activityFailed(cmd("x", { exitCode: 1 }))).toBe(true);
-    expect(activityFailed(cmd("x", { exitCode: 0 }))).toBe(false);
-    expect(activityFailed(cmd("x", { status: "error" }))).toBe(true);
-    expect(activityFailed({ type: "tool", isError: true })).toBe(true);
-    expect(activityFailed({ type: "subagent", state: { status: "error" } })).toBe(true);
-    expect(activityFailed({ type: "subagent", state: { status: "completed" } })).toBe(false);
-  });
-
-  it("recognizes running steps, a subagent's nested state included", () => {
-    expect(activityRunning(cmd("x", { status: "running" }))).toBe(true);
-    expect(activityRunning({ type: "subagent", state: { status: "in_progress" } })).toBe(true);
-    expect(activityRunning(cmd("x", { status: "completed" }))).toBe(false);
-  });
-});
-
 describe("summarizeWork", () => {
-  it("counts each kind of step and the failed ones", () => {
+  it("counts each kind of step, the failed ones and the running ones", () => {
     expect(
       summarizeWork([
         cmd("a"),
         cmd("b", { exitCode: 2 }),
         diff("f"),
-        { type: "tool", toolName: "Read" },
+        { type: "tool", toolName: "Read", status: "running" },
       ]),
-    ).toEqual({ commands: 2, edits: 1, tools: 1, failed: 1 });
+    ).toEqual({ steps: 4, commands: 2, edits: 1, tools: 1, thoughts: 0, failed: 1, running: 1 });
+  });
+
+  it("adds a summarized run's counts to the live steps after it", () => {
+    const settled = run(0, 369, { commands: 300, edits: 40, tools: 20, thoughts: 10, failed: 3, running: 1 });
+    const thought = { type: "thinking", text: "Now the tests." };
+    expect(summarizeWork([settled, cmd("npm test", { exitCode: 1 }), thought])).toEqual({
+      steps: 372,
+      commands: 301,
+      edits: 40,
+      tools: 20,
+      thoughts: 11,
+      failed: 4,
+      running: 1,
+    });
+    expect(runSize(settled)).toBe(370);
+  });
+});
+
+describe("plainLine", () => {
+  it("reads a thought's Markdown as one line of plain text", () => {
+    expect(
+      plainLine("## Plan\n\n**First**, read `build-target.js` and the [docs](https://x).\n- check _CI_ env\n```js\nconst a = 1;\n```"),
+    ).toBe("Plan First, read build-target.js and the docs. check CI env const a = 1;");
+    // A name with underscores is not emphasis.
+    expect(plainLine("snake_case_name  and\n\n  more")).toBe("snake_case_name and more");
+  });
+});
+
+describe("lastStepOf", () => {
+  it("is a step part itself, or the last step of a summarized run", () => {
+    const thought = { type: "thinking", text: "hm" };
+    expect(lastStepOf(thought)).toBe(thought);
+    expect(lastStepOf(run(1, 4))).toEqual({ type: "command_execution", index: 4, command: "ls" });
+    expect(lastStepOf(text("x"))).toBeUndefined();
   });
 });
 
@@ -173,6 +220,21 @@ describe("changedFiles", () => {
     ).toEqual([
       { filename: "b.ts", additions: 5, deletions: 5 },
       { filename: "a.ts", additions: 5, deletions: 0 },
+    ]);
+  });
+
+  it("takes a summarized run's files as its edits", () => {
+    const settled = run(2, 9, {
+      edits: 2,
+      files: [
+        { filename: "b.ts", additions: 4, deletions: 1 },
+        { filename: "c.ts", additions: 1, deletions: 0 },
+      ],
+    });
+    expect(changedFiles([diff("a.ts", 1), settled, text("x"), diff("b.ts", 2, 2)])).toEqual([
+      { filename: "a.ts", additions: 1, deletions: 0 },
+      { filename: "b.ts", additions: 6, deletions: 3 },
+      { filename: "c.ts", additions: 1, deletions: 0 },
     ]);
   });
 });

@@ -58,6 +58,14 @@ export function isUnknownMethodError(err: unknown): boolean {
   return RPC_CODE_SUFFIX.exec(message)?.[1] === '-32601';
 }
 
+/** The bridge refused to send an answer larger than the connection carries
+ *  (`ResponseTooLarge`, -32011): asking again gets the same answer. */
+export function isResponseTooLargeError(err: unknown): boolean {
+  const message =
+    err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '';
+  return RPC_CODE_SUFFIX.exec(message)?.[1] === '-32011';
+}
+
 /** A bridge error as a person reads it: the bridge's own words, without the
  *  numeric JSON-RPC code the transport appends. */
 export function bridgeErrorText(err: unknown): string {

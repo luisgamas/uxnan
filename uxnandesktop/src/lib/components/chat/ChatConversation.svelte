@@ -60,6 +60,7 @@
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
   import { railAnchors } from "$lib/bridge/railAnchors";
   import ChatScrollRail from "./ChatScrollRail.svelte";
+  import { chatErrorText } from "./chatError";
   import { provideViewComposer } from "./viewComposer.svelte";
   import {
     EVERYTHING,
@@ -573,7 +574,7 @@
               <Spinner class={cn(icon.nav, "text-muted-foreground")} />
             </div>
           {:else if conversation.error && !conversation.loaded}
-            <p class={cn(text.meta, "text-center")}>{conversation.error}</p>
+            <p class={cn(text.meta, "text-center")}>{chatErrorText(conversation.error)}</p>
           {:else if shown.length === 0 && conversation.pending.length === 0}
             <p class={cn(text.meta, "py-10 text-center")}>{i18n.t("chat.emptyThread")}</p>
           {/if}

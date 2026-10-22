@@ -40,6 +40,7 @@ export default defineConfig({
     alias: {
       $lib: fileURLToPath(new URL("./src/lib", import.meta.url)),
       $test: fileURLToPath(new URL("./src/test", import.meta.url)),
+      $shared: fileURLToPath(new URL("../shared/src", import.meta.url)),
     },
     // No `conditions` override here on purpose. Svelte 5 does need the `browser`
     // condition under jsdom (otherwise components resolve to their SSR build and

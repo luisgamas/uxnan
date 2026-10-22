@@ -2364,7 +2364,7 @@ Read what a chat has said: its newest turns (1 by default, at most 20), each wit
   - `answerFrom` (integer) — The byte of the whole answer the returned part starts at.
   - `answerLength` (integer) — The whole answer's size, in bytes.
   - `error` (string) — Why the turn failed, when the bridge reported an error (absent otherwise).
-  - `steps` (array of string) — The steps it took, in order.
+  - `steps` (array of string) — The steps it took, in order: its newest 100 at most, after a `… N earlier steps` line when it took more.
 
 **Request**
 

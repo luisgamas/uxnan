@@ -507,8 +507,25 @@ guarda solo el puntero (`cwd`, `threadId`, `agentId` preseleccionado); la
 conversacion vive en el bridge. El agente se fija al crear el hilo; el modelo
 se cambia con `thread/setModel`. Se ofrece desde el "+" de la barra de pestañas,
 el submenu *Launch agent* de la fila de worktree y el dialogo lanzador, solo para
-carpetas locales. El modelo de datos es el de `shared/` importado solo como
-tipos (alias `$shared`). Uso: `docs/chat.md`.
+carpetas locales. El modelo de datos es el de `shared/` (alias `$shared`),
+importado como tipos mas los ayudantes puros de `models/history.ts`
+(`isWorkRunSegment`, `isStepPreview`, `stepFailed`, `stepRunning`), para contar
+una racha de pasos con la misma regla que el bridge y el telefono. Historial
+acotado (02a §5.8.8, 02b §1.5): la pestaña dibuja cada racha `work` de una
+pagina como un grupo con sus conteos y `files`, coloca cada vista previa en
+vivo por su `index` (una racha resumida seguida de pasos en vivo es un solo
+grupo), pide los pasos al abrir el grupo (`turn/steps`, siguiendo `next`, 100
+dibujados por vez) y un paso entero (`turn/step`) solo cuando se piden, y
+guarda lo leido mientras la conversacion vive (se suelta con ella). El
+razonamiento es un paso mas: cada pensamiento (`{ type: 'thinking', text }`)
+se construye en vivo con `appendThinkingSegment` (la misma regla que el
+bridge) y es una fila del grupo en su sitio entre los comandos — colapsada, una
+linea con su propio texto ("Thinking" mientras es la ultima parte del turno
+vivo, "Thought" despues); abierta, markdown en una caja de altura maxima que
+sigue el texto nuevo salvo que el lector haya subido; uno recortado
+(`textChars`) se lee entero con `turn/step`. `turn/list` empieza en `offset`; un
+`ResponseTooLarge` (-32011) es el error de la conversacion, nunca un
+reintento. Uso: `docs/chat.md`.
 
 ## 4. Contratos compartidos (shared/)
 
@@ -610,6 +627,9 @@ export interface JsonRpcMethodRegistry {
   'thread/delete':        { params: { threadId: string };      result: void };
   'turn/list':            { params: TurnListParams;            result: TurnList };
   'turn/read':            { params: { turnId: string };        result: Turn };
+  // Lo que una pagina resumida deja fuera (02b §1.5 *Historial acotado*)
+  'turn/steps':           { params: TurnStepsParams;           result: TurnStepsResult };
+  'turn/step':            { params: TurnStepParams;            result: TurnStepResult };
   'turn/send':            { params: TurnSendParams;            result: TurnSendResult };
   'turn/cancel':          { params: { threadId: string; turnId: string }; result: void };
   // Cola de mensajes (follow-ups enviados con un turno en vuelo)

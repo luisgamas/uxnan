@@ -1,9 +1,9 @@
 <script lang="ts">
   // One turn of a chat: the user's message and the agent's answer.
   //
-  // The answer renders from `segments` when the bridge sent them (the text
-  // and work blocks in the order the agent produced them), grouped by
-  // `timeline.ts`: consecutive steps become one work group.
+  // The answer renders from its `segments` (the text and blocks in the order
+  // the agent produced them), grouped by `timeline.ts`: consecutive steps —
+  // and the runs of them a page summarizes — become one work group.
   //
   //  - While the turn runs everything is in view, with a "Working for 12s" line
   //    under it.
@@ -11,15 +11,15 @@
   //    ("Worked for 1m 3s"). The closing answer stays open, and the files the
   //    turn changed are gathered into one card at its end.
   //
-  // A turn without ordering info (an older record, the native-history
-  // fallback) shows its blocks first, then its text.
+  // The agent's reasoning is part of its work: each stretch of it is a
+  // thought in its place among the steps (`ChatActivity`), never a block of
+  // its own above the turn.
   import { untrack } from "svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
   import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
-  import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
   import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
   import type { Turn } from "$shared/models/thread";
   import MarkdownView from "$lib/components/MarkdownView.svelte";
@@ -40,6 +40,7 @@
     changedFiles,
     formatElapsed,
     groupParts,
+    lastStepOf,
     splitAnswer,
     type TimelineItem,
   } from "$lib/bridge/timeline";
@@ -88,20 +89,26 @@
   /** The run went on in a later turn: what this one holds is the answer so
    *  far, shown as it was written — never folded away as finished work. */
   const continued = $derived(!streaming && turn.continuedIn !== undefined);
-  let thinkingOpen = $state(false);
   let workOpen = $state(false);
 
-  /** The answer as an ordered list of text runs and blocks. */
+  /** The answer as an ordered list of text runs and blocks (its text alone,
+   *  for a message that carries no segments). */
   const parts = $derived.by<unknown[]>(() => {
     if (!assistant) return [];
     if (Array.isArray(assistant.segments) && assistant.segments.length > 0) {
       return assistant.segments;
     }
-    const blocks = Array.isArray(assistant.blocks) ? assistant.blocks : [];
     const content = typeof assistant.content === "string" ? assistant.content : "";
-    return content ? [...blocks, { type: "text", text: content }] : blocks;
+    return content ? [{ type: "text", text: content }] : [];
   });
   const items = $derived(groupParts(parts));
+  /** The thought being written: the turn's last part while it runs — any
+   *  later activity settles it. */
+  const liveThought = $derived.by(() => {
+    if (!streaming) return undefined;
+    const step = lastStepOf(parts[parts.length - 1]);
+    return step?.type === "thinking" ? step : undefined;
+  });
   const split = $derived(splitAnswer(items));
   const files = $derived(streaming ? [] : changedFiles(parts));
   /** The closing answer's text, for its copy button. */
@@ -140,26 +147,6 @@
   }
 </script>
 
-{#snippet thinking()}
-  {#if assistant?.thinking}
-    <Collapsible.Root bind:open={thinkingOpen}>
-      <Collapsible.Trigger class={chat.activity}>
-        <Icon icon={BrainIcon} class={cn(icon.decorative, "shrink-0 opacity-70")} />
-        <span class="flex-1">{i18n.t("chat.thinking")}</span>
-        <Icon
-          icon={ArrowRight01Icon}
-          class={cn(icon.status, "shrink-0 transition-transform", thinkingOpen && "rotate-90")}
-        />
-      </Collapsible.Trigger>
-      <Collapsible.Content>
-        <p class={cn(text.meta, "ml-3 whitespace-pre-wrap border-l border-border/60 py-1 pl-3 leading-5")}>
-          {assistant.thinking}
-        </p>
-      </Collapsible.Content>
-    </Collapsible.Root>
-  {/if}
-{/snippet}
-
 {#snippet timeline(list: TimelineItem[], live: boolean)}
   {#each list as item, i (i)}
     {#if item.kind === "text"}
@@ -172,7 +159,7 @@
         {/each}
       </div>
     {:else if item.kind === "work"}
-      <ChatWorkGroup blocks={item.blocks} {live} />
+      <ChatWorkGroup parts={item.parts} {live} {liveThought} turnId={turn.id} {conversation} />
     {:else}
       <ChatBlock block={item.block} {threadId} {conversation} {live} compact />
     {/if}
@@ -205,14 +192,12 @@
   {#if answered}
     <div class="group/message flex min-w-0 flex-col gap-1">
       {#if streaming}
-        {@render thinking()}
         {@render timeline(items, true)}
         <div class={cn(text.meta, "flex items-center gap-2 px-2 py-1")}>
           <ChatWorkingGlyph />
           <ShimmerText class="tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</ShimmerText>
         </div>
       {:else if continued}
-        {@render thinking()}
         {@render timeline(items, false)}
         <div class="flex items-center gap-2 px-0.5">
           <span class={cn(text.meta, "flex shrink-0 items-center gap-1")}>
@@ -222,7 +207,7 @@
           <span class={chat.foldRule} aria-hidden="true"></span>
         </div>
       {:else}
-        {#if split.work.length > 0 || assistant?.thinking}
+        {#if split.work.length > 0}
           <Collapsible.Root bind:open={workOpen}>
             <div class="flex items-center gap-2 px-0.5">
               <Collapsible.Trigger class={cn(chat.fold, focus.ring)}>
@@ -236,7 +221,6 @@
             </div>
             <Collapsible.Content>
               <div class="mt-1 flex flex-col gap-1 border-l border-border/60 pl-2">
-                {@render thinking()}
                 {@render timeline(split.work, false)}
               </div>
             </Collapsible.Content>

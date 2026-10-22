@@ -4,6 +4,38 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A long conversation opens at once, and its work opens when you ask.** The
+  bridge now sends each run of steps as one summary (*Ran 156 commands · 31
+  edits*, how many failed, the files they changed) instead of every step in
+  full — the conversation that froze the app went from 46 MB to about 1 MB.
+  Opening a work group reads its steps from the bridge and draws a hundred at
+  a time, with *Show 100 more steps* for the rest; a step shows the end of its
+  output, with *Show the full output* (or the full command) when there is more;
+  an edit reads its diff when it opens. A run the agent began before the chat
+  was opened and goes on live reads as one group, its earlier steps a click
+  away. If something is too large to send, the chat says so instead of
+  retrying.
+- **The agent's reasoning shows where it happened.** Instead of one *Thinking*
+  block above the turn — cut to its start, so what the agent was thinking
+  *now* never showed — each stretch of reasoning is a row among the commands
+  it led to: *Thinking* while the agent is still writing it, *Thought* after,
+  followed by its own words on one line. Opened, it reads as formatted text in
+  a box that follows the newest words while they stream, unless you scroll up
+  to read. Work groups count thoughts too (*Ran 12 commands · 4 thoughts*).
+- **`chat/read` keeps listing the steps a chat took** (`uxnan-cli chat read`,
+  the `chat_read` tool), read from the bridge's summaries: a turn lists its
+  newest 100 steps, after a `… N earlier steps` line when it took more, and a
+  command is its first 400 characters. The agent's reasoning is not listed.
+
+### Added
+
+- **A turn written in the agent's own app appears in its open chat.** When you
+  carry on a conversation in Claude Code, Codex or another wired agent's own
+  terminal, the bridge notices its transcript changed and the open chat reloads
+  its newest turns — before, the desktop showed them only after reopening.
+
 ### Fixed
 
 - **A conversation too large for the bridge channel no longer locks the app in
