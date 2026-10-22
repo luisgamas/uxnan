@@ -105,8 +105,12 @@ pub struct Connection {
 pub enum Event {
     /// A `stream/*` (or other) JSON-RPC notification, with its `seq`.
     Notification { seq: u64, message: Value },
-    /// The connection ended; no further events follow.
-    Closed,
+    /// The connection ended; no further events follow. [reason] says why when
+    /// the socket said so (a close frame, a read error such as a message over
+    /// [`MAX_FRAME_BYTES`]) — a connection that keeps ending the same way is
+    /// only diagnosable from it, since the bridge sees nothing but a clean
+    /// disconnect.
+    Closed { reason: Option<String> },
 }
 
 /// Why a connection attempt failed.
@@ -233,10 +237,19 @@ impl Connection {
         let reader_pending = pending.clone();
         let reader_seq = last_seq.clone();
         tokio::spawn(async move {
+            let mut reason = None;
             while let Some(frame) = stream.next().await {
                 let text = match frame {
                     Ok(Message::Text(text)) => text,
-                    Ok(Message::Close(_)) | Err(_) => break,
+                    Ok(Message::Close(close)) => {
+                        reason = close
+                            .map(|c| format!("closed by the bridge ({}): {}", c.code, c.reason));
+                        break;
+                    }
+                    Err(err) => {
+                        reason = Some(err.to_string());
+                        break;
+                    }
                     Ok(_) => continue,
                 };
                 match serde_json::from_str::<Frame>(&text) {
@@ -255,7 +268,7 @@ impl Connection {
                 }
             }
             fail_all(&reader_pending);
-            let _ = events.send(Event::Closed);
+            let _ = events.send(Event::Closed { reason });
         });
 
         Ok(Arc::new(Connection {

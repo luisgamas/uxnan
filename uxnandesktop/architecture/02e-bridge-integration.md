@@ -439,6 +439,8 @@ src-tauri/src/bridgeclient/            ~/.uxnan/local-control.json (0600)
   connection.rs ── ws://127.0.0.1:<port>/control?client=desktop-<perfil>&resume=<seq>&instance=<id>
                    Authorization: Bearer <token>
   mod.rs        ── supervisor: reconexion con backoff; managed: asegura el servicio
+  reconnect.rs  ── la politica de ambos supervisores (local y hosts): una conexion
+                   que muere < 10 s tras el hello cuenta como fallo (0,5 s → 30 s)
   service.rs    ── `uxnan-bridge service-status | install-service | service-start | stop`
   commands.rs   ── bridge_client_status · bridge_client_retry · bridge_call
                    bridge_install_probe · bridge_install · bridge_restart · bridge_pairing_qr

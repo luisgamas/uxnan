@@ -90,6 +90,13 @@ async fn fixture() -> (u16, mpsc::UnboundedReceiver<Seen>) {
                             let _ = ws.send(Message::Text(reply.to_string().into())).await;
                         }
                         Some("drop") => return,
+                        Some("huge") => {
+                            // A response over the client's frame limit, the way a
+                            // 45 MB conversation page reached the desktop.
+                            let body = "x".repeat(33 * 1024 * 1024);
+                            let reply = json!({ "type": "message", "message": { "jsonrpc": "2.0", "id": id, "result": body } });
+                            let _ = ws.send(Message::Text(reply.to_string().into())).await;
+                        }
                         _ => {}
                     }
                 }
@@ -145,7 +152,28 @@ async fn a_dropped_socket_fails_the_pending_call_and_reports_closed() {
         .call("drop", Value::Null, Duration::from_secs(5))
         .await;
     assert_eq!(result, Err(CallError::Closed));
-    assert_eq!(events.recv().await, Some(Event::Closed));
+    assert!(matches!(events.recv().await, Some(Event::Closed { .. })));
+}
+
+#[tokio::test]
+async fn a_frame_over_the_limit_closes_with_its_reason() {
+    let (port, _seen) = fixture().await;
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let connection = Connection::open(&discovery(port, TOKEN), "desktop", None, tx)
+        .await
+        .unwrap();
+    let result = connection
+        .call("huge", Value::Null, Duration::from_secs(20))
+        .await;
+    assert_eq!(result, Err(CallError::Closed));
+    match events.recv().await {
+        Some(Event::Closed {
+            reason: Some(reason),
+        }) => {
+            assert!(reason.contains("too long"), "{reason}");
+        }
+        other => panic!("expected a close with a reason, got {other:?}"),
+    }
 }
 
 #[tokio::test]

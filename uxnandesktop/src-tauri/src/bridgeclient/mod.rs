@@ -29,6 +29,7 @@ pub mod discovery;
 pub mod hosts;
 pub mod install;
 pub mod lock;
+pub mod reconnect;
 pub mod service;
 #[cfg(test)]
 mod socket_tests;
@@ -69,8 +70,6 @@ pub const NOTIFICATION_EVENT: &str = "bridge:notification";
 /// Frontend event carrying the new [`Status`] whenever it changes.
 pub const STATUS_EVENT: &str = "bridge:status";
 
-/// Longest wait between reconnect attempts while the bridge is unreachable.
-const MAX_BACKOFF: Duration = Duration::from_secs(30);
 /// How long a freshly started service gets to publish its file.
 const MANAGED_START_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -474,7 +473,7 @@ pub fn spawn(app: AppHandle, client: Arc<BridgeClient>) {
 async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
     let mut mode_rx = client.mode.subscribe();
     let mut resume: Option<Resume> = None;
-    let mut backoff = Duration::from_millis(500);
+    let mut policy = reconnect::Reconnect::default();
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode == Mode::Off {
@@ -488,9 +487,9 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
             continue;
         }
         client.set_status(&app, Status::Connecting).await;
-        match connect_once(&client, mode, resume.as_ref()).await {
+        let wait = match connect_once(&client, mode, resume.as_ref()).await {
             Ok((connection, mut events)) => {
-                backoff = Duration::from_millis(500);
+                let opened = std::time::Instant::now();
                 let hello = connection.hello().clone();
                 *client.connection.write().await = Some(connection.clone());
                 client
@@ -510,13 +509,19 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                     tauri::async_runtime::spawn(async move { client.sync_desktop_tools().await });
                 }
                 // Pump notifications until the socket closes or the mode moves.
+                let mut closed_because = None;
+                let mut switched_off = false;
                 loop {
                     tokio::select! {
                         event = events.recv() => match event {
                             Some(Event::Notification { message, .. }) => {
                                 let _ = app.emit(NOTIFICATION_EVENT, message);
                             }
-                            Some(Event::Closed) | None => break,
+                            Some(Event::Closed { reason }) => {
+                                closed_because = reason;
+                                break;
+                            }
+                            None => break,
                         },
                         changed = mode_rx.changed() => {
                             if changed.is_err() {
@@ -525,6 +530,7 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                             }
                             if *mode_rx.borrow() == Mode::Off {
                                 connection.close();
+                                switched_off = true;
                                 break;
                             }
                             // attach ↔ managed keeps the live connection.
@@ -533,9 +539,24 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                 }
                 resume = Some(connection.resume_point());
                 client.connection.write().await.take();
-                // Reconnect promptly: a restarted bridge or a superseded
-                // socket should not leave the chat dark for long.
-                continue;
+                if switched_off {
+                    // Off is handled at the top of the loop, at once.
+                    continue;
+                }
+                let lived = opened.elapsed();
+                if let Some(reason) = closed_because {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Warn,
+                        "bridge",
+                        &format!(
+                            "the bridge connection closed after {} ms: {reason}",
+                            lived.as_millis()
+                        ),
+                    );
+                }
+                // Promptly when it had been up a while (a restarted bridge, a
+                // superseded socket); a connection that died at once backs off.
+                policy.after_close(lived)
             }
             Err((reason, detail)) => {
                 client
@@ -547,12 +568,13 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                         },
                     )
                     .await;
+                policy.after_failure()
             }
-        }
+        };
 
-        // Wait out the backoff, unless asked to retry or the mode changes.
+        // Wait it out, unless asked to retry or the mode changes.
         tokio::select! {
-            _ = tokio::time::sleep(backoff) => {}
+            _ = tokio::time::sleep(wait) => {}
             _ = client.retry.notified() => {}
             changed = mode_rx.changed() => {
                 if changed.is_err() {
@@ -560,7 +582,6 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                 }
             }
         }
-        backoff = (backoff * 2).min(MAX_BACKOFF);
     }
 }
 

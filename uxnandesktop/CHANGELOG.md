@@ -4,6 +4,17 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A conversation too large for the bridge channel no longer locks the app in
+  a reconnect loop.** A response over the channel's 32 MiB frame limit (a long
+  conversation's page) closed the connection; the app reconnected at once,
+  reloaded the open chats and got the same response again — about twice a
+  second, for as long as that chat stayed open, with every round costing the
+  bridge the whole page. A connection that ends within ten seconds of opening
+  now backs off like a failed attempt (0.5 s doubling to 30 s), the same policy
+  for this machine's bridge and a host's, and the reason it closed is written
+  to the diagnostics log.
 
 ## [0.0.81] - 20261015
 ### Changed
