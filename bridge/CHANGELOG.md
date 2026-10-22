@@ -4,6 +4,48 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A long conversation no longer slows the whole bridge.** The conversation
+  store is rebuilt so no everyday cost grows with a conversation's length
+  (plans/046, phase 1). A conversation is now a directory —
+  `threads/<id>/thread.json` (summary + one header per turn), one file per turn,
+  and an append-only `.journal` for the turn in flight:
+  - a streamed delta, reasoning chunk or step appends one line to the journal
+    instead of rewriting the conversation — measured on a real 46 MB one,
+    ~0.1 ms instead of ~130 ms of blocked event loop per delta. It is still on
+    disk before any client is told;
+  - a start reads only the `thread.json` files — 5 ms and no resident turn data
+    on the real 73 conversations, from 474 ms and ~316 MB of heap;
+  - a turn's messages are read when a client opens it (`turn/list` reads only
+    its page) and kept in a cache bounded at 64 MiB of turn files, which never
+    drops a conversation being streamed into;
+  - when a turn ends its file is written once, folding the journal; a journal
+    left by a crash is replayed (a half-written last line is ignored) on the
+    next start;
+  - each step is stored once, in `segments` — `blocks` is derived for the wire,
+    which is unchanged (199 MB of real data became 121 MB);
+  - `setUsage` no longer copies the whole conversation to update metrics, and
+    a turn's usage is recorded before its end so the turn is written once.
+- **Conversations of an older bridge are converted once, at the first start.**
+  Each `threads/<id>.json` is written in the new layout and moved to
+  `threads.v1/<id>.json`; a remaining `threads.json` is converted and kept as
+  `threads.json.migrated`. An interrupted conversion is redone from the
+  original. Both backups can be deleted by hand.
+- **`turn/list` no longer re-reads an unchanged agent transcript.** A transcript
+  that is one file is read and merged again only when its size or modification
+  time changed, or the thread gained, lost or ended a turn
+  (`SessionHistoryReader.sourceSignature`, `ThreadStore.nativeHistoryCurrent`):
+  a real 40 MB Claude Code transcript had been parsed on every open (~115 ms).
+  OpenCode's history, read through its server, is read as before.
+
+### Fixed
+
+- **A queued message no longer misses a step end that comes while the previous
+  one is being handed over.** A step that ended while a mid-turn delivery was
+  still being persisted was ignored, so the next queued message waited for a
+  later step end or the end of the run; that pause is now taken as soon as the
+  delivery lands.
 
 ## [0.0.52-alpha.20261015] - 20261015
 ### Added

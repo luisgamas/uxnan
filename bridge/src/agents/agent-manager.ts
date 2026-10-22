@@ -305,6 +305,13 @@ export class AgentManager {
   /** The queued turn being handed to the running agent now, per thread. */
   readonly #deliveringByThread = new Map<string, string>();
   /**
+   * Threads where a step ended while a delivery was still being placed (its
+   * hand-off persisting): a pause that delivery did not use. Taken as soon as
+   * it is placed ({@link #retryMissedPause}) — otherwise the next queued
+   * message waited for a later step end, or the end of the run.
+   */
+  readonly #missedPause = new Set<string>();
+  /**
    * A queued turn the person sent NOW while the agent worked (`queue/sendNow`):
    * the running turn is being stopped for it, and when it stops this message
    * runs next instead of the queue pausing.
@@ -766,7 +773,10 @@ export class AgentManager {
    * Any refusal or failure leaves it queued, so it is never lost.
    */
   async #deliverAtPause(threadId: string): Promise<void> {
-    if (this.#deliveringByThread.has(threadId) || this.#steerInFlight.has(threadId)) return;
+    if (this.#deliveringByThread.has(threadId) || this.#steerInFlight.has(threadId)) {
+      this.#missedPause.add(threadId);
+      return;
+    }
     if (this.#queuePausedByThread.has(threadId) || this.#awaitingInput.has(threadId)) return;
     if (this.#sendNextAfterStop.has(threadId)) return;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
@@ -788,7 +798,14 @@ export class AgentManager {
         this.#deliveringByThread.delete(threadId);
         this.#notifyQueue(threadId);
       }
+      this.#retryMissedPause(threadId);
     }
+  }
+
+  /** Takes a pause that came while a delivery was in flight, once none is. */
+  #retryMissedPause(threadId: string): void {
+    if (this.#deliveringByThread.has(threadId) || this.#steerInFlight.has(threadId)) return;
+    if (this.#missedPause.delete(threadId)) void this.#deliverAtPause(threadId);
   }
 
   /** Records whether step [stepId] of run [runId] is running, waking a
@@ -832,6 +849,7 @@ export class AgentManager {
       return await attempt;
     } finally {
       if (this.#steerInFlight.get(threadId) === attempt) this.#steerInFlight.delete(threadId);
+      this.#retryMissedPause(threadId);
     }
   }
 
@@ -1943,10 +1961,12 @@ export class AgentManager {
           // phone's "responding…" indicator) ever sees a turn reported as
           // `completed` yet still active; the two flip together.
           this.#activeTurnByThread.delete(threadId);
-          await this.#options.store.completeTurn(threadId, turnId, provided, now);
-          const text = await this.#assistantText(turnId, provided);
+          // Usage first: recorded while the turn is still open it rides the
+          // turn's journal, and the end then writes the turn's file once.
           const usage = readUsage(event.data);
           if (usage) await this.#options.store.setUsage(threadId, turnId, usage, now);
+          await this.#options.store.completeTurn(threadId, turnId, provided, now);
+          const text = await this.#assistantText(turnId, provided);
           this.#options.notify(
             makeNotification(StreamNotification.TurnCompleted, {
               threadId,

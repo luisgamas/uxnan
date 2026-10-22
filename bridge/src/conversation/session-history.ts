@@ -63,7 +63,9 @@
  * This is a best-effort, READ-ONLY fallback: it never writes, tolerates malformed
  * lines/files, and returns `null` when it cannot produce anything (the caller then
  * keeps the empty store result). Resolved file paths are cached per session id
- * with a 60s TTL so repeated `turn/list` calls don't re-scan the directory tree.
+ * with a 60s TTL so repeated `turn/list` calls don't re-scan the directory tree,
+ * and {@link SessionHistoryReader.sourceSignature} says whether a file-backed
+ * transcript changed, so an unchanged one is not read again at all.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -189,9 +191,49 @@ export class SessionHistoryReader {
 
   // --- Per-agent locators + parsers ------------------------------------------
 
-  async #readClaude(sessionId: string): Promise<RawMessage[] | null> {
+  /**
+   * What the agent's transcript for [source] is right now — its file, size
+   * and modification time — so a caller that remembers it can tell an
+   * unchanged transcript from one worth reading again (the bridge skips
+   * re-reading a 40 MB Claude Code transcript on every `turn/list` this way).
+   * `undefined` when the history is not one file — OpenCode's is read through
+   * its server — or none was found: then nothing is cheaper than reading it.
+   */
+  async sourceSignature(source: HistorySource): Promise<string | undefined> {
+    const { agentId, agentSessionId } = source;
+    if (!agentId || !agentSessionId) return undefined;
+    let file: string | null;
+    try {
+      file = await this.#transcriptFile(agentId as AgentId, agentSessionId);
+      if (!file) return undefined;
+      const info = await stat(file);
+      return JSON.stringify([file, info.size, info.mtimeMs]);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The one file holding an agent's transcript, for agents that keep one. */
+  #transcriptFile(agentId: AgentId, sessionId: string): Promise<string | null> {
+    switch (agentId) {
+      case 'claude-code':
+        return this.#claudeFile(sessionId);
+      case 'codex':
+        return this.#codexFile(sessionId);
+      case 'pi-agent':
+        return this.#piFile(sessionId);
+      case 'zero':
+        return this.#zeroFile(sessionId);
+      case 'grok':
+        return this.#grokFile(sessionId);
+      default:
+        return Promise.resolve(null);
+    }
+  }
+
+  #claudeFile(sessionId: string): Promise<string | null> {
     const projects = join(this.#home, '.claude', 'projects');
-    const file = await this.#cached(`claude:${sessionId}`, async () => {
+    return this.#cached(`claude:${sessionId}`, async () => {
       // The session id is the file name; scan project dirs rather than reproduce
       // Claude's cwd-encoding (which is lossy). Session ids are UUIDs → unique.
       const dirs = await safeReaddir(projects);
@@ -201,6 +243,40 @@ export class SessionHistoryReader {
       }
       return null;
     });
+  }
+
+  #codexFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.codex', 'sessions');
+    return this.#cached(`codex:${sessionId}`, async () => {
+      // Layout: sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<sessionId>.jsonl
+      const suffix = `-${sessionId}.jsonl`;
+      return findFileBySuffix(sessionsRoot, suffix, 3);
+    });
+  }
+
+  #piFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.pi', 'agent', 'sessions');
+    return this.#cached(`pi:${sessionId}`, async () => {
+      // Layout: sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
+      return findFileBySuffix(sessionsRoot, `_${sessionId}.jsonl`, 1);
+    });
+  }
+
+  async #zeroFile(sessionId: string): Promise<string | null> {
+    const file = join(this.#home, '.local', 'share', 'zero', 'sessions', sessionId, 'events.jsonl');
+    return (await isFile(file)) ? file : null;
+  }
+
+  async #grokFile(sessionId: string): Promise<string | null> {
+    const sessionsRoot = join(this.#home, '.grok', 'sessions');
+    const sessionDir = await this.#cached(`grok:${sessionId}`, () =>
+      findDirByName(sessionsRoot, sessionId, 2),
+    );
+    return sessionDir ? join(sessionDir, 'updates.jsonl') : null;
+  }
+
+  async #readClaude(sessionId: string): Promise<RawMessage[] | null> {
+    const file = await this.#claudeFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
     // Track the assistant's pending `tool_use` invocations so we can pair each
@@ -249,12 +325,7 @@ export class SessionHistoryReader {
   }
 
   async #readCodex(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.codex', 'sessions');
-    const file = await this.#cached(`codex:${sessionId}`, async () => {
-      // Layout: sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<sessionId>.jsonl
-      const suffix = `-${sessionId}.jsonl`;
-      return findFileBySuffix(sessionsRoot, suffix, 3);
-    });
+    const file = await this.#codexFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
     // Track the most recent assistant message so we can attach reasoning text
@@ -462,11 +533,7 @@ export class SessionHistoryReader {
   }
 
   async #readPi(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.pi', 'agent', 'sessions');
-    const file = await this.#cached(`pi:${sessionId}`, async () => {
-      // Layout: sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
-      return findFileBySuffix(sessionsRoot, `_${sessionId}.jsonl`, 1);
-    });
+    const file = await this.#piFile(sessionId);
     if (!file) return null;
     const out: RawMessage[] = [];
     // Pending `toolCall` content blocks from the most recent assistant message,
@@ -535,8 +602,8 @@ export class SessionHistoryReader {
   }
 
   async #readZero(sessionId: string): Promise<RawMessage[] | null> {
-    const file = join(this.#home, '.local', 'share', 'zero', 'sessions', sessionId, 'events.jsonl');
-    if (!(await isFile(file))) return null;
+    const file = await this.#zeroFile(sessionId);
+    if (!file) return null;
     const out: RawMessage[] = [];
     for (const event of await readJsonl(file)) {
       if (event['type'] !== 'message') continue;
@@ -550,18 +617,15 @@ export class SessionHistoryReader {
   }
 
   async #readGrok(sessionId: string): Promise<RawMessage[] | null> {
-    const sessionsRoot = join(this.#home, '.grok', 'sessions');
-    const sessionDir = await this.#cached(`grok:${sessionId}`, () =>
-      findDirByName(sessionsRoot, sessionId, 2),
-    );
-    if (!sessionDir) return null;
+    const file = await this.#grokFile(sessionId);
+    if (!file) return null;
     const out: RawMessage[] = [];
     let user = '';
     let assistant = '';
     let thinking = '';
     let userAt = 0;
     let completedAt = 0;
-    for (const event of await readJsonl(join(sessionDir, 'updates.jsonl'))) {
+    for (const event of await readJsonl(file)) {
       const params = asRecord(event['params']);
       if (params?.['sessionId'] !== sessionId) continue;
       const update = asRecord(params['update']);

@@ -2,29 +2,35 @@
  * Persistent daemon state under `~/.uxnan/` (non-secret files only).
  *
  * Secrets (the Ed25519 private identity) live in a {@link SecretStore}, never in
- * these JSON files. Writes are atomic (temp file + rename).
+ * these JSON files. Writes are atomic (temp file + rename), except a turn's
+ * journal, which is only ever appended to.
  *
  * Source: architecture/02a-system-architecture.md §5.8.3.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import {
+  appendFile,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
 
 export const DAEMON_DIRS = {
   threads: 'threads',
+  /** Where each conversation file of the one-file-per-conversation layout goes
+   *  once it was converted (see {@link DaemonState.retireV1ThreadFile}). */
+  threadsV1: 'threads.v1',
   attachments: 'attachments',
 } as const;
-
-/**
- * File name for one conversation. Thread ids are generated with `randomUUID`,
- * so this only has to refuse anything that is not one — a value that reached
- * the store from elsewhere must never be able to name a path.
- */
-export function threadFileName(threadId: string): string {
-  return `${safeName(threadId, 'thread id')}.json`;
-}
 
 /** A path segment made only of safe characters, never `.` or `..`. */
 function safeName(value: string, what: string): string {
@@ -32,6 +38,18 @@ function safeName(value: string, what: string): string {
     throw new Error(`unsafe ${what}: ${value}`);
   }
   return value;
+}
+
+/**
+ * The file stem a turn is stored under. Turns the bridge ran have UUIDs, used
+ * as they are; a turn imported from an agent's transcript has the reader's id
+ * (`<session>#t3`), which no file name may carry, so anything but letters,
+ * digits and dashes is written as `_` + its base64url. A plain stem never
+ * starts with `_`, so the two can never name the same file.
+ */
+export function turnFileStem(turnId: string): string {
+  if (/^[A-Za-z0-9-]+$/.test(turnId)) return turnId;
+  return `_${Buffer.from(turnId, 'utf-8').toString('base64url')}`;
 }
 
 export const DAEMON_FILES = {
@@ -71,9 +89,9 @@ const RENAME_RETRY_DELAYS_MS = [5, 15, 40, 100, 250];
  * on Windows. The write is fine; only the swap is momentarily refused, so a
  * short retry turns a spurious failure into a successful write.
  *
- * This matters far beyond a flaky test: `ThreadStore` persists every streamed
- * turn through {@link DaemonState.writeJson}, and `AgentManager` swallows event
- * handling errors. A single refused rename on the `turn_completed` write left
+ * This matters far beyond a flaky test: `ThreadStore` persists the end of every
+ * turn through an atomic write, and `AgentManager` swallows event handling
+ * errors. A single refused rename on the `turn_completed` write left
  * the turn stuck at `streaming` forever — the phone sat on "responding…" until
  * the app was killed, and the bridge test suite hung for its full 120s `waitFor`
  * budget (the long-standing "Windows CI flake").
@@ -146,36 +164,43 @@ export class DaemonState {
   }
 
   /**
-   * Directory holding one file per conversation (`threads/<id>.json`).
+   * Directory holding the conversations, one directory each:
    *
-   * Conversations live one-per-file rather than in a single `threads.json`
-   * because that file is rewritten on **every streamed token**: at 8.4 MB the
-   * read+serialize+write round trip measured 93 ms per delta, which throttled
-   * the agent's reply to a quarter of its natural speed and made it arrive in
-   * lurches. Per thread the same write is a few KB.
+   *     threads/<threadId>/thread.json              summary + turn index
+   *     threads/<threadId>/turns/<turn>.json        one settled turn's messages
+   *     threads/<threadId>/turns/<turn>.journal     the turn in flight, append-only
+   *
+   * Why this shape, measured on real data: with one file per conversation a
+   * 46 MB conversation was re-serialized and rewritten on every streamed token
+   * (~100 ms each), and every start parsed all of them (207 MB, 512 MB of heap).
+   * Split by turn, a start reads only the small `thread.json` files, a turn is
+   * read when someone opens it, and a token appends one line to a journal.
    */
   get threadsDir(): string {
     return join(this.baseDir, DAEMON_DIRS.threads);
   }
 
+  #threadDir(threadId: string): string {
+    return join(this.threadsDir, safeName(threadId, 'thread id'));
+  }
+
+  #turnPath(threadId: string, turnId: string, ext: 'json' | 'journal'): string {
+    return join(this.#threadDir(threadId), 'turns', `${turnFileStem(turnId)}.${ext}`);
+  }
+
   /**
-   * Reads every stored conversation. Order is not meaningful — the caller sorts.
-   * A file that is unreadable or not valid JSON is skipped rather than failing
-   * the whole load: one damaged conversation must not cost the user the rest.
+   * The `thread.json` of every stored conversation, as text (the store keeps it
+   * to skip rewriting an index that did not change). Order is not meaningful. A
+   * directory without a readable index is skipped rather than failing the whole
+   * load: one damaged conversation must not cost the user the rest.
    */
-  async readThreadFiles<T>(): Promise<T[]> {
-    let names: string[];
-    try {
-      names = await readdir(this.threadsDir);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw err;
-    }
-    const out: T[] = [];
-    for (const name of names) {
-      if (!name.endsWith('.json')) continue;
+  async readThreadIndexes(): Promise<{ threadId: string; text: string }[]> {
+    const out: { threadId: string; text: string }[] = [];
+    for (const entry of await readdirTyped(this.threadsDir)) {
+      if (!entry.isDirectory()) continue;
       try {
-        out.push(JSON.parse(await readFile(join(this.threadsDir, name), 'utf-8')) as T);
+        const text = await readFile(join(this.threadsDir, entry.name, 'thread.json'), 'utf-8');
+        out.push({ threadId: entry.name, text });
       } catch {
         continue;
       }
@@ -183,28 +208,107 @@ export class DaemonState {
     return out;
   }
 
-  /** Atomically writes one conversation's file. */
-  async writeThreadFile(threadId: string, data: unknown): Promise<void> {
-    await mkdir(this.threadsDir, { recursive: true });
-    const target = join(this.threadsDir, threadFileName(threadId));
-    const tmp = `${target}.${randomUUID()}.tmp`;
-    await writeFile(tmp, JSON.stringify(data), 'utf-8');
+  /** Whether a conversation's index is on disk (its conversion finished). */
+  async hasThreadIndex(threadId: string): Promise<boolean> {
     try {
-      await renameWithRetry(tmp, target);
-    } catch (err) {
-      await rm(tmp, { force: true }).catch(() => undefined);
-      throw err;
+      return (await stat(join(this.#threadDir(threadId), 'thread.json'))).isFile();
+    } catch {
+      return false;
     }
+  }
+
+  /** Atomically writes a conversation's `thread.json`. */
+  async writeThreadIndex(threadId: string, text: string): Promise<void> {
+    await atomicWrite(join(this.#threadDir(threadId), 'thread.json'), text);
+  }
+
+  /** A settled turn's file, as text; `null` when there is none. */
+  readTurnFile(threadId: string, turnId: string): Promise<string | null> {
+    return readOptional(this.#turnPath(threadId, turnId, 'json'));
+  }
+
+  /** Atomically writes a turn's file. */
+  async writeTurnFile(threadId: string, turnId: string, text: string): Promise<void> {
+    await atomicWrite(this.#turnPath(threadId, turnId, 'json'), text);
+  }
+
+  /** The journal of a turn, as text; `null` when it has none. */
+  readTurnJournal(threadId: string, turnId: string): Promise<string | null> {
+    return readOptional(this.#turnPath(threadId, turnId, 'journal'));
+  }
+
+  /**
+   * Appends [text] to a turn's journal (creating it). Deliberately not atomic:
+   * an append is the whole point — it costs what it writes — and a reader of the
+   * journal ignores a last line a crash left half-written.
+   */
+  async appendTurnJournal(threadId: string, turnId: string, text: string): Promise<void> {
+    const path = this.#turnPath(threadId, turnId, 'journal');
+    await mkdir(join(path, '..'), { recursive: true });
+    await appendFile(path, text, 'utf-8');
+  }
+
+  /** Removes a turn's journal (once folded into its file). Missing is success. */
+  async removeTurnJournal(threadId: string, turnId: string): Promise<void> {
+    await rm(this.#turnPath(threadId, turnId, 'journal'), { force: true });
+  }
+
+  /** Removes a turn's file and journal. Missing is success. */
+  async removeTurnFiles(threadId: string, turnId: string): Promise<void> {
+    await rm(this.#turnPath(threadId, turnId, 'json'), { force: true });
+    await rm(this.#turnPath(threadId, turnId, 'journal'), { force: true });
+  }
+
+  /**
+   * Removes a conversation. Its index goes first: a crash halfway through then
+   * leaves turn files nobody lists, never an index naming files that are gone.
+   */
+  async removeThread(threadId: string): Promise<void> {
+    const dir = this.#threadDir(threadId);
+    await rm(join(dir, 'thread.json'), { force: true });
+    await rm(dir, { recursive: true, force: true });
+  }
+
+  /**
+   * Conversations still in the previous layout, one `threads/<id>.json` file
+   * each, waiting to be converted.
+   */
+  async v1ThreadIds(): Promise<string[]> {
+    const ids: string[] = [];
+    for (const entry of await readdirTyped(this.threadsDir)) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      const id = entry.name.slice(0, -'.json'.length);
+      if (/^[A-Za-z0-9._-]+$/.test(id) && id !== '.' && id !== '..') ids.push(id);
+    }
+    return ids;
+  }
+
+  /** One conversation of the previous layout; `null` if unreadable. */
+  async readV1ThreadFile<T>(threadId: string): Promise<T | null> {
+    try {
+      const path = join(this.threadsDir, `${safeName(threadId, 'thread id')}.json`);
+      return JSON.parse(await readFile(path, 'utf-8')) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Moves a converted conversation file of the previous layout to
+   * `threads.v1/<id>.json`. Moved rather than deleted — until the new layout has
+   * proven itself it is the user's copy of that history — and out of `threads/`,
+   * so it is never read again. It can be deleted by hand.
+   */
+  async retireV1ThreadFile(threadId: string): Promise<void> {
+    const name = `${safeName(threadId, 'thread id')}.json`;
+    const dir = join(this.baseDir, DAEMON_DIRS.threadsV1);
+    await mkdir(dir, { recursive: true });
+    await renameWithRetry(join(this.threadsDir, name), join(dir, name));
   }
 
   /** Removes a file of the state directory. Missing is success. */
   async remove(file: string): Promise<void> {
     await rm(this.pathFor(file), { force: true });
-  }
-
-  /** Removes one conversation's file. Missing is success. */
-  async removeThreadFile(threadId: string): Promise<void> {
-    await rm(join(this.threadsDir, threadFileName(threadId)), { force: true });
   }
 
   /**
@@ -245,9 +349,10 @@ export class DaemonState {
   }
 
   /**
-   * Retires the legacy single-file store once its conversations have been
-   * written out one per file. Renamed rather than deleted: until the new files
-   * have proven themselves this is the user's only copy of their history.
+   * Retires the oldest layout — every conversation in one `threads.json` — once
+   * its conversations have been written out in the current one. Renamed (to
+   * `threads.json.migrated`) rather than deleted: until the new files have
+   * proven themselves this is the user's only copy of their history.
    */
   async retireLegacyThreads(): Promise<void> {
     const from = this.pathFor(DAEMON_FILES.threads);
@@ -269,5 +374,39 @@ export class DaemonState {
     if (existing) return resolveDaemonConfig(existing);
     await this.writeJson(DAEMON_FILES.config, DEFAULT_DAEMON_CONFIG);
     return DEFAULT_DAEMON_CONFIG;
+  }
+}
+
+/** Writes [text] to [target] atomically: a temp sibling, then a rename over it. */
+async function atomicWrite(target: string, text: string): Promise<void> {
+  await mkdir(join(target, '..'), { recursive: true });
+  const tmp = `${target}.${randomUUID()}.tmp`;
+  await writeFile(tmp, text, 'utf-8');
+  try {
+    await renameWithRetry(tmp, target);
+  } catch (err) {
+    // Never leave a temp sibling behind next to the real file.
+    await rm(tmp, { force: true }).catch(() => undefined);
+    throw err;
+  }
+}
+
+/** A file's text, or `null` when it does not exist. */
+async function readOptional(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** A directory's entries; none when it does not exist. */
+async function readdirTyped(dir: string): Promise<Dirent[]> {
+  try {
+    return await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
   }
 }

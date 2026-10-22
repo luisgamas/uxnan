@@ -238,10 +238,11 @@ Task-focused guides live in [`docs/`](docs/):
   E2EE types and runtime validators. The bridge exposes **103 JSON-RPC methods +
   25 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
-- **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
-  `daemon-config.json` (incl. the `relay` endpoint), `relay.json` (how the relay
-  was set up), `pairing-session.json`, `threads/<threadId>.json`,
-  `metrics.json`,
+- **State.** Non-secret JSON under `~/.uxnan/` (atomic writes; a streaming
+  turn's journal is appended) — `daemon-config.json` (incl. the `relay`
+  endpoint), `relay.json` (how the relay was set up), `pairing-session.json`,
+  `threads/<threadId>/` (`thread.json` + one file per turn, see
+  [`docs/configuration.md`](docs/configuration.md)), `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
   `agent-processes.json` (the agent processes the running bridge started, so the
   next one can end those a hard-killed bridge left behind), `logs/`. `metrics.json` is the complete historical activity ledger; it keeps

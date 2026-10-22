@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1193, shared 92, relay
+standalone). It builds clean and the suite is green (bridge 1212, shared 92, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -144,6 +144,20 @@ push validation (FOR-HUMAN).
   Native assistant envelopes from Codex, Claude and pi are separated by durable
   `assistant_response_boundary` blocks; terminal text is reconciled additively,
   so an agent's final item cannot erase progress/commentary already shown.
+- **Bounded conversation store** (plans/046 phase 1, architecture/02a §5.8.3) —
+  a conversation is `threads/<id>/thread.json` + one file per turn + an
+  append-only journal for the turn in flight. A streamed event appends one line
+  (~0.1 ms, from ~130 ms on a real 46 MB conversation); a start reads only the
+  indexes (5 ms, from 474 ms and ~316 MB of heap on the real 73 conversations);
+  turns load on demand into a 64 MiB cache that never drops a conversation being
+  streamed into; a crash's journal is replayed on the next start; each step is
+  stored once (`blocks` derived from `segments`). Older layouts convert once and
+  are kept aside (`threads.v1/`, `threads.json.migrated`). `turn/list` skips
+  re-reading a native transcript file whose size and mtime did not change
+  (OpenCode, read over HTTP, is still read each time). Guarded by
+  `test/conversation/thread-store-budget.test.ts`. Phases 2–5 of the plan (a
+  summarized wire shape with detail on demand, byte-budgeted pages, a
+  response-size guard, the desktop/mobile replicas) are not started.
 - **Conversation naming** — a thread is no longer labelled with the first ~72
   characters of its opening message (two conversations that start with the same
   phrase were indistinguishable). No agent CLI exposes a title — every one of
@@ -264,7 +278,7 @@ push validation (FOR-HUMAN).
   echo demo; see `docs/agents.md` → *Image attachments*.
 - **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
   Zero and Grok. Every idle read merges completed native-only turns into the
-  bridge store; OpenCode uses its official local server endpoint and the other
+  bridge store (skipped while a transcript file and the thread are unchanged); OpenCode uses its official local server endpoint and the other
   agents use their persisted transcripts. A row already imported is refreshed
   in place rather than imported again, and a turn the bridge closed before any
   reply takes the transcript's reply in its own place (`fillEmptyReply`).

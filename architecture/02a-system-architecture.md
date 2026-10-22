@@ -1,11 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.7.2
-> **Fecha:** 2026-10-15
+> **Version:** 1.7.3
+> **Fecha:** 2026-10-22
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.7.3):** no everyday cost of the bridge's conversation
+> store grows with a conversation's length (§5.8.3). A conversation is a
+> directory: `thread.json` (summary + one header per turn), one file per turn,
+> and an append-only journal for the turn in flight — a streamed token appends
+> one line instead of rewriting the conversation, a start reads only the
+> `thread.json` files, and turns are read on demand into a cache bounded by
+> bytes. Each step is stored once (`blocks` is derived from `segments`). Native
+> convergence (§5.8.8) skips reading a transcript file whose size and
+> modification time have not changed since it was merged. The wire is unchanged.
+>
 > **Executive summary (1.7.2):** an agent view can be **typed blocks** instead of
 > HTML: `view_show` and `view_check` take `blocks` (ten types: `text`, `stats`,
 > `bar-chart`, `line-chart`, `breakdown`, `table`, `list`, `callout`, `compare`,
@@ -2087,8 +2097,14 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── trusted-phones.json            # telefonos de confianza registrados
 ├── managed-worktrees.json         # worktrees administrados
 ├── push-state.json                # estado de push notifications
-├── threads/                       # historial mutable, un fichero por conversacion
-│   └── <threadId>.json            #   reescrito solo cuando ESA conversacion cambia
+├── threads/                       # historial mutable, un directorio por conversacion
+│   └── <threadId>/
+│       ├── thread.json            #   resumen + una cabecera por turno (sin mensajes)
+│       └── turns/
+│           ├── <turn>.json        #   los mensajes de un turno; reescrito al terminar
+│           └── <turn>.journal     #   el turno en vuelo: una linea JSON por evento
+├── threads.v1/<threadId>.json     # conversaciones del formato anterior, ya convertidas
+├── threads.json.migrated          # el formato mas antiguo (un solo fichero), ya convertido
 ├── metrics.json                   # ledger historico completo (version 2)
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
@@ -2101,24 +2117,53 @@ El bridge mantiene estado en `~/.uxnan/`:
 The bridge Ed25519 identity and the metrics sealing key live in the OS keychain,
 not in these JSON files.
 
-**Conversations are stored one per file, and that is load-bearing.** Every
-streamed token mutates a conversation, so while they shared a single
-`threads.json` each token re-read, re-serialized and rewrote the whole store.
-Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
-(blocking the event loop) and 24 ms to write — **93 ms per delta**, which queued
-behind the store mutex and throttled delivery to the phone to 5.8 deltas/s with
-gaps of 109 ms (p50) and 573 ms (max). The same reply took 116 s against that
-store and 26 s against an empty one: the cost scaled with the user's whole
-history, so it got worse on its own. Per conversation the median write is a few
-KB, and one conversation's size no longer taxes every other.
+**No everyday cost of the conversation store grows with a conversation's
+length — that is what the layout is for.** Every streamed token changes a
+conversation. While all of them shared one `threads.json`, each token re-read,
+re-serialized and rewrote the whole store (93 ms per delta on a real 8.4 MB
+one); split into one file per conversation, the same happened per
+conversation once one grew large: a real 46 MB conversation (21 turns, ~9 000
+command steps) cost ~100–130 ms of blocked event loop per delta, for every
+chat and client of the bridge, and every start parsed all of them (207 MB in
+424 ms, 512 MB of heap). So a conversation is split by turn:
 
-The conversations are also held in memory between mutations — this process is
-their only reader and writer, guaranteed by the single-instance lock. **No
-durability guarantee changes: every mutation still writes its file before it
-resolves**, so nothing is deferred and no window of loss is opened. A legacy
-`threads.json` is split into per-conversation files on first read and kept as
-`threads.json.migrated` (a backup, not a deletion — it is the user's only copy
-of that history until the new files are proven).
+- **A start reads only the `thread.json` files** (a few KB each: the summary
+  and, per turn, its id, position, status, times, links, messages per day and
+  file size). Measured on the same 73 conversations: 5 ms and no resident turn
+  data, from 474 ms and ~316 MB.
+- **A turn's messages are read when someone reads them** (`turn/list` reads
+  only its page's turns) and stay in memory in a cache bounded by the bytes of
+  their files (64 MiB). The conversation used longest ago goes first; never one
+  being streamed into, one a mutation is working on, or the one used last.
+- **A streamed event — text, reasoning, a step, a step settling, the turn's
+  usage — appends one JSON line to the turn's journal** (`turns/<turn>.journal`)
+  and is applied in memory by the same function that replays a journal. Nothing
+  is rewritten: ~0.1 ms and a few hundred bytes per delta. **No durability
+  guarantee changes: the line is on disk before the store resolves**, so it is
+  still durable before any client is told.
+- **When the turn ends** (completed, failed, aborted, cancelled or handed off)
+  its file is rewritten once with the journal folded in, then the journal is
+  removed. The file records how many journal events it folded, so a crash
+  between the two never applies one twice. A journal a crash left behind is
+  replayed on the next start (a half-written last line is ignored) and folded:
+  the turn keeps everything that reached disk and stays `streaming`, like any
+  turn a restart cut short.
+- **Any other change rewrites only what it reached**: the turns it handed out
+  for change and the index, each only if its content actually differs. What a
+  change reached is recorded by the accessors that hand state to it, so nothing
+  has to remember to name the files it touched.
+- **Each step is stored once**, in the message's ordered `segments`; `blocks`
+  is derived from them for the wire (and kept only where it is not exactly the
+  steps of `segments`: a reply imported without an order). This halved the data
+  (the real 199 MB became 121 MB).
+
+Both older layouts are converted once, at the first start that finds them: a
+`threads/<id>.json` conversation is written in the new layout and then moved to
+`threads.v1/<id>.json`, and anything left in the single `threads.json` is
+converted and that file kept as `threads.json.migrated` (backups, never
+deletions; both can be removed by hand). A conversion is done when its
+`thread.json` exists — written last — so one interrupted halfway is redone from
+the original. The real 207 MB converted in ~1.3 s, once.
 
 **No agent process outlives a bridge that is killed hard.** A graceful stop
 closes every child (`AgentManager.stopAll`); a `SIGKILL`, a crash or an OOM kill
@@ -2362,8 +2407,21 @@ convencional. El ADE de escritorio replica el atenuado con su propio
 
 `turn/list` reconciles the agent-owned transcript before reading the bridge
 store whenever that thread has no bridge-driven turn in flight. This is not an
-empty-store fallback: it runs on every idle read so completed turns written from
-another client attached to the same native session converge into Uxnan.
+empty-store fallback: it is considered on every idle read so completed turns
+written from another client attached to the same native session converge into
+Uxnan.
+
+What every idle read still costs is a `stat` of the transcript. Where the
+transcript is one file (every source below but OpenCode's server),
+`SessionHistoryReader.sourceSignature` reports its path, size and modification
+time; the store remembers, in the thread's `thread.json`, the signature it
+last merged together with the thread's turn count, last position and number of
+ended turns (`ThreadStore.nativeHistoryCurrent`). While both are the same, a
+merge cannot change anything, so the read skips reading and merging the
+transcript — a real 40 MB Claude Code transcript cost ~115 ms per read. A
+transcript that grew, or a thread that gained, lost or ended a turn, is read
+and merged again in full. OpenCode's history, read through its server, has no
+signature and is read on every idle read as before.
 
 | Agent | Authoritative readable source | Support |
 |---|---|---|
@@ -2583,7 +2641,7 @@ written to this ledger either.
 - Mutating Git operations preserve method, thread association, outcome and time.
 
 Rows have stable ids. Conversation/turn projections advance by `updatedAt`;
-sessions and Git rows are append-only. Existing `threads.json` history is
+sessions and Git rows are append-only. Existing conversation history is
 backfilled idempotently at startup and before snapshot/export. Deleting a thread
 only deletes mutable conversation history — it never deletes ledger rows, so
 activity totals cannot go backwards. Day keys use `utcDayKey` (UTC midnight of

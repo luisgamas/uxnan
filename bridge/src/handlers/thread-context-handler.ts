@@ -232,17 +232,26 @@ export function registerThreadHandlers(router: HandlerRouter): void {
         ? { queueDeliveringTurnId: queue.deliveringTurnId }
         : {}),
     });
-    // Reconcile the agent-owned transcript on EVERY idle read, not just when
+    // Reconcile the agent-owned transcript on every idle read, not just when
     // Uxnan's store is empty. This is what makes a turn written from Codex
     // Desktop/CLI (or another supported client attached to the same native
     // session) appear back on the phone. Never read while the bridge itself is
     // driving a turn: its streaming store is already authoritative and a
     // half-flushed native record must not be mistaken for an external turn.
+    // A transcript that is one file is read again only once it changed (its
+    // size or modification time) or the thread did: re-reading an unchanged
+    // 40 MB transcript cost ~115 ms on every open.
     if (activeTurnId === undefined) {
       const source = await ctx.threadStore.getHistorySource(threadId);
-      const nativeTurns = await ctx.sessionHistory.readTurns(source, threadId);
-      if (nativeTurns && nativeTurns.length > 0) {
-        await ctx.threadStore.reconcileNativeHistory(threadId, nativeTurns, ctx.now());
+      const signature = await ctx.sessionHistory.sourceSignature(source);
+      if (!(await ctx.threadStore.nativeHistoryCurrent(threadId, signature))) {
+        const nativeTurns = await ctx.sessionHistory.readTurns(source, threadId);
+        await ctx.threadStore.reconcileNativeHistory(
+          threadId,
+          nativeTurns ?? [],
+          ctx.now(),
+          signature,
+        );
       }
     }
     const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);

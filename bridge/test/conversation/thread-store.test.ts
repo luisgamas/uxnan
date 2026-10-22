@@ -492,9 +492,9 @@ test('reconcileNativeHistory leaves an empty turn alone for an exchange outside 
 });
 
 /**
- * One file per conversation is what keeps a streamed token cheap: while every
- * thread shared one `threads.json`, each delta re-read and rewrote the whole
- * store (93 ms on a real 8.4 MB one) and throttled the reply behind the mutex.
+ * The oldest layout kept every conversation in one `threads.json`: each delta
+ * re-read and rewrote the whole store (93 ms on a real 8.4 MB one). It is
+ * converted to the current one on the first start that finds it.
  */
 const legacyThread = (id: string, title: string) => ({
   id,
@@ -511,7 +511,7 @@ async function seedLegacy(baseDir: string, threads: unknown[]): Promise<void> {
   await writeFile(join(baseDir, 'threads.json'), JSON.stringify(threads), 'utf-8');
 }
 
-test('a legacy single-file store migrates to one file per conversation', async () => {
+test('a legacy single-file store migrates to one directory per conversation', async () => {
   const { store, baseDir } = newStore();
   await seedLegacy(baseDir, [legacyThread('t-one', 'First'), legacyThread('t-two', 'Second')]);
 
@@ -523,7 +523,8 @@ test('a legacy single-file store migrates to one file per conversation', async (
   );
 
   const files = (await readdir(join(baseDir, 'threads'))).sort();
-  assert.deepEqual(files, ['t-one.json', 't-two.json']);
+  assert.deepEqual(files, ['t-one', 't-two']);
+  assert.equal(existsSync(join(baseDir, 'threads', 't-one', 'thread.json')), true);
   assert.equal(
     existsSync(join(baseDir, 'threads.json')),
     false,
@@ -568,7 +569,7 @@ test('a mutation rewrites only the conversation it touched', async () => {
 
   // Mark the other conversation's file by hand: if the store rewrites it, the
   // marker is gone — which is exactly the cost this layout exists to avoid.
-  const otherFile = join(baseDir, 'threads', `${two.id}.json`);
+  const otherFile = join(baseDir, 'threads', two.id, 'thread.json');
   const stored = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
   await writeFile(otherFile, JSON.stringify({ ...stored, marker: 'untouched' }), 'utf-8');
 
@@ -581,14 +582,15 @@ test('a mutation rewrites only the conversation it touched', async () => {
   await rmrf(baseDir);
 });
 
-test('deleting a conversation removes its file', async () => {
+test('deleting a conversation removes its files', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  const file = join(baseDir, 'threads', `${thread.id}.json`);
-  assert.equal(existsSync(file), true);
+  await store.startTurn(thread.id, 'ask', 2);
+  const dir = join(baseDir, 'threads', thread.id);
+  assert.equal(existsSync(join(dir, 'thread.json')), true);
 
   await store.deleteThread(thread.id);
-  assert.equal(existsSync(file), false);
+  assert.equal(existsSync(dir), false);
   assert.equal((await store.listThreads('p')).threads.length, 0);
   await rmrf(baseDir);
 });

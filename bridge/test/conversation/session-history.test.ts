@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile, rm } from 'node:fs/promises';
 import { SessionHistoryReader, openCodeV1History, openCodeV2History } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
 
@@ -1218,6 +1218,39 @@ test('grok: imports only ACP turns closed by turn_completed', async () => {
     assert.equal(turns?.[0]?.messages[0]?.content, 'from Grok TUI');
     assert.equal(turns?.[0]?.messages[1]?.content, 'grok answer');
     assert.equal(turns?.[0]?.messages[1]?.thinking, 'thinking');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('sourceSignature names a transcript file as it is now, and changes when it does', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const claude = { agentId: 'claude-code', agentSessionId: 'sig-claude' };
+    assert.equal(await reader.sourceSignature(claude), undefined, 'no file yet');
+
+    const fresh = new SessionHistoryReader({ homeDir: home });
+    const file = join(home, '.claude', 'projects', 'p', 'sig-claude.jsonl');
+    await writeLines(file, [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
+    const first = await fresh.sourceSignature(claude);
+    assert.ok(first?.includes('sig-claude.jsonl'));
+    assert.equal(await fresh.sourceSignature(claude), first, 'unchanged file, same signature');
+    await appendFile(file, `${JSON.stringify({ type: 'assistant' })}\n`);
+    assert.notEqual(await fresh.sourceSignature(claude), first);
+
+    // Zero's transcript sits at a known path; Grok's in its session folder.
+    await writeLines(join(home, '.local', 'share', 'zero', 'sessions', 'z1', 'events.jsonl'), [{}]);
+    assert.ok(await fresh.sourceSignature({ agentId: 'zero', agentSessionId: 'z1' }));
+    await writeLines(join(home, '.grok', 'sessions', 'enc', 'g1', 'updates.jsonl'), [{}]);
+    assert.ok(await fresh.sourceSignature({ agentId: 'grok', agentSessionId: 'g1' }));
+
+    // OpenCode's history is not one file, and nothing names an unknown agent's.
+    assert.equal(
+      await fresh.sourceSignature({ agentId: 'opencode', agentSessionId: 'o1' }),
+      undefined,
+    );
+    assert.equal(await fresh.sourceSignature({ agentId: 'claude-code' }), undefined);
   } finally {
     await cleanup();
   }

@@ -725,6 +725,13 @@ driving a turn for that thread, it reads the matching agent-owned transcript and
 merges completed native-only turns before paging the result. This makes a prompt
 written in an agent's desktop app or CLI appear back in Uxnan Mobile.
 
+A transcript that is one file (every row below but OpenCode) is only `stat`-ed
+when nothing changed: its path, size and modification time
+(`SessionHistoryReader.sourceSignature`) are remembered with the thread's shape
+when it is merged, and the next read skips reading and merging it while both
+are the same (`ThreadStore.nativeHistoryCurrent`). A transcript that grew, or a
+thread that gained, lost or ended a turn, is read and merged again in full.
+
 What the transcript holds of a run the bridge itself drove is never native-only:
 a native turn starting inside a bridge-recorded turn's run is that run and is
 not imported (rows an older read imported that way are dropped on the next
