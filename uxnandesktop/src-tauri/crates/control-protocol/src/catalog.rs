@@ -1432,7 +1432,7 @@ pub fn catalog() -> Vec<Entry> {
                     "answerFrom": field("integer", "The byte of the whole answer the returned part starts at."),
                     "answerLength": field("integer", "The whole answer's size, in bytes."),
                     "error": field("string", "Why the turn failed, when the bridge reported an error (absent otherwise)."),
-                    "steps": list_of(field("string", "One step: `ran …`, `edited … +a −d`, `read …`, `subagent: … (…)`, `(running)` while in flight."), "The steps it took, in order."),
+                    "steps": list_of(field("string", "One step: `ran …` (a command's first 400 characters), `edited … +a −d`, `read …`, `subagent: … (…)`, `(running)` while in flight."), "The steps it took, in order: its newest 100 at most, after a `… N earlier steps` line when it took more."),
                 })), "Oldest first."),
             })),
             example: json!({ "chat": "id:7be2af67…", "turns": 2 }),
