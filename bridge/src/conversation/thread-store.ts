@@ -45,7 +45,14 @@ import type {
   TurnList,
   TurnStatus,
 } from '@uxnan/shared';
-import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import {
+  JsonRpcErrorCode,
+  RpcError,
+  TURN_PAGE_MAX_BYTES,
+  appendThinkingSegment,
+  jsonBytes,
+  summarizeTurn,
+} from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { provisionalTitle } from '../agents/thread-title.js';
 import { SyncLedger } from '../sync/sync-ledger.js';
@@ -87,28 +94,16 @@ interface StoredMessage {
   turnId: string;
   role: MessageRole;
   text: string;
-  /** The agent's accumulated reasoning ("thinking") for this message, if any. */
-  thinking?: string;
   /**
-   * The message's text runs and structured blocks **in the order they streamed
-   * in** (text runs as `{ type:'text', text }`, blocks verbatim). This preserves
-   * the interleave a separate text and step list would lose, so a `turn/list`
-   * re-sync can render the work log inline with the response instead of
-   * stacking all activity above one merged paragraph. The text runs
-   * concatenate to `text`. Emitted on the wire only when it carries a
-   * structured block — see {@link toMessage} — so plain-text turns keep the
-   * lean shape and need no client interleaving.
+   * The message's text runs, reasoning and blocks **in the order they
+   * streamed in** (text runs as `{ type:'text', text }`, each stretch of
+   * reasoning as `{ type:'thinking', text }`, blocks verbatim) — the one place
+   * a step or a thought is kept, and its index here is how a client addresses it
+   * (`turn/steps`, `turn/step`). The text runs concatenate to `text`. Absent
+   * on an assistant message that has said nothing yet ({@link toMessage}
+   * serves it as empty).
    */
   segments?: unknown[];
-  /**
-   * The message's steps, kept ONLY where they are not exactly the non-text
-   * entries of `segments`: a reply imported from a transcript that gave no
-   * order (no `segments`), or a canonical import whose response boundaries are
-   * left out of it. Everywhere else they are derived from `segments` on the
-   * wire ({@link toMessage}) and never stored — storing both doubled every
-   * conversation on disk.
-   */
-  blocks?: unknown[];
   /** Token usage for this turn (so the phone restores the context meter). */
   usage?: { tokens: number; contextWindow?: number };
   /** Images the user attached (user messages), stored beside the thread. */
@@ -404,6 +399,8 @@ export interface NativeHistoryReconcileResult {
   changed: boolean;
   /** Newly imported turn ids, in native transcript order. */
   importedTurnIds: string[];
+  /** The thread's sync revision after the merge, when it {@link changed}. */
+  rev?: number;
 }
 
 /** Narrow persistence boundary used to project mutable thread history into the
@@ -436,6 +433,8 @@ export class ThreadStore {
   readonly #loading = new Map<string, Promise<StoredTurn>>();
   /** The transaction running now, whose threads the cache must not drop. */
   #mutation: Mutation | undefined;
+  /** The layout of each turn able to stream in this process ({@link turnKey}). */
+  readonly #layouts = new Map<string, SegmentLayout>();
 
   constructor(
     state: DaemonState,
@@ -505,11 +504,20 @@ export class ThreadStore {
     return toThread(requireThread(await this.#records(), threadId));
   }
 
+  /**
+   * One page of [threadId]'s turns as `turn/list` serves it (`TurnList`): the
+   * window `[cursor, cursor + limit)` — or the last [limit] turns with
+   * [fromEnd] — each summarized (`summarizeTurn`), trimmed to the newest
+   * turns that fit {@link TURN_PAGE_MAX_BYTES} of serialized JSON (always at
+   * least the newest one). Only the turns served are read, newest first: an
+   * older one stays on disk until asked for.
+   */
   async listTurns(
     threadId: string,
     cursor?: string,
     limit?: number,
     fromEnd = false,
+    maxBytes: number = TURN_PAGE_MAX_BYTES,
   ): Promise<TurnList> {
     await this.#afterPendingWrites();
     const thread = requireThread(await this.#records(), threadId);
@@ -522,18 +530,29 @@ export class ThreadStore {
       : cursor
         ? Number.parseInt(cursor, 10) || 0
         : 0;
-    // Only the page's turns are read: an older one stays on disk until asked for.
-    const slice = await Promise.all(
-      thread.turns.slice(start, start + size).map((turn) => this.#loadTurn(thread, turn)),
-    );
-    this.#evict();
-    const result: TurnList = { turns: slice.map(toTurn), total };
-    if (start + size < total) {
-      result.nextCursor = String(start + size);
+    const end = Math.min(total, start + size);
+    const turns: Turn[] = [];
+    // `{"turns":[` … `]}` and a comma between turns.
+    let used = 12;
+    for (let index = end - 1; index >= start; index--) {
+      const turn = summarizeTurn(toTurn(await this.#loadTurn(thread, thread.turns[index]!)));
+      const bytes = jsonBytes(turn) + (turns.length > 0 ? 1 : 0);
+      if (turns.length > 0 && used + bytes > maxBytes) break;
+      turns.push(turn);
+      used += bytes;
     }
+    this.#evict();
+    turns.reverse();
+    const result: TurnList = { turns, offset: end - turns.length, total };
+    if (end < total) result.nextCursor = String(end);
     return result;
   }
 
+  /**
+   * One turn, whole — its steps and reasoning as stored. For the bridge's own
+   * readers (a title, the reply's text, whether it ended); a client reads a
+   * turn through `turn/read`, which summarizes it.
+   */
   async getTurn(turnId: string): Promise<Turn> {
     // Read what was already asked to be written: a client re-reading a turn the
     // moment it hears it ended must never get the copy from before (see
@@ -547,6 +566,39 @@ export class ThreadStore {
       return toTurn(loaded);
     }
     throw notFound(`turn not found: ${turnId}`);
+  }
+
+  /**
+   * The assistant message of [turnId] in [threadId], whole: the stored
+   * `segments` a step's index points into, every thought in full — what
+   * `turn/steps` and `turn/step` read.
+   */
+  async readReply(threadId: string, turnId: string): Promise<Message> {
+    await this.#afterPendingWrites();
+    const thread = requireThread(await this.#records(), threadId);
+    const record = thread.turns.find((t) => t.id === turnId);
+    if (!record) throw notFound(`turn not found: ${turnId}`);
+    const turn = await this.#loadTurn(thread, record);
+    this.#evict();
+    const reply = turn.messages.find((m) => m.role === 'assistant');
+    if (!reply) throw notFound(`turn has no reply: ${turnId}`);
+    return toMessage(reply);
+  }
+
+  /**
+   * Where a block handed to {@link appendBlock} right now will stand in the
+   * turn's stored `segments` — its address for `turn/step` — so the live
+   * notification can carry it before the write is done. Asked synchronously,
+   * just before the {@link appendBlock} it describes; `undefined` when the turn
+   * is not streaming in this process (the store refuses output for it).
+   */
+  blockIndex(
+    threadId: string,
+    turnId: string,
+    content: unknown,
+    beforeText = false,
+  ): number | undefined {
+    return this.#layouts.get(turnKey(threadId, turnId))?.place(content, beforeText, false);
   }
 
   /** The bytes of an image a user message of [threadId] carries. */
@@ -569,8 +621,9 @@ export class ThreadStore {
    * Whether the agent transcript whose source [signature] is given
    * ({@link SessionHistoryReader.sourceSignature}) was already merged into
    * [threadId] as the thread stands now — then reading and merging it again
-   * cannot change anything, and `turn/list` skips both. Always `false` without
-   * a signature: a history that is not one file has nothing cheaper to compare.
+   * cannot change anything, and the merge (`NativeHistoryWatcher`) skips
+   * both. Always `false` without a signature: a history that is not one file
+   * has nothing cheaper to compare.
    */
   async nativeHistoryCurrent(threadId: string, signature: string | undefined): Promise<boolean> {
     if (signature === undefined) return false;
@@ -596,9 +649,10 @@ export class ThreadStore {
    * It is not imported, and a row imported that way before is dropped.
    *
    * [signature], when the transcript has one, is remembered with the result,
-   * so the next `turn/list` over an unchanged transcript can skip reading it
+   * so the next merge over an unchanged transcript can skip reading it
    * ({@link nativeHistoryCurrent}). An empty [nativeTurns] merges nothing and
-   * only remembers it.
+   * only remembers it. A merge that changed the thread reports its new `rev`,
+   * which `NativeHistoryWatcher` announces (`stream/history/changed`).
    */
   async reconcileNativeHistory(
     threadId: string,
@@ -620,6 +674,7 @@ export class ThreadStore {
         // a position, once handed out, never moves.
         thread.updatedAt = now;
         this.#bump(thread);
+        reconcile.rev = thread.rev;
       }
       if (signature !== undefined) thread.nativeSource = nativeKey(signature, thread);
       return {
@@ -873,6 +928,7 @@ export class ThreadStore {
         );
       }
       tx.remove(threadId);
+      for (const turn of thread.turns) this.#layouts.delete(turnKey(threadId, turn.id));
       this.#deleted.push({ threadId, rev: this.#ledger.tombstone('thread', threadId) });
       return true;
     });
@@ -979,6 +1035,7 @@ export class ThreadStore {
         ended.completedAt = now;
         settleRunningSteps(ended, true);
       }
+      this.#layouts.delete(turnKey(threadId, fromTurnId));
       from.handedOffTo = toTurnId;
       to.status = 'streaming';
       const thread = tx.thread(threadId);
@@ -1066,6 +1123,7 @@ export class ThreadStore {
         createdAt: now,
       };
       thread.turns.push(turn);
+      this.#layouts.set(turnKey(threadId, turnId), new SegmentLayout());
       thread.updatedAt = now;
       // The bridge names the conversation from its opening message the moment
       // it is stored — every client sees the same provisional name, and none
@@ -1130,13 +1188,20 @@ export class ThreadStore {
    * caller tells clients about the delta only after it is durable.
    */
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
+    this.#layouts.get(turnKey(threadId, turnId))?.text(delta);
     return this.#mutate(async (tx) => {
       await tx.stream(threadId, turnId, { op: 'delta', text: delta, at: now });
     });
   }
 
-  /** Appends a reasoning ("thinking") chunk to the turn's assistant message. */
+  /**
+   * Appends a reasoning ("thinking") chunk to the turn's assistant message:
+   * it grows the last segment when that is a thought, otherwise it opens a new
+   * one at the end ({@link appendThinkingSegment}). One journal line, like a
+   * text delta.
+   */
   appendThinking(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
+    this.#layouts.get(turnKey(threadId, turnId))?.thought(delta);
     return this.#mutate(async (tx) => {
       await tx.stream(threadId, turnId, { op: 'thinking', text: delta, at: now });
     });
@@ -1160,6 +1225,7 @@ export class ThreadStore {
     now: number,
     beforeText = false,
   ): Promise<void> {
+    this.#layouts.get(turnKey(threadId, turnId))?.place(content, beforeText, true);
     return this.#mutate(async (tx) => {
       await tx.stream(threadId, turnId, {
         op: 'block',
@@ -1209,6 +1275,7 @@ export class ThreadStore {
       turn.status = 'completed';
       turn.completedAt = now;
       settleRunningSteps(turn, true);
+      this.#layouts.delete(turnKey(threadId, turnId));
       const thread = tx.thread(threadId);
       thread.updatedAt = now;
       this.#bump(thread);
@@ -1234,6 +1301,7 @@ export class ThreadStore {
         turn.status = status;
         turn.completedAt = now;
         settleRunningSteps(turn, false);
+        this.#layouts.delete(turnKey(threadId, turnId));
       } else {
         header.status = status;
       }
@@ -1394,6 +1462,7 @@ export class ThreadStore {
    * has to repeat: the current layout is only ever written in that shape.
    */
   async #writeConverted(thread: StoredThread): Promise<void> {
+    for (const turn of thread.turns) turn.messages = turn.messages.map(currentMessage);
     numberTurns(thread);
     retireDeliveredTurns(thread);
     reshapeImportedTurns(thread);
@@ -1815,9 +1884,9 @@ function nativeKey(signature: string, thread: Frozen<ThreadRecord>): string {
   return `${signature}|${thread.turns.length}.${thread.lastSeq ?? 0}.${ended}`;
 }
 
-/** A turn's file: its messages as stored ({@link storedForm}) and the events folded in. */
+/** A turn's file: its messages and the events folded in. */
 function serializeTurn(messages: readonly StoredMessage[], events: number): string {
-  const file: TurnFile = { events, messages: messages.map(storedForm) };
+  const file: TurnFile = { events, messages: [...messages] };
   return JSON.stringify(file);
 }
 
@@ -1889,6 +1958,56 @@ function lastEventAt(journal: string): number {
 }
 
 /**
+ * The shape of an in-flight turn's assistant `segments` as of every event
+ * already handed to the store: how many entries, whether the last is a text
+ * run or a thought, where each live step (`blockId`) stands. It moves when an event is
+ * QUEUED — synchronously, in the order events arrive — not when the event is
+ * applied, so a block's live notification can name its index before its
+ * write is done ({@link ThreadStore.blockIndex}). It places blocks by the same
+ * rules {@link applyTurnEvent} applies, over counts instead of content: a
+ * block with a known `blockId` stays where it stands; a `beforeText` block
+ * takes the open text run's place, pushing the run one on; anything else is
+ * appended. A delta opens a text run unless one is open; a reasoning chunk
+ * opens a thought unless the last entry is one (a `beforeText` block after a
+ * thought is simply appended: there is no open text run to slot before).
+ */
+class SegmentLayout {
+  #length = 0;
+  /** What the last entry is, when it is one a delta or a chunk would grow. */
+  #endsIn: 'text' | 'thought' | undefined;
+  readonly #steps = new Map<string, number>();
+
+  text(delta: string): void {
+    this.#grow('text', delta);
+  }
+
+  thought(delta: string): void {
+    this.#grow('thought', delta);
+  }
+
+  #grow(kind: 'text' | 'thought', delta: string): void {
+    if (delta.length === 0 || this.#endsIn === kind) return;
+    this.#length += 1;
+    this.#endsIn = kind;
+  }
+
+  /** Where [content] lands; [commit] records it as landed. */
+  place(content: unknown, beforeText: boolean, commit: boolean): number {
+    const blockId = blockIdOf(content);
+    const known = blockId === undefined ? undefined : this.#steps.get(blockId);
+    if (known !== undefined) return known;
+    const slotted = beforeText && this.#endsIn === 'text';
+    const index = slotted ? this.#length - 1 : this.#length;
+    if (commit) {
+      this.#length += 1;
+      if (!slotted) this.#endsIn = undefined;
+      if (blockId !== undefined) this.#steps.set(blockId, index);
+    }
+    return index;
+  }
+}
+
+/**
  * Applies one streamed event to [turn]'s assistant message — the one function
  * both the live write and a journal replay go through, so a replayed turn is
  * the turn that was streamed. Returns whether it changed anything.
@@ -1903,14 +2022,11 @@ function applyTurnEvent(turn: StoredTurn, event: TurnEvent): boolean {
       appendTextSegment(assistant, event.text);
       return true;
     case 'thinking':
-      if (event.text.length === 0) return false;
-      assistant.thinking = (assistant.thinking ?? '') + event.text;
-      return true;
+      return appendThinkingSegment((assistant.segments ??= []), event.text);
     case 'block': {
       // A step that settles replaces the running one it started as, in place
       // (`LiveBlock`, shared/src/models/tool.ts).
       if (replaceStep(assistant, event.content)) return true;
-      if (assistant.blocks) assistant.blocks.push(event.content);
       const segments = (assistant.segments ??= []);
       const last = segments[segments.length - 1];
       if (event.beforeText && isTextSegment(last)) {
@@ -1928,20 +2044,15 @@ function applyTurnEvent(turn: StoredTurn, event: TurnEvent): boolean {
   }
 }
 
-/** Writes [content] over the step with its `blockId`, wherever it is kept. */
+/** Writes [content] over the step with its `blockId`, where it stands. */
 function replaceStep(assistant: StoredMessage, content: unknown): boolean {
   const blockId = blockIdOf(content);
   if (blockId === undefined) return false;
-  const same = (b: unknown) => blockIdOf(b) === blockId;
-  let replaced = false;
-  for (const list of [assistant.segments, assistant.blocks]) {
-    const index = list?.findIndex(same) ?? -1;
-    if (list && index >= 0) {
-      list[index] = content;
-      replaced = true;
-    }
-  }
-  return replaced;
+  const segments = assistant.segments;
+  const index = segments?.findIndex((b) => blockIdOf(b) === blockId) ?? -1;
+  if (!segments || index < 0) return false;
+  segments[index] = content;
+  return true;
 }
 
 /** A turn's messages per UTC day of their creation. */
@@ -2099,11 +2210,8 @@ function takeBackSteeredReply(turns: StoredTurn[], stored: StoredTurn, native: T
   const moved = segments.slice(cut);
   const kept = segments.slice(0, cut);
   const textOf = (list: unknown[]) => list.map((s) => segmentText(s) ?? '').join('');
-  const blocksOf = (list: unknown[]) =>
-    list.filter((s) => segmentText(s) === undefined && !isResponseBoundary(s));
   from.segments = kept;
   from.text = textOf(kept);
-  from.blocks = blocksOf(kept);
   const reply = stored.messages.find((m) => m.role === 'assistant');
   const target: StoredMessage = reply ?? {
     id: `${stored.id}-reply`,
@@ -2114,17 +2222,8 @@ function takeBackSteeredReply(turns: StoredTurn[], stored: StoredTurn, native: T
   };
   target.segments = moved;
   target.text = textOf(moved);
-  target.blocks = blocksOf(moved);
   if (!reply) stored.messages.push(target);
   return true;
-}
-
-function isResponseBoundary(segment: unknown): boolean {
-  return (
-    !!segment &&
-    typeof segment === 'object' &&
-    (segment as { type?: unknown }).type === 'assistant_response_boundary'
-  );
 }
 
 /**
@@ -2175,23 +2274,19 @@ function toTurn(turn: StoredTurn): Turn {
   return result;
 }
 
+/**
+ * A stored message in the wire shape, whole — what the bridge itself reads
+ * (titles, reconciliation, the detail methods). A page serves it summarized
+ * (`summarizeTurn`). An assistant message always carries `segments`.
+ */
 function toMessage(message: StoredMessage): Message {
-  // Steps are kept once, in `segments`; the wire still carries them as
-  // `blocks` too, for every client that reads them there.
-  const blocks = message.blocks ?? stepsOf(message.segments);
   return {
     id: message.id,
     turnId: message.turnId,
     role: message.role,
     content: message.text,
-    ...(message.thinking && message.thinking.length > 0 ? { thinking: message.thinking } : {}),
-    ...(blocks && blocks.length > 0 ? { blocks } : {}),
-    // Only surface the ordered interleave when it actually carries a structured
-    // block: a plain-text turn renders identically from `content` alone, so the
-    // extra field would be pure duplication. A turn with work-log/diff/tool
-    // blocks ships `segments` so the phone restores the real text↔activity order.
-    ...(message.segments && hasNonTextSegment(message.segments)
-      ? { segments: message.segments }
+    ...(message.role === 'assistant'
+      ? { segments: message.segments ?? textRuns(message.text) }
       : {}),
     ...(message.usage ? { usage: message.usage } : {}),
     ...(message.attachments && message.attachments.length > 0
@@ -2199,6 +2294,11 @@ function toMessage(message: StoredMessage): Message {
       : {}),
     createdAt: message.createdAt,
   };
+}
+
+/** The `segments` of a message that is only [text]: one run, or none. */
+function textRuns(text: string): unknown[] {
+  return text.length > 0 ? [{ type: 'text', text }] : [];
 }
 
 /** File extension for a stored image (no dot); `bin` for an unknown type. */
@@ -2233,8 +2333,6 @@ function storedTurnFromNative(turn: Turn): StoredTurn {
       turnId: turn.id,
       role: message.role,
       text: typeof message.content === 'string' ? message.content : '',
-      ...(message.thinking !== undefined ? { thinking: message.thinking } : {}),
-      ...(message.blocks !== undefined ? { blocks: structuredCloneValue(message.blocks) } : {}),
       ...(message.segments !== undefined
         ? { segments: structuredCloneValue(message.segments) }
         : {}),
@@ -2429,8 +2527,7 @@ function importableNativeTurn(turn: Turn): boolean {
     (message) =>
       message.role === 'assistant' &&
       ((typeof message.content === 'string' && message.content.trim().length > 0) ||
-        (message.thinking?.trim().length ?? 0) > 0 ||
-        (message.blocks?.length ?? 0) > 0),
+        hasBlock(message.segments)),
   );
 }
 
@@ -2593,13 +2690,7 @@ function findNativeTwin(
  *  block in it or in any turn it handed the run on to. */
 function withoutReply(turns: readonly StoredTurn[], turn: StoredTurn): boolean {
   if (storedRunIdentity(turns, turn).assistant.length > 0) return false;
-  return !turn.messages.some(
-    (m) =>
-      m.role === 'assistant' &&
-      ((m.thinking?.trim().length ?? 0) > 0 ||
-        (m.blocks?.length ?? 0) > 0 ||
-        (m.segments?.length ?? 0) > 0),
-  );
+  return !turn.messages.some((m) => m.role === 'assistant' && (m.segments?.length ?? 0) > 0);
 }
 
 /**
@@ -2612,7 +2703,7 @@ function withoutReply(turns: readonly StoredTurn[], turn: StoredTurn): boolean {
 function fillEmptyReply(turns: StoredTurn[], stored: StoredTurn, native: Turn): boolean {
   if (isImportedTurn(stored) || !withoutReply(turns, stored)) return false;
   const reply = storedTurnFromNative(native).messages.filter((m) => m.role === 'assistant');
-  if (!reply.some((m) => m.text.trim().length > 0 || (m.blocks?.length ?? 0) > 0)) return false;
+  if (!reply.some((m) => m.text.trim().length > 0 || hasBlock(m.segments))) return false;
   const empty = stored.messages.find((m) => m.role === 'assistant');
   reply.forEach((message, index) => {
     message.turnId = stored.id;
@@ -2643,31 +2734,45 @@ function isTextSegment(value: unknown): value is { type: 'text'; text: string } 
   );
 }
 
-/** The steps of an ordered interleave: its non-text entries, in order. */
-function stepsOf(segments: readonly unknown[] | undefined): unknown[] | undefined {
-  return segments?.filter((s) => !isTextSegment(s));
+/** Whether an ordered interleave holds at least one block or thought (anything but a text run). */
+function hasBlock(segments: readonly unknown[] | undefined): boolean {
+  return segments?.some((s) => !isTextSegment(s)) ?? false;
 }
 
 /**
- * A message as its turn's file keeps it: without `blocks` when they are
- * exactly the steps of its `segments` — the wire derives them from there
- * ({@link toMessage}) — so each step is stored once.
+ * A message as a layout before this one stored it: its steps possibly kept a
+ * second time, or only, in `blocks`, and its reasoning as one `thinking`
+ * string beside `segments`, with no place in them.
  */
-function storedForm(message: StoredMessage): StoredMessage {
-  const blocks = message.blocks;
-  if (blocks === undefined) return message;
-  const steps = stepsOf(message.segments) ?? [];
-  if (blocks.length !== steps.length || JSON.stringify(blocks) !== JSON.stringify(steps)) {
-    return message;
-  }
-  const stored = { ...message };
-  delete stored.blocks;
-  return stored;
-}
+type LegacyMessage = StoredMessage & { blocks?: unknown[]; thinking?: string };
 
-/** True once the ordered interleave holds at least one non-text (structured) block. */
-function hasNonTextSegment(segments: unknown[]): boolean {
-  return segments.some((s) => !isTextSegment(s));
+/**
+ * Folds a message stored by an older layout into the current shape, where
+ * `segments` alone keeps its steps and thoughts: a message that kept steps
+ * only in `blocks` (a transcript import that gave no order) gets its text,
+ * then those steps, as `segments`; one that kept both keeps `segments`, which
+ * holds every step `blocks` did (and its response boundaries besides). Its
+ * `thinking` becomes ONE thought at the START of `segments` — where in the
+ * reply it was thought was never recorded, and before everything is where a
+ * reply's reasoning mostly stands.
+ *
+ * (The per-turn files of the first build of this layout, which kept
+ * `thinking` too, only ever existed on test machines: they are not converted.)
+ */
+function currentMessage(message: LegacyMessage): StoredMessage {
+  const { blocks, thinking, ...stored } = message;
+  if (blocks === undefined && thinking === undefined) return message;
+  if (blocks !== undefined && (!stored.segments || stored.segments.length === 0)) {
+    const segments = [...textRuns(stored.text), ...blocks];
+    if (segments.length > 0) stored.segments = segments;
+  }
+  if (typeof thinking === 'string' && thinking.length > 0 && stored.role === 'assistant') {
+    stored.segments = [
+      { type: 'thinking', text: thinking },
+      ...(stored.segments ?? textRuns(stored.text)),
+    ];
+  }
+  return stored;
 }
 
 /**
@@ -2739,7 +2844,6 @@ function reconcileAssistantWithFinalText(assistant: StoredMessage, finalText: st
 
   if (finalText.length === 0) return;
   const boundary = { type: 'assistant_response_boundary', phase: 'final_answer' };
-  if (assistant.blocks) assistant.blocks = [...assistant.blocks, boundary];
   const segments = (assistant.segments ??= [{ type: 'text', text: streamed }]);
   segments.push(boundary, { type: 'text', text: finalText });
   assistant.text = streamed + finalText;
@@ -2755,7 +2859,6 @@ function settleRunningSteps(turn: StoredTurn, ok: boolean): void {
   if (!assistant) return;
   const settle = (list: unknown[] | undefined) =>
     list?.map((b) => (isRunning(b) ? settleBlock(b as Record<string, unknown>, ok) : b));
-  if (assistant.blocks) assistant.blocks = settle(assistant.blocks)!;
   if (assistant.segments) assistant.segments = settle(assistant.segments)!;
 }
 

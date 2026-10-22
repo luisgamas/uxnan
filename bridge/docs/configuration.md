@@ -191,7 +191,10 @@ left untouched — never replaced by a new identity.
 turn's messages, rewritten when the turn ends) and, while a turn streams,
 `turns/<turn>.journal` (one JSON line per streamed event, appended; folded into
 the turn's file when it ends, or on the next start after a crash). A start reads
-only the `thread.json` files; a turn's messages are read when a client opens it.
+only the `thread.json` files; a turn's messages are read when a client opens it,
+and served to it summarized (each run of steps — thoughts included — folded into
+one `work` segment, a page within 1 MiB — the detail comes from `turn/steps` /
+`turn/step`).
 Conversations of an older bridge are converted on the first start that finds
 them, and the originals kept aside — `threads.v1/<threadId>.json` (one file per
 conversation) and `threads.json.migrated` (all in one file) — to delete by hand

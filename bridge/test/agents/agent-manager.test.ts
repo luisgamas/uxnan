@@ -13,7 +13,7 @@ import type {
   NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { StreamNotification } from '@uxnan/shared';
+import { StreamNotification, isStep, previewStep } from '@uxnan/shared';
 import {
   AgentManager,
   BaseAgentAdapter,
@@ -24,6 +24,7 @@ import {
 } from '../../src/index.js';
 import { modelFor } from '../../src/agents/agent-manager.js';
 import { rmrf } from '../helpers/fs.js';
+import { stepsOf } from '../helpers/steps.js';
 
 /** Caps for the controllable test adapter (streaming, no approvals/images). */
 const CONTROLLED_CAPS: AgentCapabilities = {
@@ -150,7 +151,7 @@ baseTest('a failed turn persists an error content block into history', async () 
   // `turn/list` re-sync (after a restart) still shows why the turn failed.
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
-  const blocks = (assistant?.blocks ?? []) as { type?: string; kind?: string; text?: string }[];
+  const blocks = stepsOf(assistant) as { type?: string; kind?: string; text?: string }[];
   const errBlock = blocks.find((b) => b.type === 'system' && b.kind === 'error');
   assert.ok(errBlock, 'the failure reason is persisted as a system/error block');
   assert.match(errBlock?.text ?? '', /usage balance exhausted/);
@@ -956,6 +957,94 @@ baseTest('a beforeText block is stored before the open run and flagged on the wi
   await rmrf(baseDir);
 });
 
+baseTest('a live step is told as its preview, at the index it is stored at', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-live-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string; params?: Record<string, unknown> }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string; params?: Record<string, unknown> }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new StreamingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  const long = `cat <<'EOF' > file.ts\n${'x'.repeat(5_000)}\nEOF`;
+  const output = `${'o'.repeat(9_000)}tail`;
+  // Every placement the store knows, emitted without waiting — as adapters do.
+  adapter.delta(thread.id, turnId, 'Writing.');
+  adapter.block(thread.id, turnId, {
+    type: 'command_execution',
+    blockId: 'c1',
+    command: long,
+    status: 'running',
+  });
+  adapter.block(thread.id, turnId, { type: 'plan', steps: [] });
+  adapter.delta(thread.id, turnId, 'Then ');
+  adapter.block(
+    thread.id,
+    turnId,
+    { type: 'tool', blockId: 'r1', toolName: 'Read', input: {} },
+    true,
+  );
+  adapter.delta(thread.id, turnId, 'more.');
+  adapter.block(thread.id, turnId, {
+    type: 'command_execution',
+    blockId: 'c1',
+    command: long,
+    status: 'completed',
+    output,
+  });
+  adapter.block(thread.id, turnId, {
+    type: 'diff',
+    blockId: 'd1',
+    filename: 'file.ts',
+    diff: '+x',
+    additions: 1,
+    deletions: 0,
+  });
+  adapter.complete(thread.id, turnId, 'Writing.Then more.');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+
+  const segments = (await store.getTurn(turnId)).messages.find(
+    (m) => m.role === 'assistant',
+  )!.segments!;
+  const told = notifications.filter((n) => n.method === StreamNotification.ContentBlock);
+  assert.equal(told.length, 5);
+  assert.deepEqual(
+    told.map((n) => n.params?.['index']),
+    [1, 2, 3, 1, 5],
+  );
+  for (const note of told) {
+    const index = note.params?.['index'] as number;
+    const stored = segments[index] as Record<string, unknown>;
+    const content = note.params?.['content'] as Record<string, unknown>;
+    // The index is where the store keeps it (a settled step: where it started).
+    assert.equal(content['type'], stored['type'], `index ${index}`);
+    if (stored['blockId'] !== undefined) assert.equal(content['blockId'], stored['blockId']);
+  }
+  // A step rides as its preview, bounded like a page; anything else as it is.
+  const settled = told[3]!.params!['content'] as Record<string, unknown>;
+  assert.deepEqual(
+    settled,
+    previewStep(
+      segments[told[3]!.params!['index'] as number] as Parameters<typeof previewStep>[0],
+      told[3]!.params!['index'] as number,
+    ),
+  );
+  assert.equal(settled['commandChars'], long.length);
+  assert.equal(settled['outputChars'], output.length);
+  assert.ok(JSON.stringify(settled).length < 2_000);
+  assert.deepEqual(told[1]!.params!['content'], { type: 'plan', steps: [] });
+  assert.equal('diff' in (told[4]!.params!['content'] as object), false);
+
+  await rmrf(baseDir);
+});
+
 baseTest('a terminal event that throws ends the turn instead of hanging it', async () => {
   // Defense in depth for the Windows atomic-write failure fixed in
   // `DaemonState.writeJson`: `#onEvent` catches everything and only logged, so a
@@ -1129,16 +1218,22 @@ baseTest('block paths are shown from the folder the turn ran in', async () => {
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
 
   const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
-  const shown = (assistant?.blocks ?? []) as Record<string, unknown>[];
+  const shown = stepsOf(assistant);
   assert.deepEqual(
     shown.map((b) => b['filename'] ?? b['target']),
     ['src/a.ts', 'README.md', '/etc/hosts'],
   );
-  // The phone and the desktop are told the same thing the store keeps.
-  const told = notifications
-    .filter((n) => n.method === StreamNotification.ContentBlock)
-    .map((n) => n.params?.['content'] as Record<string, unknown>);
-  assert.deepEqual(told, shown);
+  // The phone and the desktop are told the same thing the store keeps — each
+  // step as its preview, at the index it stands at.
+  const notes = notifications.filter((n) => n.method === StreamNotification.ContentBlock);
+  assert.deepEqual(
+    notes.map((n) => n.params?.['content']),
+    (assistant?.segments ?? []).flatMap((s, i) => (isStep(s) ? [previewStep(s, i)] : [])),
+  );
+  assert.deepEqual(
+    notes.map((n) => n.params?.['index']),
+    [0, 1, 2],
+  );
 
   await rmrf(baseDir);
 });

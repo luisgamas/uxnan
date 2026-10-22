@@ -11,6 +11,8 @@ import {
   MAX_ATTACHMENT_BYTES,
   RpcError,
   isDesktopClientId,
+  previewStepRange,
+  summarizeTurn,
 } from '@uxnan/shared';
 import type {
   AccessMode,
@@ -32,6 +34,7 @@ import {
   optionalBoolean,
   optionalNumber,
   optionalString,
+  requireIndex,
   requireString,
 } from './params.js';
 import { withLiveState } from './sync-handler.js';
@@ -208,7 +211,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     return null;
   });
 
-  router.register('turn/list', async (p, ctx: BridgeContext) => {
+  router.register('turn/list', async (p, ctx: BridgeContext, session) => {
     const threadId = requireString(p, 'threadId');
     const cursor = optionalString(p, 'cursor');
     const limit = optionalNumber(p, 'limit');
@@ -232,34 +235,53 @@ export function registerThreadHandlers(router: HandlerRouter): void {
         ? { queueDeliveringTurnId: queue.deliveringTurnId }
         : {}),
     });
-    // Reconcile the agent-owned transcript on every idle read, not just when
-    // Uxnan's store is empty. This is what makes a turn written from Codex
-    // Desktop/CLI (or another supported client attached to the same native
-    // session) appear back on the phone. Never read while the bridge itself is
-    // driving a turn: its streaming store is already authoritative and a
-    // half-flushed native record must not be mistaken for an external turn.
-    // A transcript that is one file is read again only once it changed (its
-    // size or modification time) or the thread did: re-reading an unchanged
-    // 40 MB transcript cost ~115 ms on every open.
-    if (activeTurnId === undefined) {
-      const source = await ctx.threadStore.getHistorySource(threadId);
-      const signature = await ctx.sessionHistory.sourceSignature(source);
-      if (!(await ctx.threadStore.nativeHistoryCurrent(threadId, signature))) {
-        const nativeTurns = await ctx.sessionHistory.readTurns(source, threadId);
-        await ctx.threadStore.reconcileNativeHistory(
-          threadId,
-          nativeTurns ?? [],
-          ctx.now(),
-          signature,
-        );
-      }
-    }
-    const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
-    return withActive(stored);
+    // Reconcile the agent-owned transcript before paging: a turn written from
+    // the agent's own app or terminal on the same native session appears here.
+    // The watcher owns the rules — never while the bridge drives a turn on the
+    // thread, and not at all while neither the transcript nor the thread
+    // changed — and announces a change (`stream/history/changed`), so every
+    // other client showing the conversation re-reads it too.
+    await ctx.historyWatcher.reconcile(threadId);
+    // The page the store serves is already the summarized one, within its
+    // byte budget (`TurnList`).
+    const page = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
+    // A client that read the conversation keeps it watched, so what is written
+    // there later reaches it without asking (architecture/02a §5.8.8).
+    if (session !== undefined) ctx.historyWatcher.watch(threadId, session.deviceId);
+    return withActive(page);
   });
-  router.register('turn/read', (p, ctx: BridgeContext) =>
-    ctx.threadStore.getTurn(requireString(p, 'turnId')),
+  router.register('turn/read', async (p, ctx: BridgeContext) =>
+    summarizeTurn(await ctx.threadStore.getTurn(requireString(p, 'turnId'))),
   );
+  // What a page leaves out, on demand: a run's steps as previews, one step
+  // whole — a thought's whole text included. A step's address is its index in
+  // the stored `segments` of the turn's reply (architecture/02b, bounded history).
+  router.register('turn/steps', async (p, ctx: BridgeContext) => {
+    const from = requireIndex(p, 'from');
+    const to = requireIndex(p, 'to');
+    if (to < from) throw RpcError.invalidParams("'to' must not be before 'from'");
+    const reply = await ctx.threadStore.readReply(
+      requireString(p, 'threadId'),
+      requireString(p, 'turnId'),
+    );
+    const segments = reply.segments ?? [];
+    if (from >= segments.length) {
+      throw new RpcError(JsonRpcErrorCode.ResourceNotFound, `no step at ${from}`);
+    }
+    return previewStepRange(segments, from, to);
+  });
+  router.register('turn/step', async (p, ctx: BridgeContext) => {
+    const index = requireIndex(p, 'index');
+    const reply = await ctx.threadStore.readReply(
+      requireString(p, 'threadId'),
+      requireString(p, 'turnId'),
+    );
+    const block = reply.segments?.[index];
+    if (block === undefined || isTextRun(block)) {
+      throw new RpcError(JsonRpcErrorCode.ResourceNotFound, `no step at ${index}`);
+    }
+    return { block };
+  });
   router.register('turn/send', async (p, ctx: BridgeContext, session) => {
     const threadId = requireString(p, 'threadId');
     // A `turn/send` may instead be a control-only reply to a pending approval or
@@ -337,6 +359,15 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('queue/sendNow', (p, ctx: BridgeContext) =>
     ctx.agentManager.sendQueuedNow(requireString(p, 'threadId'), requireString(p, 'turnId')),
+  );
+}
+
+/** Whether a stored segment is a text run — prose, which pages carry whole. */
+function isTextRun(segment: unknown): boolean {
+  return (
+    typeof segment === 'object' &&
+    segment !== null &&
+    (segment as { type?: unknown }).type === 'text'
   );
 }
 

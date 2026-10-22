@@ -26,6 +26,7 @@ import {
   createLogger,
 } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
+import { stepsOf } from '../helpers/steps.js';
 
 const BASE_CAPS: AgentCapabilities = {
   streaming: true,
@@ -247,8 +248,8 @@ test('a follow-up waits in the queue while a step runs and goes when it ends', a
     assert.equal((await assistant(first.turnId))?.content, 'Before. ');
     assert.equal((await assistant(second.turnId))?.content, 'After.');
     // The command the agent was in belongs to the answer it interrupted.
-    assert.equal((await assistant(first.turnId))?.blocks?.length, 1);
-    assert.equal((await assistant(second.turnId))?.blocks, undefined);
+    assert.equal(stepsOf(await assistant(first.turnId)).length, 1);
+    assert.equal(stepsOf(await assistant(second.turnId)).length, 0);
 
     const firstDone = h.notifications.find(
       (n) => n.method === StreamNotification.TurnCompleted && n.params?.['turnId'] === first.turnId,

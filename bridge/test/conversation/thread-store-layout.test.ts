@@ -67,9 +67,14 @@ test('a turn in flight is journaled, and its end folds the journal into its file
     assert.equal(existsSync(journalFile(baseDir, thread.id, turnId)), false);
     const after = await readJson(turnFile(baseDir, thread.id, turnId));
     assert.equal(after['events'], 3);
-    const reply = (after['messages'] as { text: string; thinking?: string }[])[1];
+    const reply = (after['messages'] as { text: string; segments?: unknown[] }[])[1];
     assert.equal(reply?.text, 'Let me look.');
-    assert.equal(reply?.thinking, 'hmm');
+    assert.deepEqual(reply?.segments, [
+      { type: 'text', text: 'Let me look.' },
+      { type: 'command_execution', command: 'ls' },
+      { type: 'thinking', text: 'hmm' },
+    ]);
+    assert.equal('thinking' in reply!, false);
     const index = await readJson(join(baseDir, 'threads', thread.id, 'thread.json'));
     assert.equal((index['turns'] as { status: string }[])[0]?.status, 'completed');
     assert.equal(index['updatedAt'], 6);
@@ -175,7 +180,7 @@ test('a replay never applies an event its turn file already folded in', async ()
   }
 });
 
-test('steps are stored once, and the wire still carries them as blocks', async () => {
+test('steps are stored once, in segments', async () => {
   const baseDir = tempDir();
   try {
     const store = new ThreadStore(new DaemonState(baseDir));
@@ -193,14 +198,90 @@ test('steps are stored once, and the wire still carries them as blocks', async (
     assert.equal('blocks' in stored[1]!, false, 'no second copy of the steps on disk');
     const reread = new ThreadStore(new DaemonState(baseDir));
     const reply = (await reread.getTurn(turnId)).messages[1];
-    assert.deepEqual(reply?.blocks, [step]);
+    assert.equal('blocks' in reply!, false);
     assert.deepEqual(reply?.segments, [{ type: 'text', text: 'Listing.' }, step]);
   } finally {
     await rmrf(baseDir);
   }
 });
 
-test('an imported reply whose steps have no order keeps them, on disk and on the wire', async () => {
+test('a reply of the previous layout that kept its steps only in blocks gets them as segments', async () => {
+  const baseDir = tempDir();
+  try {
+    const step = { type: 'command_execution', command: 'pwd' };
+    const old = v1Thread('th', 'Old');
+    const reply = (old['turns'] as { messages: Record<string, unknown>[] }[])[0]!.messages[1]!;
+    reply['text'] = 'Here.';
+    reply['blocks'] = [step];
+    delete reply['segments'];
+    await mkdir(join(baseDir, 'threads'), { recursive: true });
+    await writeFile(join(baseDir, 'threads', 'th.json'), JSON.stringify(old));
+
+    const store = new ThreadStore(new DaemonState(baseDir));
+    const message = (await store.getTurn('th-t1')).messages[1];
+    assert.deepEqual(message?.segments, [{ type: 'text', text: 'Here.' }, step]);
+    const stored = (await readJson(turnFile(baseDir, 'th', 'th-t1')))['messages'] as Record<
+      string,
+      unknown
+    >[];
+    assert.equal('blocks' in stored[1]!, false);
+    assert.deepEqual(stored[1]!['segments'], [{ type: 'text', text: 'Here.' }, step]);
+  } finally {
+    await rmrf(baseDir);
+  }
+});
+
+test('a reply of the previous layout gets its reasoning as one thought at the start', async () => {
+  const baseDir = tempDir();
+  try {
+    const old = v1Thread('th', 'Old');
+    const reply = (old['turns'] as { messages: Record<string, unknown>[] }[])[0]!.messages[1]!;
+    reply['thinking'] = 'where it was thought is unknown';
+    await mkdir(join(baseDir, 'threads'), { recursive: true });
+    await writeFile(join(baseDir, 'threads', 'th.json'), JSON.stringify(old));
+
+    const store = new ThreadStore(new DaemonState(baseDir));
+    const expected = [
+      { type: 'thinking', text: 'where it was thought is unknown' },
+      { type: 'command_execution', command: 'ls' },
+      { type: 'text', text: 'Done.' },
+    ];
+    const message = (await store.getTurn('th-t1')).messages[1]!;
+    assert.deepEqual(message.segments, expected);
+    assert.equal('thinking' in message, false);
+    const stored = (await readJson(turnFile(baseDir, 'th', 'th-t1')))['messages'] as Record<
+      string,
+      unknown
+    >[];
+    assert.equal('thinking' in stored[1]!, false);
+    assert.deepEqual(stored[1]!['segments'], expected);
+  } finally {
+    await rmrf(baseDir);
+  }
+});
+
+test('a text-only reply of the previous layout keeps its text after its thought', async () => {
+  const baseDir = tempDir();
+  try {
+    const old = v1Thread('th', 'Old');
+    const reply = (old['turns'] as { messages: Record<string, unknown>[] }[])[0]!.messages[1]!;
+    delete reply['blocks'];
+    delete reply['segments'];
+    reply['thinking'] = 'hm';
+    await mkdir(join(baseDir, 'threads'), { recursive: true });
+    await writeFile(join(baseDir, 'threads', 'th.json'), JSON.stringify(old));
+
+    const store = new ThreadStore(new DaemonState(baseDir));
+    assert.deepEqual((await store.getTurn('th-t1')).messages[1]!.segments, [
+      { type: 'thinking', text: 'hm' },
+      { type: 'text', text: 'Done.' },
+    ]);
+  } finally {
+    await rmrf(baseDir);
+  }
+});
+
+test('an imported reply keeps its steps in segments, under a safe file name', async () => {
   const baseDir = tempDir();
   try {
     const store = new ThreadStore(new DaemonState(baseDir));
@@ -219,7 +300,7 @@ test('an imported reply whose steps have no order keeps them, on disk and on the
           turnId: 's#t0',
           role: 'assistant',
           content: 'Here.',
-          blocks: [step],
+          segments: [{ type: 'text', text: 'Here.' }, step],
           createdAt: 101,
         },
       ],
@@ -227,8 +308,7 @@ test('an imported reply whose steps have no order keeps them, on disk and on the
     await store.reconcileNativeHistory(thread.id, [native], 200);
     const reread = new ThreadStore(new DaemonState(baseDir));
     const reply = (await reread.getTurn('s#t0')).messages[1];
-    assert.deepEqual(reply?.blocks, [step]);
-    assert.equal(reply?.segments, undefined);
+    assert.deepEqual(reply?.segments, [{ type: 'text', text: 'Here.' }, step]);
     assert.equal(existsSync(turnFile(baseDir, thread.id, 's#t0')), true, 'a safe file name');
   } finally {
     await rmrf(baseDir);
@@ -278,8 +358,9 @@ test('a conversation of the previous layout is converted once and moved aside', 
     const store = new ThreadStore(new DaemonState(baseDir));
     const turns = await store.listTurns('th');
     assert.equal(turns.turns[0]?.seq, 1, 'numbered on the way');
-    assert.deepEqual(turns.turns[0]?.messages[1]?.blocks, [
+    assert.deepEqual((await store.getTurn('th-t1')).messages[1]?.segments, [
       { type: 'command_execution', command: 'ls' },
+      { type: 'text', text: 'Done.' },
     ]);
     assert.equal(existsSync(join(baseDir, 'threads', 'th.json')), false);
     assert.equal(existsSync(join(baseDir, 'threads.v1', 'th.json')), true, 'kept, out of the way');

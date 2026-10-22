@@ -4,7 +4,76 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`turn/steps`, `turn/step`: what a page leaves out, on demand.**
+  `turn/steps { threadId, turnId, from, to }` answers the previews of the steps
+  stored in that range (at most 256 KiB, always one step, `next` to continue);
+  `turn/step { threadId, turnId, index }` one stored block whole — a thought's
+  full text too. An unknown thread, turn or index answers `-32008`.
+- **No answer can close a connection by its size.** The dispatcher measures
+  every serialized response: one larger than a local-control frame (32 MiB less
+  1 KiB) is answered `-32011` (`ResponseTooLarge`, `data: { bytes, limit }`)
+  on every transport, and the connection stays up. A 46 MB page had been
+  dropped by the desktop, which reconnected and asked again in a loop (~2 800
+  reconnects in a day). The largest legitimate answer, a 20 MiB PDF in base64,
+  still fits.
+- **The bridge tells clients when history changed outside Uxnan**
+  (plans/046, phase 4b; architecture/02a §5.8.8). A `turn/list` keeps its
+  thread watched for the client that read it — for 15 minutes after its last
+  read, and only while it stays connected. Every 2 s the bridge checks each
+  watched thread that has no turn in flight with one `stat` of its transcript
+  (OpenCode, read through its server, at most every 10 s), merges it when it
+  changed, and broadcasts the new **`stream/history/changed { threadId, rev }`**
+  when the stored turns changed — also for a merge run inside a client's
+  `turn/list`, so every other client showing the conversation converges too.
+  One owner does both (`NativeHistoryWatcher`); with nothing watched it arms no
+  timer, a tick never overlaps the last, one thread's failure never stops it,
+  and it starts and stops with the bridge. `NativeHistoryReconcileResult` now
+  carries the thread's `rev` after a change.
+
 ### Changed
+
+- **The agent's reasoning is stored where it happened** (plans/046, phase 4c).
+  Each stretch of it is a thought — `{ type: 'thinking', text }` — in the
+  reply's `segments`, before the command it led to or between two sentences,
+  instead of one `thinking` string per message that said nothing of where.
+  A reasoning chunk grows the last segment when that is a thought and opens a
+  new one at the end otherwise (`appendThinkingSegment` from `shared`, applied
+  live and on journal replay alike; never slotted before an open text run).
+  `stream/thinking/delta` is unchanged, but is now sent in arrival order with
+  the prose and blocks around it — ahead of its write, as a block is — so a
+  client applying the same rule builds the same `segments`, and a block's
+  `index` counts the thoughts before it. A page folds thoughts into the `work`
+  run they sit in (`thoughts`); `turn/step` gives one whole. Transcripts read
+  back keep the reasoning in the order the agent's file has it — Claude Code's
+  `thinking` blocks, Codex's `reasoning` items (which, with the tool events,
+  now lead the reply they belong to instead of following its text, and no
+  longer slip into another turn's reply), OpenCode's `reasoning` parts (and
+  its tool parts, now in part order), pi's `thinking` blocks (read for the
+  first time) and `think` tags, Grok's thought chunks. A conversation of the
+  previous layout gets its message's reasoning as one thought at the start of
+  `segments` when it converts.
+- **A page of a conversation no longer grows with it** (plans/046, phase 2).
+  `turn/list`, `turn/read` and `stream/turn/created` serve each reply with its
+  prose whole and every run of consecutive steps (commands, edits, tool calls,
+  thoughts) as one `work` segment — its stored index range, counts per kind,
+  failed, running, changed files and a preview of its last step. `turn/list`
+  serves the newest turns of the window that fit 1 MiB (at least one) and
+  reports `offset`. Measured on the real 46 MB conversation: its newest page
+  went from 46 MB to 1.0 MB.
+- **A live step streams as its preview, with its index.** `stream/content/block`
+  carries a step's `StepPreview` (command head, output tail, an edit without its
+  body, each with the size of what was cut) and `index`, its position in the
+  stored `segments`, computed before the write (`ThreadStore.blockIndex`). A
+  block the store would refuse — output after the turn ended — is no longer
+  announced.
+- **`Message.blocks` is gone.** `segments` is the one place a step lives, on
+  disk and on the wire, and every assistant message carries it (a prose-only
+  one too). Transcript imports produce `segments`; a conversation of the
+  previous layout that kept steps only in `blocks` gets them folded into
+  `segments` when it converts. The bridge's own readers (titles, the reply's
+  text, native reconciliation) still read whole turns.
 
 - **A long conversation no longer slows the whole bridge.** The conversation
   store is rebuilt so no everyday cost grows with a conversation's length
@@ -23,8 +92,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   - when a turn ends its file is written once, folding the journal; a journal
     left by a crash is replayed (a half-written last line is ignored) on the
     next start;
-  - each step is stored once, in `segments` — `blocks` is derived for the wire,
-    which is unchanged (199 MB of real data became 121 MB);
+  - each step is stored once, in `segments` (199 MB of real data became
+    121 MB);
   - `setUsage` no longer copies the whole conversation to update metrics, and
     a turn's usage is recorded before its end so the turn is written once.
 - **Conversations of an older bridge are converted once, at the first start.**

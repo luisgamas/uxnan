@@ -62,6 +62,9 @@ class ScriptedAdapter extends BaseAgentAdapter {
   delta(threadId: string, turnId: string, text: string): void {
     this.emit({ type: 'delta', threadId, turnId, data: { text } });
   }
+  thinking(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'thinking', threadId, turnId, data: { text } });
+  }
   block(threadId: string, turnId: string, content: unknown): void {
     this.emit({ type: 'block', threadId, turnId, data: { content } });
   }
@@ -212,5 +215,43 @@ test('every delta is still persisted individually', async () => {
 
   const turn = await h.store.getTurn(turnId);
   assert.equal(turn.messages.find((m) => m.role === 'assistant')?.content, 'uno dos tres');
+  await h.cleanup();
+});
+
+test('a thought is told in arrival order with the prose and blocks around it', async () => {
+  // Clients build a thought where it stands (`appendThinkingSegment`) from the
+  // order they are told things in, so a chunk must never be overtaken by the
+  // block or prose that followed it — the index a block carries already
+  // counts the thought before it.
+  const h = await harness();
+  const { turnId } = await h.manager.sendTurn(h.threadId, 'ask');
+
+  h.adapter.delta(h.threadId, turnId, 'Mirando.');
+  h.adapter.thinking(h.threadId, turnId, 'primero ls');
+  h.adapter.block(h.threadId, turnId, { type: 'command_execution', command: 'ls' });
+  h.adapter.delta(h.threadId, turnId, 'Listo.');
+
+  const ordered = new Set<string>([
+    StreamNotification.MessageDelta,
+    StreamNotification.ThinkingDelta,
+    StreamNotification.ContentBlock,
+  ]);
+  await waitFor(() => h.methods().filter((m) => ordered.has(m)).length === 4);
+  assert.deepEqual(
+    h.methods().filter((m) => ordered.has(m)),
+    [
+      StreamNotification.MessageDelta,
+      StreamNotification.ThinkingDelta,
+      StreamNotification.ContentBlock,
+      StreamNotification.MessageDelta,
+    ],
+  );
+  const block = h.notifications.find((n) => n.method === StreamNotification.ContentBlock);
+  assert.equal(block?.params?.['index'], 2, 'after the text run and the thought');
+  const reply = (await h.store.readReply(h.threadId, turnId)).segments;
+  assert.deepEqual(
+    reply?.map((s) => (s as { type: string }).type),
+    ['text', 'thinking', 'command_execution', 'text'],
+  );
   await h.cleanup();
 });

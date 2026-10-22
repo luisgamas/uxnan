@@ -376,7 +376,15 @@ test('openCodeV2History keeps completed turns, oldest first, with tools and reas
   ]);
   assert.deepEqual(history, [
     { role: 'user', text: 'hi', createdAt: 1 },
-    { role: 'assistant', text: 'hello', thinking: 'r', createdAt: 2 },
+    {
+      role: 'assistant',
+      text: 'hello',
+      segments: [
+        { type: 'thinking', text: 'r' },
+        { type: 'text', text: 'hello' },
+      ],
+      createdAt: 2,
+    },
   ]);
 });
 
@@ -488,7 +496,12 @@ test('OpenCodeV2Server speaks /api behind the password it set, and translates th
     // History follows the cursor, oldest first.
     assert.deepEqual(await server.messages(S), [
       { role: 'user', text: 'one', createdAt: 1 },
-      { role: 'assistant', text: 'two', createdAt: 2 },
+      {
+        role: 'assistant',
+        text: 'two',
+        segments: [{ type: 'text', text: 'two' }],
+        createdAt: 2,
+      },
     ]);
 
     await waitUntil(() => events.filter((e) => e.kind === 'idle').length >= 1);

@@ -14,7 +14,10 @@ import {
   RpcError,
   StreamNotification,
   effectiveAccessMode,
+  isStep,
   makeNotification,
+  previewStep,
+  summarizeTurn,
   type AccessMode,
   type AgentMcpServer,
   type ThreadLiveState,
@@ -34,6 +37,7 @@ import {
   type ApprovalResolvedParams,
   type QuestionResolvedParams,
   type TurnCreatedParams,
+  type ContentBlockParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
@@ -640,7 +644,8 @@ export class AgentManager {
    */
   async #announceTurn(threadId: string, turnId: string, clientTurnId?: string): Promise<void> {
     try {
-      const turn = await this.#options.store.getTurn(turnId);
+      // As a page serves it: one shape for a turn wherever a client gets it.
+      const turn = summarizeTurn(await this.#options.store.getTurn(turnId));
       this.#options.notify(
         makeNotification(StreamNotification.TurnCreated, {
           threadId,
@@ -1162,14 +1167,13 @@ export class AgentManager {
     this.#openInput(threadId, approvalId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = approvalContent(approvalId, info);
+    const index = this.#options.store.blockIndex(threadId, turnId, content);
     try {
       await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
     } catch {
       /* best-effort persistence */
     }
-    this.#options.notify(
-      makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
-    );
+    this.#notifyBlock({ threadId, turnId, messageId, content, index });
     return new Promise<ApprovalDecision>((resolve) => {
       this.#pendingHookApprovals.set(approvalId, { threadId, resolve, timer: undefined });
       this.#withdrawOnAbort(signal, () => {
@@ -1308,14 +1312,13 @@ export class AgentManager {
     this.#openInput(threadId, questionId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = questionBlock(questionId, questions);
+    const index = this.#options.store.blockIndex(threadId, turnId, content);
     try {
       await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
     } catch {
       /* best-effort persistence */
     }
-    this.#options.notify(
-      makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
-    );
+    this.#notifyBlock({ threadId, turnId, messageId, content, index });
     return new Promise<string[][]>((resolve) => {
       this.#pendingQuestions.set(questionId, { threadId, resolve, timer: undefined });
       this.#withdrawOnAbort(signal, () => {
@@ -1772,6 +1775,25 @@ export class AgentManager {
   readonly #pendingText = new Map<string, PendingText>();
 
   /**
+   * Tells every client a block landed (`stream/content/block`), a step as its
+   * preview — bounded as a page bounds it — at the index the store gave it.
+   * A block the store will not take (its turn is not streaming here: late
+   * output after the end) is not announced, so the live view never shows what
+   * a re-read would not.
+   */
+  #notifyBlock(block: Omit<ContentBlockParams, 'index'> & { index: number | undefined }): void {
+    const { index, content } = block;
+    if (index === undefined) return;
+    this.#options.notify(
+      makeNotification(StreamNotification.ContentBlock, {
+        ...block,
+        index,
+        content: isStep(content) ? previewStep(content, index) : content,
+      } satisfies ContentBlockParams),
+    );
+  }
+
+  /**
    * Sends whatever text is buffered for [turnId] right now.
    *
    * Called before EVERY non-delta event (see `#onEvent`) because order is the
@@ -1873,7 +1895,12 @@ export class AgentManager {
         }
         case 'thinking': {
           const delta = readText(event.data);
-          await this.#options.store.appendThinking(threadId, turnId, delta, now);
+          // A chunk grows a thought in `segments` where it stands, and every
+          // client places it by the same rule (`appendThinkingSegment`) — so
+          // it is told in arrival order, from the handler's synchronous
+          // prefix, exactly like a block below: announced after the await, a
+          // block or a prose batch arriving meanwhile overtook it and the
+          // client built its thought after them. Persistence follows at once.
           this.#options.notify(
             makeNotification(StreamNotification.ThinkingDelta, {
               threadId,
@@ -1882,6 +1909,7 @@ export class AgentManager {
               delta,
             }),
           );
+          await this.#options.store.appendThinking(threadId, turnId, delta, now);
           break;
         }
         case 'block': {
@@ -1927,15 +1955,18 @@ export class AgentManager {
             // reads. Telling the phone before the disk agrees is the same
             // trade the streamed prose above already makes: when it becomes
             // durable is a separate question from when the phone is told.
-            this.#options.notify(
-              makeNotification(StreamNotification.ContentBlock, {
-                threadId,
-                turnId,
-                messageId,
-                content,
-                ...(beforeText ? { beforeText } : {}),
-              }),
-            );
+            //
+            // Where the block will stand (its index) is asked of the store
+            // synchronously too, right before the write it describes is queued.
+            const index = this.#options.store.blockIndex(threadId, turnId, content, beforeText);
+            this.#notifyBlock({
+              threadId,
+              turnId,
+              messageId,
+              content,
+              index,
+              ...(beforeText ? { beforeText } : {}),
+            });
             await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
           }
           break;

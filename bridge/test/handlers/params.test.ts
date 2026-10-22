@@ -17,6 +17,7 @@ import {
   optionalBoolean,
   optionalNumber,
   optionalString,
+  requireIndex,
   requireString,
 } from '../../src/handlers/params.js';
 import { InMemorySecretStore, startBridge, type Bridge } from '../../src/index.js';
@@ -53,6 +54,15 @@ test('optional readers still type-check a field that IS present', () => {
 
 test('a required field still rejects an omitted params', () => {
   assert.throws(() => requireString(undefined, 'blob'), /params must be an object/);
+});
+
+test('an index is a non-negative integer', () => {
+  assert.equal(requireIndex({ index: 0 }, 'index'), 0);
+  assert.equal(requireIndex({ index: 41 }, 'index'), 41);
+  for (const bad of [-1, 1.5, '3', null, Number.NaN]) {
+    assert.throws(() => requireIndex({ index: bad }, 'index'), /non-negative integer 'index'/);
+  }
+  assert.throws(() => requireIndex({}, 'index'), /non-negative integer/);
 });
 
 test('metrics/export seals a backup when the phone sends no passphrase', async () => {

@@ -43,7 +43,25 @@ fake backend), lock file; the **agent-process record and orphan reap**
 (`child-ledger.test.ts`, `orphan-reaper.test.ts` — a real harmless `node` child
 for the record, and an injected inspector / signaller / command runner for every
 platform's reap, so no test inspects or signals a real process); the **autostart** plan per platform; git + workspace +
-**directory browsing** + checkpoints (real git in temp repos); conversation store;
+**directory browsing** + checkpoints (real git in temp repos); conversation store,
+held to fixed budgets on a synthetic 16 MB conversation by
+`test/conversation/thread-store-budget.test.ts` (bytes one delta writes, turn
+files a start reads, an unchanged transcript not re-read, a `turn/list` page
+within 1 MiB, `turn/steps` answers within 256 KiB, a thought previewed in its
+run and given whole by `turn/step`, the detail methods' errors); thoughts as
+segments — a reasoning chunk growing the last thought or opening one at the
+end, live and on journal replay, `blockIndex` counting them
+(`thread-store.test.ts`, `thread-store-layout.test.ts`), an older layout's
+reasoning converted to a leading thought, the reasoning order each transcript
+reader keeps (`session-history.test.ts`), and a thought told in arrival order
+with the prose and blocks around it (`agent-delta-batching.test.ts`); the **native-history watcher** (`native-history-watcher.test.ts`, on
+hand-fired timers and a fake reader that answers like the real one: interest
+expiry and disconnects, no read while a turn is live, an unchanged signature
+only `stat`-ed, a merge announced with its revision, OpenCode's 10 s cadence,
+no overlapping ticks, one thread's failure isolated, stop) and the
+`stream/history/changed` an idle `turn/list` merge broadcasts
+(`thread-handlers.test.ts`); the live step preview and its index (`agent-manager.test.ts`); the
+`-32011` response-size guard (`handler-router.test.ts`);
 the durable metrics ledger (legacy backfill, deletion retention, rotating-file
 recovery, complete same-PC export/import and idempotent merge);
 the AgentManager + echo agent end-to-end; the seven active OpenCode / Claude Code /
