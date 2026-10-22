@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.35-alpha.20261022] - 20261022
 ### Added
 
 - **Bounded history** (`models/history.ts`). `WorkRunSegment` (`type: 'work'`:

@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.45-alpha.20261022+20261022] - 20261022
 ### Changed
 
 - **Long conversations open fast and stay smooth.** The phone now receives a
