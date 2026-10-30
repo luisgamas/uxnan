@@ -39,6 +39,7 @@
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
   import SquarePenIcon from "@hugeicons/core-free-icons/Edit02Icon";
+  import { i18n } from "$lib/i18n";
 
   let {
     width = 200,
@@ -52,10 +53,15 @@
   const inner = $derived(width - pad * 2);
   const scale = $derived(inner / BASE_W);
 
-  const threads = [
-    { title: "Reconnect backoff", preview: "The socket now retries with jittered backoff…", logo: "claudecode", time: "17:35", desktop: true },
-    { title: "Checkout review", preview: "Two things before shipping: the coupon total…", logo: "codex", time: "17:34", desktop: false },
-  ];
+  // In the app's language (`welcome.mock.*`); names, paths and models stay.
+  const threads = $derived([
+    { title: i18n.t("welcome.mock.threadBackoff"), preview: i18n.t("welcome.mock.threadBackoffPreview"), logo: "claudecode", time: "17:35", desktop: true },
+    { title: i18n.t("welcome.mock.threadReview"), preview: i18n.t("welcome.mock.threadReviewPreview"), logo: "codex", time: "17:34", desktop: false },
+  ]);
+  const folders = $derived([
+    { name: "uxnan--pets", count: i18n.t("welcome.mock.conversations", { count: 3 }), logos: ["opencode", "pi"] },
+    { name: "notes", count: i18n.t("welcome.mock.conversations", { count: 2 }), logos: ["antigravity"] },
+  ]);
 </script>
 
 <div
@@ -97,20 +103,20 @@
         <!-- Uxnan Desktop is on the same bridge -->
         <div class="flex items-center gap-[5px] px-[14px] pb-[6px] text-[7.5px]" style="color: {M3.onSurfaceVar}">
           <Icon icon={LaptopIcon} class="size-[9px]" style="color: {M3.onPeriwinkle}" />
-          Linked with Uxnan Desktop on Studio
+          {i18n.t("welcome.mock.linked", { name: "Studio" })}
         </div>
         <div class="flex flex-col px-[10px]">
           <div class="flex items-center gap-[4px] py-[5px]">
             <Icon icon={ChevronDownIcon} class="size-[8px]" style="color: {M3.onSurfaceVar}" />
             <Icon icon={GitBranchIcon} class="size-[11px]" style="color: {M3.onSurfaceVar}" />
             <span class="truncate text-[10px] font-medium">uxnan</span>
-            <span class="ml-auto text-[7px]" style="color: {M3.onSurfaceVar}">3 folders</span>
+            <span class="ml-auto text-[7px]" style="color: {M3.onSurfaceVar}">{i18n.t("welcome.mock.folders", { count: 3 })}</span>
           </div>
           <div class="flex items-center gap-[4px] py-[4px] pl-[12px]">
             <Icon icon={ChevronDownIcon} class="size-[8px]" style="color: {M3.onSurfaceVar}" />
             <Icon icon={FolderIcon} class="size-[11px]" style="color: {M3.onSurfaceVar}" />
             <span class="truncate text-[9px]">uxnan</span>
-            <span class="ml-[6px] text-[7px]" style="color: {M3.onSurfaceVar}">2 conversations</span>
+            <span class="ml-[6px] text-[7px]" style="color: {M3.onSurfaceVar}">{i18n.t("welcome.mock.conversations", { count: 2 })}</span>
             <span class="ml-auto text-[6.5px]" style="color: {M3.live}">↑2</span>
           </div>
           <div class="flex flex-col gap-[5px] pb-[4px] pl-[24px] pt-[2px]">
@@ -135,7 +141,7 @@
               </div>
             {/each}
           </div>
-          {#each [{ name: "uxnan--pets", count: "3 conversations", logos: ["opencode", "pi"] }, { name: "notes", count: "2 conversations", logos: ["antigravity"] }] as folder (folder.name)}
+          {#each folders as folder (folder.name)}
             <div class="flex flex-col py-[5px] pl-[12px] pr-[4px]">
               <div class="flex items-center gap-[4px]">
                 <Icon icon={ChevronRightIcon} class="size-[8px]" style="color: {M3.onSurfaceVar}" />
@@ -161,7 +167,7 @@
         </div>
         <div class="absolute bottom-[14px] right-[12px]">
           <span class="flex h-[30px] items-center gap-[6px] rounded-[11px] px-[12px] text-[9px] font-medium" style="background: {M3.periwinkle}; color: {M3.onPeriwinkle}">
-            <Icon icon={SquarePenIcon} class="size-[11px]" /> New conversation
+            <Icon icon={SquarePenIcon} class="size-[11px]" /> {i18n.t("welcome.mock.newConversation")}
           </span>
         </div>
       {:else}
@@ -183,31 +189,31 @@
         <div class="px-[13px] text-[9px] leading-[1.5]">
           <div class="mb-[9px] flex justify-end">
             <span class="max-w-[80%] rounded-[14px] rounded-br-[4px] px-[9px] py-[6px]" style="background: {M3.periwinkle}; color: {M3.onPeriwinkle}">
-              /review the checkout flow before we ship
+              {i18n.t("welcome.mock.reviewPrompt")}
             </span>
           </div>
-          <p>Two things before shipping:</p>
+          <p>{i18n.t("welcome.mock.replyIntro")}</p>
           <ul class="mt-[4px] flex flex-col gap-[4px]">
-            <li class="flex gap-[6px]"><span style="color: {M3.outline}">•</span><span>the coupon total rounds <b>before</b> tax;</span></li>
-            <li class="flex gap-[6px]"><span style="color: {M3.outline}">•</span><span>the empty cart keeps the saved address.</span></li>
+            <li class="flex gap-[6px]"><span style="color: {M3.outline}">•</span><span>{i18n.t("welcome.mock.replyCoupon")}</span></li>
+            <li class="flex gap-[6px]"><span style="color: {M3.outline}">•</span><span>{i18n.t("welcome.mock.replyCart")}</span></li>
           </ul>
-          <p class="mt-[8px]">I can fix both and add a test for each.</p>
+          <p class="mt-[8px]">{i18n.t("welcome.mock.replyOffer")}</p>
           <!-- an approval, answered from the phone -->
           <div class="mt-[10px] rounded-[14px] p-[9px]" style="background: {M3.container}">
             <div class="flex items-center gap-[5px] text-[8.5px] font-medium">
               <span class="size-[5px] rounded-full" style="background: {M3.orange}"></span>
-              Edit 2 files in src/checkout
+              {i18n.t("welcome.mock.approval")}
             </div>
             <div class="mt-[7px] flex justify-end gap-[6px] text-[8px]">
-              <span class="rounded-full px-[9px] py-[4px]" style="color: {M3.onSurfaceVar}">Reject</span>
-              <span class="rounded-full px-[9px] py-[4px] font-medium" style="background: {M3.onPeriwinkle}; color: white">Approve</span>
+              <span class="rounded-full px-[9px] py-[4px]" style="color: {M3.onSurfaceVar}">{i18n.t("welcome.mock.reject")}</span>
+              <span class="rounded-full px-[9px] py-[4px] font-medium" style="background: {M3.onPeriwinkle}; color: white">{i18n.t("welcome.mock.approve")}</span>
             </div>
           </div>
         </div>
         <div class="absolute inset-x-[11px] bottom-[11px]">
           <div class="flex h-[29px] items-center gap-[8px] rounded-full px-[10px]" style="background: {M3.container}">
             <Icon icon={PlusIcon} class="size-[12px] shrink-0" />
-            <span class="truncate text-[9px]" style="color: {M3.outline}">Message…</span>
+            <span class="truncate text-[9px]" style="color: {M3.outline}">{i18n.t("welcome.mock.message")}</span>
             <Icon icon={MicIcon} class="ml-auto size-[11px] shrink-0" style="color: {M3.onSurfaceVar}" />
           </div>
         </div>

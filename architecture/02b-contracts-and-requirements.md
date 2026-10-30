@@ -1,6 +1,11 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.4.2 | **Fecha:** 2026-10-22 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.4.3 | **Fecha:** 2026-10-29 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.4.3):** `BridgeStatus.host` gains the optional
+> `install: BridgeInstallKind` (`bundled` | `npm` | `source`): how the running
+> bridge was installed, which decides who updates it (02a §5.8.18). Additive;
+> method and notification counts are unchanged.
 >
 > **Executive summary (1.4.2):** reasoning is a step, stored where it
 > happened. Each stretch of an agent's reasoning is a **`ThinkingSegment`
@@ -439,7 +444,8 @@ bridge/status                    -> snapshot de estado del bridge (incluye relay
                                     02a §5.8.18 (ausente = bridge anterior a actualizarse solo);
                                     activeTurns = hilos con un turno en curso, para que un cliente
                                     espere un momento tranquilo antes de reiniciar el bridge;
-                                    host { launchedBy: service|desktop|cli, machineName } y
+                                    host { launchedBy: service|desktop|cli, machineName,
+                                    install?: bundled|npm|source — 02a §5.8.18 } y
                                     clients[] = quien esta conectado; features.sync)
 bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
 bridge/pairingCode               -> PairingCode { code, expiresInMs }  el codigo de pairing manual

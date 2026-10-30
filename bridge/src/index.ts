@@ -20,6 +20,7 @@ export {
 } from './update-check.js';
 export {
   BridgeUpdater,
+  BUNDLED_UPDATE_REASON,
   DAEMON_UPDATE_CHECK_MS,
   installFailure,
   isPermissionFailure,
@@ -33,6 +34,14 @@ export {
   type UpdateResult,
 } from './self-update.js';
 
+export {
+  RUNTIME_MANIFEST,
+  bundledRuntimeRoot,
+  installKind,
+  readRuntimeManifest,
+  type InstallKindProbe,
+  type RuntimeManifest,
+} from './install-kind.js';
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';
 export { DaemonState, renameWithRetry, DAEMON_FILES } from './daemon-state.js';
@@ -115,8 +124,13 @@ export {
   uninstallService,
   currentServiceEnv,
   isServicePlatformSupported,
+  programFromPlist,
+  programFromUnit,
+  programFromWindows,
+  serviceProgram,
   type ServiceEnv,
   type ServicePlan,
+  type ServiceProgram,
   type ServiceCommand,
   type ServicePlatform,
 } from './service-installer.js';

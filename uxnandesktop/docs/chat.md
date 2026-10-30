@@ -20,35 +20,35 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 
 | Mode | What the app does |
 |---|---|
-| **Off** (default) | Nothing: no socket, no file read, no timer, no process. Chat tabs say the bridge is off and offer *Connect*. |
+| **Off** | Nothing: no socket, no file read, no timer, no process. Chat tabs say the bridge is off and offer *Connect*. A state saved before keeps whatever mode it had, `off` included. |
 | **Use a running bridge** (`attach`) | Connects to a bridge you already run — as a service (`uxnan-bridge install-service`) or with `uxnan-bridge start` in a terminal. |
-| **Run it as a service** (`managed`) | Same, but when none is running Uxnan makes sure the bridge runs as **your user's service** — installed and started through its own CLI (`uxnan-bridge service-status` → `install-service` → `service-start`, `bridgeclient/service.rs`) — and only connects to it. The service keeps serving the phone while Uxnan is closed, so the app never stops it. |
+| **Run it as a service** (`managed`, a fresh install's default) | Same, but when none is running Uxnan makes sure the bridge runs as **your user's service**, in this order: the registered service is started; an independent `uxnan-bridge` on `PATH` is registered (never duplicated); with neither, **the bridge Uxnan carries** is installed and registered ([bridge-runtime.md](./bridge-runtime.md)). All through the bridge's own CLI (`service-status` → `install-service` → `service-start`, `bridgeclient/service.rs`). The service keeps serving the phone while Uxnan is closed, so the app never stops it on its own. |
 
-**Installing and updating it from the app.** When `uxnan-bridge` is not on
-`PATH`, a chat tab says so and offers **Install** right there, with the command
-underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
-same **Install** / **Update** next to the installed and newest versions, plus
-**Check again** (re-reads what is installed, asks the running bridge for the
-newest version right now — `bridge/checkForUpdate` — and retries the
-connection).
+**The bridge Uxnan carries.** Every installer ships a private bridge — Node.js
+and `uxnan-bridge` from the same commit — so nothing needs installing, not even
+Node. When there is no bridge, a chat tab says so and offers **Set up the
+bridge**; Settings → Bridge & mobile has the same next to the version, plus
+**Use Uxnan's bridge** in place of an independent one that is too old to talk
+to the desktop or does not start, **Remove the bridge** (its service and
+runtime — never `~/.uxnan`), and **Check again** (re-reads what is installed,
+asks the running bridge for the newest version right now —
+`bridge/checkForUpdate` — and retries the connection). The app never runs npm.
 
-**The bridge updates itself** (architecture/02a §5.8.18). It checks for a newer
-version every hour and says so; the sidebar's **Bridge** row then turns its
-badge blue (**New version**), the Bridge window offers the new version, and Settings →
-Bridge & mobile shows it with **Update**. Either asks the bridge
-(`bridge/update`): it stops, installs the published version and its service
-brings it back — the connection drops for a moment and the app says when it is
-on the new version, or what failed and the command to run by hand. It never
-happens under a running turn on any client. **Update automatically** (off by
-default) asks the same way as soon as a newer version is published.
+**Who updates it** (architecture/02a §5.8.18, `BridgeStatus.host.install`):
 
-Uxnan's own npm path (`npm install -g uxnan-bridge@latest`, only when you press
-the button, with npm's output) is for what the bridge cannot do for itself:
-installing it, and updating a bridge older than updating itself or one that
-does not run as your service. In `managed` mode Uxnan then re-installs the
-service and restarts it; a bridge you run yourself keeps running and the status
-row offers **Restart the bridge**. Node.js 18+ (and its `npm`) must be
-installed; without it the row says so.
+- **The bridge Uxnan carries** (`bundled`) updates **with the app**. When the
+  app updates and carries a newer bridge, it switches to it at a moment no
+  turn runs on any client — verified before anything stops, and put back on the
+  previous one if the new one does not come up. It never asks npm.
+- **An independent bridge** (`npm`) **updates itself**: it checks for a newer
+  version every hour; the sidebar's **Bridge** row then turns its badge blue
+  (**New version**), the Bridge window offers it, and Settings → Bridge & mobile
+  shows **Update**. Either asks the bridge (`bridge/update`): it stops, installs
+  the published version and its service brings it back. It never happens under
+  a running turn. **Update automatically** (off by default) asks as soon as a
+  newer version is published. One that cannot update itself (started in a
+  terminal, or older than updating itself) is offered **Use Uxnan's bridge**
+  instead, never swapped unasked.
 
 The status row names the state and, when the bridge is unreachable, why and what
 fixes it:
@@ -57,9 +57,9 @@ fixes it:
 |---|---|
 | Connected — bridge `x.y.z` | Live. "kept running by Uxnan" in `managed` mode. |
 | No bridge is running | Nothing holds the bridge's lock (`~/.uxnan/bridge.lock`). Start it, or switch to *Start the bridge when needed*. |
-| Too old to talk to Uxnan Desktop | A bridge is running, but it was released before the desktop channel and does not publish it. **Update**; in `managed` mode Uxnan then restarts it on the new version. |
+| Too old to talk to Uxnan Desktop | A bridge is running, but it was released before the desktop channel and does not publish it. **Use Uxnan's bridge** puts the one the app carries in its place. |
 | Running without the desktop channel | A bridge that knows the channel is running without it: an older process still runs after an update (**Restart the bridge**), or it was started with `localControlEnabled: false` in `~/.uxnan/daemon-config.json`. |
-| Not installed | `managed` found no `uxnan-bridge` on `PATH`. |
+| No bridge on this computer yet | `managed` found no bridge, and this build carries none to set up (a development build: it sets up the bundled bridge only when asked). |
 | Could not start the service | `managed` could not install or start the bridge's service; the detail line quotes the bridge's own error. |
 | Refused this app | A bridge answered but rejected the token — typically another user's bridge, or a stale file. |
 | Could not connect | Anything else — including a bridge Uxnan started that exited at once; the detail line says what, and the bridge's log is in `~/.uxnan/logs/`. |

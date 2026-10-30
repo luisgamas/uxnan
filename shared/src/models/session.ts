@@ -212,10 +212,24 @@ export interface BridgeUpdate {
  */
 export type BridgeLaunchedBy = 'service' | 'desktop' | 'cli';
 
+/**
+ * How the running bridge was installed, which decides who updates it:
+ * - `bundled`: it came inside Uxnan Desktop (a private Node runtime the app
+ *   copied to a per-user folder). The desktop updates it — a new desktop
+ *   carries the new bridge — so it never asks npm (`BridgeUpdate.canApply`
+ *   is false and says so).
+ * - `npm`: a global `npm install -g uxnan-bridge`; it updates itself through
+ *   npm (`bridge/update`).
+ * - `source`: run from a checkout; nobody updates it.
+ */
+export type BridgeInstallKind = 'bundled' | 'npm' | 'source';
+
 export interface BridgeHost {
   launchedBy: BridgeLaunchedBy;
   /** The machine's name, as a phone shows it ("Linked with Uxnan Desktop on …"). */
   machineName: string;
+  /** How this bridge was installed. Absent from a bridge older than the field. */
+  install?: BridgeInstallKind;
 }
 
 /** Optional, additive bridge capabilities advertised on {@link BridgeStatus}. */

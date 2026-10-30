@@ -511,11 +511,25 @@ pub struct BridgeSettings {
     /// `off` | `attach` | `managed` — see [`crate::bridgeclient::Mode`].
     #[serde(default)]
     pub mode: crate::bridgeclient::Mode,
-    /// Update the bridge on its own when a newer version is published, at a
-    /// quiet moment (no turn running on any client). Off by default: updating
-    /// runs npm and restarts the bridge, which the user should choose.
+    /// Let an independent (npm) bridge update itself when a newer version is
+    /// published, at a quiet moment (no turn running on any client). Off by
+    /// default: it restarts a bridge the user installed. The bridge this app
+    /// carries is always kept at the app's version — it updates with the app.
     #[serde(default)]
     pub auto_update: bool,
+}
+
+impl BridgeSettings {
+    /// A fresh install's: `managed`, so the bridge runs as the user's service
+    /// from the first start (the one the app carries when there is none).
+    /// State saved before has its mode and keeps it — an older file without
+    /// the field reads as `off` (`Mode::default`), never switched on unasked.
+    pub fn fresh_install() -> Self {
+        Self {
+            mode: crate::bridgeclient::Mode::Managed,
+            auto_update: false,
+        }
+    }
 }
 
 /// User-facing application settings (UI layout, theme, terminal profiles).
@@ -730,8 +744,9 @@ pub struct AppSettings {
     #[serde(default)]
     pub resources: ResourceSettings,
     /// How the desktop connects to the Uxnan bridge (Settings → Bridge,
-    /// `bridgeclient`). Defaults to `off`, so older state loads unchanged and
-    /// the app stays exactly the standalone ADE until the user opts in.
+    /// `bridgeclient`). A fresh install starts `managed`
+    /// ([`BridgeSettings::fresh_install`]); a saved state keeps its mode, and
+    /// one saved before the field existed reads as `off`.
     #[serde(default)]
     pub bridge: BridgeSettings,
     /// The welcome tour's version the user has been through (finished or
@@ -1472,7 +1487,7 @@ impl Default for AppSettings {
             open_with: OpenWithSettings::default(),
             profile: None,
             resources: ResourceSettings::default(),
-            bridge: BridgeSettings::default(),
+            bridge: BridgeSettings::fresh_install(),
             welcome_seen: None,
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),

@@ -30,12 +30,17 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,127 Rust tests (712 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 294
+`docs/chat.md`), **a bridge that comes inside the installer** — a private Node
+runtime copied, verified, to a per-user folder and run as the user's service
+from the first launch, updated with the app, switched atomically with rollback
+(`bridgeclient/runtime.rs`, `docs/bridge-runtime.md`) — and **a welcome tour
+that leaves it ready**: the agents found turned on (one owner with Settings →
+Agents) and a phone paired with the running bridge's QR. 1,137 Rust tests (719 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 10 in `uxnan-cli` + 297
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (29 against the daemon itself) + 45
-integration), of which 55 are ignored probes that need something real to talk to
-(48 live SSH probes — 3 of them against a **Linux host in a
+integration), of which 56 are ignored probes that need something real to talk to
+(one copies and runs a built bridge runtime, 48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 2,005 frontend Vitest tests across two
+GitHub tests) + 2,019 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1097,24 +1102,29 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       chat, and *Continue here* on a real phone.
 
 
-### Backend (Rust)
-- [ ] Tauri **sidecar** for the Node bridge process; manage lifecycle
-      (start/stop/restart/health).
-- [ ] IPC (stdin/stdout JSON-RPC) between Rust and the bridge process; keep E2EE
-      keys **inside** the bridge process (never exposed to the Rust core — spec §4.1).
-- [ ] Commands: `bridge_start`, `bridge_stop`, `bridge_status`, `bridge_generate_qr`.
-      Events: `bridge:connection-changed`, `bridge:mobile-connected`.
-- [ ] **Embedded-bridge update check.** The standalone bridge already runs a
-      background npm update check and reports it (CLI notice + `bridge/status`
-      `latestVersion`/`updateAvailable`; see `bridge/src/update-check.ts` and
-      `shared` `isNewerVersion`). When embedding the bridge here, make sure the
-      **embedded** bridge's `bridge/status` still carries those fields so the
-      paired phone keeps showing its "bridge update available" hint, and surface
-      the same "bridge is outdated" state in the desktop UI (Settings → Mobile
-      connection / About). The desktop app's own installer auto-updates via
-      `tauri-plugin-updater`, but that updates the **desktop app**, not the
-      pinned Node bridge version it ships — so the bridge's own check still
-      matters. Unblocks with the sidecar above.
+### The bridge Uxnan carries (bundled runtime) ☐
+
+Built and verified on macOS arm64: the runtime assembled by
+`scripts/build-bridge-runtime.mjs`, copied and hash-verified by
+`bridgeclient/runtime.rs` (also live, from the real 128 MiB tree), and a bridge
+started from that copy in a scratch `HOME` answering `bridge/status` over the
+local channel with `install: bundled`. What has not run yet:
+
+- [ ] **A live first launch, switch and removal as a real service** — on
+      macOS, Windows (Task Scheduler and the Startup-folder fallback) and Linux
+      (systemd `--user`): install-and-register on a clean machine, an app update
+      switching the bundled bridge with a phone connected, a forced failure
+      rolling back, **Remove the bridge**. Every step runs the bridge's own CLI
+      and is unit-tested, but registering a service touches the machine's one
+      bridge, so it needs a clean machine or VM (the CI installer job opens the
+      app on a fresh Windows runner, which exercises the first launch there).
+      Marked at `BridgeClient::install_bundled` (`FOR-DEV:`).
+- [ ] **arm64 Linux and Windows installers.** The runtime script knows both
+      triples (pinned Node hashes included); the release matrix builds neither
+      installer yet.
+- [ ] **Visual review of the welcome tour v3** and the new Bridge & mobile rows
+      by the maintainer (AGENTS.md → *UI changes*); screenshots are in the
+      change's report.
 
 ## Remote hosts over SSH ☐
 
@@ -1812,7 +1822,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-15}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,127 Rust + 2,005 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,137 Rust + 2,019 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

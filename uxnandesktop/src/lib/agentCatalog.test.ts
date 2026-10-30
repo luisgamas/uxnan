@@ -1,57 +1,61 @@
 /**
  * The catalog's logo resolution, which is the part that silently degrades: an
- * agent with no bundled SVG and no `favicon` renders the generic Bot glyph, and
- * nothing fails loudly when that happens. These assertions pin the chain and the
- * three domains that were wrong or missing.
+ * agent whose mark is missing renders the generic Bot glyph, and nothing fails
+ * loudly when that happens. Every mark ships with the app from the
+ * repository's single set (`assets/agents/`), so these assertions pin that
+ * each catalog agent has its file there and that nothing is ever fetched.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   AGENT_CATALOG,
+  DRAWN_MARKS,
   agentIconSources,
   agentLogoKey,
-  faviconUrl,
   isMonochromeLogo,
+  markFile,
 } from "./agentCatalog";
 
-/** Agents whose mark ships as an asset under `static/agents/`. */
-const BUNDLED = ["claudecode", "codex", "openclaude", "zero"];
+const ASSETS = join(__dirname, "..", "..", "..", "assets", "agents");
 
 describe("agentIconSources", () => {
-  it("tries the bundled SVG first, then the product's favicon", () => {
-    expect(agentIconSources("codex")).toEqual([
-      "/agents/codex.svg",
-      faviconUrl("openai.com"),
-    ]);
+  it("gives a drawn mark its SVG and every other agent its vendored favicon", () => {
+    expect(agentIconSources("codex")).toEqual(["/agents/codex.svg"]);
+    expect(agentIconSources("opencode")).toEqual(["/agents/opencode.png"]);
   });
 
   it("uses a custom logo as-is and asks for nothing else", () => {
-    for (const custom of ["data:image/png;base64,AAA", "https://x.invalid/a.png", "/local.svg"]) {
+    for (const custom of ["data:image/png;base64,AAA", "/local.svg"]) {
       expect(agentIconSources(custom)).toEqual([custom]);
     }
   });
 
-  it("returns nothing for an agent with no logo at all", () => {
+  it("never offers a remote URL, so no logo is ever fetched", () => {
+    expect(agentIconSources("https://x.invalid/a.png")).toEqual([]);
     expect(agentIconSources(null)).toEqual([]);
+    expect(agentIconSources("not-in-the-catalog")).toEqual([]);
   });
 });
 
 describe("catalog coverage", () => {
-  it("gives every agent a mark to fall back to", () => {
-    // Without one of the two, the agent renders the generic glyph forever.
-    const orphans = AGENT_CATALOG.filter(
-      (agent) => !agent.favicon && !BUNDLED.includes(agent.logo),
-    );
-    expect(orphans.map((a) => a.id)).toEqual([]);
+  it("ships a mark for every agent from the repository's single set", () => {
+    const missing = AGENT_CATALOG.filter((agent) => !existsSync(join(ASSETS, markFile(agent.logo))));
+    expect(missing.map((a) => a.id)).toEqual([]);
   });
 
-  it("points the Gitlawb agents at their own subdomains", () => {
+  it("keeps a drawn mark for exactly the four agents that have one", () => {
+    expect([...DRAWN_MARKS].sort()).toEqual(["claudecode", "codex", "openclaude", "zero"]);
+  });
+
+  it("names where each favicon was taken from, for the vendoring script", () => {
+    const sourceless = AGENT_CATALOG.filter((agent) => !agent.favicon && !DRAWN_MARKS.has(agent.logo));
+    expect(sourceless.map((a) => a.id)).toEqual([]);
     // `gitlawb.com` is the personal site and serves neither product's mark.
-    const zero = AGENT_CATALOG.find((a) => a.id === "zero");
-    const openclaude = AGENT_CATALOG.find((a) => a.id === "openclaude");
-    expect(zero?.favicon).toBe("zero.gitlawb.com");
-    expect(openclaude?.favicon).toBe("openclaude.gitlawb.com");
+    expect(AGENT_CATALOG.find((a) => a.id === "zero")?.favicon).toBe("zero.gitlawb.com");
+    expect(AGENT_CATALOG.find((a) => a.id === "openclaude")?.favicon).toBe("openclaude.gitlawb.com");
   });
 
   it("matches a logo key from the command for agents added before icons existed", () => {

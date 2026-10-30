@@ -615,75 +615,70 @@ describe("ChatBridgeGate", () => {
   });
 
   it("names why the bridge is unreachable and offers a retry", () => {
-    bridge.applyStatus({ state: "unavailable", reason: "notInstalled", detail: "uxnan-bridge is not on PATH" });
+    bridge.applyStatus({ state: "unavailable", reason: "failed", detail: "bad handshake" });
     const { screen } = mount(ChatBridgeGate);
-    expect(screen.getByText("The bridge is not installed (uxnan-bridge is not on PATH).")).toBeTruthy();
+    expect(screen.getByText("Could not connect to the bridge.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     bridge.applyStatus({ state: "off" });
   });
 
-  it("installs a missing bridge in place, then connects to it", async () => {
-    bridge.applyStatus({ state: "off" });
+  const carries = (over: Record<string, unknown> = {}) => ({
+    bridge_install_probe: () => ({
+      bundledVersion: "0.0.31",
+      serviceSupported: true,
+      service: null,
+      serviceVersion: null,
+      pathFound: false,
+      pathVersion: null,
+      ...over,
+    }),
+  });
+
+  it("sets up the bridge this app carries when there is none, then connects to it", async () => {
+    bridge.applyStatus({ state: "unavailable", reason: "notInstalled", detail: null });
     const { screen, backend, user } = mountWithProviders(ChatBridgeGate, {
       commands: {
-        bridge_install_probe: () => ({
-          installed: false,
-          version: null,
-          npm: true,
-          nodeVersion: "v22.1.0",
-          command: "npm install -g uxnan-bridge@latest",
-        }),
-        bridge_install: () => ({
-          ok: true,
-          version: "0.0.30",
-          permissionDenied: false,
-          tail: [],
-          restarted: false,
-        }),
+        ...carries(),
+        bridge_install: () => ({ ok: true, version: "0.0.31", rolledBack: false, error: null }),
         update_settings: () => ({}),
       },
     });
-    await until(() => screen.queryByRole("button", { name: "Install" }) !== null);
-    expect(screen.getByText("Install the Uxnan bridge to chat")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Install" }));
+    await until(() => screen.queryByRole("button", { name: "Set up the bridge" }) !== null);
+    expect(screen.getByText("Set up the Uxnan bridge to chat")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Set up the bridge" }));
     await until(() => backend.called("update_settings"));
     expect(backend.called("bridge_install")).toBe(true);
     const settings = backend.lastCallTo("update_settings")?.args.settings as {
       bridge?: { mode: string };
     };
     expect(settings.bridge?.mode).toBe("managed");
+    bridge.applyStatus({ state: "off" });
   });
 
-  const installedOld = {
-    bridge_install_probe: () => ({
-      installed: true,
-      version: null,
-      npm: true,
-      nodeVersion: "v22.1.0",
-      command: "npm install -g uxnan-bridge@latest",
-    }),
-  };
+  it("says so when there is no bridge and this build carries none", async () => {
+    bridge.applyStatus({ state: "unavailable", reason: "notInstalled", detail: null });
+    const { screen } = mountWithProviders(ChatBridgeGate, { commands: carries({ bundledVersion: null }) });
+    await until(() => screen.queryByText(/doesn't carry one/) !== null);
+    expect(screen.queryByRole("button", { name: "Set up the bridge" })).toBeNull();
+    bridge.applyStatus({ state: "off" });
+  });
 
-  it("offers to update a running bridge too old to talk to the desktop", async () => {
+  it("offers Uxnan's bridge in place of a running one too old to talk to the desktop", async () => {
     bridge.applyStatus({
       state: "unavailable",
       reason: "outdated",
       detail: "a bridge is running (pid 42) but predates the desktop channel",
     });
-    const { screen } = mountWithProviders(ChatBridgeGate, { commands: installedOld });
-    // The install probe is shared app state: wait for this test's answer.
-    await until(
-      () => screen.queryByText("The running bridge is too old to talk to Uxnan Desktop: update it.") !== null,
-    );
-    expect(screen.getByRole("button", { name: "Update" })).toBeTruthy();
-    expect(screen.getByText("npm install -g uxnan-bridge@latest")).toBeTruthy();
+    const { screen } = mountWithProviders(ChatBridgeGate, { commands: carries({ service: "independent" }) });
+    await until(() => screen.queryByRole("button", { name: "Use Uxnan's bridge" }) !== null);
+    expect(screen.getByText("The running bridge is too old to talk to Uxnan Desktop: update it.")).toBeTruthy();
     bridge.applyStatus({ state: "off" });
   });
 
   it("restarts a bridge that runs without the channel of the version installed", async () => {
     bridge.applyStatus({ state: "unavailable", reason: "channelOff", detail: null });
     const { screen, backend, user } = mountWithProviders(ChatBridgeGate, {
-      commands: { ...installedOld, bridge_restart: () => null },
+      commands: { ...carries({ service: "independent" }), bridge_restart: () => null },
     });
     await user.click(screen.getByRole("button", { name: "Restart the bridge" }));
     await until(() => backend.called("bridge_restart"));

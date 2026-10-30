@@ -1,8 +1,26 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.6.0
-> **Fecha:** 2026-10-02
-> **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+> **Version:** 1.7.0
+> **Fecha:** 2026-10-29
+> **Estado:** Canal local (cliente) implementado; el bridge viaja dentro del instalador
+
+> **Resumen ejecutivo (1.7.0):** el instalador del desktop **trae su propio
+> bridge** (§3.5, *El bridge que trae la app*): un runtime privado — el `node`
+> oficial de la plataforma, verificado contra un SHA-256 fijado, y
+> `uxnan-bridge` construido del mismo commit, con un manifiesto que lleva el
+> hash de cada archivo — que la app copia y verifica a una carpeta por usuario
+> fuera de `~/.uxnan` y registra como servicio con el `install-service` del
+> propio bridge. Una instalacion nueva arranca en `managed`: se conecta al
+> bridge que haya, arranca el servicio registrado, registra un `uxnan-bridge`
+> independiente del `PATH` y solo sin ninguno instala el suyo. El desktop
+> **actualiza el bridge que trae** (atomico, con vuelta atras) y ya no ejecuta
+> npm; un bridge npm se actualiza solo. Ajustes ofrece *Configurar*, *Usar el
+> bridge de Uxnan* y *Quitar el bridge*; el tour de bienvenida (v3) termina con
+> los agentes activados y el telefono emparejado. Esto sustituye al "modo
+> embebido como sidecar" de §3.1–3.4, que queda como historia. Instalar la app
+> cuenta como consentimiento para instalar su bridge como servicio (se quita
+> desde Ajustes); sustituye la regla de consentimiento explicito de los planes
+> 029/044.
 
 > **Resumen ejecutivo (1.6.0):** §5.2 se reescribe con lo que el desktop
 > muestra de verdad. El estado del bridge y sus telefonos viven en la fila
@@ -441,9 +459,12 @@ src-tauri/src/bridgeclient/            ~/.uxnan/local-control.json (0600)
   mod.rs        ── supervisor: reconexion con backoff; managed: asegura el servicio
   reconnect.rs  ── la politica de ambos supervisores (local y hosts): una conexion
                    que muere < 10 s tras el hello cuenta como fallo (0,5 s → 30 s)
-  service.rs    ── `uxnan-bridge service-status | install-service | service-start | stop`
+  service.rs    ── `<node> <cli.js>` o `uxnan-bridge`: service-status | install-service |
+                   service-start | uninstall-service | stop | version
+  runtime.rs    ── el bridge que trae la app: copiar y verificar, versiones, podar
   commands.rs   ── bridge_client_status · bridge_client_retry · bridge_call
-                   bridge_install_probe · bridge_install · bridge_restart · bridge_pairing_qr
+                   bridge_install_probe · bridge_install · bridge_uninstall ·
+                   bridge_restart · bridge_pairing_qr
    │ eventos: bridge:status · bridge:notification
    ▼
 src/lib/bridge/  client · chat (replica) · projectMirror · conversation  →  components/chat/
@@ -457,13 +478,44 @@ src/lib/bridge/  client · chat (replica) · projectMirror · conversation  → 
   uno — si no, se desplazan en bucle (`02a` §5.8.15).
 - **Reanudacion:** el cliente guarda el ultimo `seq` aplicado y el `instanceId`;
   el bridge reenvia lo que falto o responde `gap` y la ventana re-sincroniza.
-- **`managed`** resuelve `uxnan-bridge` en el `PATH` (como cualquier CLI de
-  agente) y, si no hay descubrimiento, se asegura de que corra como **servicio
-  del usuario**: `service-status`, `install-service` si falta (o tras una
-  actualizacion, para apuntar al node y la entrada nuevos) y `service-start` si
-  no corre. La app **nunca** lo detiene: el servicio sigue sirviendo al
-  telefono con el desktop cerrado. El lock de instancia unica del bridge sigue
-  siendo la autoridad: el desktop nunca comprueba-y-escribe estado del bridge.
+- **`managed`** (el modo de una instalacion nueva; un estado guardado conserva
+  el suyo) se asegura, si no hay descubrimiento, de que el bridge corra como
+  **servicio del usuario**, en este orden: arranca el servicio registrado
+  (`service-status` → `service-start`); si no hay ninguno, registra un
+  `uxnan-bridge` independiente del `PATH` (`install-service`), sin duplicarlo;
+  y solo sin ninguno instala y registra **el bridge que trae la app** (abajo).
+  Un servicio registrado cuyos archivos ya no existen se reemplaza por el de la
+  app; uno independiente que no arranca se **nombra**
+  (`serviceFailed`) y reemplazarlo es una accion explicita. La app **nunca** lo
+  detiene por su cuenta: el servicio sigue sirviendo al telefono con el desktop
+  cerrado. El lock de instancia unica del bridge sigue siendo la autoridad: el
+  desktop nunca comprueba-y-escribe estado del bridge. Un build de desarrollo no
+  instala el bridge que trae por su cuenta, solo cuando se pide.
+- **Consentimiento (decision del mantenedor, 2026-10-29).** Instalar Uxnan
+  Desktop **cuenta como consentimiento** para instalar el bridge que trae como
+  servicio del usuario: la app lo hace en el primer arranque sin preguntar, y se
+  quita cuando se quiera desde Ajustes → Bridge y movil → *Quitar el bridge*
+  (servicio y runtime, nunca `~/.uxnan`). Esto sustituye la regla de los planes
+  029 y 044 («`managed` no instala el bridge sin consentimiento explicito»), que
+  se escribio cuando instalar significaba ejecutar npm en la maquina del usuario.
+  Un bridge independiente que el usuario instalo nunca se reemplaza sin que lo
+  pida.
+- **El bridge que trae la app (`bridgeclient/runtime.rs`,
+  `docs/bridge-runtime.md`).** El recurso `bridge-runtime/`
+  (`scripts/build-bridge-runtime.mjs`) lleva el `node` oficial y el arbol de
+  produccion de `uxnan-bridge` del mismo commit, mas `uxnan-runtime.json` con el
+  SHA-256 de cada archivo. La app lo copia — solo contenido, verificando cada
+  archivo — a `versions/<bridge>+node<node>/` en una carpeta por usuario
+  (macOS `~/Library/Application Support/Uxnan/bridge-runtime`, Linux
+  `$XDG_DATA_HOME/uxnan/bridge-runtime`, Windows
+  `%LOCALAPPDATA%\uxnan\bridge-runtime`), nunca dentro de `~/.uxnan` ni del
+  `.app`/AppImage, y ejecuta su `install-service` (rutas absolutas,
+  `WorkingDirectory` = home, `--service`). `bridge_install_probe` describe que
+  hay (version que trae la app, quien es el servicio registrado, un bridge en
+  el `PATH`); `bridge_install` instala o cambia al que trae, de forma atomica
+  (copiar y verificar → `stop` → `install-service` → esperar el canal con la
+  version nueva → si no, volver a registrar el anterior); `bridge_uninstall`
+  quita su servicio y su runtime, nunca `~/.uxnan`.
 - **Replica y espejo (`02a` §5.8.17).** La ventana converge con `sync/changes`
   al (re)conectar y ante un salto de `rev`; los proyectos locales del desktop y
   el registro del bridge se unen al conectar (nunca se poda por ausencia) y las
@@ -481,15 +533,16 @@ src/lib/bridge/  client · chat (replica) · projectMirror · conversation  → 
   false`). `managed` no arranca un segundo bridge sobre un lock ocupado.
   `bridge_restart` (a peticion del usuario) detiene el que corre con
   `uxnan-bridge stop` y vuelve a levantar el servicio.
-- **Actualizar el bridge (`02a` §5.8.18).** Lo hace el propio bridge:
-  *Actualizar* llama `bridge/update`, el bridge se detiene, instala la version
-  publicada y su servicio lo levanta; la ventana ve caer la conexion y volver con
-  la version nueva, y lo dice (o dice el fallo que reporta el bridge que vuelve).
-  Nunca con un turno en curso en cualquier cliente. El instalador del desktop
-  (`npm install -g uxnan-bridge@latest` + reinstalar y reiniciar el servicio en
-  `managed`) solo se usa cuando no hay bridge o cuando el bridge no puede
-  hacerlo: uno anterior a esta funcion (`bridge/status` sin `update`) o que no
-  corre como servicio del usuario.
+- **Actualizar el bridge (`02a` §5.8.18).** Depende de `host.install`. El que
+  trae la app (`bundled`) lo actualiza **la app**: si trae una version mas
+  nueva que la que corre, la cambia en un momento sin turnos en ningun cliente
+  (aunque *Actualizar automaticamente* este apagado: es parte de la app). Uno
+  npm se actualiza solo: *Actualizar* llama `bridge/update`, el bridge se
+  detiene, instala la version publicada y su servicio lo levanta; la ventana ve
+  caer la conexion y volver con la version nueva, y lo dice. Nunca con un turno
+  en curso. A un bridge independiente que no puede actualizarse (iniciado en
+  una terminal, o anterior a esta funcion) se le ofrece *Usar el bridge de
+  Uxnan*, nunca sin preguntar. El desktop ya no ejecuta npm.
 - **Herramientas del desktop para los agentes del bridge.** Al conectar, el
   cliente llama `desktop/attach { mcpUrl, token }` (`02a` §5.8.15) con el
   endpoint `/mcp` de su servidor de control y un **token de agente del bridge**

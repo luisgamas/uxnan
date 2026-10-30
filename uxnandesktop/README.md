@@ -129,12 +129,14 @@ available today are:
   WebGL rendering with DOM fallback, and configurable scrollback (Settings →
   Terminal) that survives recreating a pane — built on `portable-pty` and
   xterm.js.
-- **Chats with the bridge's agents, next to your terminals.** With
-  `uxnan-bridge` installed, a chat tab drives any of the seven agents the bridge
+- **Chats with the bridge's agents, next to your terminals.** The installer
+  carries the bridge — Node included — and sets it up as your service on the
+  first launch, or uses one you already installed
+  ([the bridge Uxnan carries](./docs/bridge-runtime.md)). A chat tab drives any of the seven agents the bridge
   runs (Claude Code, Codex, OpenCode, pi, Antigravity, Zero and Grok), and it is
   the same conversation Uxnan Mobile shows, live in both. The **Bridge** window,
   one click from the sidebar, shows the bridge's state, updates it and draws the
-  pairing QR; Settings → Bridge & mobile also installs it and lists every paired
+  pairing QR; Settings → Bridge & mobile also sets it up or removes it and lists every paired
   phone to rename or unpair. Agent views render inline in a lazy sandboxed frame
   with annotations and draft insertion ([chat tabs & the bridge](./docs/chat.md),
   [agent views](./docs/agent-views.md)).
@@ -261,10 +263,12 @@ available today are:
   from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).
-- **A welcome tour on first run.** Six short steps — terminal and chat, the
-  phone, agents working together, the CLIs Uxnan found on this machine — drawn
-  from the app's own interface. It shows once per version of the tour and
-  reopens from the profile menu → **Welcome tour**.
+- **A welcome tour on first run that leaves you ready.** Seven short steps —
+  chat or terminal, continuing on the phone; reaching this computer over the
+  LAN, Tailscale or your own relay; agents working together with `uxnan-cli`;
+  **turning on the agents found here**; **pairing your phone** with the QR of
+  the bridge already running — ending with a checklist of what is set. It shows
+  once per version of the tour and reopens from the profile menu → **Welcome tour**.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
@@ -329,13 +333,14 @@ The full state is recorded honestly, per platform and per feature, in the
   macOS installers (or help non-technical users) are very welcome.
 
 The remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
-which is *optional for standalone use*. Most of it is in: with `uxnan-bridge`
-installed, **chat tabs** run agent conversations on the bridge next to your
+which is *optional for standalone use*. Most of it is in: the installer carries
+the bridge and runs it as your service from the first launch, **chat tabs** run agent conversations on the bridge next to your
 terminals — the same conversations Uxnan Mobile shows, live in both — phones are
 paired, renamed and unpaired from the Bridge window and Settings, and a session
 moves between a terminal and a chat ([docs/chat.md](docs/chat.md)). Still to
-come: packaging the bridge inside the ADE so it needs no Node.js install, and a
-live view on the phone of a session running in a desktop terminal.
+come: a live run of the bundled bridge's first launch and update as a real
+service on every OS, and a live view on the phone of a session running in a
+desktop terminal.
 The detailed implementation status (phases, test counts, pre-release gaps) lives
 in [`FOR-DEV.md`](FOR-DEV.md).
 
@@ -357,6 +362,7 @@ Detailed docs live in [`docs/`](./docs/):
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
 [chat tabs & the bridge connection](./docs/chat.md) ·
+[the bridge Uxnan carries (bundled runtime)](./docs/bridge-runtime.md) ·
 [agent views in chat](./docs/agent-views.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·

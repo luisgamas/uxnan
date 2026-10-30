@@ -249,7 +249,7 @@ jobs:
           # bundle, the host engine every installer carries and its build — or
           # a new Tauri CLI, which IS the bundler.
           if git diff --name-only "$base" '${{ github.sha }}' \
-               | grep -Eq '^(uxnandesktop/src-tauri/(tauri(\.[a-z]+)?\.conf\.json|linux/|crates/(uxnan-host|host-protocol|workspace-engine)/)|uxnandesktop/scripts/(linux-appimage\.sh|build-host-engine\.mjs)|\.github/workflows/(release|ci)-desktop\.yml|\.github/workflows/build-host-engine\.yml)' \
+               | grep -Eq '^(uxnandesktop/src-tauri/(tauri(\.[a-z]+)?\.conf\.json|linux/|crates/(uxnan-host|host-protocol|workspace-engine)/)|uxnandesktop/scripts/(linux-appimage\.sh|build-host-engine\.mjs|build-bridge-runtime\.mjs)|\.github/workflows/(release|ci)-desktop\.yml|\.github/workflows/build-host-engine\.yml)' \
              || git diff "$base" '${{ github.sha }}' -- uxnandesktop/package.json uxnandesktop/package-lock.json \
                | grep -Eq '^[-+].*@tauri-apps/cli'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -342,6 +342,13 @@ jobs:
         run: |
           chmod +x src-tauri/host-engine/*/uxnan-host
           node scripts/build-host-engine.mjs --require
+      # The bridge the installer carries (`scripts/build-bridge-runtime.mjs`),
+      # for this runner's own triple, as the release assembles it.
+      - name: Build the workspaces the bridge is packed from
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Assemble the bridge runtime
+        working-directory: uxnandesktop
+        run: node scripts/build-bridge-runtime.mjs --build --require
       - name: Build the installers
         working-directory: uxnandesktop
         run: npm run tauri -- build --config "$RUNNER_TEMP/updater-key.conf.json"
@@ -375,6 +382,8 @@ jobs:
             || { echo "::error::the .deb carries no AppStream metadata"; exit 1; }
           engines=$(grep -cE 'host-engine/[^/]*/uxnan-host(\.exe)?$' <<<"$contents" || true)
           [ "$engines" = 6 ] || { echo "::error::the .deb carries $engines host engines, not 6"; exit 1; }
+          grep -q 'bridge-runtime/uxnan-runtime.json' <<<"$contents" \
+            || { echo "::error::the .deb carries no bridge runtime"; exit 1; }
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
       - name: Keep the window it showed
         if: always() && runner.os == 'Linux'
@@ -401,6 +410,8 @@ jobs:
           }
           $engines = @(Get-ChildItem -Recurse (Join-Path $dir 'host-engine') -Include 'uxnan-host', 'uxnan-host.exe' -ErrorAction SilentlyContinue).Count
           if ($engines -ne 6) { Get-ChildItem -Recurse $dir | Select-Object -First 60; throw "NSIS installed $engines host engines, not 6" }
+          if (-not (Test-Path (Join-Path $dir 'bridge-runtime\uxnan-runtime.json'))) { throw "NSIS installed no bridge runtime" }
+          if (-not (Test-Path (Join-Path $dir 'bridge-runtime\node\node.exe'))) { throw "NSIS installed no Node for the bridge" }
           $app = Start-Process (Join-Path $dir 'uxnan-desktop.exe') -PassThru
           Start-Sleep -Seconds 20
           if ($app.HasExited) { throw "the installed app exited on its own (code $($app.ExitCode))" }

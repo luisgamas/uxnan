@@ -173,6 +173,12 @@ prerequisites, and [`docs/agents.md`](docs/agents.md) for the details.
 
 ## Install
 
+**With Uxnan Desktop: nothing to install.** Its installer carries the bridge
+(and the Node it runs on) and sets it up as your service on the first launch —
+or uses one you already installed
+([`uxnandesktop/docs/bridge-runtime.md`](../uxnandesktop/docs/bridge-runtime.md)).
+Without the desktop (a phone with only the bridge), install it with npm:
+
 ```bash
 npm install -g uxnan-bridge
 ```
@@ -222,7 +228,8 @@ and tells every client (`stream/bridge/updated`, `bridge/status` → `update`).
 Run as your service, **the bridge updates itself** when any client asks
 (`bridge/update`, never under a running turn): it installs the published version
 and restarts on it — see [`docs/installation.md`](docs/installation.md) →
-*Staying up to date*.
+*Staying up to date*. The bridge that came with Uxnan Desktop is the exception:
+it updates with the app and never asks npm (`bridge/status` → `host.install`).
 
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /
 macOS Keychain / Linux Secret Service) via `@napi-rs/keyring`. With no keychain

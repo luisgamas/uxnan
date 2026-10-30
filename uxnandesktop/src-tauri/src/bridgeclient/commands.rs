@@ -9,8 +9,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
-use super::install::{self, InstallInfo};
-use super::{BridgeCallError, InstallResult, Status};
+use super::{BridgeCallError, InstallResult, RuntimeInfo, Status};
 use crate::error::CommandError;
 use crate::state::AppState;
 
@@ -84,22 +83,32 @@ pub async fn bridge_host_retry(
     Ok(())
 }
 
-/// What is installed: the bridge (and its version), npm, Node.js — plus the
-/// command to copy for a user who would rather run it themselves.
+/// What is on this machine: the bridge this app carries, the registered
+/// service and who it is, an independent `uxnan-bridge` on `PATH`.
 #[tauri::command]
-pub async fn bridge_install_probe() -> Result<InstallInfo, CommandError> {
-    Ok(install::probe().await)
+pub async fn bridge_install_probe(state: State<'_, AppState>) -> Result<RuntimeInfo, CommandError> {
+    Ok(state.bridge.runtime_info().await)
 }
 
-/// Install or update the bridge with npm, streaming its output as
-/// `bridge:install-log`. Only ever run on the user's request (or with automatic
-/// updates turned on in Settings → Bridge & mobile).
+/// Install the bridge this app carries and make it the user's service, or
+/// bring it up to the version the app ships (verified copy, then the switch,
+/// rolled back when the new one does not come up). Only ever on the user's
+/// request, or for the bridge this app installed itself.
 #[tauri::command]
-pub async fn bridge_install(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<InstallResult, CommandError> {
-    Ok(state.bridge.install_or_update(&app).await)
+pub async fn bridge_install(state: State<'_, AppState>) -> Result<InstallResult, CommandError> {
+    Ok(state.bridge.install_bundled().await)
+}
+
+/// Remove the bridge this app installed — its service and its runtime —
+/// keeping `~/.uxnan` (identity, phones, conversations). Only on the user's
+/// request (Settings → Bridge & mobile).
+#[tauri::command]
+pub async fn bridge_uninstall(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state
+        .bridge
+        .uninstall_bundled()
+        .await
+        .map_err(|why| CommandError::new("BRIDGE_UNINSTALL_FAILED", why))
 }
 
 /// Restart the bridge on the version installed now (Settings → Bridge &

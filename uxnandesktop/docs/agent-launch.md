@@ -36,21 +36,24 @@ In **Settings → Agents**:
 - **Add custom agent** registers anything else by hand (a command on your `PATH`,
   or an absolute path to a script — e.g. a [hook wrapper](./agent-hooks.md)).
 
-Each agent's logo resolves in a chain: a custom image you set → a bundled SVG
-(`static/agents/`) → the product's favicon → a generic glyph. The favicon step is
-fetched by the **backend** and inlined as a `data:` URL, because the app's CSP
-allows no remote image host — a URL rendered directly by the webview is simply
-blocked (`src/lib/agentLogoCache.ts`). That step needs network the first time per
-app run; a bundled SVG never does.
+Each agent's logo resolves in a chain: a custom image you set → the agent's
+mark shipped with the app → a generic glyph. **Every mark ships with the app and
+nothing is fetched**, so logos render offline: the marks are the repository's
+single set in `assets/agents/` — the same files the site and the root READMEs
+show — copied into `static/agents/` (git-ignored) by
+`scripts/sync-agent-marks.mjs`, which the `predev` / `prebuild` scripts run.
 
-Only four marks ship as assets — Claude Code, Codex, OpenClaude and Zero. Every
-other agent resolves through its `favicon` domain, which is what lets a CLI we
-have never heard of still show a real logo the moment someone registers it, so
-**a new catalog entry needs `favicon`, not an SVG**. A bundled mark drawn in a
-single dark colour (Codex uses `currentColor`, which an `<img>` resolves to
-black) sets `mono: true` in the catalog, and `AgentLogo` inverts it on dark
-themes so it reads white there and stays dark on light ones — favicons and
-custom logos are never inverted, because their colours are not ours to flip.
+Four agents keep a drawn SVG — Claude Code, Codex, OpenClaude and Zero
+(`DRAWN_MARKS` in `src/lib/agentCatalog.ts`); every other one is its vendor's
+favicon, vendored as a PNG from its catalog `favicon` domain by
+`web/scripts/fetch-agent-favicons.mjs`. So **a new catalog entry needs its
+`favicon` domain and one run of that script** (which writes
+`assets/agents/<logo>.png`); a test fails while any catalog agent has no file
+there. A drawn mark in a single dark colour (Codex uses `currentColor`, which an
+`<img>` resolves to black) sets `mono: true` in the catalog, and `AgentLogo`
+inverts it on dark themes so it reads white there and stays dark on light ones —
+favicons and custom logos are never inverted, because their colours are not
+ours to flip.
 
 Each agent profile has:
 

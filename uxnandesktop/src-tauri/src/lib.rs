@@ -194,9 +194,18 @@ pub fn run() {
             app.manage(browser::BrowserHost::default());
             app.manage(browser::approval::Approvals::default());
 
-            // The bridge client (`bridgeclient`): parked on the mode until the
-            // user turns it on in Settings → Bridge; then it connects (and, in
-            // `managed` mode, starts the bridge) and keeps reconnecting.
+            // The bridge client (`bridgeclient`): parked while the mode is
+            // `off`; otherwise it connects (and, in `managed` mode — a fresh
+            // install's default — makes sure the bridge runs as the user's
+            // service, installing the runtime this app carries when there is
+            // no bridge at all) and keeps reconnecting.
+            bridge.set_runtime(
+                app.path()
+                    .resource_dir()
+                    .ok()
+                    .map(|r| r.join(crate::bridgeclient::runtime::RESOURCE_DIR)),
+                crate::bridgeclient::runtime::runtime_root(),
+            );
             crate::bridgeclient::spawn(app.handle().clone(), bridge);
 
             // Resource observability sampler (`resources.rs`). Fully parked —
@@ -551,6 +560,7 @@ pub fn run() {
             bridgeclient::commands::bridge_host_retry,
             bridgeclient::commands::bridge_install_probe,
             bridgeclient::commands::bridge_install,
+            bridgeclient::commands::bridge_uninstall,
             bridgeclient::commands::bridge_restart,
             bridgeclient::commands::bridge_pairing_qr,
             commands::get_app_state,

@@ -214,3 +214,22 @@ describe('isNonShipping', () => {
     }
   });
 });
+
+describe('the desktop — it ships the bridge runtime', () => {
+  it('is measured over the bridge, shared and the relay it packs, as well as its own folder', () => {
+    assert.deepEqual(pathsOf(component('desktop')), ['uxnandesktop', 'bridge', 'shared', 'relay']);
+    // Cut after them, so an installer carries the bridge just released.
+    assert.ok(RELEASE_ORDER.indexOf('bridge') < RELEASE_ORDER.indexOf('desktop'));
+  });
+
+  it('counts the scripts that assemble an installer as shipping, and the rest of its tooling not', () => {
+    const desktop = component('desktop');
+    assert.equal(isNonShipping('uxnandesktop/scripts/build-bridge-runtime.mjs', desktop), false);
+    assert.equal(isNonShipping('uxnandesktop/scripts/build-host-engine.mjs', desktop), false);
+    assert.equal(isNonShipping('uxnandesktop/scripts/check-runes.mjs', desktop), true);
+    assert.equal(
+      isNonShipping('uxnandesktop/scripts/build-bridge-runtime.test.mjs', desktop),
+      true,
+    );
+  });
+});

@@ -2,12 +2,16 @@
 // detects which `command`s are installed (PATH + PATHEXT), and lets the user
 // one-click add the installed ones (or add a custom agent by hand).
 //
-// Logos resolve in a fallback chain (see `agentIconSources`): a user's own
-// custom logo → a bundled SVG under `static/agents/<logo>.svg` → the product's
-// favicon (fetched by `faviconUrl`) → the generic Bot glyph. Bundled SVGs are
-// the crispest, so keep them for the flagship agents; `favicon` covers everything
-// else without shipping an asset. Names use the product's real casing; commands
-// are the executable name as found on PATH — keep both correct so detection works.
+// Every logo ships with the app and renders offline (see `agentIconSources`):
+// a user's own custom logo → the agent's mark from `static/agents/` → the
+// generic Bot glyph. The marks are the repository's single set in
+// `assets/agents/` (the same files the site and the READMEs show), synced in by
+// `scripts/sync-agent-marks.mjs`: a drawn SVG for the four agents in
+// `DRAWN_MARKS`, and for every other agent its vendor favicon vendored as a PNG
+// from its `favicon` domain (`web/scripts/fetch-agent-favicons.mjs` — run it
+// when adding an agent). Nothing is fetched at run time. Names use the
+// product's real casing; commands are the executable name as found on PATH —
+// keep both correct so detection works.
 
 export interface CatalogAgent {
   /** Stable id, also used as the logo key. */
@@ -16,9 +20,10 @@ export interface CatalogAgent {
   name: string;
   /** Executable name on PATH (e.g. `claude`, `agy`). */
   command: string;
-  /** SVG basename under `static/agents/` (top-tier logo when one is bundled). */
+  /** Mark basename under `assets/agents/` (`.svg` when drawn, else `.png`). */
   logo: string;
-  /** Site to pull a favicon from when no bundled SVG resolves (e.g. `cursor.com`). */
+  /** The site the vendored favicon was taken from (e.g. `cursor.com`), read by
+   *  `web/scripts/fetch-agent-favicons.mjs` — never fetched by the app. */
   favicon?: string;
   /**
    * The bundled SVG is a single dark colour (a black path, or `currentColor`,
@@ -66,24 +71,25 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "zero", name: "Zero by Gitlawb", command: "zero", logo: "zero", favicon: "zero.gitlawb.com" },
 ];
 
-/** A site's favicon, via Google's public favicon service (64px, downscaled for
- *  crispness). Used as the logo fallback for agents without a bundled SVG. */
-export function faviconUrl(domain: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+/** The agents whose mark is drawn (an SVG); every other one is its vendored
+ *  favicon (a PNG). The same four `web/scripts/fetch-agent-favicons.mjs` skips. */
+export const DRAWN_MARKS: ReadonlySet<string> = new Set(["claudecode", "codex", "openclaude", "zero"]);
+
+/** The file a catalog agent's mark ships as, under `static/agents/`. */
+export function markFile(logo: string): string {
+  return `${logo}.${DRAWN_MARKS.has(logo) ? "svg" : "png"}`;
 }
 
 /** Ordered logo candidates for a logo key, tried in turn by AgentLogo until one
  *  loads (then the Bot glyph). A user's custom logo (stored inline as a `data:`
- *  URL, or an `http(s)`/`/` path) wins outright and is used as-is — that's what
- *  keeps a manually-added logo persistent. Otherwise a catalog agent yields its
- *  bundled SVG first, then its favicon. */
+ *  URL, or a `/` path) wins outright — that's what keeps a manually-added logo
+ *  persistent. A catalog agent yields its shipped mark. Nothing remote: an
+ *  `http(s)` URL is never a candidate, so no logo is ever fetched. */
 export function agentIconSources(logo?: string | null): string[] {
   if (!logo) return [];
-  if (/^(data:|https?:|\/)/.test(logo)) return [logo];
-  const out = [`/agents/${logo}.svg`];
+  if (/^(data:|\/)/.test(logo)) return [logo];
   const entry = AGENT_CATALOG.find((c) => c.logo === logo || c.id === logo);
-  if (entry?.favicon) out.push(faviconUrl(entry.favicon));
-  return out;
+  return entry ? [`/agents/${markFile(entry.logo)}`] : [];
 }
 
 /** Whether a logo key's **bundled** SVG is a single dark colour (the `mono`

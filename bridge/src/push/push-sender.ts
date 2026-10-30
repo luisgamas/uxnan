@@ -56,6 +56,10 @@ function resolveServiceAccountPath(): string {
  * Kept async + dynamic so the bridge never hard-depends
  * on `firebase-admin`.
  */
+// FOR-DEV: send through FCM's HTTP v1 API directly (OAuth2 from the service
+// account, one `fetch`), not `firebase-admin`, so every bridge — npm and the
+// one Uxnan Desktop carries, which ships without `firebase-admin` — pushes the
+// same way (bridge/FOR-DEV.md → *Transport & connectivity*).
 export async function createBridgePushSender(logger: Logger): Promise<PushSender | null> {
   const serviceAccountPath = resolveServiceAccountPath();
   let credentialRaw: string;

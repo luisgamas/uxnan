@@ -141,6 +141,8 @@ export const BENCH = {
 
 /** source: bridge/README.md */
 export const BRIDGE_INSTALL = "npm install -g uxnan-bridge";
+/** source: uxnandesktop/docs/bridge-runtime.md — the installer carries the bridge and its Node */
+export const BRIDGE_WITH_DESKTOP = "With Uxnan Desktop there is nothing to install: it comes with the bridge, Node included.";
 export const BRIDGE_START = "uxnan-bridge start";
 
 /** source: README.md → Security; architecture/02a §5.9 */

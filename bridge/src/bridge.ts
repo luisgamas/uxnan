@@ -105,6 +105,7 @@ import { SyncLedger } from './sync/sync-ledger.js';
 import { BridgeSettingsStore } from './settings/bridge-settings.js';
 import { PresenceRegistry } from './presence/presence-registry.js';
 import { bridgeHost } from './presence/host-info.js';
+import { installKind } from './install-kind.js';
 
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
@@ -282,7 +283,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // One revision counter for every change clients mirror (§5.8.17).
   const ledger = await SyncLedger.load(state);
   const presence = new PresenceRegistry();
-  const host = bridgeHost();
+  // How this bridge was installed decides who updates it (§5.8.18): read once
+  // from where its own CLI sits.
+  const cliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
+  const install = installKind(cliPath, { platform: process.platform });
+  const host = bridgeHost(install);
   const sessions = new SessionState(presence);
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
@@ -686,12 +691,12 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // The bridge's own update (`self-update.ts`): seeded from the on-disk cache,
   // checked against the registry hourly, applied by `bridge/update`, and told
   // to every client with `stream/bridge/updated`.
-  const cliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
   const updater = new BridgeUpdater(
     {
       state,
       version: BRIDGE_VERSION,
       launchedBy: host.launchedBy,
+      installKind: install,
       layout: resolveUpdateLayout(cliPath, process.platform),
       activeTurns: () => agentManager.activeTurnCount(),
       now,

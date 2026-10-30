@@ -50,6 +50,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   glance. The tree keeps it implicit. Below 15rem the reason a worktree has no
   branch gives way to the project name.
 
+### Added
+- **The installer carries its own bridge**, so chats and the phone work on a
+  machine with no Node: the official Node.js 24 LTS binary for the installer's
+  platform (pinned SHA-256) plus `uxnan-bridge` built from the same commit,
+  hashed file by file into a manifest (`scripts/build-bridge-runtime.mjs`,
+  bundled as the `bridge-runtime/` resource; `docs/bridge-runtime.md`). The app
+  copies it, verifying every file, to a per-user folder and registers it as the
+  user's service through the bridge's own `install-service`.
+- **First launch sets the bridge up** (`managed`, now a fresh install's
+  default): a bridge already serving the local channel is used; a registered
+  service is started; an independent `uxnan-bridge` on PATH is registered
+  rather than duplicated; only with none is the bundled one installed. A state
+  saved before keeps its mode — `off` still costs nothing.
+- Settings → Bridge & mobile: **Set up the bridge**, **Use Uxnan's bridge**
+  (in place of an independent one too old to talk to the desktop, or that does
+  not start) and **Remove the bridge** (its service and runtime; never
+  `~/.uxnan`). The version row says which bridge runs and who updates it.
+- A **new welcome tour** (version 3): chat or terminal, continuing on the
+  phone; reaching this computer over the LAN, Tailscale or the user's own
+  relay; agents working together through `uxnan-cli`; **turning on the agents
+  found here**, every one checked by default; **pairing a phone** with the
+  running bridge's QR right in the tour; and a closing checklist (bridge as a
+  service, agents on, phone paired).
+  The tour's pictures of Uxnan Desktop and Uxnan Mobile (`welcome/mock/`) now
+  speak the app's language (English and Spanish) through the app's own i18n.
+
+### Changed
+- **Agent logos ship with the app and render offline.** Every catalog agent's
+  mark comes from the repository's single set in `assets/agents/` (four drawn
+  SVGs and the vendored vendor favicons — the files the site and the READMEs
+  show), copied into `static/agents/` by `scripts/sync-agent-marks.mjs` before
+  dev and build. The app no longer asks Google's favicon service for a logo:
+  the backend-fetched logo path (`agentLogoCache.ts`) is gone, in Settings →
+  Agents, the welcome tour and everywhere `AgentLogo` draws.
+- The bridge Uxnan installed is kept at the version the app carries: when the
+  app updates, it switches the bridge at a moment no turn runs, atomically —
+  the new runtime is verified before anything stops, and when it does not come
+  up the service is put back on the previous one. "Update automatically" now
+  only concerns an independent (npm) bridge.
+- The app never runs npm any more: its npm installer (`bridgeclient/install.rs`)
+  is gone, replaced by the bundled runtime (`bridgeclient/runtime.rs`).
+- Settings → Agents and the welcome tour share one owner for detecting and
+  adding agents (`state/catalogAgents.svelte.ts`); the Bridge window and the
+  tour share one pairing surface (`PhonePairing.svelte`).
+- A development build sets up the bundled bridge only when asked, never on its
+  own (the service it would register is the machine's one bridge).
+- The pairing countdown reads as minutes and seconds (`8:55`, `formatCountdown`
+  in `clock.ts`), in the Bridge window and the tour alike.
+
 ## [0.0.82] - 20261022
 ### Changed
 

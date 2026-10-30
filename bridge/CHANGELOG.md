@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- A bridge can come **inside Uxnan Desktop**: a private Node runtime the app
+  copies, verified, to a per-user folder and registers as the user's service
+  (`uxnandesktop/docs/bridge-runtime.md`). The bridge knows when it is one
+  (`install-kind.ts`, from the `uxnan-runtime.json` manifest beside its tree)
+  and reports it as `BridgeStatus.host.install` (`bundled` | `npm` | `source`).
+- `uxnan-bridge service-status` also prints the `program` the registered
+  service runs (its Node and `cli.js`, read back from the LaunchAgent, systemd
+  unit, scheduled task or Startup launcher), so a client can tell the bridge
+  Uxnan installed from one the user registered.
+
+### Changed
+- A bundled bridge is updated by Uxnan Desktop, which carries the new version:
+  it never asks npm (no hourly registry check, no update notice on `start`),
+  `bridge/update` refuses with `unsupported` and no npm command, and
+  `update.unsupportedReason` says the app updates it. An npm install updates
+  itself exactly as before (architecture/02a §5.8.18).
+
+### Fixed
+- An OS keychain that **denies** access (a locked keychain, or a different
+  Node binary than the one that stored the identity) no longer reads as "no
+  identity stored": the bridge used to mint a fresh identity over the real one
+  and unpair every phone. Only a missing entry is `null` now; any other error
+  stops the start with the reason.
+
 ## [0.0.53-alpha.20261022] - 20261022
 ### Added
 

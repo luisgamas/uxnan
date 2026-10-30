@@ -71,9 +71,10 @@ same software a visitor is about to download.
    the two surfaces cannot drift. Only four agents keep a drawn mark (Claude
    Code, Codex, OpenClaude, Zero); the rest use the vendor's own favicon,
    **vendored as a PNG** by `scripts/fetch-agent-favicons.mjs` rather than
-   hot-linked — nothing is fetched from a third party at page load, and the
-   desktop app shows those same favicons, so app, site and READMEs agree. Update
-   a mark once, in `assets/agents/`.
+   hot-linked — nothing is fetched from a third party at page load. The desktop
+   app ships those same files (its own `scripts/sync-agent-marks.mjs` copies
+   `assets/agents/` into `static/agents/`) and never fetches a logo, so app, site
+   and READMEs agree. Update a mark once, in `assets/agents/`.
 6. **Draw the chip light, and never invert a favicon.** A favicon is drawn for a
    white page, and about half of them are dark shapes that vanish on a dark tile
    — so the agent grid puts a light chip behind every mark, which is also why

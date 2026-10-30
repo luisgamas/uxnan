@@ -86,9 +86,11 @@ jobs:
           - os: ubuntu-22.04
             args: ''
             rust-target: ''
+            bridge-target: x86_64-unknown-linux-gnu
           - os: windows-latest
             args: ''
             rust-target: ''
+            bridge-target: x86_64-pc-windows-msvc
           # EXPERIMENTAL macOS — two separate DMGs, one per architecture, both built
           # on Apple Silicon runners (macos-15). GitHub's Intel (macos-13) runners
           # are being retired and queue unpredictably, so the Intel DMG is
@@ -98,9 +100,11 @@ jobs:
           - os: macos-15
             args: '--target aarch64-apple-darwin'
             rust-target: 'aarch64-apple-darwin'
+            bridge-target: aarch64-apple-darwin
           - os: macos-15
             args: '--target x86_64-apple-darwin'
             rust-target: 'x86_64-apple-darwin'
+            bridge-target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60 # building installers for four targets is the slow case
     steps:
@@ -202,6 +206,21 @@ jobs:
         run: |
           chmod +x src-tauri/host-engine/*/uxnan-host
           node scripts/build-host-engine.mjs --require
+
+      # The bridge every installer carries, so the app runs one on a machine
+      # with no Node (`uxnandesktop/scripts/build-bridge-runtime.mjs`,
+      # `docs/bridge-runtime.md`): Node for THIS leg's triple, checked against
+      # its pinned SHA-256, plus the bridge built from this same commit. The
+      # Intel mac leg cross-assembles it (npm resolves the x64 keyring build);
+      # nothing in it is run here. `--require` refuses an installer without it.
+      - name: Build the workspaces the bridge is packed from
+        shell: bash
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: Assemble the bridge runtime
+        shell: bash
+        working-directory: uxnandesktop
+        run: node scripts/build-bridge-runtime.mjs --build --require --target ${{ matrix.bridge-target }}
 
       - name: Build installers + draft release
         uses: tauri-apps/tauri-action@v0

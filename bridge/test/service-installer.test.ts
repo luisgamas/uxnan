@@ -5,6 +5,9 @@ import {
   buildServicePlan,
   buildWindowsStartupPlan,
   isServicePlatformSupported,
+  programFromPlist,
+  programFromUnit,
+  programFromWindows,
   type ServiceEnv,
 } from '../src/index.js';
 
@@ -96,4 +99,36 @@ test('windows Startup fallback writes a hidden .vbs launcher with quoted paths',
 test('linux plan quotes paths with spaces in ExecStart', () => {
   const plan = buildServicePlan(envFor('linux', { execPath: '/opt/my node/node' }));
   assert.ok(plan.file!.content.includes(`ExecStart="/opt/my node/node" ${CLI} start --service`));
+});
+
+test('the program a service runs is read back from what each plan wrote', () => {
+  const spaced = {
+    execPath:
+      '/Users/u/Library/Application Support/Uxnan/bridge-runtime/versions/1+node24/node/bin/node',
+    cliPath:
+      '/Users/u/Library/Application Support/Uxnan/bridge-runtime/versions/1+node24/app/node_modules/uxnan-bridge/dist/src/cli.js',
+  };
+  const mac = buildServicePlan(envFor('darwin', spaced));
+  assert.deepEqual(programFromPlist(mac.file!.content), {
+    node: spaced.execPath,
+    cli: spaced.cliPath,
+  });
+  const linux = buildServicePlan(envFor('linux', spaced));
+  assert.deepEqual(programFromUnit(linux.file!.content), {
+    node: spaced.execPath,
+    cli: spaced.cliPath,
+  });
+  const win = {
+    execPath:
+      'C:\\Users\\u\\AppData\\Local\\Uxnan\\bridge-runtime\\versions\\1+node24\\node\\node.exe',
+    cliPath:
+      'C:\\Users\\u\\AppData\\Local\\Uxnan\\bridge-runtime\\versions\\1+node24\\app\\node_modules\\uxnan-bridge\\dist\\src\\cli.js',
+  };
+  const vbs = buildWindowsStartupPlan(envFor('win32', win));
+  assert.deepEqual(programFromWindows(vbs.file!.content), { node: win.execPath, cli: win.cliPath });
+  // A scheduled task as `schtasks /Query /XML` prints it.
+  const xml = `<Task><Actions><Exec><Command>"${win.execPath}"</Command><Arguments>"${win.cliPath}" start --service</Arguments></Exec></Actions></Task>`;
+  assert.deepEqual(programFromWindows(xml), { node: win.execPath, cli: win.cliPath });
+  assert.equal(programFromPlist('<plist></plist>'), undefined);
+  assert.equal(programFromUnit('[Service]\n'), undefined);
 });

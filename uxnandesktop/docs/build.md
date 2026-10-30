@@ -96,6 +96,27 @@ The app looks for them in its resource folder first (`ssh/engine.rs` →
 `local_binary`), then in `$UXNAN_HOST_BINARIES/<triple>/`, and in a debug build
 in `src-tauri/host-engine/` and cargo's `target/<triple>/release/`.
 
+### The bridge runtime
+
+Every installer also carries **its own Uxnan bridge** — the official Node.js
+binary for the installer's own platform (SHA-256 pinned) and `uxnan-bridge`
+packed from the same commit — under `bridge-runtime/`, so the app runs a bridge
+on a machine with no Node. Unlike the host engines it is **one** triple per
+installer (~128 MiB uncompressed, ~41 MiB compressed on macOS arm64).
+
+```bash
+npm ci && npm run build                               # at the repo root, once
+node scripts/build-bridge-runtime.mjs --build         # this machine's triple
+node scripts/build-bridge-runtime.mjs --build --target x86_64-apple-darwin
+node scripts/build-bridge-runtime.mjs --require       # fail unless a verified one is there
+```
+
+The overlay runs it with no flag before `tauri dev` and `tauri build`: a local
+build without `--build` carries no bridge and says so. The release and CI's
+installer legs build it with `--build --require --target <triple>`. Everything
+else — what is in it, where the app installs it, updates, removal, signing — is
+in [bridge-runtime.md](./bridge-runtime.md).
+
 ### The frontend's build target
 
 `vite.config.js` compiles the frontend to `BUILD_TARGET` from

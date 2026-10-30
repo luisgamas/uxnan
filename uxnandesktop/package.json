@@ -7,7 +7,9 @@
   "author": "Luis Donaldo Gamas Vazquez",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-agent-marks.mjs",
     "dev": "vite dev",
+    "prebuild": "node scripts/sync-agent-marks.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "check:runes": "node scripts/check-runes.mjs",

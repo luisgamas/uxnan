@@ -1,6 +1,6 @@
 /**
  * Settings → Bridge & mobile: an ordinary settings pane (the mode in the
- * settings' combobox, the state as a status dot, the command in a code block),
+ * settings' combobox, the state as a status dot),
  * and the states that used to be silent — a running bridge too old to talk to
  * the desktop, one running without the channel of the version installed — each
  * with the one action that fixes it.
@@ -20,12 +20,14 @@ vi.mock("$lib/toast", () => ({
   errorMessage: (e: unknown) => String(e),
 }));
 
+/** An independent (npm) bridge is the registered service; this app carries 0.0.31. */
 const INSTALLED_OLD = {
-  installed: true,
-  version: null,
-  npm: true,
-  nodeVersion: "v22.1.0",
-  command: "npm install -g uxnan-bridge@latest",
+  bundledVersion: "0.0.31",
+  serviceSupported: true,
+  service: "independent",
+  serviceVersion: null,
+  pathFound: true,
+  pathVersion: null,
 };
 
 function commands(extra: Record<string, (args: Record<string, unknown>) => unknown> = {}) {
@@ -53,16 +55,38 @@ describe("BridgeSettings", () => {
     expect(sent.bridge?.mode).toBe("attach");
   });
 
-  it("says a running bridge is too old and offers the update and the command", async () => {
+  it("says a running bridge is too old and offers the bridge Uxnan carries in its place", async () => {
     bridge.applyStatus({
       state: "unavailable",
       reason: "outdated",
       detail: "a bridge is running (pid 42) but predates the desktop channel",
     });
-    const { screen } = mountWithProviders(BridgeSettings, { commands: commands() });
+    const { screen, backend, user } = mountWithProviders(BridgeSettings, {
+      commands: commands({ bridge_install: () => ({ ok: true, version: "0.0.31", rolledBack: false, error: null }) }),
+    });
     expect(screen.getByText("The running bridge is too old to talk to Uxnan Desktop: update it.")).toBeTruthy();
-    await until(() => screen.queryByRole("button", { name: "Update" }) !== null);
-    expect(screen.getByText("npm install -g uxnan-bridge@latest")).toBeTruthy();
+    await until(() => screen.queryByRole("button", { name: "Use Uxnan's bridge" }) !== null);
+    await user.click(screen.getByRole("button", { name: "Use Uxnan's bridge" }));
+    await until(() => backend.called("bridge_install"));
+    bridge.applyStatus({ state: "off" });
+  });
+
+  it("removes the bridge it set up only after asking, turning the connection off first", async () => {
+    bridge.applyStatus({ state: "unavailable", reason: "notRunning", detail: null });
+    const { screen, backend, user } = mountWithProviders(BridgeSettings, {
+      commands: commands({
+        bridge_install_probe: () => ({ ...INSTALLED_OLD, service: "bundled", serviceVersion: "0.0.31" }),
+        bridge_uninstall: () => null,
+      }),
+    });
+    await until(() => screen.queryByRole("button", { name: "Remove" }) !== null);
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(backend.called("bridge_uninstall")).toBe(false);
+    const confirm = await screen.findAllByRole("button", { name: "Remove" });
+    await user.click(confirm.at(-1)!);
+    await until(() => backend.called("bridge_uninstall"));
+    expect(app.settings.bridge?.mode).toBe("off");
+    bridge.applyStatus({ state: "off" });
   });
 
   it("restarts a bridge running without the channel of the version installed", async () => {

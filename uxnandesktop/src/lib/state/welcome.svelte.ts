@@ -6,7 +6,7 @@
 import { app } from "$lib/state/app.svelte";
 
 /** Bump when the tour gains something every user should see once. */
-export const WELCOME_VERSION = 2;
+export const WELCOME_VERSION = 3;
 
 class WelcomeUi {
   open = $state(false);
