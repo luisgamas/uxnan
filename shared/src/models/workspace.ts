@@ -29,29 +29,33 @@ export interface WorkspaceFileTarget {
   path: string;
 }
 
-/**
- * An image or a file attached to a user turn (`turn/send { attachments }`).
- * Tolerant by design — clients send inline base64 with the original
- * `mimeType`; `path`/`width`/`height` are best-effort metadata. At least one of
- * `base64Data`/`path` must be present for the bridge to deliver it to the agent.
- * The bridge writes each one into the agent's folder for the turn and names
- * it in the prompt, so every agent opens it with its own tools; a file keeps
- * its `name` there. At most {@link MAX_ATTACHMENT_BYTES} each.
- */
 /** The largest attachment `turn/send` takes, decoded: 20 MB. */
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
+/**
+ * An image or a file attached to a user turn (`turn/send { attachments }`),
+ * carried inline as base64 with its original `mimeType`, at most
+ * {@link MAX_ATTACHMENT_BYTES} decoded. It sits in the message's text where
+ * the person put it: the n-th {@link ATTACHMENT_MARKER} of the text is the
+ * n-th attachment (`models/inline-attachments.ts`).
+ *
+ * The bridge keeps it with the message (`Message.attachments`), writes it into
+ * the agent's folder for the turn, and hands it to the agent at its place in
+ * the sentence — as the CLI's own image input where its protocol takes one,
+ * and always as a labelled file the agent can open (architecture/02a §5.8.12).
+ */
 export interface TurnAttachment {
   /** An image (the default), or any other file. */
   type?: 'image' | 'file';
-  /** A file's name (no directories), kept when the agent receives it. */
+  /**
+   * Its file name (no directories) — what the composer's chip shows and how
+   * the agent is told about it. A pasted image may have none.
+   */
   name?: string;
   /** MIME type, e.g. `image/png`. */
   mimeType: string;
-  /** Inline base64 payload (no `data:` URI prefix). */
-  base64Data?: string;
-  /** Original/workspace path the image came from, if any. */
-  path?: string;
+  /** The bytes, base64 (no `data:` URI prefix). */
+  base64Data: string;
   /** Pixel width, if known. */
   width?: number;
   /** Pixel height, if known. */

@@ -51,7 +51,12 @@ export interface Message {
   id: string;
   turnId: string;
   role: MessageRole;
-  /** The message's full text: for an assistant message, its text runs concatenated. */
+  /**
+   * The message's full text: for an assistant message, its text runs
+   * concatenated. A user message's text holds one `ATTACHMENT_MARKER` per entry
+   * of {@link attachments}, where the person placed it
+   * (`models/inline-attachments.ts`).
+   */
   content: unknown;
   /**
    * The assistant message's text runs, reasoning and blocks **in the exact
@@ -77,9 +82,12 @@ export interface Message {
   usage?: { tokens: number; contextWindow?: number };
   /**
    * The images and files the user attached to this message, kept by the bridge
-   * with the turn (user messages only). They are named here, not inlined — a page of
-   * history stays small — and each client fetches the bytes it shows with
-   * `turn/attachment`.
+   * with the turn (user messages only), in the order of the markers in
+   * `content`: the n-th marker is the n-th entry. They are named here, not
+   * inlined — a page of history stays small — and each client fetches the
+   * bytes it shows with `turn/attachment`. (A message with fewer markers than
+   * attachments, such as one stored before markers existed, shows the rest
+   * after its text.)
    */
   attachments?: MessageAttachment[];
   createdAt: number;
@@ -93,7 +101,7 @@ export interface MessageAttachment {
   mimeType: string;
   /** Size of the stored image or file in bytes. */
   bytes: number;
-  /** A file's name, as it was sent (absent for an image). */
+  /** The image's or file's name, as it was sent (a pasted image may have none). */
   name?: string;
   /** Pixel width, when the sender knew it. */
   width?: number;

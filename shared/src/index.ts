@@ -41,6 +41,7 @@ export * from './models/thread.js';
 export * from './models/history.js';
 export * from './models/git.js';
 export * from './models/workspace.js';
+export * from './models/inline-attachments.js';
 export * from './models/project.js';
 export * from './models/sync.js';
 export * from './models/session.js';
