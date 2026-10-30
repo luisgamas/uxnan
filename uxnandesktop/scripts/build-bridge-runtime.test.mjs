@@ -12,6 +12,7 @@ import {
   listFiles,
   lockedClosure,
   stagingPackage,
+  tarCommand,
   targetOf,
   verify,
 } from "./build-bridge-runtime.mjs";
@@ -95,6 +96,15 @@ describe("build-bridge-runtime", () => {
     expect(verify(dir, "x86_64-apple-darwin")).toEqual(["built for aarch64-apple-darwin, not x86_64-apple-darwin"]);
     writeFileSync(join(dir, cli), "changed");
     expect(verify(dir, "aarch64-apple-darwin")).toEqual([`changed ${cli}`]);
+  });
+
+  it("unpacks with Windows' own tar, never the GNU tar a bash step finds first", () => {
+    const env = { SystemRoot: "C:\\Windows" };
+    const system = join("C:\\Windows", "System32", "tar.exe");
+    expect(tarCommand("win32", env, (p) => p === system)).toBe(system);
+    expect(tarCommand("win32", env, () => false)).toBe("tar");
+    expect(tarCommand("linux", env, () => true)).toBe("tar");
+    expect(tarCommand("darwin", {}, () => true)).toBe("tar");
   });
 
   it("refuses a symbolic link in the tree", () => {

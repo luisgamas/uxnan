@@ -314,6 +314,19 @@ async function nodeArchive(triple, cacheDir) {
   return { path, name };
 }
 
+/**
+ * The `tar` that can unpack Node's archives here. On Windows that is the
+ * system's own bsdtar (`%SystemRoot%\System32\tar.exe`), which reads zip and
+ * takes drive-letter paths: the GNU tar Git for Windows puts first on a bash
+ * step's PATH reads `D:\…` as a remote host ("Cannot connect to D") and
+ * cannot open a zip at all. Pure but for `exists`.
+ */
+export function tarCommand(platform = process.platform, env = process.env, exists = existsSync) {
+  if (platform !== "win32") return "tar";
+  const system = join(env.SystemRoot ?? env.windir ?? "C:\\Windows", "System32", "tar.exe");
+  return exists(system) ? system : "tar";
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: "inherit",
@@ -345,7 +358,7 @@ async function build(triple) {
     const inner = spec.os === "win32" ? `${top}/node.exe` : `${top}/bin/node`;
     const extract = join(work, "extract");
     mkdirSync(extract, { recursive: true });
-    run("tar", ["-xf", archive.path, "-C", extract, inner, `${top}/LICENSE`]);
+    run(tarCommand(), ["-xf", archive.path, "-C", extract, inner, `${top}/LICENSE`]);
     mkdirSync(join(stage, dirname(layout.node)), { recursive: true });
     copyFileSync(join(extract, inner), join(stage, layout.node));
     copyFileSync(join(extract, top, "LICENSE"), join(stage, "node", "LICENSE"));
