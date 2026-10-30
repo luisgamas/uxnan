@@ -6,7 +6,7 @@ import {
   PhoneDevices,
   PhoneNewConversation,
 } from "@/components/mockups/phone";
-import { BRIDGE_INSTALL, BRIDGE_START, CRYPTO } from "@/lib/site";
+import { BRIDGE_INSTALL, BRIDGE_START, BRIDGE_WITH_DESKTOP, CRYPTO } from "@/lib/site";
 
 const CAPABILITIES = [
   {
@@ -109,6 +109,10 @@ export function Mobile() {
                     ▸ scan the QR from the app <span className="caret" />
                   </div>
                 </div>
+
+                <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                  {BRIDGE_WITH_DESKTOP}
+                </p>
 
                 <p className="mt-3.5 font-mono text-[11.5px] text-faint">
                   {CRYPTO}

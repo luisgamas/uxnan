@@ -30,6 +30,7 @@ change set.**
 | Live streaming, message queue delivering mid-turn, diff review, push on finish | root `README.md` → _Uxnan Mobile_; `uxnanmobile/FOR-DEV.md` → `## Status` |
 | "on the CLIs that allow it" (mid-turn delivery is not universal) | `bridge/docs/agents.md` → per-agent drive surface |
 | `npm install -g uxnan-bridge` · `uxnan-bridge start` · QR pairing · LAN/Tailscale first, relay as fallback | `bridge/README.md`; root `README.md` → _How it connects_ |
+| Uxnan Desktop comes with the bridge, Node included (`BRIDGE_WITH_DESKTOP`) | `uxnandesktop/docs/bridge-runtime.md`; root `README.md` → _How it connects_ |
 | `X25519 · Ed25519 · AES-256-GCM` | root `README.md` → _Security_; `architecture/02a-system-architecture.md` §5.9 |
 | MPL-2.0, free, open source | `LICENSE` |
 | Windows / macOS / Linux downloads, Android on Google Play open testing | root `README.md` → _Install_ |

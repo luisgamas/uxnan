@@ -6,6 +6,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Changed
 
+- **The mobile section says Uxnan Desktop comes with the bridge.** Under the
+  `npm install -g uxnan-bridge` lines, one sentence (`BRIDGE_WITH_DESKTOP` in
+  `src/lib/site.ts`) says there is nothing to install with the desktop: its
+  installer carries the bridge and the Node it runs on.
+
 - **The desktop mockup's composer follows the app's.** It attaches with a
   paperclip, the model pill leads with the agent's mark, and a hairline sets
   the access mode apart.
