@@ -64,13 +64,13 @@ export async function loadNativeKeyringBackend(): Promise<KeyringBackend | null>
     };
     const { Entry } = mod;
     return {
-      getPassword: (service, account) => {
-        try {
-          return new Entry(service, account).getPassword();
-        } catch {
-          return null; // no entry / locked keychain
-        }
-      },
+      // No entry is `null`; anything else — a locked keychain, an access the
+      // OS denied (a different Node binary than the one that stored it, say,
+      // after moving to the runtime Uxnan Desktop ships) — throws. Read as
+      // "nothing stored", it made the bridge mint a fresh identity over the
+      // real one and unpair every phone; failing the start is the honest
+      // answer.
+      getPassword: (service, account) => new Entry(service, account).getPassword() ?? null,
       setPassword: (service, account, password) => {
         new Entry(service, account).setPassword(password);
       },
