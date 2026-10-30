@@ -2,6 +2,11 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 
+/// The key of the one group that gathers every conversation whose project is
+/// not in the PC's registry — a project someone removed, on either app
+/// (architecture/02a §5.8.17). Namespaced so it can never be a folder's key.
+const String kOtherGroupKey = 'other:';
+
 /// One working folder, with the conversations that run in it.
 class WorkspaceGroup {
   /// Creates a [WorkspaceGroup].
@@ -16,6 +21,11 @@ class WorkspaceGroup {
     this.branch,
     this.isMain = false,
   });
+
+  /// Whether this is the group of conversations that belong to no registered
+  /// project ([kOtherGroupKey]): it has no folder, no project actions, and
+  /// the screen names it, not the service.
+  bool get isOther => key == kOtherGroupKey;
 
   /// The normalized absolute path, and this group's identity.
   final String key;
@@ -132,20 +142,39 @@ String workspaceLabel(String path) {
 /// Paths are matched and de-duplicated after normalising separators and case,
 /// so `C:\Dev\App` and `c:/dev/app/` are one folder however they reached us.
 /// Thread order inside a folder is the caller's — the screen sorts first.
+///
+/// Once [registryLoaded], a conversation belongs to a project only when its
+/// `projectId` is in [projects]: one whose project was removed goes to the
+/// single [kOtherGroupKey] group instead of heading a group under its old
+/// folder's name, which read as the project still being there. (One that
+/// names no project at all — stored by a bridge from before the registry —
+/// keeps its folder.)
+/// Before the registry has loaded every conversation keeps its folder, so a
+/// list that is still arriving never collapses into "Other".
 List<WorkspaceGroup> groupThreadsByWorkspace({
   required List<Thread> threads,
   required List<Project> projects,
   Map<String, WorkspaceRepo> repos = const {},
+  bool registryLoaded = false,
 }) {
   final byProject = {
     for (final project in projects)
       normalizeWorkspacePath(project.cwd): project,
   };
+  final registered = {for (final project in projects) project.id};
+  final other = <Thread>[];
 
   final byKey = <String, List<Thread>>{};
   final labels = <String, String>{};
   final pathsOf = <String, Set<String>>{};
   for (final thread in threads) {
+    final projectId = thread.projectId;
+    if (registryLoaded &&
+        projectId != null &&
+        !registered.contains(projectId)) {
+      other.add(thread);
+      continue;
+    }
     final cwd = thread.cwd;
     final key = cwd == null || cwd.isEmpty ? '' : normalizeWorkspacePath(cwd);
     final paths = pathsOf[key] ??= <String>{};
@@ -181,6 +210,8 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
         isMain: repos[entry.key]?.isMain ?? false,
         threads: entry.value,
       ),
+    if (other.isNotEmpty)
+      WorkspaceGroup(key: kOtherGroupKey, label: '', threads: other),
   ];
 }
 
