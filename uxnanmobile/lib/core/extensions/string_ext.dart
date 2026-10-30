@@ -13,6 +13,21 @@ extension StringExt on String {
     return '${substring(0, maxLength)}$ellipsis';
   }
 
+  /// Returns this string shortened in the middle to at most [maxLength]
+  /// characters, keeping its start and its end — for a file name, whose
+  /// extension and last word tell it apart: `screenshot-2026…final.png`.
+  String truncateMiddle(int maxLength, {String ellipsis = '…'}) {
+    final chars = runes.toList();
+    if (chars.length <= maxLength) return this;
+    final room = maxLength - ellipsis.runes.length;
+    if (room <= 1) return truncate(maxLength, ellipsis: ellipsis);
+    final tail = room ~/ 2;
+    final head = room - tail;
+    return String.fromCharCodes(chars.take(head)) +
+        ellipsis +
+        String.fromCharCodes(chars.skip(chars.length - tail));
+  }
+
   /// Returns `null` when this string is blank, otherwise the string itself.
   String? get nullIfBlank => isBlank ? null : this;
 }

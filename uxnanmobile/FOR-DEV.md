@@ -313,9 +313,9 @@ pass.
   below, with your next message"**, and the message the agent took says **"Reached the agent while it
   was working"**. On every other agent it settles when the queue drains,
   exactly as before.
-  **Edit** withdraws it to the composer — text, images and files (an
-  attachment held only by reference is fetched first; if it cannot be, the
-  message stays queued) — leaving no trace; **cancel** leaves the bubble
+  **Edit** withdraws it to the composer — its text with its image and file
+  chips where they were (an attachment held only by reference is fetched
+  first; if it cannot be, the message stays queued) — leaving no trace; **cancel** leaves the bubble
   marked; **send now** runs it next on every agent — while a turn runs the
   bridge stops that turn first, and the action's label says so (*Stop the agent
   and send this now*). A refused edit, cancel or send now says so in a snackbar. Editing over a busy composer saves that text as a draft, behind
@@ -419,14 +419,29 @@ pass.
   (`speech_to_text`) beside contextual Send/Stop; a collapsible turn-context
   icon shelf with a left-aligned 38 dp visual rhythm (48 dp touch targets) for
   data-driven reasoning options and the access mode, listing only the modes the agent offers (with a notice when the conversation kept one it no longer offers);
-  a compact in-turn circular **Agent responding…** cue; **image attachments**
-  in an anchored two-row "+" menu (photo library — **multi-selection**, up to
-  10 per message — / camera, downscaled to 2048 px / q85, image-only message
-  allowed, gated by the agent's `images` capability). Pending images sit
-  **inside** the pill above the field as a 56 dp horizontally scrolling strip
-  with a per-image ✕, and the pill morphs from its stadium ends to a 24 dp
-  rounded surface while they are there; once sent, the same strip (72 dp)
-  renders **above** the user bubble — tap to open the image full size.
+  a compact in-turn circular **Agent responding…** cue; **attachments as chips
+  inside the sentence** (plans/047): the "+" menu (photo library —
+  **multi-selection**, up to 10 images per message — / camera, downscaled to
+  2048 px / q85, gated by the agent's `images` capability; any file, up to 10
+  per message, 20 MB each) writes each pick as a chip **at the caret**.
+  `ComposerTextController` owns the text and the attachments as one message:
+  each chip is one U+FFFC marker of the text (the shared contract's
+  `ATTACHMENT_MARKER`, `domain/value_objects/inline_attachments.dart`) drawn as
+  a `WidgetSpan`, so one backspace removes it and the caret steps over it;
+  edits are reconciled by common prefix/suffix anchored at the caret, and a
+  marker that arrives by typing or pasting is stripped. A chip shows an
+  image's thumbnail or a file's type glyph and the name shortened in the
+  middle to the chip's width; tapping it opens a sheet with the image (or the
+  file's size and type) and **Remove from message**. `turn/send` carries the
+  text with its markers (a command's args, for a command) and the attachments
+  in marker order. The sent bubble draws the same chips inline in its
+  Markdown (`UserMessageText`); an image chip opens the message's images full
+  size; attachments of a message stored without markers are shown after its
+  text. Drafts set aside (the Drafts card) keep their chips. Previews, the
+  scroll rail and **Copy message** name each chip `[name]` where it sat.
+  The pill morphs from its stadium ends to a 24 dp rounded surface while it
+  holds a chip. **Not yet device-verified** (IME behaviour around chips on
+  Gboard/iOS keyboards, drag-selection handles over a chip).
 - **Per-PC threads** (`Thread.deviceId`) with per-agent filter chips, search /
   sort / density, archived-thread screen, per-thread actions (rename / archive /
   unarchive / delete / copy id), **Remove device** (unpair), **Copy thread ID**
@@ -482,6 +497,15 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
+<!-- plan 047 -->
+- [ ] **Composer chips on a real keyboard** (plans/047). `ComposerTextController`
+      (`presentation/screens/conversation/composer/composer_text_controller.dart`)
+      is covered by widget tests only: run it on a device with Gboard and the iOS
+      keyboard — typing, autocorrect and CJK composition right next to a chip,
+      one backspace over a chip, and dragging the selection handles across one —
+      and fix in the controller what differs. Unblocked by: a device run.
+<!-- /plan 047 -->
+
 - [ ] **Mermaid diagrams in the Markdown preview.** A ```` ```mermaid ```` fence
       renders as highlighted source (the honest fallback); GitHub draws the
       diagram. Needs a pure-Dart renderer or an explicit diagram placeholder in
@@ -528,8 +552,6 @@ shipping.
       the theme editor. Smaller, same family: back from **Manage PCs**
       (`/devices`) after rotating wide → narrow lands on the same screen once.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
-- [ ] **Arbitrary (non-image) file attach** — deferred; no bridge contract/model
-      exists for it yet.
 - [ ] **Adopt `freezed`/`json_serializable`** if/when entity boilerplate warrants it.
       Optional.
 

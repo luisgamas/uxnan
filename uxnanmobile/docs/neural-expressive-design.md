@@ -593,18 +593,29 @@ anchored M3 popup menu with two icon-and-label rows. A bottom sheet is reserved
 for a future larger action set; persistent turn context is not mixed into this
 menu. Photo library takes a **multi-selection**; the camera captures one photo.
 
-**Pending attachments (inside the pill):**
-Queued images belong to the composer, not to a separate box above it: they
-render **inside** the pill, above the text field, as one 56 dp row that scrolls
-horizontally when it outgrows the pill, each thumbnail carrying its own ✕. The
-strip is deliberately shorter than the sent-message one so the composer only
-grows a little. While attachments are present the pill applies the same
+**Attachments are chips of the sentence (inside the pill):**
+An image or a file picked from the "+" menu is written **into the text, at
+the caret**, as a chip — never as a strip beside it — so a message reads "in
+this image ⟨a.jpg⟩ you can see X, and in this one ⟨b.jpg⟩ Y", and the agent
+receives it in that order (plans/047). The chip is a 24 dp
+(`UxnanSize.attachmentChip`) rounded rectangle (`UxnanRadius.md`) on
+`surface` with an `outlineVariant` hairline: an image leads with an 18 dp
+thumbnail (`attachmentChipThumb`), a file with its type glyph
+(`fileTypeVisuals`, the file tree's), then the name in `labelMedium`,
+shortened **in the middle** to fit the chip's 200 dp cap so the extension
+stays readable (`fitNameToWidth`). It sits on the text's middle line
+(`PlaceholderAlignment.middle`) and wraps with the words.
+
+It is one character of the field: `ComposerTextController` keeps a U+FFFC
+marker per chip and draws each as a `WidgetSpan`, so the caret steps over a
+chip, one backspace deletes it, and a selection takes it like a letter.
+Tapping a chip opens a bottom sheet with the drag handle — the image itself
+(or the file's size and type) under its whole name — and an outlined
+**Remove from message** pill. While the pill holds a chip it applies the same
 task-specific morph as the git commit composer — its stadium ends become a
-24 dp rounded surface (`UxnanRadius.xxl`), so the thumbnails are not eaten by
-the round corners — and the growth is animated with the composer's own
-reduced-motion-aware duration. The ✕ is a solid `surface` chip with an
-`onSurface` glyph rather than a translucent scrim, so it stays legible over any
-photo in both themes.
+24 dp rounded surface (`UxnanRadius.xxl`) so a chip at a line's end is not
+eaten by the round corners — animated with the composer's own
+reduced-motion-aware duration.
 
 **Slash-command palette:**
 Typing `/` or `@` opens an auxiliary surface 8 dp above the composer. Both use
@@ -1159,13 +1170,15 @@ counts in a muted `bodySmall` line beneath it (`UxnanMotion.reveal`); its
 semantics label always carries title, reason and tokens. Streaming follows the latest response only until the user
 manually scrolls, and long user prompts use an expandable visual-line preview
 so neither automation nor message length takes control of the reading surface.
-A sent prompt's **images ride above its bubble**, not inside it: the same
-thumbnail strip the composer shows (at 72 dp), right-aligned with the bubble and
-scrolling horizontally when there are several, so the collapsed text preview
-keeps governing the bubble's height and an attachment stays a compact reference
-the timeline can scroll past — tapping one opens it full size (pinch-zoom, swipe
-across the message's images). An image-only message drops the bubble entirely;
-the strip is the message.
+A sent prompt's **images and files stay where they were written**: the bubble
+draws the same chips inline in its Markdown (`UserMessageText`), in the
+bubble's tone (`onPrimaryContainer` at 8 % with a 16 % hairline), so a message
+reads the same before and after it is sent, and the same as the desktop draws
+it. The collapsed text preview keeps governing the bubble's height. Tapping an
+image chip opens the message's images full size (pinch-zoom, swipe across
+them); a file chip shows its name, size and type. An attachment-only message
+is a bubble of its chips; attachments of a message stored before markers
+existed follow its text as a row of chips.
 A minimal, reusable **message scroll rail** (`lib/presentation/widgets/message_scroll_rail.dart`)
 — faint at rest on the right edge, one short tick per user message — is hidden
 while the timeline sits at the bottom and slides in from the right edge (with a

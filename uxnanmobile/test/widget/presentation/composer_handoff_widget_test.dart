@@ -22,10 +22,7 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.da
 /// The unit tests cover the state machine; this covers the wiring between it
 /// and the widget, which is where "the draft was saved but the message never
 /// appeared" lives.
-Widget _wrap(
-  ProviderContainer container, {
-  void Function(List<ImageContent>, List<AttachedFileContent>)? onRecovered,
-}) {
+Widget _wrap(ProviderContainer container) {
   return UncontrolledProviderScope(
     container: container,
     child: MaterialApp(
@@ -35,9 +32,8 @@ Widget _wrap(
         body: Align(
           alignment: Alignment.bottomCenter,
           child: ComposerBar(
-            onSend: (_) {},
+            onSend: (_, __) {},
             threadId: 'th1',
-            onRecoveredAttachments: onRecovered,
           ),
         ),
       ),
@@ -98,24 +94,18 @@ void main() {
     expect(_composerText(tester), 'the queued wording');
   });
 
-  testWidgets('an edited message brings its attachments back too',
+  testWidgets('an edited message brings its chips back where they were',
       (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    List<ImageContent>? images;
-    List<AttachedFileContent>? files;
-    await tester.pumpWidget(
-      _wrap(
-        container,
-        onRecovered: (i, f) {
-          images = i;
-          files = f;
-        },
-      ),
-    );
+    await tester.pumpWidget(_wrap(container));
     await tester.pumpAndSettle();
 
-    const image = ImageContent(mimeType: 'image/png', base64Data: 'iVBO');
+    const image = ImageContent(
+      mimeType: 'image/png',
+      name: 'a.png',
+      base64Data: 'iVBO',
+    );
     const file = AttachedFileContent(
       name: 'notes.md',
       mimeType: 'text/markdown',
@@ -125,18 +115,41 @@ void main() {
     container.read(composerHandoffsProvider.notifier).state = {
       'th1': const ComposerHandoffState(
         incoming: ComposerIncoming(
-          text: 'look at these',
-          images: [image],
-          files: [file],
+          text: 'look at \uFFFC and read \uFFFC',
+          attachments: [image, file],
         ),
       ),
     };
     await tester.pumpAndSettle();
 
-    expect(_composerText(tester), 'look at these');
-    // The screen owns the pending attachments; the composer hands them over.
-    expect(images, [image]);
-    expect(files, [file]);
+    expect(_composerText(tester), 'look at \uFFFC and read \uFFFC');
+    // The composer owns them now: chips in the text, in order.
+    expect(find.byKey(const ValueKey('composer-chip-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('composer-chip-1')), findsOneWidget);
+    expect(find.text('a.png'), findsOneWidget);
+    expect(find.text('notes.md'), findsOneWidget);
+    // …and they are mirrored with the draft, so setting it aside keeps them.
+    expect(
+      container.read(composerHandoffProvider('th1')).draftAttachments,
+      [image, file],
+    );
+  });
+
+  testWidgets('incoming text whose attachments are gone loses its markers',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_wrap(container));
+    await tester.pumpAndSettle();
+
+    container.read(composerHandoffsProvider.notifier).state = {
+      'th1': const ComposerHandoffState(
+        incoming: ComposerIncoming(text: 'was \uFFFC here'),
+      ),
+    };
+    await tester.pumpAndSettle();
+
+    expect(_composerText(tester), 'was  here');
   });
 
   testWidgets('the composer reports its draft as the user types',

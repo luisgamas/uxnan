@@ -135,7 +135,7 @@ class _RescuedDraftRow extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
                   child: Text(
-                    draft.text.trim(),
+                    draft.wordsText.trim(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.bodyMedium?.copyWith(

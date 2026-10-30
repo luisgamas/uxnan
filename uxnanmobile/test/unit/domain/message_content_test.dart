@@ -436,4 +436,70 @@ void main() {
       }
     });
   });
+
+  group('attachments', () {
+    test('an image keeps its name through storage', () {
+      const c = ImageContent(
+        mimeType: 'image/png',
+        name: 'a.png',
+        base64Data: 'AAAA',
+      );
+      expect(roundTrip(c), c);
+      expect(c.asPlainText, '[a.png]');
+      expect(const ImageContent(mimeType: 'image/png').asPlainText, '[image]');
+    });
+
+    test('a file reads back from JSON as a file', () {
+      const file = AttachedFileContent(
+        name: 'people.csv',
+        mimeType: 'text/csv',
+        bytes: 5,
+        attachmentId: 'a-0.csv',
+      );
+      expect(MessageContent.fromJson(file.toJson()), file);
+      expect(file.asPlainText, '[people.csv]');
+    });
+
+    test('each travels as its TurnAttachment, bytes inline with its name', () {
+      const image = ImageContent(
+        mimeType: 'image/png',
+        name: 'a.png',
+        base64Data: 'AAAA',
+        path: '/never/sent.png',
+        width: 4,
+        height: 3,
+      );
+      expect(image.toTurnAttachment(), {
+        'type': 'image',
+        'name': 'a.png',
+        'mimeType': 'image/png',
+        'base64Data': 'AAAA',
+        'width': 4,
+        'height': 3,
+      });
+      const file = AttachedFileContent(
+        name: 'people.csv',
+        mimeType: 'text/csv',
+        bytes: 5,
+        base64Data: 'aWQ=',
+      );
+      expect(file.toTurnAttachment(), {
+        'type': 'file',
+        'name': 'people.csv',
+        'mimeType': 'text/csv',
+        'base64Data': 'aWQ=',
+      });
+    });
+
+    test('withName renames without touching the rest', () {
+      const image = ImageContent(mimeType: 'image/png', base64Data: 'AA');
+      final named = image.withName('image-1.png');
+      expect(named.name, 'image-1.png');
+      expect(named.base64Data, 'AA');
+      expect(named.isImage, isTrue);
+      const file = AttachedFileContent(name: 'x', mimeType: 'a/b', bytes: 1);
+      expect(file.withName('y').name, 'y');
+      expect(file.isImage, isFalse);
+    });
+  });
 }

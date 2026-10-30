@@ -1662,59 +1662,133 @@ void main() {
 
     await manager.sendUserMessage(
       'th1',
-      'look',
+      'look at \uFFFC',
       attachments: const [
-        ImageContent(mimeType: 'image/png', base64Data: 'AAAA'),
+        ImageContent(
+          mimeType: 'image/png',
+          name: 'a.png',
+          base64Data: 'AAAA',
+          width: 4,
+          height: 3,
+        ),
       ],
     );
     await _settle();
 
+    expect(turnSendParams?['text'], 'look at \uFFFC');
     expect(turnSendParams?['attachments'], [
-      {'type': 'image', 'mimeType': 'image/png', 'base64Data': 'AAAA'},
+      {
+        'type': 'image',
+        'name': 'a.png',
+        'mimeType': 'image/png',
+        'base64Data': 'AAAA',
+        'width': 4,
+        'height': 3,
+      },
     ]);
     final persisted = await messageRepo.getMessages('th1');
     final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
     expect(user, isNotNull);
     expect(user!.contents.whereType<ImageContent>().length, 1);
-    expect(user.contents.whereType<TextContent>().single.text, 'look');
+    expect(user.text, 'look at \uFFFC');
   });
 
-  test('sendUserMessage sends a file by its name, beside the images', () async {
+  test(
+      'sendUserMessage sends images and files interleaved, in the order of '
+      'their markers', () async {
     await manager.selectThread('th1');
     await _settle();
 
     await manager.sendUserMessage(
       'th1',
-      'read it',
-      files: const [
+      'in \uFFFC X, then read \uFFFC, and in \uFFFC Y',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', name: 'a.png', base64Data: 'AAAA'),
         AttachedFileContent(
           name: 'people.csv',
           mimeType: 'text/csv',
           bytes: 5,
           base64Data: 'aWQKMQo=',
         ),
+        ImageContent(mimeType: 'image/jpeg', name: 'b.jpg', base64Data: 'BBBB'),
       ],
     );
     await _settle();
 
+    expect(
+      turnSendParams?['text'],
+      'in \uFFFC X, then read \uFFFC, and in \uFFFC Y',
+    );
     expect(turnSendParams?['attachments'], [
+      {
+        'type': 'image',
+        'name': 'a.png',
+        'mimeType': 'image/png',
+        'base64Data': 'AAAA',
+      },
       {
         'type': 'file',
         'name': 'people.csv',
         'mimeType': 'text/csv',
-        'bytes': 5,
         'base64Data': 'aWQKMQo=',
+      },
+      {
+        'type': 'image',
+        'name': 'b.jpg',
+        'mimeType': 'image/jpeg',
+        'base64Data': 'BBBB',
       },
     ]);
     final user = (await messageRepo.getMessages('th1'))
         .firstWhere((m) => m.role == MessageRole.user);
     expect(
-      user.contents.whereType<AttachedFileContent>().single.name,
-      'people.csv',
+      [for (final a in user.attachments) a.name],
+      ['a.png', 'people.csv', 'b.jpg'],
     );
   });
 
-  test('a named attachment in history is a file', () async {
+  test(
+      'sendUserMessage drops markers left without an attachment, and gives '
+      'an unmarked one its marker', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage('th1', 'stale \uFFFC chip');
+    await _settle();
+    expect(turnSendParams?['text'], 'stale  chip');
+    expect(turnSendParams?.containsKey('attachments'), isFalse);
+
+    await manager.sendUserMessage(
+      'th1',
+      'see',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', name: 'a.png', base64Data: 'AAAA'),
+      ],
+    );
+    await _settle();
+    expect(turnSendParams?['text'], 'see \uFFFC');
+  });
+
+  test('a command carries its attachment markers in its args', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      '/review \uFFFC',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', name: 'a.png', base64Data: 'AAAA'),
+      ],
+      command: (name: 'review', args: '\uFFFC'),
+    );
+    await _settle();
+    expect(turnSendParams?['command'], {'name': 'review', 'args': '\uFFFC'});
+    expect(turnSendParams?.containsKey('text'), isFalse);
+    expect(turnSendParams?['attachments'], hasLength(1));
+  });
+
+  test('a non-image attachment in history is a file, an image keeps its name',
+      () async {
     await seedThread();
     turnListResult = {
       'turns': [
@@ -1725,13 +1799,19 @@ void main() {
           'messages': [
             {
               'role': 'user',
-              'content': 'see',
+              'content': 'see \uFFFC and \uFFFC',
               'attachments': [
                 {
                   'id': 't-file-0.csv',
                   'mimeType': 'text/csv',
                   'bytes': 5,
                   'name': 'people.csv',
+                },
+                {
+                  'id': 't-file-1.png',
+                  'mimeType': 'image/png',
+                  'bytes': 3,
+                  'name': 'chart.png',
                 },
               ],
               'createdAt': 1000,
@@ -1749,15 +1829,21 @@ void main() {
 
     final user = (await messageRepo.getMessages('th1'))
         .firstWhere((m) => m.role == MessageRole.user);
-    expect(
-      user.contents.whereType<AttachedFileContent>().single,
+    expect(user.contents, [
+      const TextContent('see \uFFFC and \uFFFC'),
       const AttachedFileContent(
         name: 'people.csv',
         mimeType: 'text/csv',
         bytes: 5,
         attachmentId: 't-file-0.csv',
       ),
-    );
+      const ImageContent(
+        mimeType: 'image/png',
+        name: 'chart.png',
+        attachmentId: 't-file-1.png',
+      ),
+    ]);
+    expect(user.previewText, 'see [people.csv] and [chart.png]');
   });
 
   test('sendUserMessage allows an image-only message (empty text)', () async {
@@ -1766,7 +1852,7 @@ void main() {
 
     await manager.sendUserMessage(
       'th1',
-      '',
+      '\uFFFC',
       attachments: const [
         ImageContent(mimeType: 'image/jpeg', base64Data: 'BBBB'),
       ],
@@ -1774,10 +1860,11 @@ void main() {
     await _settle();
 
     expect(sentMethods, contains('turn/send'));
+    expect(turnSendParams?['text'], '\uFFFC');
     final persisted = await messageRepo.getMessages('th1');
     final user = persisted.firstWhereOrNull((m) => m.role == MessageRole.user);
     expect(user, isNotNull);
-    expect(user!.contents.whereType<TextContent>().isEmpty, isTrue);
+    expect(user!.text, '\uFFFC');
     expect(user.contents.whereType<ImageContent>().length, 1);
   });
 

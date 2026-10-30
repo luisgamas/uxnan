@@ -1013,12 +1013,6 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get attachmentImage => 'Imagen adjunta';
-
-  @override
-  String get attachmentRemove => 'Quitar imagen';
-
-  @override
   String get composerStop => 'Detener';
 
   @override
@@ -4058,4 +4052,20 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get transferStrategyForkShort => 'Copia completa';
+
+  @override
+  String attachmentChipImage(String name) {
+    return 'Imagen $name';
+  }
+
+  @override
+  String attachmentChipFile(String name, String size) {
+    return 'Archivo $name, $size';
+  }
+
+  @override
+  String get attachmentUnnamedImage => 'Imagen';
+
+  @override
+  String get attachmentRemoveFromMessage => 'Quitar del mensaje';
 }

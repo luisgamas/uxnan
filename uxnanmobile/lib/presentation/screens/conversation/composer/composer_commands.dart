@@ -129,7 +129,8 @@ List<ComposerCommand> agentComposerCommands(List<AgentCommand> commands) => [
   final trimmed = text.trimLeft();
   if (!trimmed.startsWith('/')) return null;
   final body = trimmed.substring(1);
-  final match = RegExp(r'\s').firstMatch(body);
+  // A chip right after the name starts the args, like a space does.
+  final match = RegExp(r'[\s\uFFFC]').firstMatch(body);
   final name = match == null ? body : body.substring(0, match.start);
   if (name.isEmpty) return null;
   final known = commands.any((c) => c.headlessSupported && c.name == name);

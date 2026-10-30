@@ -30,6 +30,7 @@ import 'package:uxnan/presentation/screens/conversation/messages/view_block.dart
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/attachment_chip.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 import '../../support/ux_icon_finder.dart';
@@ -50,8 +51,14 @@ const _pngPixel =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ'
     'DwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-/// A user message carrying [images] attachments plus optional [text].
-Message _userMessage({required int images, String text = ''}) => Message(
+/// A user message carrying [images] attachments (named `image-<n>.png`) plus
+/// optional [text] — whose `\uFFFC` markers place them — and [files].
+Message _userMessage({
+  required int images,
+  String text = '',
+  List<AttachedFileContent> files = const [],
+}) =>
+    Message(
       id: 'u-img',
       threadId: 'th1',
       turnId: 't1',
@@ -59,7 +66,12 @@ Message _userMessage({required int images, String text = ''}) => Message(
       contents: [
         if (text.isNotEmpty) TextContent(text),
         for (var i = 0; i < images; i++)
-          const ImageContent(mimeType: 'image/png', base64Data: _pngPixel),
+          ImageContent(
+            mimeType: 'image/png',
+            name: 'image-${i + 1}.png',
+            base64Data: _pngPixel,
+          ),
+        ...files,
       ],
       deliveryState: MessageDeliveryState.delivered,
       orderIndex: 0,
@@ -1515,62 +1527,128 @@ void main() {
     expect(find.text('Show more'), findsOneWidget);
   });
 
-  testWidgets('sent images ride above the bubble as small thumbnails',
+  testWidgets('sent images sit inside the sentence, where they were written',
       (tester) async {
     await tester.pumpWidget(
       _wrap(
-        MessageBubble(message: _userMessage(images: 3, text: 'look at these')),
+        MessageBubble(
+          message: _userMessage(
+            images: 2,
+            text: 'in this image \uFFFC you see X, and in this one \uFFFC Y',
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final strip = find.byKey(const ValueKey('message-attachments'));
-    expect(strip, findsOneWidget);
-
-    // Above the bubble, never inside it.
-    final bubbleText = find.byType(MarkdownBody);
-    expect(
-      tester.getRect(strip).bottom,
-      lessThanOrEqualTo(tester.getRect(bubbleText).top),
-    );
-
-    // Small and square — not the full-width block the bubble used to hold.
-    final thumbs = find.descendant(of: strip, matching: find.byType(Image));
-    expect(thumbs, findsNWidgets(3));
-    expect(tester.getSize(thumbs.first), const Size.square(72));
+    final text = find.byType(MarkdownBody);
+    final first = find.byKey(const ValueKey('message-chip-0'));
+    final second = find.byKey(const ValueKey('message-chip-1'));
+    // Chips of the paragraph itself, not a strip beside it.
+    expect(find.descendant(of: text, matching: first), findsOneWidget);
+    expect(find.descendant(of: text, matching: second), findsOneWidget);
+    expect(find.text('image-1.png'), findsOneWidget);
+    expect(find.text('image-2.png'), findsOneWidget);
+    // In reading order.
+    final a = tester.getRect(first);
+    final b = tester.getRect(second);
+    expect(a.top < b.top || (a.top == b.top && a.left < b.left), isTrue);
+    expect(tester.getSize(first).height, lessThanOrEqualTo(26));
   });
 
-  testWidgets('an image-only message needs no bubble', (tester) async {
+  testWidgets('an attachment-only message is a bubble of its chips',
+      (tester) async {
     await tester.pumpWidget(
-      _wrap(MessageBubble(message: _userMessage(images: 1))),
+      _wrap(MessageBubble(message: _userMessage(images: 1, text: '\uFFFC'))),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('message-attachments')), findsOneWidget);
-    expect(find.byType(MarkdownBody), findsNothing);
+    expect(find.byKey(const ValueKey('message-chip-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('message-extra-chips')), findsNothing);
   });
 
-  testWidgets('tapping a sent thumbnail opens it full size', (tester) async {
+  testWidgets('attachments without a marker are shown after the text',
+      (tester) async {
+    // A message stored before markers existed.
     await tester.pumpWidget(
       _wrap(MessageBubble(message: _userMessage(images: 2, text: 'hi'))),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(InteractiveViewer), findsNothing);
+    final extra = find.byKey(const ValueKey('message-extra-chips'));
+    expect(extra, findsOneWidget);
+    expect(
+      tester.getRect(extra).top,
+      greaterThanOrEqualTo(tester.getRect(find.byType(MarkdownBody)).bottom),
+    );
+    expect(
+      find.descendant(of: extra, matching: find.byType(AttachmentChip)),
+      findsNWidgets(2),
+    );
+  });
 
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byKey(const ValueKey('message-attachments')),
-            matching: find.byType(Image),
-          )
-          .first,
+  testWidgets('tapping an image chip opens the message images full size',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        MessageBubble(
+          message: _userMessage(images: 2, text: '\uFFFC and \uFFFC'),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
-    // The viewer is zoomable and says which image of the set is open.
+    expect(find.byType(InteractiveViewer), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('message-chip-1')));
+    await tester.pumpAndSettle();
+
+    // The viewer is zoomable and opens on the image that was tapped.
     expect(find.byType(InteractiveViewer), findsWidgets);
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('2 / 2'), findsOneWidget);
+  });
+
+  testWidgets('tapping a file chip shows its name, size and type',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        MessageBubble(
+          message: _userMessage(
+            images: 0,
+            text: 'read \uFFFC',
+            files: const [
+              AttachedFileContent(
+                name: 'quarterly-report-final-version-2026.pdf',
+                mimeType: 'application/pdf',
+                bytes: 2048,
+                attachmentId: 'f-0.pdf',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The chip shortens a long name in the middle, keeping its extension.
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Text &&
+            (w.data?.startsWith('quar') ?? false) &&
+            w.data!.contains('…') &&
+            w.data!.endsWith('.pdf'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('message-chip-0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('quarterly-report-final-version-2026.pdf'),
+      findsOneWidget,
+    );
+    expect(find.text('2 KB · application/pdf'), findsOneWidget);
+    // A sent message's attachment cannot be taken out of it.
+    expect(find.byKey(const ValueKey('attachment-sheet-remove')), findsNothing);
   });
 
   testWidgets('ComposerBar shows a Stop button while running and calls onStop',
@@ -1579,7 +1657,7 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          onSend: (_) {},
+          onSend: (_, __) {},
           running: true,
           onStop: () => stops++,
         ),
@@ -1601,7 +1679,7 @@ void main() {
     await tester.pumpWidget(
       _wrap(
         ComposerBar(
-          onSend: (text) => sent = text,
+          onSend: (text, _) => sent = text,
         ),
       ),
     );
@@ -1623,7 +1701,7 @@ void main() {
       _wrap(
         ComposerBar(
           enabled: false,
-          onSend: (_) => sentCount++,
+          onSend: (_, __) => sentCount++,
         ),
       ),
     );
@@ -1638,7 +1716,7 @@ void main() {
 
   testWidgets('ComposerBar takes focus as soon as its screen is there',
       (tester) async {
-    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_) {})));
+    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_, __) {})));
     await tester.pumpAndSettle();
 
     // The keyboard opens the moment the conversation is open — users almost
@@ -1664,7 +1742,7 @@ void main() {
     unawaited(
       navigator.currentState!.push(
         MaterialPageRoute<void>(
-          builder: (_) => Scaffold(body: ComposerBar(onSend: (_) {})),
+          builder: (_) => Scaffold(body: ComposerBar(onSend: (_, __) {})),
         ),
       ),
     );
@@ -1682,7 +1760,7 @@ void main() {
 
   testWidgets('ComposerBar contracts when idle and stretches on focus',
       (tester) async {
-    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_) {})));
+    await tester.pumpWidget(_wrap(ComposerBar(onSend: (_, __) {})));
     await tester.pumpAndSettle();
 
     final surface = find.byKey(const ValueKey('composer-surface'));
@@ -1706,7 +1784,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ComposerBar(onSend: (_) {}),
+            body: ComposerBar(onSend: (_, __) {}),
           ),
         ),
       ),
@@ -1743,7 +1821,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ComposerBar(onSend: (_) {}),
+            body: ComposerBar(onSend: (_, __) {}),
           ),
         ),
       ),

@@ -36,8 +36,8 @@ import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/attachment_chip.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
-import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/ne_filled_field.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -86,7 +86,7 @@ class MessageContentView extends StatelessWidget {
       final DiffContent c => _DiffBlock(content: c),
       final ImageContent c => _ImageBlock(content: c),
       final ViewContent c => ViewBlock(content: c, threadId: threadId),
-      final AttachedFileContent c => FileChip(file: c),
+      final AttachedFileContent c => AttachmentChip(attachment: c),
       final ToolUseContent c =>
         _Placeholder(icon: UxIcons.build, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>

@@ -11,20 +11,13 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/user_message_text.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
-import 'package:uxnan/presentation/widgets/file_chip.dart';
-import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
-import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
 import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
-
-/// Side of a sent-attachment thumbnail above the user bubble — the size the
-/// composer strip used to have, so a sent image stays a compact reference the
-/// timeline can scroll past; tapping it opens the image full size.
-const double _sentThumbSize = 72;
 
 /// Renders a [Message] in the timeline, by role:
 ///
@@ -99,10 +92,9 @@ class MessageBubble extends StatelessWidget {
 /// the bubble toggles a "Copy message" affordance below it (hidden by default),
 /// mirroring the agent turn's copy action.
 ///
-/// Attached images ride **above** the bubble as the same small thumbnail strip
-/// the composer shows before sending — right-aligned, scrolling horizontally
-/// when there are several — instead of blowing the bubble open from the inside.
-/// Tapping one opens it full size.
+/// Attached images and files sit **inside the sentence**, as the same chips
+/// the composer showed where they were written ([UserMessageText]); tapping
+/// an image opens it full size.
 ///
 /// Its state changes how it reads:
 /// - **queued** — sent while the agent was busy and still waiting its turn. The
@@ -140,42 +132,29 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
   /// fired twice before the bridge answers.
   bool _busy = false;
 
-  String get _text => widget.message.contents
-      .whereType<TextContent>()
-      .map((t) => t.text)
-      .where((t) => t.isNotEmpty)
-      .join('\n\n');
-
-  /// The message's attached images, shown above the bubble.
-  List<ImageContent> get _images =>
-      widget.message.contents.whereType<ImageContent>().toList();
-
-  /// The message's attached files, shown as chips above the bubble.
-  List<AttachedFileContent> get _files =>
-      widget.message.contents.whereType<AttachedFileContent>().toList();
+  /// The message as written, one attachment marker per chip.
+  String get _text => widget.message.text;
 
   /// Content that is neither text nor an attachment — kept inside the bubble.
   List<MessageContent> get _otherBlocks => widget.message.contents
-      .where(
-        (c) =>
-            c is! TextContent &&
-            c is! ImageContent &&
-            c is! AttachedFileContent,
-      )
+      .where((c) => c is! TextContent && c is! AttachmentContent)
       .toList();
 
   void _copy() {
     final l10n = AppLocalizations.of(context);
-    unawaited(Clipboard.setData(ClipboardData(text: _text)));
+    // The clipboard takes words: each chip is named where it sat.
+    unawaited(
+      Clipboard.setData(ClipboardData(text: widget.message.wordsText)),
+    );
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(l10n.conversationMessageCopied)));
   }
 
   /// **Edit** — withdraws the message from the queue and puts it back in the
-  /// composer to be rewritten: its text and its images and files. It leaves no
-  /// trace in the timeline: the message is about to be re-typed, so a husk
-  /// beside it would be noise.
+  /// composer to be rewritten: its text with its chips where they were. It
+  /// leaves no trace in the timeline: the message is about to be re-typed, so
+  /// a husk beside it would be noise.
   Future<void> _editQueued() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -190,8 +169,7 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
           threadId: widget.message.threadId,
           turnId: widget.message.turnId,
           text: _text,
-          images: _images,
-          files: _files,
+          attachments: widget.message.attachments,
         );
     if (outcome == RecoverOutcome.failed) {
       // Nothing visibly happened, so the refusal needs saying: the message is
@@ -287,53 +265,14 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final sendNowStops = actionable && _turnRunning(message.threadId);
     final motion =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
-    final images = _images;
-    // An image-only message needs no bubble at all — the strip is the message.
-    // A queued one always keeps its bubble: the edit/cancel actions live in the
-    // bubble's corner, so dropping it would leave a waiting image unactionable.
-    final hasBubble = _text.isNotEmpty || _otherBlocks.isNotEmpty || queued;
+    final hasBubble = _text.isNotEmpty ||
+        widget.message.attachments.isNotEmpty ||
+        _otherBlocks.isNotEmpty ||
+        queued;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (images.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: ImageThumbStrip(
-                  key: const ValueKey('message-attachments'),
-                  images: images,
-                  threadId: message.threadId,
-                  size: _sentThumbSize,
-                  onTap: (index) => unawaited(
-                    showImageViewerDialog(
-                      context,
-                      images: images,
-                      threadId: message.threadId,
-                      initialIndex: index,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        if (_files.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Wrap(
-                key: const ValueKey('message-files'),
-                alignment: WrapAlignment.end,
-                spacing: UxnanSpacing.sm,
-                runSpacing: UxnanSpacing.sm,
-                children: [for (final file in _files) FileChip(file: file)],
-              ),
-            ),
-          ),
         if (hasBubble)
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxWidth),
@@ -716,10 +655,10 @@ class _MessageNote extends StatelessWidget {
   }
 }
 
-/// User-message content with a responsive text preview. Only textual content
-/// is clipped; the remaining blocks stay fully visible (images are lifted out
-/// of the bubble by [_UserBubble]). The full source stays mounted and is always
-/// used by the copy action.
+/// User-message content with a responsive text preview. Only the text (with
+/// its attachment chips, [UserMessageText]) is clipped; the remaining blocks
+/// stay fully visible. The full source stays mounted and is always used by
+/// the copy action.
 class _UserMessageBody extends StatelessWidget {
   const _UserMessageBody({
     required this.message,
@@ -771,25 +710,27 @@ class _UserMessageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // Images are rendered above the bubble, not in it.
+    // Attachments are chips of the text, drawn by [UserMessageText].
     final nonText = message.contents
-        .where((c) => c is! TextContent && c is! ImageContent)
+        .where((c) => c is! TextContent && c is! AttachmentContent)
         .toList();
+    final attachments = message.attachments;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isLong = _textExceedsPreview(context, constraints.maxWidth);
         final collapse = isLong && !expanded;
-        final textBlock = MessageContentView(
-          content: TextContent(text),
-          selectableText: false,
+        final textBlock = UserMessageText(
+          text: text,
+          attachments: attachments,
+          threadId: message.threadId,
         );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (text.isNotEmpty)
+            if (text.isNotEmpty || attachments.isNotEmpty)
               if (collapse)
                 SizedBox(
                   height: _previewHeight(context),

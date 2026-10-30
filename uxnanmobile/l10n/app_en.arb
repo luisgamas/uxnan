@@ -477,14 +477,6 @@
     "description": "Snackbar shown when the pending-attachment queue is full (images ride inline on the turn, so the count is bounded).",
     "placeholders": { "count": { "type": "int" } }
   },
-  "attachmentImage": "Attached image",
-  "@attachmentImage": {
-    "description": "Accessibility label of an attachment thumbnail, in the composer and above a sent message."
-  },
-  "attachmentRemove": "Remove image",
-  "@attachmentRemove": {
-    "description": "Tooltip of the ✕ that drops a pending attachment from the composer."
-  },
   "composerStop": "Stop",
   "@composerStop": {
     "description": "Tooltip on the button that cancels the in-flight agent turn (replaces Send while running)."
@@ -2382,5 +2374,13 @@
   "transferStrategyReferenceShort": "Reference",
   "@transferStrategyReferenceShort": {"description": "Short label of a strategy segment (fits a phone-wide segmented control)."},
   "transferStrategyForkShort": "Full copy",
-  "@transferStrategyForkShort": {"description": "Short label of a strategy segment (fits a phone-wide segmented control)."}
+  "@transferStrategyForkShort": {"description": "Short label of a strategy segment (fits a phone-wide segmented control)."},
+  "attachmentChipImage": "Image {name}",
+  "@attachmentChipImage": {"description": "Accessibility label of an image's chip, inside the composer text or a sent message.", "placeholders": {"name": {"type": "String"}}},
+  "attachmentChipFile": "File {name}, {size}",
+  "@attachmentChipFile": {"description": "Accessibility label of a file's chip, inside the composer text or a sent message.", "placeholders": {"name": {"type": "String"}, "size": {"type": "String"}}},
+  "attachmentUnnamedImage": "Image",
+  "@attachmentUnnamedImage": {"description": "Name shown on the chip of a pasted image that has no file name."},
+  "attachmentRemoveFromMessage": "Remove from message",
+  "@attachmentRemoveFromMessage": {"description": "Button in an attachment chip's sheet that takes the image or file out of the message being written."}
 }

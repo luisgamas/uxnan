@@ -77,6 +77,8 @@ void main() {
       expect(images[0].base64Data, base64Encode([1, 2, 3]));
       expect(images[1].mimeType, 'image/jpeg');
       expect(images[1].base64Data, base64Encode([4, 5]));
+      // Each keeps the photo's own name — what its chip shows.
+      expect([for (final i in images) i.name], ['one.png', 'two.jpg']);
     });
 
     test('passes a limit of 2+ through, but drops a single free slot',
@@ -159,6 +161,19 @@ void main() {
             .files,
         isEmpty,
       );
+    });
+  });
+
+  group('pickedImageName', () {
+    test("keeps the photo's own name, without the rescale prefix", () {
+      expect(pickedImageName('IMG_2041.jpg'), 'IMG_2041.jpg');
+      expect(pickedImageName('scaled_IMG_2041.jpg'), 'IMG_2041.jpg');
+      expect(pickedImageName('/cache/dir/scaled_beach.png'), 'beach.png');
+    });
+
+    test('drops a name the plugin made up', () {
+      expect(pickedImageName('image_picker_3F2A-91.jpg'), isNull);
+      expect(pickedImageName(''), isNull);
     });
   });
 }

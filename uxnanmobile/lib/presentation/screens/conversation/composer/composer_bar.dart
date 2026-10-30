@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
@@ -18,19 +19,13 @@ import 'package:uxnan/presentation/router/route_arrival.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_palette_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_text_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_suggestion.dart';
-import 'package:uxnan/presentation/screens/conversation/composer/mention_text_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/file_chip.dart';
-import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
+import 'package:uxnan/presentation/widgets/attachment_sheet.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
-
-/// Side of a pending-attachment thumbnail inside the pill. Deliberately
-/// smaller than the sent-message strip so queuing an image grows the composer
-/// only a little.
-const double _attachmentThumbSize = 56;
 
 /// The message composer — a Neural Expressive **floating pill** (guide §4.3):
 /// a `surfaceContainerHighest` rounded surface holding just the essentials —
@@ -45,22 +40,21 @@ const double _attachmentThumbSize = 56;
 ///   - **`/` command palette** — uxnan's own client-side commands (prompt
 ///     templates + the file-mention hand-off), only when the message
 ///     starts with `/`.
+///
+/// Images and files picked from the "+" menu become **chips inside the text**
+/// at the caret ([ComposerTextController]), so the message says which part of
+/// the sentence each one belongs to — and the agent receives it the same way.
 class ComposerBar extends ConsumerStatefulWidget {
   /// Creates a [ComposerBar].
   const ComposerBar({
     required this.onSend,
     this.enabled = true,
     this.running = false,
-    this.attachments = const [],
-    this.files = const [],
     this.acceptsImages = true,
-    this.onRemoveFile,
     this.cwd,
     this.agentCommands = const [],
     this.onStop,
     this.onAttach,
-    this.onRemoveAttachment,
-    this.onRecoveredAttachments,
     this.onDraftChanged,
     this.submitController,
     this.threadId,
@@ -72,8 +66,9 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// the hand-off (the composer still works normally).
   final String? threadId;
 
-  /// Called with the trimmed message when the user sends.
-  final ValueChanged<String> onSend;
+  /// Called when the user sends: the trimmed text, with one attachment marker
+  /// per chip, and the chips' images and files in the same order.
+  final void Function(String text, List<AttachmentContent> attachments) onSend;
 
   /// Notified whenever the pill goes from empty to holding something sendable
   /// and back. Lets the screen decide what to float above the composer — a
@@ -86,20 +81,8 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
 
-  /// The images queued for the next turn. They ride *inside* the pill, above
-  /// the text field, so the composer grows into the attachment instead of
-  /// stacking a separate box on top of it. A non-empty list also lets the user
-  /// send with an empty field (image-only message) and shows Send.
-  final List<ImageContent> attachments;
-
-  /// The files queued for the next turn, as chips beside the images.
-  final List<AttachedFileContent> files;
-
   /// Whether the agent takes images (the "+" menu offers photos).
   final bool acceptsImages;
-
-  /// Drops the file at the given index.
-  final ValueChanged<int>? onRemoveFile;
 
   /// Whether the agent is currently producing a turn — Send becomes Stop.
   final bool running;
@@ -115,31 +98,27 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// Cancels the in-flight turn. Required when [running] is true.
   final VoidCallback? onStop;
 
-  /// Handles a media source picked from the compact "+" menu. When null the
-  /// action is hidden because the active agent does not advertise image input.
-  final ValueChanged<AttachmentSource>? onAttach;
-
-  /// Drops the attachment at the given index (the ✕ on its thumbnail).
-  final ValueChanged<int>? onRemoveAttachment;
-
-  /// Receives the images and files of a queued message handed back to be
-  /// edited ([ComposerIncoming]). The screen owns the pending attachments, so
-  /// it adds them; the composer only places the text.
-  final void Function(
-    List<ImageContent> images,
-    List<AttachedFileContent> files,
-  )? onRecoveredAttachments;
+  /// Picks from a source of the compact "+" menu, given how many [images]
+  /// and [files] the message already carries (the screen enforces the
+  /// limits), and returns what was picked; the composer writes it as chips at
+  /// the caret. When null the "+" is hidden.
+  final Future<List<AttachmentContent>> Function(
+    AttachmentSource source, {
+    required int images,
+    required int files,
+  })? onAttach;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
 }
 
 class _ComposerBarState extends ConsumerState<ComposerBar> {
-  // Renders completed `@` mentions as inline code-style badges (visual only —
-  // the underlying text stays plain, so the sent prompt is unchanged).
-  final MentionTextController _controller = MentionTextController();
+  // The message: its text, `@` mentions drawn as badges, and its images and
+  // files as chips at their place in the sentence.
+  final ComposerTextController _controller = ComposerTextController();
   final FocusNode _focusNode = FocusNode();
   bool _hasText = false;
+  bool _hasAttachments = false;
   bool _focused = false;
 
   /// Whether a voice-dictation session is currently active.
@@ -200,7 +179,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   @override
   void initState() {
     super.initState();
-    _controller.addListener(_onChanged);
+    _controller
+      ..addListener(_onChanged)
+      ..onChipTap = _openChip;
     _focusNode.addListener(_onFocusChanged);
     widget.submitController?.addListener(_onExternalSubmit);
   }
@@ -240,13 +221,6 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
       oldWidget.submitController?.removeListener(_onExternalSubmit);
       widget.submitController?.addListener(_onExternalSubmit);
     }
-    // An attachment picked (or removed) outside the pill changes whether there
-    // is anything to send, which the screen's floating actions depend on.
-    final had = oldWidget.attachments.isNotEmpty || oldWidget.files.isNotEmpty;
-    final has = widget.attachments.isNotEmpty || widget.files.isNotEmpty;
-    if (had != has) {
-      _notifyDraft();
-    }
   }
 
   @override
@@ -272,41 +246,74 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   }
 
   void _onChanged() {
+    // A chip is a character of the text, so an attachment-only message has
+    // text too: Send shows for it like for any other.
     final hasText = _controller.text.isNotBlank;
-    if (hasText != _hasText) {
-      setState(() => _hasText = hasText);
-      _notifyDraft();
+    final hasAttachments = _controller.hasAttachments;
+    if (hasText != _hasText || hasAttachments != _hasAttachments) {
+      final notify = hasText != _hasText;
+      setState(() {
+        _hasText = hasText;
+        _hasAttachments = hasAttachments;
+      });
+      if (notify) _notifyDraft();
     }
     // Mirror the draft so a control outside the composer (a queued bubble's
-    // cancel button) can tell whether handing text over would overwrite it.
+    // cancel button) can tell whether handing text over would overwrite it,
+    // and keep its chips if it is set aside.
     final threadId = widget.threadId;
     if (threadId != null) {
-      ref
-          .read(composerHandoffsProvider.notifier)
-          .reportDraft(threadId, _controller.text);
+      ref.read(composerHandoffsProvider.notifier).reportDraft(
+            threadId,
+            _controller.text,
+            attachments: _controller.attachments,
+          );
     }
     _refreshTrigger();
   }
 
   /// Places a message handed back from the queue (or a rescued draft) into
-  /// the composer: its text in the field, caret at the end so the user can
-  /// keep typing, and its attachments back beside it.
+  /// the composer: its text in the field with its chips where they were,
+  /// caret at the end so the user can keep typing.
   void _acceptIncoming(ComposerIncoming incoming) {
-    final text = incoming.text;
-    _controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-    if (incoming.images.isNotEmpty || incoming.files.isNotEmpty) {
-      widget.onRecoveredAttachments?.call(incoming.images, incoming.files);
-    }
+    _controller.setContents(incoming.text, incoming.attachments);
     _focusNode.requestFocus();
   }
 
   /// Tells the screen whether the pill currently holds something sendable.
-  void _notifyDraft() {
-    widget.onDraftChanged?.call(
-      _hasText || widget.attachments.isNotEmpty || widget.files.isNotEmpty,
+  void _notifyDraft() => widget.onDraftChanged?.call(_hasText);
+
+  /// The "+" menu picked [source]: what the screen picks lands as chips at
+  /// the caret.
+  Future<void> _attach(AttachmentSource source) async {
+    final pick = widget.onAttach;
+    if (pick == null) return;
+    final picked = await pick(
+      source,
+      images: _controller.imageCount,
+      files: _controller.fileCount,
+    );
+    if (!mounted || picked.isEmpty) return;
+    _controller.insertAttachments(picked);
+    _focusNode.requestFocus();
+  }
+
+  /// A chip was tapped: its preview, and the action that takes it out.
+  void _openChip(int index) {
+    final attachments = _controller.attachments;
+    if (index < 0 || index >= attachments.length) return;
+    final attachment = attachments[index];
+    unawaited(
+      showAttachmentSheet(
+        context,
+        attachment: attachment,
+        onRemove: () {
+          // Found again by identity: the message may have changed meanwhile.
+          final now = _controller.attachments
+              .indexWhere((a) => identical(a, attachment));
+          if (now >= 0) _controller.removeAttachmentAt(now);
+        },
+      ),
     );
   }
 
@@ -499,9 +506,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (!widget.enabled) return;
-    if (text.isEmpty && widget.attachments.isEmpty && widget.files.isEmpty) {
-      return;
-    }
+    if (text.isEmpty) return;
+    final attachments = _controller.attachments;
     // Voice remains an independent action even when the field has text. Stop
     // an active session before clearing so a late recognition result cannot
     // repopulate a message that was already sent.
@@ -510,12 +516,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
       if (!mounted) return;
       setState(() => _listening = false);
     }
-    widget.onSend(text);
+    widget.onSend(text, attachments);
     _controller.clear();
-    // `clear()` fires the listener, which notifies the empty draft — but only
-    // when there WAS text. An attachment-only send leaves `_hasText` false
-    // throughout, so tell the screen explicitly.
-    if (text.isEmpty) _notifyDraft();
   }
 
   /// Starts or stops voice dictation. Recognized words stream into the field
@@ -563,9 +565,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final hasImages = widget.attachments.isNotEmpty;
-    final hasAttachments = hasImages || widget.files.isNotEmpty;
-    final showSend = _hasText || hasAttachments;
+    final hasAttachments = _hasAttachments;
+    final showSend = _hasText;
     final canSend = showSend && widget.enabled;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final motionDuration =
@@ -642,9 +643,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                   elevation: _focused ? 2 : 0,
                   shadowColor: colors.shadow,
                   animationDuration: motionDuration,
-                  // Attachments morph the stadium into a rounded surface — the
-                  // same task-specific morph the git commit composer uses, so
-                  // the thumbnails aren't eaten by the pill's round ends.
+                  // Chips morph the stadium into a rounded surface — the same
+                  // task-specific morph the git commit composer uses, so a
+                  // chip at a line's end isn't eaten by the pill's round ends.
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(
                       hasAttachments ? UxnanRadius.xxl : UxnanRadius.full,
@@ -665,52 +666,6 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Pending attachments sit inside the composer, above
-                          // the field: one row, scrolling horizontally once the
-                          // thumbnails outgrow the pill.
-                          if (hasAttachments)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                UxnanSpacing.sm,
-                                UxnanSpacing.xs,
-                                UxnanSpacing.sm,
-                                UxnanSpacing.sm,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (hasImages)
-                                    ImageThumbStrip(
-                                      key: const ValueKey(
-                                        'composer-attachments',
-                                      ),
-                                      images: widget.attachments,
-                                      size: _attachmentThumbSize,
-                                      onRemove: widget.onRemoveAttachment,
-                                    ),
-                                  if (hasImages && widget.files.isNotEmpty)
-                                    const SizedBox(height: UxnanSpacing.sm),
-                                  if (widget.files.isNotEmpty)
-                                    Wrap(
-                                      key: const ValueKey('composer-files'),
-                                      spacing: UxnanSpacing.sm,
-                                      runSpacing: UxnanSpacing.sm,
-                                      children: [
-                                        for (var i = 0;
-                                            i < widget.files.length;
-                                            i++)
-                                          FileChip(
-                                            file: widget.files[i],
-                                            onRemove: widget.onRemoveFile ==
-                                                    null
-                                                ? null
-                                                : () => widget.onRemoveFile!(i),
-                                          ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ),
                           Row(
                             // crossAxisAlignment defaults to center, so the
                             // "+", the text field and the mic/send buttons
@@ -722,7 +677,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                               // turn settings stay visible in the shelf above.
                               if (widget.onAttach != null)
                                 TurnToolsMenuButton(
-                                  onSelected: widget.onAttach!,
+                                  onSelected: (source) =>
+                                      unawaited(_attach(source)),
                                   images: widget.acceptsImages,
                                 )
                               else

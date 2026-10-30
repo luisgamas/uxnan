@@ -33,6 +33,7 @@ import 'package:uxnan/domain/services/work_runs.dart';
 import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
+import 'package:uxnan/domain/value_objects/inline_attachments.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -663,8 +664,9 @@ class ThreadManager {
   }
 
   /// The images and files a wire user message carries
-  /// (`Message.attachments`), as references to fetch with `turn/attachment`
-  /// when they are shown. A named one, or one that is not an image, is a file.
+  /// (`Message.attachments`), in the order of the attachment markers in its
+  /// text, as references to fetch with `turn/attachment` when they are shown.
+  /// An image MIME type is an image; anything else is a file.
   static List<MessageContent> _attachmentsOf(Map<dynamic, dynamic> message) {
     final raw = message['attachments'];
     if (raw is! List) return const [];
@@ -682,7 +684,7 @@ class ThreadManager {
         ? entry['mimeType'] as String
         : 'application/octet-stream';
     final name = entry['name'] is String ? entry['name'] as String : null;
-    if (name != null || !mimeType.startsWith('image/')) {
+    if (!mimeType.startsWith('image/')) {
       return AttachedFileContent(
         name: name ?? entry['id'] as String,
         mimeType: mimeType,
@@ -692,19 +694,20 @@ class ThreadManager {
     }
     return ImageContent(
       mimeType: mimeType,
+      name: name,
       attachmentId: entry['id'] as String,
       width: entry['width'] is int ? entry['width'] as int : null,
       height: entry['height'] is int ? entry['height'] as int : null,
     );
   }
 
-  /// A user message's contents: its images and files, then its text when it
-  /// has any.
+  /// A user message's contents: its text when it has any (one attachment
+  /// marker per image or file), then its images and files in marker order.
   static List<MessageContent> _userContents(
     String text,
-    List<MessageContent> images,
+    List<MessageContent> attachments,
   ) =>
-      [...images, if (text.isNotEmpty) TextContent(text)];
+      [if (text.isNotEmpty) TextContent(text), ...attachments];
 
   /// Images of user messages already fetched, newest last (bounded).
   final LinkedHashMap<String, Future<Uint8List?>> _attachmentCache =
@@ -1769,25 +1772,32 @@ class ThreadManager {
     return (tokens: tokens, contextWindow: window is int ? window : null);
   }
 
-  /// Saves a user [text] message locally and sends it to the active turn.
-  /// [attachments] are inline images (base64) picked in the composer and
-  /// [files] any other files; they are echoed in the local message and ride
-  /// on `turn/send`.
+  /// Saves a user message ([written]) locally and sends it to the active
+  /// turn.
+  ///
+  /// [attachments] are the images and files written into it as chips, inline
+  /// (base64), in the order of the attachment markers in [written] (in a
+  /// command's args, for a command): the n-th marker is the n-th attachment
+  /// (`inline_attachments.dart`). They are echoed in the local message and
+  /// ride on `turn/send` in that order; markers left without an attachment are
+  /// dropped first, since the bridge refuses a message whose markers do not
+  /// match its attachments one for one.
   Future<void> sendUserMessage(
     String threadId,
-    String text, {
+    String written, {
     Map<String, Object>? options,
-    List<ImageContent>? attachments,
-    List<AttachedFileContent>? files,
+    List<AttachmentContent> attachments = const [],
     ({String name, String? args})? command,
   }) async {
-    final images = <MessageContent>[
-      ...?attachments,
-      ...?files,
-    ];
+    final sendable = attachments.where((a) => a.base64Data != null).toList();
+    final text = fitAttachmentMarkers(written, sendable.length);
+    // A command carries its markers in its args: the bridge counts them there.
+    final commandArgs = command == null
+        ? null
+        : fitAttachmentMarkers(command.args ?? '', sendable.length);
     final contents = <MessageContent>[
       if (text.isNotEmpty) TextContent(text),
-      ...images,
+      ...sendable,
     ];
     if (contents.isEmpty) return;
     // The bridge names the conversation from this message itself (and asks
@@ -1824,12 +1834,14 @@ class ThreadManager {
         if (command != null)
           'command': {
             'name': command.name,
-            if (command.args != null && command.args!.isNotEmpty)
-              'args': command.args,
+            if (commandArgs != null && commandArgs.isNotEmpty)
+              'args': commandArgs,
           },
         if (options != null && options.isNotEmpty) 'options': options,
-        if (images.isNotEmpty)
-          'attachments': [for (final image in images) image.toJson()],
+        if (sendable.isNotEmpty)
+          'attachments': [
+            for (final attachment in sendable) attachment.toTurnAttachment(),
+          ],
       });
       if (res.error != null) {
         await _messageRepository.saveMessage(

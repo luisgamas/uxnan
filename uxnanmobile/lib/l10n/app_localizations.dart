@@ -1766,18 +1766,6 @@ abstract class AppLocalizations {
   /// **'You can attach up to {count} images per message'**
   String composerAttachLimit(int count);
 
-  /// Accessibility label of an attachment thumbnail, in the composer and above a sent message.
-  ///
-  /// In en, this message translates to:
-  /// **'Attached image'**
-  String get attachmentImage;
-
-  /// Tooltip of the ✕ that drops a pending attachment from the composer.
-  ///
-  /// In en, this message translates to:
-  /// **'Remove image'**
-  String get attachmentRemove;
-
   /// Tooltip on the button that cancels the in-flight agent turn (replaces Send while running).
   ///
   /// In en, this message translates to:
@@ -6967,6 +6955,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Full copy'**
   String get transferStrategyForkShort;
+
+  /// Accessibility label of an image's chip, inside the composer text or a sent message.
+  ///
+  /// In en, this message translates to:
+  /// **'Image {name}'**
+  String attachmentChipImage(String name);
+
+  /// Accessibility label of a file's chip, inside the composer text or a sent message.
+  ///
+  /// In en, this message translates to:
+  /// **'File {name}, {size}'**
+  String attachmentChipFile(String name, String size);
+
+  /// Name shown on the chip of a pasted image that has no file name.
+  ///
+  /// In en, this message translates to:
+  /// **'Image'**
+  String get attachmentUnnamedImage;
+
+  /// Button in an attachment chip's sheet that takes the image or file out of the message being written.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from message'**
+  String get attachmentRemoveFromMessage;
 }
 
 class _AppLocalizationsDelegate
