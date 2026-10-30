@@ -43,6 +43,7 @@
   import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
   import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
   import ChatPane from "$lib/components/chat/ChatPane.svelte";
+  import ConversationsPane from "$lib/components/chat/ConversationsPane.svelte";
   import { chatStatusOf } from "$lib/bridge/chat.svelte";
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
@@ -695,6 +696,9 @@
                               </span>
                             {/snippet}
                           </TooltipSimple>
+                        {:else if t.kind === "conversations"}
+                          <Icon icon={BubbleChatIcon} class={cn(icon.decorative, "shrink-0")} />
+                          <span class={tab.terminalLabel}>{i18n.t("conversations.tab")}</span>
                         {:else}
                           <Icon icon={GitCommitIcon} class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.subject}>
@@ -884,6 +888,8 @@
                           {/if}
                         {:else if t.kind === "chat"}
                           <ChatPane tab={t} active={activeRegion && paneActive} />
+                        {:else if t.kind === "conversations"}
+                          <ConversationsPane tab={t} active={activeRegion && paneActive} />
                         {:else}
                           {@const st = terminals.commitState(t.id)}
                           {#if st}

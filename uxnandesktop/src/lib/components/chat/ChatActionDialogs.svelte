@@ -1,10 +1,13 @@
 <script lang="ts">
   // The dialogs a chat action needs, mounted once for the whole window: a new
-  // name (the shared `TabRenameDialog`, which renames the bridge thread) and a
-  // confirmed delete (the shared `ConfirmDialog`). Every menu that offers the
+  // name (the shared `TabRenameDialog`, which renames the bridge thread), a
+  // confirmed delete (the shared `ConfirmDialog`), continuing it with another
+  // agent (`ChatTransferDialog`) and its session's details. Every menu that offers the
   // actions (`chatActionsFor`) only sets `chatActionUi`.
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
+  import ChatTransferDialog from "./ChatTransferDialog.svelte";
+  import ChatSessionInfoDialog from "./ChatSessionInfoDialog.svelte";
   import { chatOfThread } from "$lib/bridge/chat.svelte";
   import { chatActionUi } from "$lib/bridge/chatActions.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
@@ -65,3 +68,15 @@
   onconfirm={confirmDelete}
   ondismiss={() => (chatActionUi.deleting = null)}
 />
+
+{#if chatActionUi.transferring}
+  {#key chatActionUi.transferring.id}
+    <ChatTransferDialog source={chatActionUi.transferring} />
+  {/key}
+{/if}
+
+{#if chatActionUi.inspecting}
+  {#key chatActionUi.inspecting.id}
+    <ChatSessionInfoDialog thread={chatActionUi.inspecting} />
+  {/key}
+{/if}

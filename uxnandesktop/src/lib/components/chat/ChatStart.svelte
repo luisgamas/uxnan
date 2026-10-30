@@ -8,22 +8,27 @@
   // A centered hero: the question, then the composer, whose toolbar carries the
   // agent and its model in one pill (`ModelPicker` with its rail of agents),
   // the model's run options, and the access mode the conversation will start
-  // in — chosen here, before the first message; the conversations
-  // already running here are listed below it, and below those the agents' own
+  // in — chosen here, before the first message. Below it, kept short on
+  // purpose: the three newest conversations here and "See all", which opens the
+  // Conversations tab (the whole catalog, searchable — architecture/02a
+  // §5.8.21); any of them can seed this one ("Continue from…": its context goes
+  // with the first message, to the agent chosen here). Then the agents' own
   // sessions in this folder that no conversation continues yet — started in a
-  // terminal, here or elsewhere — to pick up as a chat (architecture/02a
-  // §5.8.19). One open in a terminal says so, and picking it asks that terminal
-  // to let it go first.
+  // terminal, here or elsewhere — to pick up as a chat (§5.8.19). One open in a
+  // terminal says so, and picking it asks that terminal to let it go first.
   import { untrack } from "svelte";
   import { hosts } from "$lib/state/hosts.svelte";
   import { sshHostId } from "$lib/target";
-  import type { Thread } from "$shared/models/thread";
-  import * as Collapsible from "$lib/components/ui/collapsible";
+  import type { Thread, TransferStrategy } from "$shared/models/thread";
+  import { TRANSFER_STRATEGIES } from "$shared/models/thread";
   import * as ContextMenu from "$lib/components/ui/context-menu";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import ArrowTurnForwardIcon from "@hugeicons/core-free-icons/ArrowTurnForwardIcon";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ModelPicker, { type PickerAgent } from "$lib/components/ModelPicker.svelte";
@@ -46,7 +51,7 @@
   import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { chat as chatTokens, focus, icon, row, text } from "$lib/design";
+  import { chat as chatTokens, icon, row, text } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
   // The replica — and the bridge — of the machine this chat is on.
@@ -116,9 +121,16 @@
       ?.options ?? [],
   );
   const existing = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status !== "archived"));
-  const archived = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status === "archived"));
-  let showAll = $state(false);
-  let archivedOpen = $state(false);
+  /** How many the Conversations tab lists for this folder's project. */
+  const projectCount = $derived.by(() => {
+    const projectId = chat.threadsFor(tab.cwd)[0]?.projectId;
+    if (!projectId) return existing.length;
+    return [...chat.threads.values()].filter((t) => t.projectId === projectId && t.status !== "archived")
+      .length;
+  });
+  /** The conversation this one continues, when one was picked ("Continue from…"). */
+  let seed = $state<{ threadId: string; strategy: TransferStrategy } | null>(null);
+  const seedThread = $derived(seed ? chat.threads.get(seed.threadId) : undefined);
   // The agents' own sessions here that no conversation continues yet.
   let sessions = $state<AgentSessionSummary[]>([]);
   let unlisted = $state<string[]>([]);
@@ -211,6 +223,9 @@
         ...(model ? { model } : {}),
         // A name given to the tab before the first message is the user's.
         ...(tab.customTitle ? { title: tab.customTitle } : {}),
+        // Picked to continue: the bridge prepares its context, and this first
+        // message carries it to the agent chosen here.
+        ...(seed && seedThread ? { continueFrom: seed } : {}),
       });
       // A mode picked here applies from the first turn; the agent's default
       // needs nothing sent.
@@ -264,6 +279,10 @@
       {/snippet}
     </ContextMenu.Trigger>
     <ContextMenu.Content width="simple">
+      <ContextMenu.Item class={text.menu} onclick={() => (seed = { threadId: thread.id, strategy: "selection" })}>
+        {i18n.t("chat.continueFromThis")}
+      </ContextMenu.Item>
+      <ContextMenu.Separator />
       {#each chatActionsFor(thread) as action (action)}
         {#if action === "delete"}<ContextMenu.Separator />{/if}
         <ContextMenu.Item
@@ -318,6 +337,51 @@
     </div>
 
     <div class="flex flex-col gap-1.5">
+      {#if seedThread && seed}
+        <!-- What this conversation continues: its context goes with the first
+             message, to the agent chosen below. -->
+        <div class={cn("flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5", text.meta)}>
+          <Icon icon={ArrowTurnForwardIcon} class={cn(icon.decorative, "shrink-0")} />
+          <span class="min-w-0 flex-1 truncate">
+            {i18n.t("chat.continuingFrom", { title: seedThread.title })}
+          </span>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button variant="ghost" size="sm" class="h-6 gap-1 px-1.5 text-xs" {...props}>
+                  {i18n.t(`transfer.strategy.${seed?.strategy ?? "selection"}`)}
+                  <Icon icon={ChevronDownIcon} class={icon.status} />
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content width="standard" align="end">
+              <DropdownMenu.RadioGroup
+                value={seed.strategy}
+                onValueChange={(v) => {
+                  if (seed) seed = { ...seed, strategy: v as TransferStrategy };
+                }}
+              >
+                {#each TRANSFER_STRATEGIES.filter((v) => v !== "fork") as value (value)}
+                  <DropdownMenu.RadioItem class={text.menu} {value}>
+                    <span class="flex flex-col">
+                      <span>{i18n.t(`transfer.strategy.${value}`)}</span>
+                      <span class={text.meta}>{i18n.t(`transfer.strategyDesc.${value}`)}</span>
+                    </span>
+                  </DropdownMenu.RadioItem>
+                {/each}
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={i18n.t("chat.continueFromClear")}
+            onclick={() => (seed = null)}
+          >
+            <Icon icon={CancelIcon} class={icon.action} />
+          </Button>
+        </div>
+      {/if}
       <ChatComposer
         bind:value={draft}
         disabled={!agentId || starting}
@@ -351,20 +415,51 @@
           {/if}
         {/snippet}
       </ChatComposer>
-      <p class={cn(text.meta, "px-1")}>{i18n.t("chat.agentFixedHint")}</p>
+      <div class="flex items-center gap-2 px-1">
+        <p class={cn(text.meta, "min-w-0 flex-1")}>{i18n.t("chat.agentFixedHint")}</p>
+        {#if existing.length > 0 && !seed}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button variant="ghost" size="sm" class="h-6 shrink-0 px-1.5 text-xs" {...props}>
+                  {i18n.t("chat.continueFrom")}
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content width="standard" align="end" class="max-h-72 overflow-y-auto">
+              {#each existing.slice(0, 12) as thread (thread.id)}
+                <DropdownMenu.Item
+                  class={cn(text.menu, "gap-2")}
+                  onclick={() => (seed = { threadId: thread.id, strategy: "selection" })}
+                >
+                  <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
+                  <span class="min-w-0 flex-1 truncate">{thread.title}</span>
+                </DropdownMenu.Item>
+              {/each}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        {/if}
+      </div>
     </div>
 
-    {#if existing.length > 0}
+    {#if existing.length > 0 || chat.threads.size > 0}
       <div class="flex flex-col gap-1 pt-2">
-        <span class={cn(text.section, "px-1")}>{i18n.t("chat.continue")}</span>
-        {#each showAll ? existing : existing.slice(0, 8) as thread (thread.id)}
+        <div class="flex items-center gap-2 px-1">
+          <span class={cn(text.section, "flex-1")}>{i18n.t("chat.recent")}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7"
+            onclick={() => terminals.openConversations({ cwd: tab.cwd, target: chat.target })}
+          >
+            {projectCount > 0
+              ? i18n.t("chat.seeAllConversations", { n: String(projectCount) })
+              : i18n.t("chat.seeAllConversationsNone")}
+          </Button>
+        </div>
+        {#each existing.slice(0, 3) as thread (thread.id)}
           {@render threadRow(thread)}
         {/each}
-        {#if existing.length > 8}
-          <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAll = !showAll)}>
-            {showAll ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(existing.length) })}
-          </Button>
-        {/if}
       </div>
     {/if}
 
@@ -372,10 +467,10 @@
       <div class="flex flex-col gap-1 pt-2">
         <span class={cn(text.section, "px-1")}>{i18n.t("sessions.section")}</span>
         <p class={cn(text.meta, "px-1 pb-1")}>{i18n.t("sessions.sectionHint")}</p>
-        {#each showAllSessions ? sessions : sessions.slice(0, 6) as session (sessionKey(session.agentId, session.sessionId))}
+        {#each showAllSessions ? sessions : sessions.slice(0, 3) as session (sessionKey(session.agentId, session.sessionId))}
           {@render sessionRow(session)}
         {/each}
-        {#if sessions.length > 6}
+        {#if sessions.length > 3}
           <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAllSessions = !showAllSessions)}>
             {showAllSessions ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(sessions.length) })}
           </Button>
@@ -386,25 +481,5 @@
       </div>
     {/if}
 
-    {#if archived.length > 0}
-      <Collapsible.Root bind:open={archivedOpen}>
-        <Collapsible.Trigger
-          class={cn("flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left", text.section, focus.ring)}
-        >
-          {i18n.t("chat.archivedSection")}
-          <span class="tabular-nums text-muted-foreground/60">{archived.length}</span>
-          <Icon
-            icon={ChevronDownIcon}
-            class={cn(icon.status, "ml-auto transition-transform", archivedOpen && "rotate-180")}
-          />
-        </Collapsible.Trigger>
-        <Collapsible.Content class="flex flex-col gap-1 pt-1">
-          <p class={cn(text.meta, "px-1 pb-1")}>{i18n.t("chat.archivedHint")}</p>
-          {#each archived as thread (thread.id)}
-            {@render threadRow(thread)}
-          {/each}
-        </Collapsible.Content>
-      </Collapsible.Root>
-    {/if}
   </div>
 </div>

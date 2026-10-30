@@ -517,11 +517,17 @@ src/lib/bridge/  client · chat (replica) · projectMirror · conversation  → 
   version nueva → si no, volver a registrar el anterior); `bridge_uninstall`
   quita su servicio y su runtime, nunca `~/.uxnan`.
 - **Replica y espejo (`02a` §5.8.17).** La ventana converge con `sync/changes`
-  al (re)conectar y ante un salto de `rev`; los proyectos locales del desktop y
-  el registro del bridge se unen al conectar (nunca se poda por ausencia) y las
-  altas y bajas viajan como eventos en ambos sentidos
-  (`src/lib/bridge/projectMirror.svelte.ts`); una baja hecha sin conexion se
-  envia al reconectar. **Emparejar un telefono** (Ajustes → Bridge y movil):
+  al (re)conectar y ante un salto de `rev`; las altas y bajas de proyectos
+  viajan como eventos en ambos sentidos (`src/lib/bridge/projectMirror.svelte.ts`),
+  y en cada sincronizacion completa el espejo converge sin confiar en que llego
+  cada evento: recuerda (en el almacenamiento de la ventana, por `storeId`) que
+  proyectos locales ya vio en el registro, quita aqui uno espejado que el
+  registro ya no tiene (se quito en otro lado con la app cerrada), publica solo
+  lo agregado aqui sin conexion y envia las bajas hechas sin conexion. Las
+  conversaciones de un proyecto quitado quedan en "Sin proyecto" (pestana
+  Conversaciones, alcance Todas). La pestana **Conversaciones** es el catalogo
+  completo (busqueda en el bridge, `thread/search`) y continuar con otro agente
+  es `thread/transfer` (`02a` §5.8.21). **Emparejar un telefono** (Ajustes → Bridge y movil):
   `bridge_pairing_qr` pide `bridge/generatePairingQr` al bridge en ejecucion
   (su payload, ventana de emparejamiento armada) y lo dibuja como SVG
   (crate `qrcode`).
@@ -672,6 +678,10 @@ export interface JsonRpcMethodRegistry {
   'thread/start':         { params: StartThreadParams;         result: Thread };
   'thread/resume':        { params: { threadId: string };      result: void };
   'thread/fork':          { params: ForkParams;                result: Thread };
+  // Continuar con otro agente / buscar (02a §5.8.21)
+  'thread/transfer':        { params: ThreadTransferParams;    result: ThreadTransferResult };
+  'thread/transferContext': { params: { threadId: string };    result: ThreadTransferContextResult };
+  'thread/search':          { params: ThreadSearchParams;      result: ThreadSearchResult };
   'thread/setModel':      { params: ThreadSetModelParams;      result: void };
   'thread/rename':        { params: ThreadRenameParams;        result: Thread };
   'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };

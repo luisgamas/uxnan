@@ -176,7 +176,21 @@ export interface ChatTab extends BaseTab {
   rescued?: string[];
 }
 
-export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
+/** The Conversations tab: every bridge conversation, searchable, with what can
+ *  be done to each (architecture/02a §5.8.21) — the catalog the phone's list is
+ *  too. Opened from a folder (its "This project" scope); a view only, so like a
+ *  commit tab it is not restored after a restart. */
+export interface ConversationsTab extends BaseTab {
+  kind: 'conversations';
+  /** The folder it was opened from: what "This project" means. */
+  cwd: string;
+  /** The machine whose bridge it lists; absent = this one. */
+  target?: TargetId;
+  /** Bumped when it is asked to show [cwd]'s project again (the scope resets). */
+  focusSerial?: number;
+}
+
+export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab | ConversationsTab;
 
 /** Whether two chat targets name the same machine (absent = this one). */
 function sameMachine(a: TargetId | undefined, b: TargetId | undefined): boolean {
@@ -459,13 +473,13 @@ export function computeAreaLayout(root: AreaNode): {
 
 // --- Persistence (structure only; fresh shells spawn on restore) ----------
 
-/** Drop **commit** tabs from a cloned tree (transient — never persisted) and
+/** Drop **commit** and **conversations** tabs from a cloned tree (transient — never persisted) and
  *  collapse any region/split left empty, so serialization only ever sees terminal
  *  + file tabs in non-empty groups. (A file tab persists in whatever view it was
  *  in, its diff being just one of its views.) Returns null when nothing remains. */
 function pruneTransient(node: AreaNode): AreaNode | null {
   if (node.kind === 'group') {
-    const tabs = node.tabs.filter((t) => t.kind !== 'commit');
+    const tabs = node.tabs.filter((t) => t.kind !== 'commit' && t.kind !== 'conversations');
     if (tabs.length === 0) return null;
     const activeTabId = tabs.some((t) => t.id === node.activeTabId)
       ? node.activeTabId
@@ -1435,6 +1449,29 @@ class TerminalStore {
       ...(opts.target && !isLocalTarget(opts.target) ? { target: opts.target } : {}),
       ...(opts.threadId ? { threadId: opts.threadId } : {}),
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
+    };
+    this.insertTab(tab, opts.groupId);
+    return id;
+  }
+
+  /** Open the Conversations tab (focusing the one already open for that
+   *  machine), scoped to `cwd`'s project. Returns the tab id. */
+  openConversations(opts: { cwd: string; target?: TargetId; groupId?: string }): string {
+    for (const { tab, workspace } of this.tabsWithWorkspace()) {
+      if (tab.kind === 'conversations' && sameMachine(tab.target, opts.target)) {
+        tab.cwd = opts.cwd;
+        tab.focusSerial = (tab.focusSerial ?? 0) + 1;
+        this.revealTab(workspace, tab.id);
+        return tab.id;
+      }
+    }
+    const id = crypto.randomUUID();
+    const tab: ConversationsTab = {
+      kind: 'conversations',
+      id,
+      title: i18n.t('conversations.tab'),
+      cwd: opts.cwd,
+      ...(opts.target && !isLocalTarget(opts.target) ? { target: opts.target } : {}),
     };
     this.insertTab(tab, opts.groupId);
     return id;

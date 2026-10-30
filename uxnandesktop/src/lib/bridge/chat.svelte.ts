@@ -16,7 +16,14 @@
 
 import { getContext, setContext, untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
-import type { AccessMode, Thread, TurnList } from '$shared/models/thread';
+import type {
+  AccessMode,
+  Thread,
+  ThreadSearchParams,
+  ThreadSearchResult,
+  TransferStrategy,
+  TurnList,
+} from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
 import type {
   AgentCommand,
@@ -25,7 +32,11 @@ import type {
   AgentModel,
 } from '$shared/agents/agent-capabilities';
 import type { TurnAttachment } from '$shared/models/workspace';
-import type { TurnAttachmentData } from '$shared/jsonrpc/methods';
+import type {
+  ThreadTransferContextResult,
+  ThreadTransferResult,
+  TurnAttachmentData,
+} from '$shared/jsonrpc/methods';
 import type { Project } from '$shared/models/project';
 import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
 import type { TrustedDevice } from '$shared/models/session';
@@ -613,6 +624,9 @@ export class ChatStore {
      *  terminal's): the bridge returns the conversation that already
      *  continues it, when one does. */
     agentSessionId?: string;
+    /** Start it as the continuation of this conversation (architecture/02a
+     *  §5.8.21): its first message carries that one's context. */
+    continueFrom?: { threadId: string; strategy?: TransferStrategy };
   }): Promise<Thread> {
     const title = input.title?.trim();
     const thread = await this.#client.call<Thread>('thread/start', {
@@ -621,6 +635,7 @@ export class ChatStore {
       ...(input.model ? { model: input.model } : {}),
       ...(title ? { title } : {}),
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+      ...(input.continueFrom ? { continueFrom: input.continueFrom } : {}),
     });
     this.threads.set(thread.id, thread);
     // It starts in its agent's default mode, set by the bridge — the desktop
@@ -747,6 +762,51 @@ export class ChatStore {
     await this.#client.call('thread/delete', { threadId });
     this.threads.delete(threadId);
     this.#forgetUnsent(threadId);
+  }
+
+  /** Continue a conversation with another agent (or the same) as a NEW one —
+   *  the bridge prepares the context its first message carries and records
+   *  both ends (architecture/02a §5.8.21). Adopted at once. */
+  async transfer(input: {
+    sourceThreadId: string;
+    agentId: string;
+    model?: string;
+    strategy?: TransferStrategy;
+    message?: string;
+    clientTransferId?: string;
+  }): Promise<ThreadTransferResult> {
+    const made = await this.#client.call<ThreadTransferResult>('thread/transfer', {
+      sourceThreadId: input.sourceThreadId,
+      agentId: input.agentId,
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.strategy ? { strategy: input.strategy } : {}),
+      ...(input.message?.trim() ? { message: input.message } : {}),
+      ...(input.clientTransferId ? { clientTransferId: input.clientTransferId } : {}),
+    });
+    this.#adopt(made.thread);
+    return made;
+  }
+
+  /** A copy with the same agent: the history copied, its first message
+   *  carrying a selection of it (the fork's agent session starts empty). */
+  async fork(threadId: string): Promise<Thread> {
+    const thread = await this.#client.call<Thread>('thread/fork', {
+      threadId,
+      clientTransferId: crypto.randomUUID(),
+    });
+    this.#adopt(thread);
+    return this.threads.get(thread.id) ?? thread;
+  }
+
+  /** What a continuation carries over, exactly as its agent reads it. */
+  transferContext(threadId: string): Promise<ThreadTransferContextResult> {
+    return this.#client.call<ThreadTransferContextResult>('thread/transferContext', { threadId });
+  }
+
+  /** What was said in the conversations: answered by the bridge, which owns
+   *  the history (a replica holds no turns of most of them). One page. */
+  search(params: ThreadSearchParams): Promise<ThreadSearchResult> {
+    return this.#client.call<ThreadSearchResult>('thread/search', params);
   }
 
   #adopt(thread: Thread | null | undefined): void {

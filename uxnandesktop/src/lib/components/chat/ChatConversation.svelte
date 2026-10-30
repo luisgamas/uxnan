@@ -44,6 +44,7 @@
   import ChatTurnView from "./ChatTurnView.svelte";
   import { sessionKey, useChat } from "$lib/bridge/chat.svelte";
   import { terminalSessionsFor } from "$lib/state/terminalSessions.svelte";
+  import ChatTransferBanner from "./ChatTransferBanner.svelte";
   import { usage } from "$lib/state/usage.svelte";
   import { usageProviderForAgent } from "$lib/usageCatalog";
   import { pressingWindow } from "$lib/usagePace";
@@ -567,6 +568,11 @@
             >
               {i18n.t("chat.loadEarlier")}
             </Button>
+          {/if}
+
+          {#if thread && (thread.transfer || thread.continuations?.length) && !conversation.hasOlder && olderHere === 0}
+            <!-- At the start of the conversation: what it continues, and what continues it. -->
+            <ChatTransferBanner {thread} />
           {/if}
 
           {#if conversation.loading && !conversation.loaded}
