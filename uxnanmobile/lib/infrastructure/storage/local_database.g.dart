@@ -88,6 +88,12 @@ class $ThreadsTableTable extends ThreadsTable
   late final GeneratedColumn<String> originName = GeneratedColumn<String>(
       'origin_name', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _continuityJsonMeta =
+      const VerificationMeta('continuityJson');
+  @override
+  late final GeneratedColumn<String> continuityJson = GeneratedColumn<String>(
+      'continuity_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -103,7 +109,8 @@ class $ThreadsTableTable extends ThreadsTable
         lastActivityMs,
         createdAtMs,
         originKind,
-        originName
+        originName,
+        continuityJson
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -192,6 +199,12 @@ class $ThreadsTableTable extends ThreadsTable
           originName.isAcceptableOrUnknown(
               data['origin_name']!, _originNameMeta));
     }
+    if (data.containsKey('continuity_json')) {
+      context.handle(
+          _continuityJsonMeta,
+          continuityJson.isAcceptableOrUnknown(
+              data['continuity_json']!, _continuityJsonMeta));
+    }
     return context;
   }
 
@@ -229,6 +242,8 @@ class $ThreadsTableTable extends ThreadsTable
           .read(DriftSqlType.string, data['${effectivePrefix}origin_kind']),
       originName: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}origin_name']),
+      continuityJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}continuity_json']),
     );
   }
 
@@ -281,6 +296,12 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
 
   /// The name of the device that started it, if known.
   final String? originName;
+
+  /// Its continuity as the bridge reported it, JSON: `{ transfer?,
+  /// continuations? }` (`Thread.transfer` / `Thread.continuations`,
+  /// architecture/02a §5.8.21). Null when it neither continues nor is
+  /// continued by another conversation.
+  final String? continuityJson;
   const ThreadRow(
       {required this.id,
       required this.title,
@@ -295,7 +316,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       this.lastActivityMs,
       required this.createdAtMs,
       this.originKind,
-      this.originName});
+      this.originName,
+      this.continuityJson});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -329,6 +351,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
     if (!nullToAbsent || originName != null) {
       map['origin_name'] = Variable<String>(originName);
     }
+    if (!nullToAbsent || continuityJson != null) {
+      map['continuity_json'] = Variable<String>(continuityJson);
+    }
     return map;
   }
 
@@ -361,6 +386,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       originName: originName == null && nullToAbsent
           ? const Value.absent()
           : Value(originName),
+      continuityJson: continuityJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(continuityJson),
     );
   }
 
@@ -382,6 +410,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
       originKind: serializer.fromJson<String?>(json['originKind']),
       originName: serializer.fromJson<String?>(json['originName']),
+      continuityJson: serializer.fromJson<String?>(json['continuityJson']),
     );
   }
   @override
@@ -402,6 +431,7 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       'createdAtMs': serializer.toJson<int>(createdAtMs),
       'originKind': serializer.toJson<String?>(originKind),
       'originName': serializer.toJson<String?>(originName),
+      'continuityJson': serializer.toJson<String?>(continuityJson),
     };
   }
 
@@ -419,7 +449,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           Value<int?> lastActivityMs = const Value.absent(),
           int? createdAtMs,
           Value<String?> originKind = const Value.absent(),
-          Value<String?> originName = const Value.absent()}) =>
+          Value<String?> originName = const Value.absent(),
+          Value<String?> continuityJson = const Value.absent()}) =>
       ThreadRow(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -437,6 +468,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
         createdAtMs: createdAtMs ?? this.createdAtMs,
         originKind: originKind.present ? originKind.value : this.originKind,
         originName: originName.present ? originName.value : this.originName,
+        continuityJson:
+            continuityJson.present ? continuityJson.value : this.continuityJson,
       );
   ThreadRow copyWithCompanion(ThreadsTableCompanion data) {
     return ThreadRow(
@@ -461,6 +494,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           data.originKind.present ? data.originKind.value : this.originKind,
       originName:
           data.originName.present ? data.originName.value : this.originName,
+      continuityJson: data.continuityJson.present
+          ? data.continuityJson.value
+          : this.continuityJson,
     );
   }
 
@@ -480,7 +516,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ..write('lastActivityMs: $lastActivityMs, ')
           ..write('createdAtMs: $createdAtMs, ')
           ..write('originKind: $originKind, ')
-          ..write('originName: $originName')
+          ..write('originName: $originName, ')
+          ..write('continuityJson: $continuityJson')
           ..write(')'))
         .toString();
   }
@@ -500,7 +537,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       lastActivityMs,
       createdAtMs,
       originKind,
-      originName);
+      originName,
+      continuityJson);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -518,7 +556,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           other.lastActivityMs == this.lastActivityMs &&
           other.createdAtMs == this.createdAtMs &&
           other.originKind == this.originKind &&
-          other.originName == this.originName);
+          other.originName == this.originName &&
+          other.continuityJson == this.continuityJson);
 }
 
 class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
@@ -536,6 +575,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
   final Value<int> createdAtMs;
   final Value<String?> originKind;
   final Value<String?> originName;
+  final Value<String?> continuityJson;
   final Value<int> rowid;
   const ThreadsTableCompanion({
     this.id = const Value.absent(),
@@ -552,6 +592,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     this.createdAtMs = const Value.absent(),
     this.originKind = const Value.absent(),
     this.originName = const Value.absent(),
+    this.continuityJson = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ThreadsTableCompanion.insert({
@@ -569,6 +610,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     required int createdAtMs,
     this.originKind = const Value.absent(),
     this.originName = const Value.absent(),
+    this.continuityJson = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -591,6 +633,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     Expression<int>? createdAtMs,
     Expression<String>? originKind,
     Expression<String>? originName,
+    Expression<String>? continuityJson,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -608,6 +651,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       if (createdAtMs != null) 'created_at_ms': createdAtMs,
       if (originKind != null) 'origin_kind': originKind,
       if (originName != null) 'origin_name': originName,
+      if (continuityJson != null) 'continuity_json': continuityJson,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -627,6 +671,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       Value<int>? createdAtMs,
       Value<String?>? originKind,
       Value<String?>? originName,
+      Value<String?>? continuityJson,
       Value<int>? rowid}) {
     return ThreadsTableCompanion(
       id: id ?? this.id,
@@ -643,6 +688,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       createdAtMs: createdAtMs ?? this.createdAtMs,
       originKind: originKind ?? this.originKind,
       originName: originName ?? this.originName,
+      continuityJson: continuityJson ?? this.continuityJson,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -692,6 +738,9 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     if (originName.present) {
       map['origin_name'] = Variable<String>(originName.value);
     }
+    if (continuityJson.present) {
+      map['continuity_json'] = Variable<String>(continuityJson.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -715,6 +764,7 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
           ..write('createdAtMs: $createdAtMs, ')
           ..write('originKind: $originKind, ')
           ..write('originName: $originName, ')
+          ..write('continuityJson: $continuityJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4631,6 +4681,7 @@ typedef $$ThreadsTableTableCreateCompanionBuilder = ThreadsTableCompanion
   required int createdAtMs,
   Value<String?> originKind,
   Value<String?> originName,
+  Value<String?> continuityJson,
   Value<int> rowid,
 });
 typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
@@ -4649,6 +4700,7 @@ typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
   Value<int> createdAtMs,
   Value<String?> originKind,
   Value<String?> originName,
+  Value<String?> continuityJson,
   Value<int> rowid,
 });
 
@@ -4703,6 +4755,10 @@ class $$ThreadsTableTableFilterComposer
 
   ColumnFilters<String> get originName => $composableBuilder(
       column: $table.originName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get continuityJson => $composableBuilder(
+      column: $table.continuityJson,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$ThreadsTableTableOrderingComposer
@@ -4757,6 +4813,10 @@ class $$ThreadsTableTableOrderingComposer
 
   ColumnOrderings<String> get originName => $composableBuilder(
       column: $table.originName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get continuityJson => $composableBuilder(
+      column: $table.continuityJson,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$ThreadsTableTableAnnotationComposer
@@ -4809,6 +4869,9 @@ class $$ThreadsTableTableAnnotationComposer
 
   GeneratedColumn<String> get originName => $composableBuilder(
       column: $table.originName, builder: (column) => column);
+
+  GeneratedColumn<String> get continuityJson => $composableBuilder(
+      column: $table.continuityJson, builder: (column) => column);
 }
 
 class $$ThreadsTableTableTableManager extends RootTableManager<
@@ -4848,6 +4911,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             Value<int> createdAtMs = const Value.absent(),
             Value<String?> originKind = const Value.absent(),
             Value<String?> originName = const Value.absent(),
+            Value<String?> continuityJson = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ThreadsTableCompanion(
@@ -4865,6 +4929,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             createdAtMs: createdAtMs,
             originKind: originKind,
             originName: originName,
+            continuityJson: continuityJson,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -4882,6 +4947,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             required int createdAtMs,
             Value<String?> originKind = const Value.absent(),
             Value<String?> originName = const Value.absent(),
+            Value<String?> continuityJson = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ThreadsTableCompanion.insert(
@@ -4899,6 +4965,7 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             createdAtMs: createdAtMs,
             originKind: originKind,
             originName: originName,
+            continuityJson: continuityJson,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

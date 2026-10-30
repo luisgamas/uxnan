@@ -90,8 +90,9 @@ class WorkspaceGroupRow extends ConsumerWidget {
   /// Opens or closes it.
   final VoidCallback onToggle;
 
-  /// Opens the detail sheet (long press).
-  final VoidCallback onDetails;
+  /// Opens the detail sheet (long press); null when the group has none (the
+  /// "Other conversations" group, which is no folder).
+  final VoidCallback? onDetails;
 
   /// Starts a conversation in this folder. Null — the button shown disabled —
   /// when there is no live channel to this PC.
@@ -120,7 +121,11 @@ class WorkspaceGroupRow extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final threads = group.threads;
-    final label = group.label.isEmpty ? l10n.spacesNoFolder : group.label;
+    final label = group.isOther
+        ? l10n.spacesOtherConversations
+        : group.label.isEmpty
+            ? l10n.spacesNoFolder
+            : group.label;
     final unread = threads.any((t) => ref.watch(unreadForProvider(t.id)));
     final agents = _distinctAgents(threads);
 
@@ -158,7 +163,7 @@ class WorkspaceGroupRow extends ConsumerWidget {
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   UxIcon(
-                    UxIcons.folder,
+                    group.isOther ? UxIcons.folderOff : UxIcons.folder,
                     size: UxnanSize.iconContentLarge,
                     color: colors.onSurfaceVariant,
                   ),
@@ -191,7 +196,11 @@ class WorkspaceGroupRow extends ConsumerWidget {
                   // carries — they belong to the folder, so they are reachable
                   // before any conversation exists in it. "+" stays last, at
                   // the edge where it has always been.
-                  if (foldTools)
+                  // "Other conversations" is no folder: nothing to open or
+                  // start in it.
+                  if (group.isOther)
+                    const SizedBox.shrink()
+                  else if (foldTools)
                     _FolderToolsMenu(
                       onOpenFiles: onOpenFiles,
                       onOpenGit: onOpenGit,
@@ -208,11 +217,12 @@ class WorkspaceGroupRow extends ConsumerWidget {
                       onPressed: onOpenGit,
                     ),
                   ],
-                  _RowAction(
-                    icon: UxIcons.add,
-                    label: l10n.spacesNewConversationHere,
-                    onPressed: onNewConversation,
-                  ),
+                  if (!group.isOther)
+                    _RowAction(
+                      icon: UxIcons.add,
+                      label: l10n.spacesNewConversationHere,
+                      onPressed: onNewConversation,
+                    ),
                 ],
               ),
               Padding(

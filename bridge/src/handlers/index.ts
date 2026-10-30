@@ -1,7 +1,7 @@
 /**
  * Registers all JSON-RPC handlers on a router.
  *
- * Git, workspace, thread/turn, project, replica sync and shared settings,
+ * Git, workspace, thread/turn, conversations (continue, search), project, replica sync and shared settings,
  * agent, account (auth/status), usage (`agent/usageStats`), notifications,
  * Uxnan Desktop's tools (`desktop/*`, local channel only), the user's relay
  * (`relay/*`) and bridge-control.
@@ -10,6 +10,7 @@ import type { HandlerRouter } from '../handler-router.js';
 import { registerGitHandlers } from './git-handler.js';
 import { registerWorkspaceHandlers } from './workspace-handler.js';
 import { registerThreadHandlers } from './thread-context-handler.js';
+import { registerConversationHandlers } from './conversation-handler.js';
 import { registerProjectHandlers } from './project-handler.js';
 import { registerSyncHandlers } from './sync-handler.js';
 import { registerAgentHandlers } from './agent-handler.js';
@@ -25,6 +26,7 @@ import { registerViewHandlers } from './view-handler.js';
 
 export function registerAllHandlers(router: HandlerRouter): void {
   registerThreadHandlers(router);
+  registerConversationHandlers(router);
   registerGitHandlers(router);
   registerWorkspaceHandlers(router);
   registerProjectHandlers(router);

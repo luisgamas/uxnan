@@ -340,6 +340,34 @@ void main() {
     expect(find.byType(FilterChip), findsNothing);
   });
 
+  testWidgets(
+      "a removed project's conversations list under Other, not its folder",
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        threads: [
+          _thread('a', 'Kept', 'codex', cwd: '/dev/app', projectId: 'p-app'),
+          _thread('b', 'Orphan', 'codex', cwd: '/dev/gone', projectId: 'p-x'),
+        ],
+        projects: const [Project(id: 'p-app', name: 'App', cwd: '/dev/app')],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('App'), findsOneWidget);
+    expect(find.text('Other conversations'), findsOneWidget);
+    // The old folder is gone from the list; its conversation is not.
+    expect(find.text('gone'), findsNothing);
+    expect(find.text('Orphan'), findsOneWidget);
+    // "Other" is no folder: nothing to start in it.
+    final other = find.byKey(const ValueKey('workspace-other'));
+    expect(
+      find.descendant(of: other, matching: findUxIcon(UxIcons.add)),
+      findsNothing,
+    );
+  });
+
   testWidgets('shows the empty state when there are no threads', (
     tester,
   ) async {

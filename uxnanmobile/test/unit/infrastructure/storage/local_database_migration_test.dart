@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
+import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
 /// The trusted devices table exactly as schemas v5–v11 created it. Every
@@ -37,6 +39,15 @@ const _trustedDevicesV12 = 'CREATE TABLE "trusted_devices_table" ( '
     'CHECK ("relay_enabled" IN (0, 1)), '
     'PRIMARY KEY ("mac_device_id"))';
 
+/// The threads table exactly as schemas v7–v13 created it. Every upgrade to
+/// v14 adds a column to it, so a database from any of those versions has it.
+const _threadsV13 = 'CREATE TABLE "threads_table" ("id" TEXT NOT NULL, '
+    '"title" TEXT NOT NULL, "project_id" TEXT NULL, "device_id" TEXT NULL, '
+    '"cwd" TEXT NULL, "worktree_path" TEXT NULL, "agent_id" TEXT NOT NULL, '
+    '"model" TEXT NULL, "sync_state" TEXT NOT NULL, "status" TEXT NOT NULL, '
+    '"last_activity_ms" INTEGER NULL, "created_at_ms" INTEGER NOT NULL, '
+    '"origin_kind" TEXT NULL, "origin_name" TEXT NULL, PRIMARY KEY ("id"))';
+
 /// Upgrades of an existing on-device database (`UxnanDatabase.migration`).
 void main() {
   test('a v9 database gains the continuedIn column and keeps its messages',
@@ -69,6 +80,7 @@ void main() {
               ],
             )
             ..execute(_trustedDevicesV11)
+            ..execute(_threadsV13)
             ..execute('PRAGMA user_version = 9');
         },
       ),
@@ -117,6 +129,7 @@ void main() {
               ],
             )
             ..execute(_trustedDevicesV11)
+            ..execute(_threadsV13)
             ..execute('PRAGMA user_version = 10');
         },
       ),
@@ -146,6 +159,7 @@ void main() {
         setup: (raw) {
           raw
             ..execute(_trustedDevicesV11)
+            ..execute(_threadsV13)
             ..execute(_messagesV11)
             ..execute(
               'INSERT INTO trusted_devices_table '
@@ -200,7 +214,8 @@ void main() {
               );
           raw
             ..execute(_messagesV11)
-            ..execute(_trustedDevicesV12);
+            ..execute(_trustedDevicesV12)
+            ..execute(_threadsV13);
           insert(
             'a',
             'assistant',
@@ -227,5 +242,66 @@ void main() {
       await DriftMessageRepository(legacy).latestReplyPreview('th1'),
       'Let me look. Done.',
     );
+  });
+
+  test(
+      'a v13 database gains the thread continuity column and keeps its '
+      'threads', () async {
+    final legacy = UxnanDatabase.forTesting(
+      NativeDatabase.memory(
+        setup: (raw) {
+          raw
+            ..execute(_threadsV13)
+            ..execute(
+              _messagesV11.replaceFirst(
+                '"turn_duration_ms" INTEGER NULL, ',
+                '"turn_duration_ms" INTEGER NULL, "preview_text" TEXT NULL, ',
+              ),
+            )
+            ..execute(_trustedDevicesV12)
+            ..execute(
+              'INSERT INTO threads_table (id, title, agent_id, sync_state, '
+              'status, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)',
+              ['th1', 'Old', 'codex', 'synced', 'active', 1000],
+            )
+            ..execute('PRAGMA user_version = 13');
+        },
+      ),
+    );
+    addTearDown(legacy.close);
+    final repo = DriftThreadRepository(legacy);
+
+    final before = await repo.getThread('th1');
+    expect(before?.title, 'Old');
+    expect(before?.transfer, isNull);
+    expect(before?.continuations, isEmpty);
+
+    const transfer = ConversationTransfer(
+      id: 'x1',
+      strategy: TransferStrategy.selection,
+      sourceThreadId: 'src',
+      sourceTitle: 'Source',
+      sourceAgentId: 'claude-code',
+      status: TransferStatus.delivered,
+      turnId: 't1',
+      context: TransferContextSummary(
+        turns: 3,
+        omittedTurns: 1,
+        bytes: 900,
+        approxTokens: 225,
+      ),
+    );
+    const continuation = ThreadContinuation(
+      threadId: 'next',
+      transferId: 'x2',
+      agentId: 'pi-agent',
+      strategy: TransferStrategy.reference,
+    );
+    await repo.saveThread(
+      before!.copyWith(transfer: transfer, continuations: [continuation]),
+    );
+    final after = await repo.getThread('th1');
+    expect(after?.transfer, transfer);
+    expect(after?.continuations, [continuation]);
   });
 }

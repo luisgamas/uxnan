@@ -46,6 +46,12 @@ class ThreadsTable extends Table {
   /// The name of the device that started it, if known.
   TextColumn get originName => text().nullable()();
 
+  /// Its continuity as the bridge reported it, JSON: `{ transfer?,
+  /// continuations? }` (`Thread.transfer` / `Thread.continuations`,
+  /// architecture/02a §5.8.21). Null when it neither continues nor is
+  /// continued by another conversation.
+  TextColumn get continuityJson => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

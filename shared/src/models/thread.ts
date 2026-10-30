@@ -208,8 +208,101 @@ export interface Thread {
   titleSource?: ThreadTitleSource;
   /** Which client started the conversation, when known. */
   origin?: ThreadOrigin;
+  /**
+   * The conversation this one continues, and what was carried over
+   * (`thread/transfer`, `thread/fork`, `thread/start { continueFrom }`).
+   * Absent on a conversation that started from nothing.
+   */
+  transfer?: ConversationTransfer;
+  /**
+   * The conversations that continue this one (newest last) — the other end of
+   * {@link transfer}, so both conversations tell the same story. Absent when
+   * none does.
+   */
+  continuations?: ThreadContinuation[];
   /** Sync revision of the thread's last change (see `SyncChanges`). */
   rev?: number;
+}
+
+/**
+ * How a conversation's context reaches the agent of the conversation that
+ * continues it (architecture/02a §5.8.21). No agent can continue another CLI's
+ * native session, so a continuation is always a NEW conversation, and its
+ * first message carries what the bridge — the owner of the history — selected:
+ *
+ * - `selection` — a deterministic, budgeted selection of the source: the
+ *   opening request, the newest exchanges whole and older ones shortened,
+ *   until {@link TRANSFER_CONTEXT_MAX_BYTES}; the files it changed. The default.
+ * - `reference` — only a pointer: the source's title, its opening request and
+ *   its last exchange, shortened. For when the new agent should start fresh.
+ * - `fork` — the source's whole history is copied into the new conversation
+ *   (what the person sees), and its agent gets a `selection` (what it knows).
+ */
+export type TransferStrategy = 'selection' | 'reference' | 'fork';
+
+/** Every {@link TransferStrategy}, in the order the apps offer them. */
+export const TRANSFER_STRATEGIES: readonly TransferStrategy[] = ['selection', 'reference', 'fork'];
+
+/** Most bytes of carried-over context a continuation's first message holds. */
+export const TRANSFER_CONTEXT_MAX_BYTES = 64_000;
+
+/** Longest a shortened piece of a selection is (a message, a prompt), in characters. */
+export const TRANSFER_PIECE_MAX_CHARS = 240;
+
+/**
+ * Where the carried-over context stands — proven against the real turn, never
+ * assumed:
+ * - `pending` — prepared, waiting for the conversation's first message.
+ * - `sent` — went to the agent with {@link ConversationTransfer.turnId}; the
+ *   turn has not ended yet.
+ * - `delivered` — that turn ended with the agent answering: it has the context.
+ * - `unverifiable` — the bridge stopped while that turn ran, so whether the
+ *   agent read it cannot be proven; the next message carries it again.
+ *
+ * A turn that failed or was stopped before the agent answered puts it back to
+ * `pending`: the next message carries it.
+ */
+export type TransferStatus = 'pending' | 'sent' | 'delivered' | 'unverifiable';
+
+/** What a continuation carried over, measured as the bridge prepared it. */
+export interface TransferContextSummary {
+  /** Turns of the source the context includes (whole or shortened). */
+  turns: number;
+  /** Turns of the source it leaves out (the oldest). */
+  omittedTurns: number;
+  /** Size of the context, in bytes (UTF-8). */
+  bytes: number;
+  /** Rough token count of the context (`bytes / 4`, rounded up). */
+  approxTokens: number;
+}
+
+/** The origin of a conversation that continues another one (`Thread.transfer`). */
+export interface ConversationTransfer {
+  /** Stable id of this continuation. */
+  id: string;
+  strategy: TransferStrategy;
+  /** The conversation it continues (it may since have been deleted). */
+  sourceThreadId: string;
+  /** The source's title when it was continued. */
+  sourceTitle: string;
+  /** The source's agent, when it had one. */
+  sourceAgentId?: string;
+  /** `agent` when an agent asked for it through the desktop's control surface. */
+  createdBy: 'user' | 'agent';
+  status: TransferStatus;
+  /** The turn that carried the context, once one did. */
+  turnId?: string;
+  context: TransferContextSummary;
+}
+
+/** A conversation that continues this one (`Thread.continuations`). */
+export interface ThreadContinuation {
+  threadId: string;
+  /** The continuation's {@link ConversationTransfer.id}. */
+  transferId: string;
+  /** The agent it continues with. */
+  agentId?: string;
+  strategy: TransferStrategy;
 }
 
 /** Where a conversation was started. */
@@ -287,4 +380,75 @@ export interface TurnList {
   queuePausedReason?: QueuePausedReason;
   /** The queued turn being handed to the running agent (see `QueueStateResult.deliveringTurnId`). */
   queueDeliveringTurnId?: string;
+}
+
+/**
+ * `thread/search`: the conversations whose words match [query] — their titles
+ * and what was said in them (the person's messages and the agents' replies;
+ * not the commands, outputs and edits of their steps). Answered by the bridge,
+ * the owner of the history, from a small text digest it keeps beside each
+ * conversation, so a search never reads a conversation's turns
+ * (architecture/02a §5.8.21).
+ *
+ * Matching folds case and accents, and every word of the query must appear in
+ * the same message. Conversations are searched newest first; each answer
+ * covers at most {@link THREAD_SEARCH_MAX_HITS} matching conversations and
+ * stops early when its time budget runs out — `nextCursor` continues where it
+ * stopped.
+ */
+export interface ThreadSearchParams {
+  /** What to look for; at least {@link THREAD_SEARCH_MIN_QUERY_CHARS} characters. */
+  query: string;
+  /** Only this project's conversations. */
+  projectId?: string;
+  /** Include archived conversations (default: false). */
+  includeArchived?: boolean;
+  /** Most matching conversations to return (default and ceiling {@link THREAD_SEARCH_MAX_HITS}). */
+  limit?: number;
+  /** The `nextCursor` of the previous answer. */
+  cursor?: string;
+}
+
+/** Shortest query `thread/search` answers. */
+export const THREAD_SEARCH_MIN_QUERY_CHARS = 2;
+
+/** Most conversations one `thread/search` answer holds. */
+export const THREAD_SEARCH_MAX_HITS = 50;
+
+/** Most matching messages one hit names. */
+export const THREAD_SEARCH_MAX_MATCHES = 3;
+
+/** One message of a conversation that matched, with the words around it. */
+export interface ThreadSearchMatch {
+  turnId: string;
+  /** The turn's position in its conversation (`Turn.seq`). */
+  seq?: number;
+  role: 'user' | 'assistant';
+  /** The text around the match, on one line (at most ~160 characters). */
+  snippet: string;
+  /** Where the first matched word starts in [snippet] (UTF-16 offset). */
+  matchStart: number;
+  /** How long it is there. */
+  matchLength: number;
+}
+
+/** A conversation that matched. */
+export interface ThreadSearchHit {
+  threadId: string;
+  /** Whether its title matched. */
+  titleMatch: boolean;
+  /** Its matching messages, newest first (at most {@link THREAD_SEARCH_MAX_MATCHES}). */
+  matches: ThreadSearchMatch[];
+  /** How many of its messages matched in all. */
+  matchCount: number;
+}
+
+export interface ThreadSearchResult {
+  hits: ThreadSearchHit[];
+  /** Continue here for more; absent when every conversation was searched. */
+  nextCursor?: string;
+  /** Conversations this answer searched. */
+  searched: number;
+  /** Conversations the search covers in all (the scope's, archived or not as asked). */
+  total: number;
 }

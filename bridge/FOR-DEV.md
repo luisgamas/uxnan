@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1251, shared 110, relay
+standalone). It builds clean and the suite is green (bridge 1273, shared 110, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,14 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **Conversations as a catalog** (architecture/02a §5.8.21,
+  `handlers/conversation-handler.ts`, `conversation/{transfer-context,
+  thread-digest,thread-search}.ts`): `thread/transfer`, `thread/fork` and
+  `thread/start { continueFrom }` on one path (`ThreadStore.transferThread`),
+  the context a deterministic selection proven `delivered` against the real
+  turn; `thread/search` over per-conversation digests, bounded per answer.
+  Run live 2026-10-29 through the real adapters of all seven agents
+  (`docs/agents.md` → *Continuing a conversation*).
 - **The bridge Uxnan Desktop carries** (architecture/02a §5.8.18,
   `src/install-kind.ts`): a bridge running from the private runtime the desktop
   installer ships knows it (`uxnan-runtime.json` beside its tree) and reports
@@ -486,16 +494,19 @@ push validation (FOR-HUMAN).
       place when its call is read and fill it when its result is. See the
       `FOR-DEV:` marker in `attachBlocksToLastAssistant` (`session-history.ts`).
 
-- [ ] **A fork keeps its agent's memory.** `thread/fork` copies the messages but
-      drops the native session (two conversations must never write into one
-      transcript), so the fork's first turn opens a session that has not seen
-      the history the fork shows. Fork the native session instead, per CLI:
+- [ ] **A fork keeps its agent's own memory.** `thread/fork` copies the
+      messages and drops the native session (two conversations must never write
+      into one transcript); since 2026-10 its first message carries a budgeted
+      selection of the history (architecture/02a §5.8.21), so the agent knows
+      what happened — but from a summary-sized selection, not its own session.
+      Forking the native session would keep everything, per CLI:
       `claude --resume <id> --fork-session`, Codex app-server `thread/fork`,
       OpenCode's session fork route, ACP `session/fork` where Grok/Zero offer
       it, and whatever pi and `agy` have — each measured on the surface the
-      bridge drives before it is wired. Where: `ThreadStore.forkThread` records
-      the source session, and a new optional adapter step forks it on the
-      fork's first turn. See the `FOR-DEV:` marker in `thread-store.ts`.
+      bridge drives before it is wired (none is yet). Where:
+      `ThreadStore.transferThread` (strategy `fork`) records the source
+      session, and a new optional adapter step forks it on the fork's first
+      turn, which then needs no selection. See the `FOR-DEV:` marker there.
 
 ## Agent adapters
 

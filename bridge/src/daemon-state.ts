@@ -169,6 +169,8 @@ export class DaemonState {
    *     threads/<threadId>/thread.json              summary + turn index
    *     threads/<threadId>/turns/<turn>.json        one settled turn's messages
    *     threads/<threadId>/turns/<turn>.journal     the turn in flight, append-only
+   *     threads/<threadId>/digest.json              text-only digest of its turns (search)
+   *     threads/<threadId>/transfer.md              what a continuation carries over
    *
    * Why this shape, measured on real data: with one file per conversation a
    * 46 MB conversation was re-serialized and rewritten on every streamed token
@@ -251,6 +253,33 @@ export class DaemonState {
   /** Removes a turn's journal (once folded into its file). Missing is success. */
   async removeTurnJournal(threadId: string, turnId: string): Promise<void> {
     await rm(this.#turnPath(threadId, turnId, 'journal'), { force: true });
+  }
+
+  /**
+   * A conversation's `digest.json` — the small, text-only digest of each of
+   * its settled turns that search scans and a continuation selects from
+   * (`conversation/thread-digest.ts`); `null` when there is none yet.
+   */
+  readThreadDigest(threadId: string): Promise<string | null> {
+    return readOptional(join(this.#threadDir(threadId), 'digest.json'));
+  }
+
+  /** Atomically writes a conversation's `digest.json`. */
+  async writeThreadDigest(threadId: string, text: string): Promise<void> {
+    await atomicWrite(join(this.#threadDir(threadId), 'digest.json'), text);
+  }
+
+  /**
+   * The context a continuation carries over (`transfer.md`, written once when
+   * it is made, read when its first message goes); `null` when there is none.
+   */
+  readTransferContext(threadId: string): Promise<string | null> {
+    return readOptional(join(this.#threadDir(threadId), 'transfer.md'));
+  }
+
+  /** Atomically writes a continuation's `transfer.md`. */
+  async writeTransferContext(threadId: string, text: string): Promise<void> {
+    await atomicWrite(join(this.#threadDir(threadId), 'transfer.md'), text);
   }
 
   /** Removes a turn's file and journal. Missing is success. */

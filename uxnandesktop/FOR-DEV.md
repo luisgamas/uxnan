@@ -1047,6 +1047,20 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       *For the agent*); `references/catalog.md` is regenerated from
       `uxnan-cli skills get control --full`, never hand-edited.
 
+### Conversations tab and continuing with another agent (2026-10-29)
+- [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
+      Conversations tab, the shorter new-chat screen, the *Continue with another
+      agent* dialog, *Session info* and the transfer banner were rendered in a
+      browser preview (1280→420 px, EN/ES) against a fake bridge, never in the
+      packaged app. Iterate from that review.
+- [ ] **`uxnan-cli chat fork|forward|search` and `chat start --continue-from`
+      not yet run against a running app** — covered by Rust unit tests of the
+      entries and the CLI; the bridge methods they call were run live.
+- [ ] **"Started in a terminal" is not a filter yet.** `Thread.origin` knows
+      `phone | desktop`; a conversation picked up from a terminal session is
+      not marked as such. Needs an origin kind from the bridge (`thread/start`
+      with `agentSessionId`) and both apps — `src/lib/bridge/conversationsView.ts`.
+
 ### Chat tabs — parity with the phone's conversation screen
 - [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
       chat tab, the new-chat setup and Settings → Bridge & mobile were built and
@@ -1057,8 +1071,6 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       UI against a real bridge (echo agent); the full loop — `npm run tauri dev`,
       a real CLI (Claude Code is the recommended pilot) and
       the phone on the same thread — still needs a supervised run.
-- [ ] Fork and "session info" (the agent's native session id, for resuming it
-      from its own CLI) in the chat header's menu — the phone offers both.
 
 ### Remote access (the user's own relay)
 - [ ] **Visual approval and a live run of Settings → Bridge & mobile → Remote

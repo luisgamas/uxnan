@@ -17,6 +17,7 @@ class BridgeStatus extends Equatable {
     this.supportsMessageQueue = false,
     this.supportsManagedWorktrees = false,
     this.supportsAgentSessions = false,
+    this.supportsConversations = false,
   });
 
   /// Reconstructs a [BridgeStatus] from a `bridge/status` result.
@@ -37,6 +38,8 @@ class BridgeStatus extends Equatable {
           features is Map && features['managedWorktrees'] == true,
       supportsAgentSessions:
           features is Map && features['agentSessions'] == true,
+      supportsConversations:
+          features is Map && features['conversations'] == true,
     );
   }
 
@@ -79,6 +82,13 @@ class BridgeStatus extends Equatable {
   /// then the phone offers none of it.
   final bool supportsAgentSessions;
 
+  /// Whether the bridge continues a conversation as a new one with any agent
+  /// (`thread/transfer`, `thread/start { continueFrom }`) and searches what
+  /// was said in every conversation (`thread/search`) —
+  /// `features.conversations`, architecture/02a §5.8.21. False otherwise: then
+  /// the phone filters titles only and offers no "continue with…".
+  final bool supportsConversations;
+
   @override
   List<Object?> get props => [
         relayConnected,
@@ -89,5 +99,6 @@ class BridgeStatus extends Equatable {
         supportsMessageQueue,
         supportsManagedWorktrees,
         supportsAgentSessions,
+        supportsConversations,
       ];
 }

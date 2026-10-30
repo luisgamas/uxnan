@@ -317,9 +317,79 @@ enum ChatCmd {
         /// Do not show it in a chat tab.
         #[arg(long)]
         no_open: bool,
+        /// Start it as the continuation of this chat (`id:<id>`): its first
+        /// message carries that chat's context.
+        #[arg(long)]
+        continue_from: Option<String>,
+        /// With --continue-from: `selection` (default), `reference` or `fork`.
+        #[arg(long, requires = "continue_from")]
+        strategy: Option<String>,
         /// A caller-chosen key: repeating the call with it returns the first receipt.
         #[arg(long)]
         idempotency_key: Option<String>,
+    },
+    /// Fork a chat: the same agent, the history copied, its first message
+    /// carrying a selection of it.
+    Fork {
+        /// The chat (`id:<id>` from `chat ls`).
+        chat: String,
+        /// Do not show the fork in a chat tab.
+        #[arg(long)]
+        no_open: bool,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Hand a chat to another agent: a new chat in the same folder whose first
+    /// message carries the source's context.
+    Forward {
+        /// The chat (`id:<id>` from `chat ls` or `chat search`).
+        chat: String,
+        /// The agent: `claude`, `codex`, `opencode`, `pi`, `agy`, `zero` or `grok`.
+        #[arg(long)]
+        agent: String,
+        /// A model for it, as the agent names it.
+        #[arg(long)]
+        model: Option<String>,
+        /// A title (default: the source's, until the first exchange names it).
+        #[arg(long)]
+        title: Option<String>,
+        /// `selection` (default), `reference` or `fork`.
+        #[arg(long)]
+        strategy: Option<String>,
+        /// A file whose contents are the first message (your brief), sent at once.
+        #[arg(long, conflicts_with = "message")]
+        message_file: Option<std::path::PathBuf>,
+        /// The first message, inline.
+        #[arg(long)]
+        message: Option<String>,
+        /// Do not show the new chat in a chat tab.
+        #[arg(long)]
+        no_open: bool,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Search the chats by title and by what was said in them.
+    Search {
+        /// What to look for (every word in the same message).
+        query: String,
+        /// Only this worktree's chats (`current`, `path:`, `branch:`, …);
+        /// default: every chat in your scope.
+        #[arg(long, conflicts_with = "all")]
+        worktree: Option<String>,
+        /// Every chat in your scope (the default; says so explicitly).
+        #[arg(long)]
+        all: bool,
+        /// Include archived chats.
+        #[arg(long)]
+        archived: bool,
+        /// Most matching chats in one answer (at most 50).
+        #[arg(long)]
+        limit: Option<u64>,
+        /// The `nextCursor` of the previous answer.
+        #[arg(long)]
+        cursor: Option<String>,
     },
     /// Read a chat's newest turns: the message, the answer, the steps taken.
     Read {
@@ -806,6 +876,8 @@ fn plan(command: Command) -> Result<Plan, String> {
                 title,
                 message_file,
                 no_open,
+                continue_from,
+                strategy,
                 idempotency_key,
             } => {
                 let mut p = json!({ "worktree": worktree, "agent": agent });
@@ -821,10 +893,77 @@ fn plan(command: Command) -> Result<Plan, String> {
                 if no_open {
                     p["open"] = json!(false);
                 }
+                if let Some(c) = sel(continue_from) {
+                    p["continueFrom"] = json!(c);
+                }
+                if let Some(s) = sel(strategy) {
+                    p["strategy"] = json!(s);
+                }
                 if let Some(k) = sel(idempotency_key) {
                     p["idempotencyKey"] = json!(k);
                 }
                 with("chat/start", p)
+            }
+            ChatCmd::Fork {
+                chat,
+                no_open,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "chat": chat });
+                if no_open {
+                    p["open"] = json!(false);
+                }
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("chat/fork", p)
+            }
+            ChatCmd::Forward {
+                chat,
+                agent,
+                model,
+                title,
+                strategy,
+                message_file,
+                message,
+                no_open,
+                idempotency_key,
+            } => with(
+                "chat/forward",
+                forward_params(ForwardArgs {
+                    chat,
+                    agent,
+                    model,
+                    title,
+                    strategy,
+                    message_file,
+                    message,
+                    no_open,
+                    idempotency_key,
+                })?,
+            ),
+            ChatCmd::Search {
+                query,
+                worktree,
+                all: _,
+                archived,
+                limit,
+                cursor,
+            } => {
+                let mut p = json!({ "query": query });
+                if let Some(w) = sel(worktree) {
+                    p["worktree"] = json!(w);
+                }
+                if archived {
+                    p["archived"] = json!(true);
+                }
+                if let Some(n) = limit {
+                    p["limit"] = json!(n);
+                }
+                if let Some(c) = sel(cursor) {
+                    p["cursor"] = json!(c);
+                }
+                with("chat/search", p)
             }
             ChatCmd::Read {
                 chat,
@@ -1295,6 +1434,47 @@ impl Launch {
 }
 
 /// Read a prompt file: UTF-8, non-empty, under the cap.
+/// What `chat forward` was given.
+struct ForwardArgs {
+    chat: String,
+    agent: String,
+    model: Option<String>,
+    title: Option<String>,
+    strategy: Option<String>,
+    message_file: Option<std::path::PathBuf>,
+    message: Option<String>,
+    no_open: bool,
+    idempotency_key: Option<String>,
+}
+
+/// `chat/forward`'s params: the brief from `--message-file` (checked like any
+/// first message) or `--message`.
+fn forward_params(a: ForwardArgs) -> Result<Value, String> {
+    let sel = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
+    let mut p = json!({ "chat": a.chat, "agent": a.agent });
+    if let Some(m) = sel(a.model) {
+        p["model"] = json!(m);
+    }
+    if let Some(t) = sel(a.title) {
+        p["title"] = json!(t);
+    }
+    if let Some(s) = sel(a.strategy) {
+        p["strategy"] = json!(s);
+    }
+    if let Some(file) = a.message_file {
+        p["message"] = json!(read_prompt_file(&file)?);
+    } else if let Some(m) = sel(a.message) {
+        p["message"] = json!(m);
+    }
+    if a.no_open {
+        p["open"] = json!(false);
+    }
+    if let Some(k) = sel(a.idempotency_key) {
+        p["idempotencyKey"] = json!(k);
+    }
+    Ok(p)
+}
+
 fn read_prompt_file(path: &std::path::Path) -> Result<String, String> {
     let meta = std::fs::metadata(path)
         .map_err(|e| format!("cannot read prompt file {}: {e}", path.display()))?;
@@ -1589,6 +1769,91 @@ mod tests {
         assert_eq!(p["unattended"], true);
         assert_eq!(p["idempotencyKey"], "k1");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `chat forward` carries every flag it was given, the brief from a file
+    /// checked like any first message, and refuses a file and inline text at once.
+    #[test]
+    fn chat_forward_and_search_build_the_catalog_params() {
+        let dir = std::env::temp_dir().join(format!("uxnan-cli-forward-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let brief = dir.join("brief.md");
+        std::fs::write(&brief, "finish the tests").unwrap();
+        let p = forward_params(ForwardArgs {
+            chat: "id:th-1".into(),
+            agent: "claude".into(),
+            model: Some("haiku".into()),
+            title: Some(" ".into()),
+            strategy: Some("reference".into()),
+            message_file: Some(brief),
+            message: None,
+            no_open: true,
+            idempotency_key: Some("k".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            p,
+            json!({ "chat": "id:th-1", "agent": "claude", "model": "haiku", "strategy": "reference",
+                    "message": "finish the tests", "open": false, "idempotencyKey": "k" })
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(Cli::try_parse_from([
+            "uxnan-cli",
+            "chat",
+            "forward",
+            "id:a",
+            "--agent",
+            "codex",
+            "--message",
+            "x",
+            "--message-file",
+            "f.md"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from(["uxnan-cli", "chat", "forward", "id:a"]).is_err());
+        assert!(Cli::try_parse_from(["uxnan-cli", "chat", "fork", "id:a", "--no-open"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "uxnan-cli",
+            "chat",
+            "search",
+            "retry",
+            "--all",
+            "--archived"
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "uxnan-cli",
+            "chat",
+            "search",
+            "retry",
+            "--all",
+            "--worktree",
+            "current"
+        ])
+        .is_err());
+        // `--strategy` only means something with `--continue-from`.
+        assert!(Cli::try_parse_from([
+            "uxnan-cli",
+            "chat",
+            "start",
+            "--agent",
+            "codex",
+            "--strategy",
+            "fork"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "uxnan-cli",
+            "chat",
+            "start",
+            "--agent",
+            "codex",
+            "--continue-from",
+            "id:a",
+            "--strategy",
+            "fork"
+        ])
+        .is_ok());
     }
 
     /// `worker start` leaves `unattended` out unless a flag says, so the agent's

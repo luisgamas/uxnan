@@ -46,6 +46,7 @@ import 'package:uxnan/presentation/screens/conversation/session_environment.dart
 import 'package:uxnan/presentation/screens/conversation/support/access_mode_notice.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_continuity.dart';
 import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -975,22 +976,18 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         .renameThread(widget.threadId, trimmed);
   }
 
-  /// Forks the conversation (`thread/fork`): the bridge deep-copies the thread
-  /// and its turns into a new one, which is opened. Surfaces a snackbar if the
-  /// bridge can't fork.
+  /// Forks the conversation (`thread/fork`) and opens the fork — the same
+  /// action the conversation lists offer (`forkConversation`).
   Future<void> _forkThread() async {
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final forked =
-        await ref.read(threadManagerProvider).forkThread(widget.threadId);
-    if (!mounted) return;
-    if (forked == null) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.threadForkFailed)));
-      return;
-    }
-    unawaited(context.openInPane(AppRoutes.conversation(forked.id)));
+    final thread = ref.read(threadByIdProvider(widget.threadId));
+    if (thread != null) await forkConversation(context, ref, thread);
+  }
+
+  /// Continues the conversation with another agent as a new one
+  /// (`thread/transfer`) and opens it.
+  Future<void> _transferThread() async {
+    final thread = ref.read(threadByIdProvider(widget.threadId));
+    if (thread != null) await continueWithAnotherAgent(context, ref, thread);
   }
 
   /// Opens the model picker and applies the choice to the thread's agent.
@@ -1293,6 +1290,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   // Spacer so the first content sits below the transparent top
                   // bar (it overlays the scroll).
                   SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                  // Where this conversation came from (§5.8.21) — at its
+                  // beginning, so only once the beginning is what is shown.
+                  if (thread?.transfer != null &&
+                      timeline.loaded &&
+                      !timeline.hasMore)
+                    SliverToBoxAdapter(
+                      child: _Centered(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            top: UxnanSpacing.sm,
+                            bottom: UxnanSpacing.md,
+                          ),
+                          child: TransferOriginCard(thread: thread!),
+                        ),
+                      ),
+                    ),
                   // "Load earlier" header when the rendered window does not yet
                   // cover the whole local history.
                   if (timeline.loaded && !timeline.empty && timeline.hasMore)
@@ -1388,6 +1401,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                           ),
                         );
                       },
+                    ),
+                  // Where it went on (§5.8.21): after its last message.
+                  if (thread != null && thread.continuations.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _Centered(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: UxnanSpacing.md),
+                          child: ContinuationsCard(thread: thread),
+                        ),
+                      ),
                     ),
                   // Reserve room for the floating composer + its banners so
                   // the last message rests above the pill, not behind it.
@@ -1732,6 +1755,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                   onSessionInfo: _showSessionInfo,
                   onRename: _renameThread,
                   onFork: _forkThread,
+                  onTransfer: ref.watch(bridgeSupportsConversationsProvider)
+                      ? _transferThread
+                      : null,
                 ),
               ],
             ),
@@ -2121,11 +2147,15 @@ class _ConversationMenu extends StatelessWidget {
     required this.onSessionInfo,
     required this.onRename,
     required this.onFork,
+    this.onTransfer,
   });
 
   final VoidCallback onSessionInfo;
   final VoidCallback onRename;
   final VoidCallback onFork;
+
+  /// Continues it with another agent; null on a bridge that cannot.
+  final VoidCallback? onTransfer;
 
   @override
   Widget build(BuildContext context) {
@@ -2155,6 +2185,17 @@ class _ConversationMenu extends StatelessWidget {
             ],
           ),
         ),
+        if (onTransfer != null)
+          PopupMenuItem<void>(
+            onTap: onTransfer,
+            child: Row(
+              children: [
+                const UxIcon(UxIcons.altRoute, size: 18),
+                const SizedBox(width: UxnanSpacing.sm),
+                Text(l10n.transferAction),
+              ],
+            ),
+          ),
         PopupMenuItem<void>(
           onTap: onFork,
           child: Row(

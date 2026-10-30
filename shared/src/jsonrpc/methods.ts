@@ -20,6 +20,10 @@ import type {
   QueuePausedReason,
   Thread,
   ThreadList,
+  ThreadSearchParams,
+  ThreadSearchResult,
+  TransferContextSummary,
+  TransferStrategy,
   Turn,
   TurnList,
 } from '../models/thread.js';
@@ -137,10 +141,78 @@ export interface StartThreadParams {
    * continues the session, that conversation is returned instead of a second one.
    */
   agentSessionId?: string;
+  /**
+   * Start it as the continuation of another conversation (architecture/02a
+   * §5.8.21): the bridge prepares that conversation's context with the
+   * strategy asked and its first message carries it to this agent. The same
+   * continuation `thread/transfer` makes, from the new-conversation screen —
+   * where the folder, agent and model are already chosen. Not with
+   * `agentSessionId`.
+   */
+  continueFrom?: ContinueFromParams;
 }
+/** What `thread/start { continueFrom }` continues. */
+export interface ContinueFromParams {
+  threadId: string;
+  /** Defaults to `selection`. */
+  strategy?: TransferStrategy;
+  /** See {@link ThreadTransferParams.clientTransferId}. */
+  clientTransferId?: string;
+}
+/**
+ * `thread/fork`: a copy of the conversation with the same agent — its whole
+ * history copied, and its first message carrying a `selection` of it, since a
+ * fork's agent session starts empty. The same as `thread/transfer` with
+ * strategy `fork` and the source's own agent.
+ */
 export interface ForkParams {
   threadId: string;
-  newBranch?: string;
+  /** See {@link ThreadTransferParams.clientTransferId}. */
+  clientTransferId?: string;
+}
+/**
+ * `thread/transfer`: continue a conversation with another agent (or the same
+ * one) as a NEW conversation (architecture/02a §5.8.21). The source stays as it
+ * is and names the continuation (`Thread.continuations`); the new one names its
+ * source (`Thread.transfer`). No agent ever continues another CLI's native
+ * session, and no conversation ever changes agent.
+ */
+export interface ThreadTransferParams {
+  sourceThreadId: string;
+  /** The agent to continue with; defaults to the source's. */
+  agentId?: AgentId;
+  /** Its model; defaults to the agent's default (or the source's, same agent). */
+  model?: string;
+  /** Defaults to the source's title (a fork's gets " (fork)"). */
+  title?: string;
+  /** Defaults to `selection`. */
+  strategy?: TransferStrategy;
+  /**
+   * A first message to send right away (a brief for the new agent). The
+   * context goes with it, and the person's words are never shortened to make
+   * room. Absent → the context waits for the first message sent.
+   */
+  message?: string;
+  /**
+   * Idempotency key the caller chose (≤128 characters): the same key on the
+   * same source returns the continuation already made, and sends no second
+   * message.
+   */
+  clientTransferId?: string;
+}
+export interface ThreadTransferResult {
+  /** The continuation. */
+  thread: Thread;
+  /** False when [ThreadTransferParams.clientTransferId] found one already made. */
+  created: boolean;
+  /** The first message's turn, when `message` was sent now. */
+  turnId?: string;
+}
+/** `thread/transferContext`: what a continuation carries over, as its agent reads it. */
+export interface ThreadTransferContextResult {
+  /** The prepared context, exactly as it goes before the first message. */
+  text: string;
+  summary: TransferContextSummary;
 }
 export interface TurnListParams {
   threadId: string;
@@ -542,6 +614,10 @@ export interface JsonRpcMethodRegistry {
   'thread/start': { params: StartThreadParams; result: Thread };
   'thread/resume': { params: { threadId: string }; result: void };
   'thread/fork': { params: ForkParams; result: Thread };
+  'thread/transfer': { params: ThreadTransferParams; result: ThreadTransferResult };
+  'thread/transferContext': { params: { threadId: string }; result: ThreadTransferContextResult };
+  /** Titles and what was said, answered from the bridge's digests (§5.8.21). */
+  'thread/search': { params: ThreadSearchParams; result: ThreadSearchResult };
   'thread/setModel': { params: ThreadSetModelParams; result: void };
   'thread/rename': { params: ThreadRenameParams; result: Thread };
   'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };

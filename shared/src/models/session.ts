@@ -292,4 +292,12 @@ export interface BridgeFeatures {
    * offers none of it.
    */
   agentSessions?: boolean;
+  /**
+   * The bridge continues a conversation as a new one with any agent
+   * (`thread/transfer`, `thread/start { continueFrom }`, `thread/transferContext`;
+   * `thread/fork` carries its context too) and searches what was said in every
+   * conversation (`thread/search`) — architecture/02a §5.8.21. Absent/false →
+   * a client offers neither, and filters titles only.
+   */
+  conversations?: boolean;
 }

@@ -5,14 +5,20 @@ import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
+import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_catalog_screen.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_continuity.dart';
+import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -22,6 +28,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
@@ -41,7 +48,7 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 ///
 /// Retired agents are filtered at the application boundary, before this screen
 /// receives them; this local set only covers non-product development adapters.
-const Set<String> _hiddenAgentIds = {
+const Set<String> kHiddenAgentIds = {
   'echo',
 };
 
@@ -137,6 +144,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// Registering a folder picked in the browser is in flight.
   bool _adding = false;
 
+  /// The conversation this one continues, when one was picked
+  /// (`thread/start { continueFrom }`, architecture/02a §5.8.21), and how
+  /// its context is carried.
+  Thread? _continueFrom;
+  TransferStrategy _continueStrategy = TransferStrategy.selection;
+
   @override
   void dispose() {
     _model.dispose();
@@ -218,6 +231,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             cwd: workingCwd,
             deviceId: deviceId,
             worktreePath: createdWorktree,
+            continueFromThreadId: _continueFrom?.id,
+            continueStrategy: _continueStrategy,
           );
       if (mounted) Navigator.of(context).pop(thread.id);
     } on Object {
@@ -281,6 +296,45 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  /// Picks the conversation of this folder the new one continues, and how.
+  Future<void> _pickContinueFrom(List<Thread> candidates) async {
+    final picked = await _ContinueFromSheet.show(
+      context,
+      candidates: candidates,
+      strategy: _continueStrategy,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _continueFrom = picked.$1;
+      _continueStrategy = picked.$2;
+    });
+  }
+
+  /// The conversations of the chosen folder — its project's, when it is a
+  /// registered one (worktrees included); the folder's own otherwise — newest
+  /// first, archived ones left out.
+  List<Thread> _conversationsIn(
+    String? cwd,
+    List<Project> projects,
+    String? deviceId,
+  ) {
+    if (cwd == null) return const [];
+    final project = projects.firstWhereOrNull((p) => _samePath(p.cwd, cwd));
+    final all = ref.watch(threadsProvider).value ?? const <Thread>[];
+    return sortThreads(
+      [
+        for (final t in all)
+          if (t.status != ThreadStatus.archived &&
+              (t.deviceId == null || t.deviceId == deviceId) &&
+              (project != null
+                  ? t.projectId == project.id
+                  : t.cwd != null && _samePath(t.cwd!, cwd)))
+            t,
+      ],
+      ListSort.activity,
+    );
+  }
+
   static bool _samePath(String a, String b) =>
       a.replaceAll(RegExp(r'[\\/]+$'), '') ==
       b.replaceAll(RegExp(r'[\\/]+$'), '');
@@ -313,6 +367,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final models =
         agent != null ? ref.watch(agentModelsProvider(agent.agentId)) : null;
     final canStart = workingCwd != null && agent != null && !_starting;
+    final inFolder = _conversationsIn(workingCwd, projectList, connectedId);
+    final folderProject = workingCwd == null
+        ? null
+        : projectList.firstWhereOrNull((p) => _samePath(p.cwd, workingCwd));
+    final canContinue = ref.watch(bridgeSupportsConversationsProvider);
 
     return NeScaffold(
       // M3 full-screen dialog: keep variable-length headlines in the content
@@ -393,7 +452,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         // Keep development-only adapters out even when a test
                         // override bypasses ThreadManager's boundary filter.
                         final visible = items
-                            .where((a) => !_hiddenAgentIds.contains(a.agentId))
+                            .where((a) => !kHiddenAgentIds.contains(a.agentId))
                             .toList();
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);
@@ -402,7 +461,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                           count: visible.length,
                           itemBuilder: (context, index, position) {
                             final candidate = visible[index];
-                            return _AgentCard(
+                            return AgentChoiceCard(
                               agent: candidate,
                               position: position,
                               selected: candidate.agentId == _agent?.agentId,
@@ -433,6 +492,36 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         onToggleManaged: (v) =>
                             setState(() => _worktreeManaged = v),
                       ),
+                      if (_continueFrom case final source?) ...[
+                        const SizedBox(height: UxnanSpacing.lg),
+                        _ContinuingFromCard(
+                          source: source,
+                          strategy: _continueStrategy,
+                          onClear: () => setState(() => _continueFrom = null),
+                        ),
+                      ],
+                      if (inFolder.isNotEmpty)
+                        _RecentInFolder(
+                          threads: inFolder,
+                          onOpen: (id) => Navigator.of(context).pop(id),
+                          onSeeAll: connectedId == null
+                              ? null
+                              : () => ConversationCatalogScreen.push(
+                                    context,
+                                    deviceId: connectedId,
+                                    projectId: folderProject?.id,
+                                    // Picking one closes this form, which
+                                    // resolves with it like a started one.
+                                    onOpen: (id) {
+                                      if (mounted) {
+                                        Navigator.of(context).pop(id);
+                                      }
+                                    },
+                                  ),
+                          onContinueFrom: canContinue && _continueFrom == null
+                              ? () => _pickContinueFrom(inFolder)
+                              : null,
+                        ),
                       _PickUpSessions(
                         cwd: workingCwd,
                         picking: _pickingSession,
@@ -885,17 +974,26 @@ class _WorktreeCard extends StatelessWidget {
 /// previous card. Selection uses a semantic tonal surface and a check mark,
 /// while unavailable or signed-out states remain actionable and legible
 /// without adding outline noise.
-class _AgentCard extends ConsumerWidget {
-  const _AgentCard({
+class AgentChoiceCard extends ConsumerWidget {
+  /// Creates an [AgentChoiceCard].
+  const AgentChoiceCard({
     required this.agent,
     required this.position,
     required this.selected,
     required this.onTap,
+    super.key,
   });
 
+  /// The agent offered.
   final AgentDescriptor agent;
+
+  /// Where it sits in its card group (the dynamic corners).
   final CardGroupPosition position;
+
+  /// Whether it is the chosen one.
   final bool selected;
+
+  /// Chooses it; null when it cannot be chosen.
   final VoidCallback? onTap;
 
   @override
@@ -1317,7 +1415,8 @@ class _PickUpSessions extends ConsumerStatefulWidget {
 }
 
 class _PickUpSessionsState extends ConsumerState<_PickUpSessions> {
-  static const int _collapsed = 5;
+  /// Compact: the screen is for starting, and the catalog holds the rest.
+  static const int _collapsed = 3;
   bool _showAll = false;
 
   @override
@@ -1496,6 +1595,206 @@ class _SessionCard extends StatelessWidget {
                 color: colors.onSurfaceVariant,
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The latest conversations of the chosen folder — at most three — with the
+/// way to all of them (the catalog, scoped to its project) and to starting
+/// this one as the continuation of one of them. The screen stays a form for
+/// starting; the history lives in the catalog.
+class _RecentInFolder extends StatelessWidget {
+  const _RecentInFolder({
+    required this.threads,
+    required this.onOpen,
+    required this.onSeeAll,
+    required this.onContinueFrom,
+  });
+
+  static const int _shown = 3;
+
+  final List<Thread> threads;
+  final ValueChanged<String> onOpen;
+  final VoidCallback? onSeeAll;
+  final VoidCallback? onContinueFrom;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final shown = threads.take(_shown).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: UxnanSpacing.lg),
+        _SectionHeader(label: l10n.newThreadRecent),
+        ExpressiveCardGroup(
+          count: shown.length,
+          itemBuilder: (context, index, position) => CatalogRow(
+            thread: shown[index],
+            position: position,
+            onOpen: onOpen,
+          ),
+        ),
+        Wrap(
+          spacing: UxnanSpacing.sm,
+          children: [
+            if (onSeeAll != null)
+              TextButton(
+                onPressed: onSeeAll,
+                child: Text(l10n.newThreadSeeAll(threads.length)),
+              ),
+            if (onContinueFrom != null)
+              TextButton.icon(
+                onPressed: onContinueFrom,
+                icon: const UxIcon(UxIcons.altRoute, size: 18),
+                label: Text(l10n.newThreadContinueFrom),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Which conversation the new one continues, and how — removable.
+class _ContinuingFromCard extends StatelessWidget {
+  const _ContinuingFromCard({
+    required this.source,
+    required this.strategy,
+    required this.onClear,
+  });
+
+  final Thread source;
+  final TransferStrategy strategy;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return NeCard(
+      child: Row(
+        children: [
+          UxIcon(
+            UxIcons.altRoute,
+            size: UxnanSize.iconContent,
+            color: colors.primary,
+          ),
+          const SizedBox(width: UxnanSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.newThreadContinuingFrom(source.title),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleSmall,
+                ),
+                Text(
+                  transferStrategyLabel(l10n, strategy),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: l10n.newThreadContinueFromClear,
+            icon: const UxIcon(UxIcons.close),
+            onPressed: onClear,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Picks the conversation a new one continues, and what to carry over.
+class _ContinueFromSheet extends StatefulWidget {
+  const _ContinueFromSheet({required this.candidates, required this.strategy});
+
+  final List<Thread> candidates;
+  final TransferStrategy strategy;
+
+  static Future<(Thread, TransferStrategy)?> show(
+    BuildContext context, {
+    required List<Thread> candidates,
+    required TransferStrategy strategy,
+  }) =>
+      showModalBottomSheet<(Thread, TransferStrategy)>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) =>
+            _ContinueFromSheet(candidates: candidates, strategy: strategy),
+      );
+
+  @override
+  State<_ContinueFromSheet> createState() => _ContinueFromSheetState();
+}
+
+class _ContinueFromSheetState extends State<_ContinueFromSheet> {
+  late TransferStrategy _strategy = widget.strategy;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            0,
+            UxnanSpacing.lg,
+            UxnanSpacing.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(l10n.newThreadContinueFromPick, style: textTheme.titleLarge),
+              const SizedBox(height: UxnanSpacing.md),
+              Text(l10n.transferStrategy, style: textTheme.titleMedium),
+              const SizedBox(height: UxnanSpacing.sm),
+              ConnectedButtonGroup<TransferStrategy>(
+                values: TransferStrategy.values,
+                selected: _strategy,
+                onChanged: (value) => setState(() => _strategy = value),
+                labelBuilder: (value, _) => Text(
+                  transferStrategySegment(l10n, value),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.sm),
+              Text(
+                transferStrategyHint(l10n, _strategy),
+                style: textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.lg),
+              ExpressiveCardGroup(
+                count: widget.candidates.length,
+                itemBuilder: (context, index, position) => CatalogRow(
+                  thread: widget.candidates[index],
+                  position: position,
+                  onOpen: (_) => Navigator.of(context)
+                      .pop((widget.candidates[index], _strategy)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -41,6 +41,7 @@ import {
   type BridgeContext,
 } from '../../src/index.js';
 import { registerThreadHandlers } from '../../src/handlers/thread-context-handler.js';
+import { ThreadSearch } from '../../src/conversation/thread-search.js';
 import { rmrf } from '../helpers/fs.js';
 
 const TURNS = 20;
@@ -537,6 +538,7 @@ function fakeContext(
     sessionRegistry,
     trustStore: {} as BridgeContext['trustStore'],
     threadStore,
+    threadSearch: new ThreadSearch(threadStore),
     metrics: {} as BridgeContext['metrics'],
     usage: {} as BridgeContext['usage'],
     sessionHistory,

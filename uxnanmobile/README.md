@@ -97,6 +97,11 @@ this app:
   this folder* (started in a terminal on the PC or in the agent's app) and
   continues one with its history. A conversation whose session is open in a
   terminal on the PC says so, and *Continue here* asks the PC to let it go.
+- **Every conversation, searchable — and continued by any agent.** Search
+  titles and what was said (the PC answers that part), filter by project,
+  agent, state and origin, and continue a conversation with another agent or
+  fork it: a new conversation carries a selection of this one's context, and
+  shows whether it reached the agent.
 - **Your activity, at a glance.** A profile with what your agents spent (every
   session they recorded, per day, agent and model), a GitHub-style
   contribution heatmap and your activity highlights — across every paired PC

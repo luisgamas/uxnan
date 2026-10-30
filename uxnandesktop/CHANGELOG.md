@@ -98,6 +98,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   own (the service it would register is the machine's one bridge).
 - The pairing countdown reads as minutes and seconds (`8:55`, `formatCountdown`
   in `clock.ts`), in the Bridge window and the tour alike.
+### Added
+
+- **A Conversations tab** — every conversation the bridge has, this project's or
+  all of them: search by title and by what was said (the bridge answers, it owns
+  the history), filters for agent, state, where it started and archived, grouped
+  by age, with a details pane (agent, space, state, where it started, what it
+  continues, the last exchange) and *Continue in chat*, *Continue in terminal*,
+  *Continue with another agent…* and *Fork*. Side by side when wide, stacked when
+  narrow. It is the same catalog the phone lists: closing a chat tab only closes
+  a view; archiving is what takes a conversation out of the lists.
+- **Continue with another agent…** from any conversation's menu: a new
+  conversation with the agent and model you pick, carrying this one's context
+  (*Selected context*, *Just a reference* or *Full copy*), in a chat — or in a
+  terminal, where Uxnan delivers the context with your first message and then
+  reopens the agent's own session. The new conversation says where it came from
+  (with the exact context the agent got, one click away) and how delivery went;
+  the original says where it went on.
+- **Fork** and **Session info** in the chat's menu (agent, model, folder, where
+  it started, its ids) — the phone already had both.
+- Control surface: `chat/fork`, `chat/forward` (hand a chat to another agent as a
+  new chat whose first message carries the source's context: `selection`,
+  `reference` or `fork`; the receipt's `status` is the bridge's proof of
+  delivery) and `chat/search` (titles and what was said, answered by the bridge,
+  snippets redacted, paged). `chat/start` gains `continueFrom` and `strategy`.
+  `uxnan-cli` gains `chat fork`, `chat forward`, `chat search` and
+  `chat start --continue-from`. Idempotency keys reach the bridge as
+  `clientTransferId`.
+
+### Changed
+
+- **The new-chat screen stays short:** the three newest conversations here,
+  *See all conversations (N)* (the Conversations tab, this project), *Continue
+  from…* to start the new chat with another one's context, and at most three of
+  the agents' own sessions in the folder. The long embedded list and the
+  archived section are gone (archived conversations are a filter of the tab).
+- Chat control entries return the bridge's own invalid-params and not-found
+  errors instead of a generic internal error.
+
+### Fixed
+
+- **A project removed on the phone while the app was closed no longer comes
+  back.** The first sync of every start is a full snapshot without removals,
+  and uniting both lists published the project again — to the phone too. The
+  project mirror now remembers which local projects it has seen in the bridge's
+  registry: one that left the registry meanwhile is removed here, and only
+  what was added here while the bridge was away is published. A removal made
+  offline is kept in the same record and always sent, also when a single
+  project changed.
+
 
 ## [0.0.82] - 20261022
 ### Changed

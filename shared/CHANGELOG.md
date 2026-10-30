@@ -4,6 +4,27 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Conversations as a catalog** (architecture/02a §5.8.21). `thread/transfer`
+  continues a conversation with any agent as a new one
+  (`ThreadTransferParams` → `ThreadTransferResult { thread, created, turnId? }`),
+  `thread/transferContext` answers the exact context it carries, and
+  `thread/search` answers titles and what was said (`ThreadSearchParams` →
+  `ThreadSearchResult`: hits with snippets, paged). `thread/start` gains
+  `continueFrom` (`ContinueFromParams`); `ForkParams` gains `clientTransferId`.
+  `Thread.transfer?: ConversationTransfer` (strategy, source, status
+  `pending|sent|delivered|unverifiable`, context summary) and
+  `Thread.continuations?: ThreadContinuation[]`. Constants
+  `TRANSFER_STRATEGIES`, `TRANSFER_CONTEXT_MAX_BYTES` (64 000),
+  `TRANSFER_PIECE_MAX_CHARS` (240), `THREAD_SEARCH_MIN_QUERY_CHARS`,
+  `THREAD_SEARCH_MAX_HITS` (50), `THREAD_SEARCH_MAX_MATCHES` (3);
+  `BridgeFeatures.conversations`. 105 → 108 methods.
+
+### Removed
+
+- `ForkParams.newBranch` — never read by the bridge.
+
 
 ### Added
 - `BridgeInstallKind` (`bundled` | `npm` | `source`) and the optional

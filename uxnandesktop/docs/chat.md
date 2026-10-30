@@ -154,10 +154,18 @@ Your projects here and the phone's are the bridge's one registry
 (`projects.json`, architecture/02a §5.8.17), mirrored both ways by
 `src/lib/bridge/projectMirror.svelte.ts`: a project you add here is published
 to the registry, one the phone adds appears here, and removing one on either
-side removes it on the other — its conversations are never deleted. On every
-(re)connect the two lists are **united**, never pruned by absence; a removal
-made here while the bridge was unreachable is remembered and sent on the next
-connection. Only local projects take part (an SSH project is on another
+side removes it on the other — its conversations are never deleted: they list
+under *No project* (the Conversations tab, scope *All*) until the project is
+added again, and continuing one never brings the project back (architecture/02a
+§5.8.17). After every full sync the two lists **converge** without trusting
+that every removal arrived: the mirror remembers, in the window's storage and
+per bridge state (`storeId`), which local projects it has seen in the registry
+(`uxnan.bridge.projectMirror`). A mirrored project the registry no longer has
+was removed elsewhere while this window could not hear it — it is removed here
+too; one the registry never had (added here while the bridge was away) is
+published; a registry project with no local twin is added here. A removal made
+here while the bridge was unreachable waits in the same record and is sent on
+the next sync. Only local projects take part (an SSH project is on another
 machine). Folders are compared through the bridge's own resolution, which
 follows symlinks and maps a worktree to its repository.
 
@@ -218,15 +226,65 @@ the phone:
 
 | Action | What happens | Where |
 |---|---|---|
-| **Close the tab** | Only the view closes. The conversation goes on (a running turn keeps running) and stays on the phone and in *Continue a conversation*; it comes back to the sidebar if its agent finishes, fails or needs you. | the tab's × |
-| **Archive** | Out of every list on every device (the bridge stops a running turn first). Restorable; an open tab of it turns read-only with *Restore*. | sidebar row menu, chat header menu, *Continue a conversation* |
-| **Restore** | Back in the lists, on every device. | the *Archived* section of a new chat, an archived tab |
+| **Close the tab** | Only the view closes. The conversation goes on (a running turn keeps running) and stays on the phone and in the Conversations tab; it comes back to the sidebar if its agent finishes, fails or needs you. | the tab's × |
+| **Archive** | Out of every list on every device (the bridge stops a running turn first). Restorable; an open tab of it turns read-only with *Restore*. | sidebar row menu, chat header menu, Conversations tab |
+| **Restore** | Back in the lists, on every device. | Conversations tab → *Filters → Archived only*, an archived tab |
 | **Delete** | Gone for every device, with its history — after a confirmation that says so. A tab still showing it offers a new chat instead. | the same menus |
+| **Fork** | A copy with the same agent: the history copied, and its first message carries a selection of it (the fork's agent session starts empty). | the same menus |
+| **Continue with another agent…** | A new conversation with the agent you pick, carrying this one's context — see below. This one stays as it is. | the same menus, Conversations tab |
+| **Session info** | Agent, model, folder, where it started, the conversation's id and the agent's own session id (to resume it in its own CLI). | the same menus |
 
 One list of actions for every surface (`chatActionsFor`), one set of dialogs
-for the window (`ChatActionDialogs`). The history lives in the new-chat
-screen: *Continue a conversation* (the folder's chats, newest first, *Show
-all*) and *Archived* (collapsed, with the same actions).
+for the window (`ChatActionDialogs`: rename, delete, continue with another
+agent, session info).
+
+### The Conversations tab
+
+*See all conversations* on a new chat opens the **Conversations** tab (one per
+machine; a view, so not restored after a restart). It lists every conversation
+the bridge has — **This project** (the folder's project as the bridge resolves
+it) or **All** (with the ones of removed projects under *No project*) — newest
+first, grouped *Today / This week / Earlier*, each with its agent, project ·
+branch, where it started and its state. **Search** filters titles at once and
+asks the bridge for what was said (`thread/search`: the person's messages and
+the agents' replies, never the steps); a content match shows its snippet with
+the match marked, *Search older conversations* asks for the next page. A bridge
+that predates the method gets a titles-only search. **Filters**: agent, state
+(working, needs you, failed, idle), where it started (phone, desktop), archived
+only. The selected conversation's details: agent and model, space, state, where
+it started, what it continues and what continues it, its last exchange (one
+`turn/list { limit: 1, fromEnd }`), and *Continue in chat*, *Continue in
+terminal* (the same agent's session reopened through `agentResume.ts`; always
+shown, and off with its reason under it when it cannot: Zero has no interactive
+resume, a conversation with no message yet has no session, or a terminal
+already holds it), *Continue with another agent…*, *Fork* and the rest of the
+menu. Wide, list and details sit side by
+side; narrow (≤ 44rem), the details replace the list until *Back*. Rules:
+`src/lib/bridge/conversationsView.ts`.
+
+### Continuing with another agent
+
+No CLI continues another's native session, so a conversation never changes
+agent: *Continue with another agent…* makes a **new** one (`thread/transfer`,
+architecture/02a §5.8.21). Pick the agent and model, the context to carry —
+**Selected context** (default: the opening request, the newest exchanges whole,
+older ones shortened, the files changed, up to ~16k tokens), **Just a
+reference** (title, opening request, last exchange) or **Full copy** (the whole
+history copied for you to see; the agent gets the selected context) — and an
+optional first message, sent whole after the context. The bridge builds the
+context (no model writes it) and proves its delivery against the turn: the new
+conversation's first line reads *Continued from …* with ≈ tokens and *goes with
+the first message* / *being delivered* / *delivered* / *delivery unproven*
+(sent again with the next message), and *Show context* shows exactly what the
+agent read; the original shows *Continued with <agent> in …*.
+
+**In a terminal**: the dialog asks for the first message (a brief is
+prefilled), the bridge delivers the context with it in the chat, and once the
+agent has answered its own session — which now holds the context — is reopened
+in a terminal through the same path as *Open in terminal* (`agentResume.ts`).
+Zero cannot reopen a session interactively, so it offers only a chat. Launching
+the CLI with the context as its initial prompt was ruled out: up to 64 KB on a
+command line breaks on Windows.
 
 The state is the one every chat surface reads (`ThreadActivity`), the same five
 a terminal agent shows: **working** while a turn runs, **waiting** while an
@@ -284,9 +342,14 @@ before the first message. The first message starts the thread in the tab's
 folder — in that mode — and the thread is titled from that message until the
 agent writes a better name.
 
-Below it, **Continue a conversation** lists every conversation the bridge holds
-for this folder, whichever app started it, and **Sessions in this folder**
-lists the agents' own sessions there that no conversation continues yet — ones
+Below it, kept short: **Recent here** — the three newest conversations of this
+folder, whichever app started it — and **See all conversations (N)**, which
+opens the Conversations tab on this project. **Continue from…** (or *Continue
+from this in a new chat* in a recent one's menu) starts this chat as the
+continuation of another: a line over the composer names it and the context to
+carry, and the first message carries that context to the agent chosen here
+(`thread/start { continueFrom }`). **Sessions in this folder** (three, *Show
+all*) lists the agents' own sessions there that no conversation continues yet — ones
 started in a terminal, here or elsewhere, or in the agent's own app
 (`agent/sessions`, architecture/02a §5.8.19). Picking one continues it as
 this chat: its history comes in and its first message resumes it. One that a

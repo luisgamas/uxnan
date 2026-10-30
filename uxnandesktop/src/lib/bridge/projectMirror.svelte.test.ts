@@ -109,7 +109,13 @@ describe('ProjectMirror', () => {
   it('mirrors a removal made on another device, and one made here', async () => {
     await mirror();
     state.repos = [{ id: 'r1', name: 'a', path: '/w/a' }];
-    state.replica[0]!({ type: 'projects', projects: [], removed: [project('/w/a')], reset: false });
+    state.replica[0]!({
+      type: 'projects',
+      projects: [],
+      removed: [project('/w/a')],
+      reset: false,
+      source: 'notification',
+    });
     await vi.waitFor(() => expect(state.removedIds).toEqual(['r1']));
 
     state.removedListeners[0]!({ id: 'r9', name: 'b', path: '/w/b' }, 'local');
@@ -130,12 +136,72 @@ describe('ProjectMirror', () => {
     state.connected = false;
     state.removedListeners[0]!({ id: 'r1', name: 'gone', path: '/w/gone' }, 'local');
     await new Promise((r) => setTimeout(r, 10));
-    expect(localStorage.getItem('uxnan.bridge.pendingProjectRemovals')).toContain('/w/gone');
+    expect(localStorage.getItem('uxnan.bridge.projectMirror')).toContain('/w/gone');
     state.connected = true;
-    await m.reconcile();
+    // Still in the registry when the sync came: it must not come back here.
+    state.registry.set(idOf('/w/gone'), project('/w/gone'));
+    await m.reconcile('store-1');
     expect(state.calls.find((c) => c.method === 'project/remove')?.params).toEqual({
       projectId: idOf('/w/gone'),
     });
-    expect(localStorage.getItem('uxnan.bridge.pendingProjectRemovals')).toBeNull();
+    expect(state.addedPaths).toEqual([]);
+    expect(JSON.parse(localStorage.getItem('uxnan.bridge.projectMirror') ?? '{}').pendingRemovals).toEqual([]);
+  });
+
+  // The maintainer's report (plan 045 §14.1): a project removed on the phone
+  // while the desktop was closed came back — the desktop's first sync is a
+  // reset, and uniting published it again. What was mirrored is remembered.
+  it('a project removed elsewhere while this window was closed is removed here, not published again', async () => {
+    state.repos = [
+      { id: 'r1', name: 'kept', path: '/w/kept' },
+      { id: 'r2', name: 'gone', path: '/w/gone' },
+    ];
+    state.registry.set(idOf('/w/kept'), project('/w/kept'));
+    state.registry.set(idOf('/w/gone'), project('/w/gone'));
+    const first = await mirror();
+    await first.reconcile('store-1');
+    expect(state.calls.some((c) => c.method === 'project/add')).toBe(false);
+
+    // The phone removes /w/gone; this window hears nothing (it is closed).
+    state.registry.delete(idOf('/w/gone'));
+    state.calls = [];
+    // Next start: a new mirror, the same durable record, a reset sync.
+    state.replica = [];
+    state.removedListeners = [];
+    state.added = [];
+    const next = await mirror();
+    state.replica[0]!({
+      type: 'projects',
+      projects: [...state.registry.values()],
+      removed: [],
+      reset: true,
+      source: 'sync',
+      storeId: 'store-1',
+    });
+    await vi.waitFor(() => expect(state.removedIds).toEqual(['r2']));
+    await next.reconcile('store-1');
+    expect(state.calls.some((c) => c.method === 'project/add')).toBe(false);
+  });
+
+  it('a project added here while the bridge was away is published, not removed', async () => {
+    state.registry.set(idOf('/w/kept'), project('/w/kept'));
+    state.repos = [{ id: 'r1', name: 'kept', path: '/w/kept' }];
+    const m = await mirror();
+    await m.reconcile('store-1');
+    state.repos.push({ id: 'r3', name: 'new', path: '/w/new' });
+    await m.reconcile('store-1');
+    expect(state.calls.find((c) => c.method === 'project/add')?.params).toMatchObject({ cwd: '/w/new' });
+    expect(state.removedIds).toEqual([]);
+  });
+
+  it('another bridge state (a new storeId) knows nothing mirrored: it unites', async () => {
+    state.registry.set(idOf('/w/kept'), project('/w/kept'));
+    state.repos = [{ id: 'r1', name: 'kept', path: '/w/kept' }];
+    const m = await mirror();
+    await m.reconcile('store-1');
+    state.registry.clear();
+    await m.reconcile('store-2');
+    expect(state.removedIds).toEqual([]);
+    expect(state.calls.find((c) => c.method === 'project/add')?.params).toMatchObject({ cwd: '/w/kept' });
   });
 });

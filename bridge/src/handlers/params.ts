@@ -48,6 +48,16 @@ export function optionalBoolean(params: unknown, key: string): boolean | undefin
   return value;
 }
 
+/** A nested object param; absent → `undefined`, anything but an object → invalid. */
+export function optionalObject(params: unknown, key: string): Record<string, unknown> | undefined {
+  const value = optionalParams(params)[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw RpcError.invalidParams(`'${key}' must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
 export function optionalNumber(params: unknown, key: string): number | undefined {
   const value = optionalParams(params)[key];
   if (value === undefined || value === null) return undefined;

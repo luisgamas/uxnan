@@ -87,9 +87,9 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait`, `view/render` | shipped |
+| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `chat/search` (titles and what was said, answered by the bridge from its per-conversation digests; snippets redacted, paged by `cursor`), `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait`, `view/render` | shipped |
 | `ui` | `app/focus`, `terminal/reveal`, `chat/open`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
-| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `chat/start` (a chat with a bridge agent in a worktree, + first message — in a tab and on the phone), `run/start`, `automation/run` | shipped |
+| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `chat/start` (a chat with a bridge agent in a worktree, + first message — in a tab and on the phone; `continueFrom` starts it as another chat's continuation), `chat/fork` (same agent, history copied, its first message carrying a selection of it), `chat/forward` (hand a chat to another agent: a new chat whose first message carries the source's context — `selection`, `reference` or `fork`; the receipt's `status` is the bridge's proof of delivery), `run/start`, `automation/run` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read`, `chat/send` (a bridge conversation: queued behind a running turn, seen by every client), `chat/read` (its newest turns: the message, the answer, the steps taken — each turn's newest 100, read from the bridge's summaries with `turn/steps` — redacted), `chat/wait` (`idle` or `waiting`) | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
@@ -221,6 +221,20 @@ What each entry does, and through which existing path:
   that is not runnable is refused with its validation errors (exit 8 / *busy*).
 - **`automation/run`** — the same headless runner the schedule starts, as a
   manual run of a **saved** automation. Nothing can inject a definition.
+- **`chat/fork`, `chat/forward`, `chat/start { continueFrom }`** — one bridge
+  path, the one the chat tabs and the phone use (`thread/fork`,
+  `thread/transfer`, `thread/start { continueFrom }`; architecture/02a
+  §5.8.21). Each makes a **new** chat — no chat ever changes agent, and no CLI
+  continues another's session — whose first message carries the context the
+  bridge prepared from the source's history (a budgeted selection, a pointer, or
+  for a fork the copied history plus a selection; never an invented summary).
+  The source must be in the caller's scope; the new chat runs in the source's
+  folder (`chat/start`: the worktree named) and, like `chat/start`, takes
+  `fullAccess` best-effort before its first message. The receipt's `status` is
+  the bridge's proof against the real turn — `pending`, `sent`, `delivered`,
+  `unverifiable` — never assumed. The `idempotencyKey` also goes to the bridge
+  as `clientTransferId` (when ≤128 characters), so a retry finds the
+  continuation already made even after the app restarted.
 
 A `prompt` needs an `agent` and is capped at 64 KiB — a first message, not a
 document; the CLI's `--prompt-file` enforces the same cap before sending.
@@ -586,7 +600,13 @@ uxnan-cli chat ls [--worktree <worktree>] [--archived]
 uxnan-cli chat open <chat>
 uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]
 uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>]
-                     [--message-file <file>] [--no-open] [--idempotency-key <key>]
+                     [--message-file <file>] [--no-open] [--continue-from <chat> [--strategy <s>]]
+                     [--idempotency-key <key>]
+uxnan-cli chat fork <chat> [--no-open] [--idempotency-key <key>]
+uxnan-cli chat forward <chat> --agent <agent> [--model <model>] [--title <t>]
+                       [--strategy selection|reference|fork] [--message-file <file> | --message <text>]
+                       [--no-open] [--idempotency-key <key>]
+uxnan-cli chat search <query> [--worktree <worktree> | --all] [--archived] [--limit <n>] [--cursor <c>]
 uxnan-cli chat read <chat> [--turns <n>]
 uxnan-cli chat wait <chat> [--for idle|waiting] [--timeout <seconds>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]

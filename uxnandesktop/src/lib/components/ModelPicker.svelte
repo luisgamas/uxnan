@@ -69,6 +69,7 @@
     loadingOf,
     onBrowse,
     onSelect,
+    namesAgent = false,
   }: {
     /** The models of the chosen agent (the trigger names one of them). */
     models: PickerModel[];
@@ -95,6 +96,10 @@
     onBrowse?: (agentId: string) => void;
     /** A model was picked — of `agentId`, which may be another agent. */
     onSelect: (id: string, agentId?: string) => void;
+    /** Name the chosen agent beside its model ("Codex · Default model") —
+     *  where the agent is the choice being made (continuing a conversation
+     *  with another agent), not a fixed fact shown by its logo. */
+    namesAgent?: boolean;
   } = $props();
 
   const DEFAULT = "__default__";
@@ -120,7 +125,8 @@
   const olderShown = $derived(olderOpen || query.trim().length > 0);
   /** Search only pays off past a screenful. */
   const searchable = $derived(listed.length > 8);
-  const label = $derived(current ? modelName(current) : value || i18n.t("modelPicker.default"));
+  const modelLabel = $derived(current ? modelName(current) : value || i18n.t("modelPicker.default"));
+  const label = $derived(namesAgent && agent ? `${agent.label} · ${modelLabel}` : modelLabel);
   const waiting = $derived(loading && models.length === 0);
   const listWaiting = $derived(listLoading && listed.length === 0);
   /** The row that holds the check: only on the chosen agent's own list. */

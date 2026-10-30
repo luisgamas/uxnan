@@ -6565,6 +6565,408 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Copied to clipboard'**
   String get turnDetailCopied;
+
+  /// Heads the conversations whose project is no longer on the PC's list (it was removed on the phone or the desktop).
+  ///
+  /// In en, this message translates to:
+  /// **'Other conversations'**
+  String get spacesOtherConversations;
+
+  /// Title of the conversation catalog: every conversation of the PC, searchable.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get catalogTitle;
+
+  /// Hint of the conversation catalog's search field.
+  ///
+  /// In en, this message translates to:
+  /// **'Search titles and what was said'**
+  String get catalogSearchHint;
+
+  /// Scope chip: only the conversations of the project the catalog was opened for.
+  ///
+  /// In en, this message translates to:
+  /// **'This project'**
+  String get catalogScopeProject;
+
+  /// Scope chip: every conversation of the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get catalogScopeAll;
+
+  /// Filter chip label: which agent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get catalogFilterAgent;
+
+  /// Agent filter option: no filter.
+  ///
+  /// In en, this message translates to:
+  /// **'Any agent'**
+  String get catalogAnyAgent;
+
+  /// Filter chip label: what the conversation is doing.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get catalogFilterState;
+
+  /// State filter option: no filter.
+  ///
+  /// In en, this message translates to:
+  /// **'Any state'**
+  String get catalogStateAny;
+
+  /// State filter option: a turn is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get catalogStateWorking;
+
+  /// State filter option: waiting on an approval or blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get catalogStateNeedsYou;
+
+  /// State filter option: the last turn finished and was not read.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished, unread'**
+  String get catalogStateDone;
+
+  /// State filter option: nothing happening.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get catalogStateIdle;
+
+  /// Filter chip label: where the conversation was started.
+  ///
+  /// In en, this message translates to:
+  /// **'Origin'**
+  String get catalogFilterOrigin;
+
+  /// Origin filter option: no filter.
+  ///
+  /// In en, this message translates to:
+  /// **'Started anywhere'**
+  String get catalogOriginAny;
+
+  /// Origin filter option.
+  ///
+  /// In en, this message translates to:
+  /// **'Started on a phone'**
+  String get catalogOriginPhone;
+
+  /// Origin filter option.
+  ///
+  /// In en, this message translates to:
+  /// **'Started on the desktop'**
+  String get catalogOriginDesktop;
+
+  /// Filter chip: include archived conversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived'**
+  String get catalogFilterArchived;
+
+  /// Age group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get catalogGroupToday;
+
+  /// Age group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'This week'**
+  String get catalogGroupWeek;
+
+  /// Age group heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier'**
+  String get catalogGroupEarlier;
+
+  /// Search results section: conversations whose title matched.
+  ///
+  /// In en, this message translates to:
+  /// **'Titles'**
+  String get catalogTitlesSection;
+
+  /// Search results section: conversations whose messages matched, answered by the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'In what was said'**
+  String get catalogContentSection;
+
+  /// While the PC searches what was said.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching the PC…'**
+  String get catalogSearching;
+
+  /// Button: continue a search the PC stopped early.
+  ///
+  /// In en, this message translates to:
+  /// **'Search more conversations'**
+  String get catalogLoadMore;
+
+  /// Empty state of the conversation catalog.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matches'**
+  String get catalogNoResults;
+
+  /// The bridge predates content search.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the bridge on the PC to search what was said. Titles are searched here.'**
+  String get catalogContentUnavailable;
+
+  /// Not connected to the PC whose conversations are listed.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to this PC to search what was said. Titles are searched here.'**
+  String get catalogContentOffline;
+
+  /// The bridge refused or failed the search.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t search the PC'**
+  String get catalogSearchFailed;
+
+  /// Prefix of a search snippet the person wrote.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get catalogMatchYou;
+
+  /// Section of the new-conversation screen: the latest conversations of the chosen folder.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent in this folder'**
+  String get newThreadRecent;
+
+  /// Opens the conversation catalog filtered to the chosen folder's project.
+  ///
+  /// In en, this message translates to:
+  /// **'See all conversations ({count})'**
+  String newThreadSeeAll(int count);
+
+  /// Button: start this conversation as the continuation of another one.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue from…'**
+  String get newThreadContinueFrom;
+
+  /// Shows which conversation the new one will continue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continues ‘{title}’'**
+  String newThreadContinuingFrom(String title);
+
+  /// Title of the sheet that picks the conversation to continue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue from a conversation'**
+  String get newThreadContinueFromPick;
+
+  /// Removes the conversation the new one would continue.
+  ///
+  /// In en, this message translates to:
+  /// **'Start from nothing'**
+  String get newThreadContinueFromClear;
+
+  /// Conversation menu item: continue it as a new conversation with another agent.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue with another agent…'**
+  String get transferAction;
+
+  /// Title of the sheet that continues a conversation with another agent.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue with another agent'**
+  String get transferSheetTitle;
+
+  /// Explains what continuing does.
+  ///
+  /// In en, this message translates to:
+  /// **'A new conversation is made for the agent you pick and carries this one\'s context. This one stays as it is.'**
+  String get transferSheetHint;
+
+  /// Section: how the context is carried.
+  ///
+  /// In en, this message translates to:
+  /// **'What to carry over'**
+  String get transferStrategy;
+
+  /// Strategy: a budgeted selection prepared by the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected context'**
+  String get transferStrategySelection;
+
+  /// Explains the selection strategy.
+  ///
+  /// In en, this message translates to:
+  /// **'The opening request, the latest exchanges in full and older ones shortened — chosen by the PC, never summarized.'**
+  String get transferStrategySelectionHint;
+
+  /// Strategy: only a pointer to the original.
+  ///
+  /// In en, this message translates to:
+  /// **'Just a reference'**
+  String get transferStrategyReference;
+
+  /// Explains the reference strategy.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the title, the opening request and the last exchange: the new agent starts fresh.'**
+  String get transferStrategyReferenceHint;
+
+  /// Strategy: the whole history copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Full copy'**
+  String get transferStrategyFork;
+
+  /// Explains the full-copy strategy.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole history is copied into the new conversation, and its agent gets the selected context.'**
+  String get transferStrategyForkHint;
+
+  /// Label of the first-message field.
+  ///
+  /// In en, this message translates to:
+  /// **'First message (optional)'**
+  String get transferMessage;
+
+  /// Hint of the first-message field.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it empty to write it in the new conversation'**
+  String get transferMessageHint;
+
+  /// Confirms continuing the conversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get transferConfirm;
+
+  /// Snackbar when the bridge refused.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t continue the conversation'**
+  String get transferFailed;
+
+  /// The bridge predates conversation transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the bridge on the PC to continue conversations with another agent.'**
+  String get transferNeedsBridge;
+
+  /// Card at the top of a conversation that continues another one.
+  ///
+  /// In en, this message translates to:
+  /// **'Continued from ‘{title}’'**
+  String transferOriginTitle(String title);
+
+  /// What was carried: the original's agent and the context size.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} · ~{tokens} tokens of context'**
+  String transferOriginFacts(String agent, String tokens);
+
+  /// Status: prepared, not sent yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Goes with your first message'**
+  String get transferStatusPending;
+
+  /// Status: went with a turn still running.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent — waiting for the agent'**
+  String get transferStatusSent;
+
+  /// Status: the agent answered the turn that carried it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get transferStatusDelivered;
+
+  /// Status: the PC stopped while it was being delivered.
+  ///
+  /// In en, this message translates to:
+  /// **'Not proven read — goes again with your next message'**
+  String get transferStatusUnverifiable;
+
+  /// Opens the conversation this one continues.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the original'**
+  String get transferOpenSource;
+
+  /// The conversation this one continues no longer exists.
+  ///
+  /// In en, this message translates to:
+  /// **'The original was deleted'**
+  String get transferSourceGone;
+
+  /// Opens the context the agent received.
+  ///
+  /// In en, this message translates to:
+  /// **'See what was carried over'**
+  String get transferViewContext;
+
+  /// Title of the sheet showing the carried-over context.
+  ///
+  /// In en, this message translates to:
+  /// **'What the agent received'**
+  String get transferContextTitle;
+
+  /// The context could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read it from the PC'**
+  String get transferContextFailed;
+
+  /// Heading of the conversations that continue this one.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation goes on'**
+  String get continuationsTitle;
+
+  /// One conversation that continues this one.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} — ‘{title}’'**
+  String continuationLine(String agent, String title);
+
+  /// Short label of a strategy segment (fits a phone-wide segmented control).
+  ///
+  /// In en, this message translates to:
+  /// **'Selection'**
+  String get transferStrategySelectionShort;
+
+  /// Short label of a strategy segment (fits a phone-wide segmented control).
+  ///
+  /// In en, this message translates to:
+  /// **'Reference'**
+  String get transferStrategyReferenceShort;
+
+  /// Short label of a strategy segment (fits a phone-wide segmented control).
+  ///
+  /// In en, this message translates to:
+  /// **'Full copy'**
+  String get transferStrategyForkShort;
 }
 
 class _AppLocalizationsDelegate

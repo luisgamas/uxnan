@@ -42,6 +42,7 @@ import {
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
+import { withTransferContext } from '../conversation/transfer-context.js';
 import { materializeAttachments } from './attachments.js';
 import { REASONING_KEY } from '../adapters/run-options.js';
 import type { ApprovalRequestInfo } from '../adapters/user-input.js';
@@ -985,7 +986,13 @@ export class AgentManager {
       this.#started.add(agentId);
     }
 
-    const agentText = await this.#resolveTurnText(adapter, turn, turnId);
+    const resolved = await this.#resolveTurnText(adapter, turn, turnId);
+    // A conversation that continues another (architecture/02a §5.8.21): the
+    // first turn to run carries the context the bridge prepared — before the
+    // person's words, which are never shortened for it — and the store marks
+    // it `sent` with this turn, then `delivered` once the agent answers.
+    const carried = await this.#options.store.claimTransferContext(threadId, turnId);
+    const agentText = carried !== undefined ? withTransferContext(carried, resolved) : resolved;
     await this.#restoreAgentSession(threadId, agentId, adapter);
 
     await adapter.sendTurn({

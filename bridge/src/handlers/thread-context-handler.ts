@@ -10,13 +10,11 @@ import {
   JsonRpcErrorCode,
   MAX_ATTACHMENT_BYTES,
   RpcError,
-  isDesktopClientId,
   previewStepRange,
   summarizeTurn,
 } from '@uxnan/shared';
 import type {
   AccessMode,
-  ThreadOrigin,
   AgentCommandInvocation,
   AgentId,
   ApprovalDecision,
@@ -28,32 +26,28 @@ import type {
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
-import type { RequestSession } from '../handler-router.js';
 import {
   optionalAge,
   optionalBoolean,
   optionalNumber,
+  optionalObject,
   optionalString,
   requireIndex,
   requireString,
 } from './params.js';
 import { withLiveState } from './sync-handler.js';
+import { originOf, turnRuntimeOptions } from './turn-runtime.js';
+import {
+  continueConversation,
+  createdByOf,
+  optionalStrategy,
+  optionalTransferKey,
+} from './conversation-handler.js';
 import { decisionTime } from '../conversation/thread-store.js';
 
 // Every change below is announced by the ThreadStore itself (`onChange`, wired
 // in bridge.ts) once it is on disk, with its sync revision — so no handler can
 // change a thread and forget to tell the clients.
-
-/** Which client is starting a conversation (`Thread.origin`). */
-function originOf(
-  ctx: BridgeContext,
-  session: RequestSession | undefined,
-): ThreadOrigin | undefined {
-  if (!session) return undefined;
-  if (session.local !== undefined) return { kind: 'desktop', name: ctx.settings.get().name };
-  const phone = ctx.sessions.get(session.deviceId);
-  return { kind: 'phone', name: phone?.displayName ?? 'Phone' };
-}
 
 export function registerThreadHandlers(router: HandlerRouter): void {
   // Both carry the live `activeTurnId`, so a client that just connected sees
@@ -94,6 +88,31 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     // conversation per session, so the one that already continues it is
     // returned rather than a second writer being made.
     const agentSessionId = optionalString(p, 'agentSessionId');
+    // Continuing another conversation (§5.8.21): the same continuation
+    // `thread/transfer` makes, in the folder and with the agent chosen here.
+    const continueFrom = optionalObject(p, 'continueFrom');
+    if (continueFrom !== undefined) {
+      if (agentSessionId !== undefined) {
+        throw RpcError.invalidParams('continueFrom cannot go with agentSessionId');
+      }
+      const title = optionalString(p, 'title');
+      const key = optionalTransferKey(continueFrom);
+      const made = await continueConversation(
+        ctx,
+        {
+          sourceThreadId: requireString(continueFrom, 'threadId'),
+          strategy: optionalStrategy(continueFrom),
+          agentId,
+          ...(model !== undefined ? { model } : {}),
+          ...(title !== undefined ? { title } : {}),
+          cwd,
+          ...(key !== undefined ? { key } : {}),
+          createdBy: createdByOf(continueFrom),
+        },
+        session,
+      );
+      return withLiveState(made.thread, ctx);
+    }
     if (agentSessionId !== undefined) {
       if (explicitAgent === undefined) {
         throw RpcError.invalidParams('agentSessionId requires agentId');
@@ -133,9 +152,22 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/resume', (p, ctx: BridgeContext) =>
     ctx.threadStore.resumeThread(requireString(p, 'threadId')),
   );
-  router.register('thread/fork', (p, ctx: BridgeContext) =>
-    ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now()),
-  );
+  // A fork: the same agent, the history copied, and its first message carrying
+  // a selection of it (its agent session starts empty) — §5.8.21.
+  router.register('thread/fork', async (p, ctx: BridgeContext, session) => {
+    const key = optionalTransferKey(p);
+    const made = await continueConversation(
+      ctx,
+      {
+        sourceThreadId: requireString(p, 'threadId'),
+        strategy: 'fork',
+        ...(key !== undefined ? { key } : {}),
+        createdBy: createdByOf(p),
+      },
+      session,
+    );
+    return withLiveState(made.thread, ctx);
+  });
   router.register('thread/setModel', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.threadStore.setModel(threadId, requireString(p, 'model'));
@@ -305,42 +337,21 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     if (text.length === 0 && attachments.length === 0 && !command) {
       throw RpcError.invalidParams('turn/send requires non-empty text, attachments, or a command');
     }
-    const runtime = await ctx.threadStore.getThreadRuntime(threadId);
-    // A CLI's session has one writer: while a desktop terminal holds this
-    // conversation's session, no turn runs in it here (§5.8.19). The client
-    // shows who holds it and can ask for it (`agent/requestHandoff`).
-    const source = await ctx.threadStore.getHistorySource(threadId);
-    if (source.agentId !== undefined && source.agentSessionId !== undefined) {
-      const hold = ctx.sessionHolds.find(source.agentId, source.agentSessionId);
-      if (hold) {
-        throw new RpcError(
-          JsonRpcErrorCode.SessionHeld,
-          `This conversation is open in a terminal on ${hold.holder.name}`,
-          hold,
-        );
-      }
-    }
-    // A turn runs with the thread's agent/model/cwd; explicit params override.
-    const service = optionalString(p, 'service') ?? runtime.model;
+    // A turn runs with the thread's agent/model/cwd/mode (refused while a
+    // terminal holds its session); explicit params override.
+    const runtime = await turnRuntimeOptions(ctx, threadId, session);
+    const service = optionalString(p, 'service') ?? runtime.service;
     const options: SendTurnOptions = {
-      ...(runtime.agentId !== undefined ? { agentId: runtime.agentId as AgentId } : {}),
+      ...runtime,
       ...(service !== undefined ? { service } : {}),
       ...optionalEffort(p),
       ...optionalRunOptions(p),
       ...(attachments.length > 0 ? { attachments } : {}),
-      ...(runtime.cwd !== undefined ? { cwd: runtime.cwd } : {}),
-      // Apply the thread's persisted access mode to this turn (adapters map it
-      // to their permission flag; absent → the adapter's configured posture).
-      ...(runtime.accessMode !== undefined ? { accessMode: runtime.accessMode } : {}),
       ...(command !== undefined ? { command } : {}),
       // Absent → the manager queues behind an in-flight turn (the safe default);
       // `false` asks it to reject with `AgentBusy` instead.
       ...optionalQueue(p),
       ...optionalClientTurnId(p),
-      // Sent from a desktop: its agents get that desktop's MCP server.
-      ...(session?.local !== undefined && isDesktopClientId(session.local)
-        ? { desktopClient: session.local }
-        : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
