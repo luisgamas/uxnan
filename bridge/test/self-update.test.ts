@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { JsonRpcErrorCode, RpcError, type BridgeUpdate } from '@uxnan/shared';
 import {
   BridgeUpdater,
+  BUNDLED_UPDATE_REASON,
   DaemonState,
   DAEMON_FILES,
   installFailure,
@@ -176,6 +177,36 @@ test('the snapshot says whether an update is out and whether this bridge can app
   }).updater.snapshot();
   assert.equal(checkout.canApply, false);
   assert.equal(checkout.available, false);
+  await rmrf(state.baseDir);
+});
+
+test('a bridge that came with Uxnan Desktop never asks npm and says who updates it', async () => {
+  const state = freshState();
+  let asked = 0;
+  const { updater: u, changes } = updater(state, {
+    installKind: 'bundled',
+    check: async () => {
+      asked += 1;
+      return NEW;
+    },
+    fetchLatest: async () => {
+      asked += 1;
+      return NEW;
+    },
+  });
+  await u.refresh();
+  const checked = await u.check();
+  assert.equal(asked, 0, 'the registry is never asked');
+  assert.deepEqual(changes, []);
+  assert.equal(checked.available, false);
+  assert.equal(checked.canApply, false);
+  assert.equal(checked.unsupportedReason, BUNDLED_UPDATE_REASON);
+  await assert.rejects(u.apply(), (err: unknown) => {
+    assert.ok(err instanceof RpcError);
+    // No npm command to offer: the desktop is the way.
+    assert.deepEqual(err.data, { reason: 'unsupported' });
+    return true;
+  });
   await rmrf(state.baseDir);
 });
 

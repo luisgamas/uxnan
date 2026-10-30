@@ -41,9 +41,11 @@ import {
   installService,
   isServiceInstalled,
   isServicePlatformSupported,
+  serviceProgram,
   startService,
   uninstallService,
 } from './service-installer.js';
+import { installKind } from './install-kind.js';
 import { BRIDGE_HOST_ENV } from './presence/host-info.js';
 import { callRunningBridge, runningBridgePairing } from './local-control-client.js';
 import { bridgeStatusReport } from './status-report.js';
@@ -99,6 +101,8 @@ Commands:
  * offline, or the latest version is unknown.
  */
 async function printUpdateNotice(options: { force?: boolean } = {}): Promise<void> {
+  // A bridge that came with Uxnan Desktop is updated by the app, never by npm.
+  if (installKind(bridgeCliPath(), { platform: process.platform }) === 'bundled') return;
   try {
     // `start` always re-checks: it is the one command a user runs deliberately,
     // and the 24h cache meant a release published inside that window went
@@ -366,10 +370,20 @@ async function cmdServiceStatus(): Promise<void> {
   const installed = supported
     ? await isServiceInstalled(currentServiceEnv(bridgeCliPath()))
     : false;
+  const program =
+    supported && installed
+      ? await serviceProgram(currentServiceEnv(bridgeCliPath())).catch(() => undefined)
+      : undefined;
   const held = await new LockFile(new DaemonState().pathFor(DAEMON_FILES.lock)).read();
   const running = held !== null && held !== undefined && isProcessAlive(held.pid);
   process.stdout.write(
-    `${JSON.stringify({ supported, installed, running, ...(running ? { pid: held.pid } : {}) })}\n`,
+    `${JSON.stringify({
+      supported,
+      installed,
+      running,
+      ...(running ? { pid: held.pid } : {}),
+      ...(program ? { program } : {}),
+    })}\n`,
   );
 }
 

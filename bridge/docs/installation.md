@@ -113,24 +113,31 @@ replace itself (`update.canApply: false` says why): update it with
 `npm install -g uxnan-bridge@latest` (or `git pull` + `npm install`).
 `uxnan-bridge version` prints the installed version without starting anything.
 
-**From Uxnan Desktop, before the bridge could do it.** Uxnan Desktop keeps its
-own npm path only for what the bridge cannot do for itself: installing it when
-there is none, and updating a bridge older than updating itself
-(`bridge/status` without `update`). *Update automatically* uses the same owner:
-it asks the bridge, and only while no conversation is running on any device.
+**The bridge that came with Uxnan Desktop.** Uxnan Desktop's installer
+carries its own bridge — a private Node runtime, so it needs no Node on the
+machine (`uxnandesktop/docs/bridge-runtime.md`). That bridge knows it
+(`bridge/status` → `host.install: "bundled"`) and **updates with the app**: it
+never asks npm, `bridge/update` refuses with the reason, and the desktop
+switches it to the version a new desktop carries, at a moment no turn runs. An
+npm install (`host.install: "npm"`) updates itself as above. Uxnan Desktop
+never runs npm; for a bridge that cannot update itself it offers its own bridge
+instead. *Update automatically* only concerns an npm install, and asks the
+bridge, only while no conversation is running on any device.
 
 ## Run it as your user's service (the normal way)
 
 ```bash
 uxnan-bridge install-service     # run as your service: at logon, and now
-uxnan-bridge service-status      # {"supported","installed","running","pid"} as JSON
+uxnan-bridge service-status      # {"supported","installed","running","pid","program"} as JSON
 uxnan-bridge service-start       # start the installed service after a deliberate stop
 uxnan-bridge uninstall-service   # remove the service (and the Antigravity entry, below)
 ```
 
-This is how the bridge is meant to live: **Uxnan Desktop installs it for you
-(Settings → Bridge & mobile, mode *Managed*) and from then on only connects to
-it**, and it keeps serving the phone while the desktop is closed. It registers
+This is how the bridge is meant to live: **Uxnan Desktop sets it up for you on
+its first launch (mode *Managed*) and from then on only connects to it** —
+registering a bridge you already installed, or the one it carries when there is
+none — and it keeps serving the phone while the desktop is closed.
+`service-status` also prints the `program` the service runs (`{node, cli}`). It registers
 `<node> <cli.js> start --service` with absolute paths, **as the logged-in user,
 never elevated**, with your home as its working directory, and it is restarted
 when it crashes — not when you stop it on purpose:

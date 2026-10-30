@@ -1,10 +1,25 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.8.2
-> **Fecha:** 2026-10-22
+> **Version:** 1.8.3
+> **Fecha:** 2026-10-29
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.8.3):** a bridge can come inside Uxnan Desktop
+> (§5.8.18, *Instalaciones*). Every desktop installer carries a private bridge
+> runtime — the official Node.js binary and `uxnan-bridge` from the same commit,
+> hashed file by file — that the app copies, verified, to a per-user folder
+> outside `~/.uxnan` and registers as the user's service with the bridge's own
+> `install-service`, so a machine needs no Node. `bridge/status` gains
+> `host.install` (`bundled` | `npm` | `source`), which decides who updates it:
+> the desktop for the bridge it carries (atomically, rolled back when the new
+> one does not come up), the bridge itself for an npm install. Installing the
+> desktop app counts as consent to install its bridge as the user's service
+> (removable from Settings), superseding the explicit-consent rule of plans
+> 029/044. A keychain that
+> denies access no longer reads as "no identity" (§5.8.17). Additive contract
+> change only.
 
 > **Executive summary (1.8.2):** the agent's reasoning is stored where it
 > happened (§5.8.3, *What a page carries*). Each stretch of it is a thought —
@@ -3382,7 +3397,8 @@ cola ya no deja el nombre provisional para siempre). Un `thread/rename
 renombran por su cuenta.
 
 **Presencia y origen:** `bridge/status` lleva `host { launchedBy: service |
-desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
+desktop | cli, machineName, install? }` (`install`: como se instalo, §5.8.18)
+y `clients[]`; `stream/presence/updated` cada vez
 que un telefono o el desktop se conecta o se va. Cada telefono lleva su
 `route` (`lan` | `tailscale` | `relay`): el bridge la sabe por el camino
 (el servidor LAN clasifica la IP de origen: `100.64.0.0/10` o
@@ -3490,6 +3506,31 @@ fallo que origino esta seccion). Cuando cambia la version mas nueva conocida,
 emite `stream/bridge/updated { update }` a todos los clientes; `bridge/status`
 lleva el mismo `update`. Un cliente nunca consulta npm.
 
+**Instalaciones (2026-10).** `bridge/status` dice como se instalo el bridge en
+`host.install` (`bridge/src/install-kind.ts`, leido de donde esta su propio
+`cli.js`, nunca de una variable de entorno):
+
+| `install` | Que es | Quien lo actualiza |
+|---|---|---|
+| `bundled` | El que trae Uxnan Desktop: un runtime privado (`node` oficial + el arbol de produccion de `uxnan-bridge` del mismo commit, con un manifiesto `uxnan-runtime.json` que lleva el SHA-256 de cada archivo) que el desktop copia, verificando cada archivo, a una carpeta por usuario fuera de `~/.uxnan` (`versions/<bridge>+node<node>/`) y registra con el `install-service` del propio bridge. | **El desktop**: una version nueva del desktop trae el bridge nuevo y la app lo cambia en un momento sin turnos (copiar y verificar → `stop` → `install-service` del nuevo → esperar el canal local con la version nueva; si no llega, vuelve a registrar el anterior). El bridge no consulta npm: `update.available` es `false`, `canApply` es `false` con el motivo, y `bridge/update` responde `unsupported` sin comando npm. |
+| `npm` | `npm install -g uxnan-bridge`. | **El bridge**, como se describe abajo. |
+| `source` | Un checkout. | Nadie. |
+
+`uxnan-bridge service-status` devuelve tambien el `program { node, cli }` que el
+servicio registrado ejecuta (leido del LaunchAgent, la unidad systemd, la tarea
+programada o el lanzador del Inicio), para que un cliente distinga el bridge que
+instalo de uno que registro el usuario. En el primer arranque el desktop
+(`managed`) prefiere, en orden: el bridge que ya sirve el canal local, el
+servicio registrado, un `uxnan-bridge` independiente en el `PATH` (lo registra,
+nunca duplica) y solo sin ninguno el que trae; nunca hay dos bridges sobre el
+mismo `~/.uxnan` (el lock sigue siendo la autoridad). **Instalar Uxnan Desktop
+cuenta como consentimiento** para instalar su bridge como servicio del usuario
+(decision del mantenedor, 2026-10-29, que sustituye la regla «`managed` no
+instala sin consentimiento explicito» de los planes 029/044); se quita desde
+Ajustes → Bridge y movil, y desinstalarlo quita su servicio y su runtime, nunca
+`~/.uxnan`. Un bridge independiente nunca se reemplaza sin que el usuario lo pida. Detalle:
+`uxnandesktop/docs/bridge-runtime.md`, `uxnandesktop/architecture/02e` §3.5.
+
 **Aplicar.** `bridge/update` solo corre si el bridge es el **servicio del
 usuario** (`host.launchedBy: service`) instalado **globalmente con npm** y con
 npm a su lado en la misma carpeta global (el PATH de un servicio no trae npm);
@@ -3528,9 +3569,9 @@ del bridge en Ajustes → Actualizaciones del telefono). Responde con el
 movil, y la actualizacion automatica si esta activada) y el telefono (aviso en la
 lista de conversaciones y Ajustes → Actualizaciones) llaman a `bridge/update`.
 Un bridge sin `update` en `bridge/status` es anterior a esta funcion y por lo
-tanto mas antiguo que el cliente: el desktop lo actualiza con su instalador npm
-(la unica ruta propia que conserva, junto con instalarlo cuando no hay bridge) y
-el telefono pide actualizarlo en la PC.
+tanto mas antiguo que el cliente: el desktop ofrece poner en su lugar el bridge
+que trae (nunca ejecuta npm; su unica ruta propia es ese runtime) y el telefono
+pide actualizarlo en la PC.
 
 #### 5.8.19 Sesiones de agente: retomar cualquier sesion y la terminal como escritor (2026-09)
 

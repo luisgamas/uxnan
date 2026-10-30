@@ -21,7 +21,7 @@
  * This supersedes the manual `scripts/install-service-*` files (kept as reference).
  */
 import { execFile } from 'node:child_process';
-import { access, mkdir, writeFile, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
@@ -206,6 +206,72 @@ export async function isServiceInstalled(env: ServiceEnv): Promise<boolean> {
   return file !== undefined && (await exists(file.path));
 }
 
+/** The program a registered service runs: its Node and the bridge CLI. */
+export interface ServiceProgram {
+  node: string;
+  cli: string;
+}
+
+/** The program out of a LaunchAgent written by {@link buildServicePlan}. Pure. */
+export function programFromPlist(content: string): ServiceProgram | undefined {
+  const array = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(content)?.[1];
+  if (array === undefined) return undefined;
+  const args = [...array.matchAll(/<string>([\s\S]*?)<\/string>/g)].map((m) => xmlUnescape(m[1]!));
+  return args.length >= 2 ? { node: args[0]!, cli: args[1]! } : undefined;
+}
+
+/** The program out of a systemd unit written by {@link buildServicePlan}. Pure. */
+export function programFromUnit(content: string): ServiceProgram | undefined {
+  const line = /^ExecStart=(.*)$/m.exec(content)?.[1];
+  if (line === undefined) return undefined;
+  const args = splitSystemdArgs(line);
+  return args.length >= 2 ? { node: args[0]!, cli: args[1]! } : undefined;
+}
+
+/**
+ * The program out of a scheduled task's XML (`schtasks /Query /XML`) or the
+ * Startup launcher written by {@link buildWindowsStartupPlan}. Pure.
+ */
+export function programFromWindows(content: string): ServiceProgram | undefined {
+  const command = /<Command>([\s\S]*?)<\/Command>/.exec(content)?.[1];
+  if (command !== undefined) {
+    const args = /<Arguments>([\s\S]*?)<\/Arguments>/.exec(content)?.[1] ?? '';
+    const cli = /^\s*"([^"]+)"/.exec(xmlUnescape(args))?.[1];
+    return cli ? { node: xmlUnescape(command).replace(/^"|"$/g, ''), cli } : undefined;
+  }
+  // `.vbs`: sh.Run "<""node"" ""cli"" start --service>", 0, False
+  const quoted = [...content.matchAll(/""([^"]+)""/g)].map((m) => m[1]!);
+  return quoted.length >= 2 ? { node: quoted[0]!, cli: quoted[1]! } : undefined;
+}
+
+/**
+ * What the registered service runs, read back from its definition — so a
+ * client can tell the bridge Uxnan Desktop installed from an independent one
+ * the user registered, without guessing. `undefined` when none is registered
+ * or its definition has another shape.
+ */
+export async function serviceProgram(env: ServiceEnv): Promise<ServiceProgram | undefined> {
+  if (env.platform === 'win32') {
+    try {
+      const { stdout } = await run('schtasks', ['/Query', '/TN', TASK_NAME, '/XML'], {
+        windowsHide: true,
+      });
+      const program = programFromWindows(stdout);
+      if (program) return program;
+    } catch {
+      /* no scheduled task: the Startup launcher, if any */
+    }
+    const vbs = buildWindowsStartupPlan(env).removeFile;
+    const content = vbs ? await readFile(vbs, 'utf-8').catch(() => undefined) : undefined;
+    return content === undefined ? undefined : programFromWindows(content);
+  }
+  const file = buildServicePlan(env).file;
+  if (!file) return undefined;
+  const content = await readFile(file.path, 'utf-8').catch(() => undefined);
+  if (content === undefined) return undefined;
+  return env.platform === 'darwin' ? programFromPlist(content) : programFromUnit(content);
+}
+
 /**
  * Start the installed service now (it is not running: stopped by hand, or it
  * exited cleanly). A no-op for a running one.
@@ -357,6 +423,24 @@ function vbsLauncher(execPath: string, cliPath: string): string {
 /** Quote an ExecStart argument for systemd (paths with spaces). */
 function systemdQuote(value: string): string {
   return /[\s"\\]/.test(value) ? `"${value.replace(/(["\\])/g, '\\$1')}"` : value;
+}
+
+/** Split an `ExecStart=` line the way {@link systemdQuote} wrote it. */
+function splitSystemdArgs(line: string): string[] {
+  const args: string[] = [];
+  const re = /"((?:[^"\\]|\\.)*)"|(\S+)/g;
+  for (const m of line.matchAll(re)) {
+    args.push(m[1] !== undefined ? m[1].replace(/\\(["\\])/g, '$1') : m[2]!);
+  }
+  return args;
+}
+
+function xmlUnescape(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
 }
 
 function xmlEscape(value: string): string {

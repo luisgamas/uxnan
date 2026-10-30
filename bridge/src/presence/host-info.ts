@@ -8,7 +8,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { hostname } from 'node:os';
-import type { BridgeHost, BridgeLaunchedBy } from '@uxnan/shared';
+import type { BridgeHost, BridgeInstallKind, BridgeLaunchedBy } from '@uxnan/shared';
 
 /** Environment variable a launcher sets to say what it is. */
 export const BRIDGE_HOST_ENV = 'UXNAN_BRIDGE_HOST';
@@ -36,6 +36,11 @@ export function machineName(platform: NodeJS.Platform = process.platform): strin
   return host.replace(/\.local$/i, '') || host;
 }
 
-export function bridgeHost(): BridgeHost {
-  return { launchedBy: launchedBy(), machineName: machineName() };
+/** This bridge's host record; `install` is how it was installed (`install-kind.ts`). */
+export function bridgeHost(install?: BridgeInstallKind): BridgeHost {
+  return {
+    launchedBy: launchedBy(),
+    machineName: machineName(),
+    ...(install !== undefined ? { install } : {}),
+  };
 }

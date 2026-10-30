@@ -22,7 +22,10 @@
  *
  * It only ever runs for a bridge that is the user's service and a global npm
  * install ({@link resolveUpdateLayout}); anything else reports why in
- * `BridgeUpdate.unsupportedReason`.
+ * `BridgeUpdate.unsupportedReason`. A bridge that came inside Uxnan Desktop
+ * (`installKind: 'bundled'`, `install-kind.ts`) is updated by the desktop — a
+ * new desktop carries the new bridge — so it never asks npm at all: it reports
+ * no newer version and says who updates it.
  *
  * Source: architecture/02a-system-architecture.md §5.8.18; shared `BridgeUpdate`.
  */
@@ -34,6 +37,7 @@ import {
   isNewerVersion,
   JsonRpcErrorCode,
   RpcError,
+  type BridgeInstallKind,
   type BridgeLaunchedBy,
   type BridgeUpdate,
   type BridgeUpdateFailure,
@@ -106,6 +110,10 @@ export function resolveUpdateLayout(
   return { packageRoot, prefix, npmCli };
 }
 
+/** Why a bundled bridge does not update itself, as every client shows it. */
+export const BUNDLED_UPDATE_REASON =
+  'this bridge came with Uxnan Desktop, which updates it when the app updates';
+
 /** The command a person runs to update by hand. */
 export function manualUpdateCommand(version = 'latest'): string {
   return `npm install -g ${BRIDGE_PACKAGE_NAME}@${version}`;
@@ -153,6 +161,9 @@ export interface BridgeUpdaterOptions {
   state: DaemonState;
   version: string;
   launchedBy: BridgeLaunchedBy;
+  /** How this bridge was installed (`install-kind.ts`); `bundled` is the
+   *  desktop's to update. Defaults to `npm`. */
+  installKind?: BridgeInstallKind;
   /** Where the bridge lives, or why it cannot replace itself. */
   layout: UpdateLayout | { reason: string };
   /** Threads with a turn in flight right now. */
@@ -183,6 +194,7 @@ export class BridgeUpdater {
 
   /** Whether this bridge can replace itself, and if not, why. */
   #support(): { canApply: boolean; reason?: string } {
+    if (this.#bundled) return { canApply: false, reason: BUNDLED_UPDATE_REASON };
     if (this.#o.launchedBy !== 'service') {
       return {
         canApply: false,
@@ -194,6 +206,11 @@ export class BridgeUpdater {
     }
     if ('reason' in this.#o.layout) return { canApply: false, reason: this.#o.layout.reason };
     return { canApply: true };
+  }
+
+  /** Uxnan Desktop owns this bridge's update: the registry is never asked. */
+  get #bundled(): boolean {
+    return this.#o.installKind === 'bundled';
   }
 
   snapshot(): BridgeUpdate {
@@ -231,6 +248,7 @@ export class BridgeUpdater {
 
   /** The periodic registry check: tells the clients when the newest version changes. */
   async refresh(): Promise<void> {
+    if (this.#bundled) return;
     const check =
       this.#o.check ??
       (async () =>
@@ -252,6 +270,7 @@ export class BridgeUpdater {
    * version changed, and answers with the state either way.
    */
   async check(): Promise<BridgeUpdate> {
+    if (this.#bundled) return this.snapshot();
     const fresh = await (this.#o.fetchLatest?.() ?? Promise.resolve(undefined)).catch(
       () => undefined,
     );
@@ -275,7 +294,9 @@ export class BridgeUpdater {
       throw new RpcError(
         JsonRpcErrorCode.BridgeError,
         `This bridge cannot update itself: ${support.reason ?? 'unsupported'}.`,
-        { reason: 'unsupported', command: manualUpdateCommand() },
+        this.#bundled
+          ? { reason: 'unsupported' }
+          : { reason: 'unsupported', command: manualUpdateCommand() },
       );
     }
     if (this.#o.activeTurns() > 0) {

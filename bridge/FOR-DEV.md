@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 1246, shared 110, relay
+standalone). It builds clean and the suite is green (bridge 1251, shared 110, relay
 18). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,16 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **The bridge Uxnan Desktop carries** (architecture/02a §5.8.18,
+  `src/install-kind.ts`): a bridge running from the private runtime the desktop
+  installer ships knows it (`uxnan-runtime.json` beside its tree) and reports
+  `BridgeStatus.host.install: 'bundled'`; it never asks npm and leaves its
+  update to the desktop. `service-status` reads back the `program` the
+  registered service runs. Verified from a runtime built on macOS arm64,
+  started in a scratch `HOME`: `uxnan-bridge status` answered over the local
+  channel with `install: bundled`. The keychain no longer reads an access
+  error as "no identity" (it used to mint a new one). Live service runs:
+  `uxnandesktop/FOR-DEV.md` → *The bridge Uxnan carries*.
 - **Agent views in chat** (architecture/02a §5.8.20, `src/views/`,
   `view/read`): the bridge runs its own loopback MCP server (`uxnan`) that every
   run gets next to an attached desktop's (`SendTurnOptions.mcpServers`), with
@@ -333,6 +343,18 @@ push validation (FOR-HUMAN).
       rules. See the inline `FOR-DEV:` marker beside `MetricsEvents`.
 
 ## Transport & connectivity
+
+- [ ] **Push through FCM's HTTP v1 API, for every bridge kind.** The bridge
+      Uxnan Desktop carries ships **without** `firebase-admin` (an optional
+      dependency, ~66 MB; maintainer's decision, 2026-10-29), so today it sends
+      no background push even when the Firebase service account is there, while
+      an npm install does. Replace the `firebase-admin` path in
+      `src/push/push-sender.ts` (`createBridgePushSender`, inline `FOR-DEV:`)
+      with a direct HTTP v1 sender — a JWT signed with the service account's
+      key (`node:crypto`) traded for an OAuth2 token, then one `fetch` to
+      `https://fcm.googleapis.com/v1/projects/<id>/messages:send` — so npm and
+      bundled bridges behave the same and `firebase-admin` leaves the bridge's
+      dependencies. Still gated on the credentials in `FOR-HUMAN.md`.
 
 - [ ] **Bind LAN `qr_bootstrap` to a pairing-code proof.** The armed pairing
       window (`server-handshake.ts`, gated on `PairingCodeService.isArmed`) stops
