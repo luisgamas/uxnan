@@ -15,7 +15,11 @@
  * A conversation stored before digests existed gets its digest built the first
  * time one is needed, one turn at a time, and kept.
  */
-import { THREAD_SEARCH_MAX_MATCHES, type ThreadSearchMatch } from '@uxnan/shared';
+import {
+  THREAD_SEARCH_MAX_MATCHES,
+  inlineAttachmentsPlainText,
+  type ThreadSearchMatch,
+} from '@uxnan/shared';
 
 /** Most characters of one message a digest keeps (the start of it). */
 export const DIGEST_TEXT_MAX_CHARS = 32_000;
@@ -55,6 +59,8 @@ export interface DigestibleMessage {
   role: string;
   text: string;
   segments?: readonly unknown[];
+  /** A user message's images and files, in the order of the markers in its text. */
+  attachments?: readonly { name?: string }[];
 }
 
 /** The digest of one turn's messages. */
@@ -67,7 +73,16 @@ export function digestOfTurn(
   const files: string[] = [];
   let commands = 0;
   for (const message of messages) {
-    if (message.role === 'user') user.push(message.text);
+    // Each attachment as `[name]` where it sat: a transferred conversation's
+    // context and a search read words, never the raw U+FFFC marker.
+    if (message.role === 'user') {
+      user.push(
+        inlineAttachmentsPlainText(
+          message.text,
+          (message.attachments ?? []).map((a) => a.name),
+        ),
+      );
+    }
     if (message.role !== 'assistant') continue;
     reply.push(message.text);
     for (const segment of message.segments ?? []) {

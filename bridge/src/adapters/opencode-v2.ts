@@ -46,10 +46,12 @@ import {
   type OpenCodeAgent,
   type OpenCodeEffect,
   type OpenCodePermissionPolicy,
+  type OpenCodeMessage,
   type OpenCodePrompt,
   type PermissionReply,
 } from './opencode-protocol.js';
 import { ServeProcess } from './opencode-transport.js';
+import { openCodeV2Files } from './turn-input.js';
 import type { SpawnFn } from './spawn.js';
 
 /**
@@ -564,6 +566,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
     await this.#useInstructions(sessionId, prompt.system);
     await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
       text: prompt.text,
+      ...promptFiles(prompt),
     });
   }
 
@@ -653,9 +656,10 @@ export class OpenCodeV2Server implements IOpenCodeServer {
     this.#sessionModel.set(sessionId, key);
   }
 
-  async steer(sessionId: string, text: string): Promise<void> {
+  async steer(sessionId: string, message: OpenCodeMessage): Promise<void> {
     await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
-      text,
+      text: message.text,
+      ...promptFiles(message),
       delivery: 'steer',
     });
   }
@@ -743,4 +747,13 @@ function modelRef(model: OpenCodeModelRef, variant?: string): Record<string, str
 
 function modelKey(model: OpenCodeModelRef, variant?: string): string {
   return `${model.providerID}/${model.modelID}#${variant ?? ''}`;
+}
+
+/**
+ * A prompt's images as OpenCode 2 `files`, each tied by its `mention` to its
+ * label in the text; nothing for a text-only prompt.
+ */
+function promptFiles(message: OpenCodeMessage): { files?: Array<Record<string, unknown>> } {
+  const files = openCodeV2Files(message);
+  return files.length > 0 ? { files } : {};
 }

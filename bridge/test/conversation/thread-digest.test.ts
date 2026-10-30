@@ -42,6 +42,23 @@ test('a digest keeps what was said, the files edited and the commands counted â€
   });
 });
 
+test('a digest reads each attachment as its name, never the marker', () => {
+  const digest = digestOfTurn({ createdAt: 1 }, [
+    {
+      role: 'user',
+      text: 'compare \uFFFC with \uFFFC',
+      attachments: [{ name: 'before.png' }, {}],
+    },
+    { role: 'assistant', text: 'ok' },
+  ]);
+  assert.equal(digest.u, 'compare [before.png] with [attachment]');
+  assert.ok(!digest.u.includes('\uFFFC'));
+  // A search finds the name, and the marker itself finds nothing.
+  const turns = searchableTurns([{ turnId: 't', ...digest }]);
+  assert.equal(searchTurns(turns, queryTerms('before.png')).matchCount, 1);
+  assert.equal(searchTurns(turns, queryTerms('\uFFFC')).matchCount, 0);
+});
+
 test('a digest keeps only the start of a huge message', () => {
   const digest = digestOfTurn({ createdAt: 1 }, [
     { role: 'user', text: 'q' },

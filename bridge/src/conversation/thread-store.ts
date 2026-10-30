@@ -51,6 +51,7 @@ import type {
 } from '@uxnan/shared';
 import {
   JsonRpcErrorCode,
+  inlineAttachmentsPlainText,
   RpcError,
   TURN_PAGE_MAX_BYTES,
   appendThinkingSegment,
@@ -1380,7 +1381,12 @@ export class ThreadStore {
       // has to (or may) invent its own. Only over the placeholder: a name the
       // caller gave at `thread/start` is the user's.
       if (thread.titleSource === undefined && isPlaceholderTitle(thread.title)) {
-        const provisional = provisionalTitle(userText);
+        const provisional = provisionalTitle(
+          inlineAttachmentsPlainText(
+            userText,
+            stored.map((a) => a.name),
+          ),
+        );
         if (provisional.length > 0) {
           thread.title = provisional;
           thread.titleSource = 'prompt';
@@ -1399,8 +1405,8 @@ export class ThreadStore {
   /**
    * Keeps the images and files of a user message beside the thread, so every
    * client can show them in the message long after the agent's own copies are
-   * gone. Only inline ones are kept: a path names a file the bridge does not
-   * own.
+   * gone — every one, in order, because the n-th marker in the message's text
+   * is the n-th attachment (`turn/send` refuses one without bytes).
    */
   async #storeAttachments(
     threadId: string,
@@ -1409,9 +1415,7 @@ export class ThreadStore {
   ): Promise<MessageAttachment[]> {
     const stored: MessageAttachment[] = [];
     for (const [index, attachment] of attachments.entries()) {
-      if (!attachment.base64Data) continue;
       const data = Buffer.from(attachment.base64Data, 'base64');
-      if (data.length === 0) continue;
       const isFile = attachment.type === 'file';
       const ext = isFile
         ? fileNameExtension(attachment.name)
@@ -1422,7 +1426,7 @@ export class ThreadStore {
         id,
         mimeType: attachment.mimeType,
         bytes: data.length,
-        ...(isFile && attachment.name ? { name: attachment.name } : {}),
+        ...(attachment.name ? { name: attachment.name } : {}),
         ...(attachment.width !== undefined ? { width: attachment.width } : {}),
         ...(attachment.height !== undefined ? { height: attachment.height } : {}),
       });

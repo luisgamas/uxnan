@@ -301,11 +301,14 @@ push validation (FOR-HUMAN).
   `opencode serve` `permission.asked` + Zero and Grok
   via ACP `session/request_permission`; all routed through one `requestApproval`
   round-trip, validated end-to-end.
-- **Image attachments** — CLI-agnostic file-path, sandbox-safe (written into the
-  directory the CLI actually runs in — the turn's `cwd`, else the adapter's —
-  and referenced relatively, since every agent refuses a path outside its
-  workspace). Accepted by every wired agent (`capabilities.images`) except the
-  echo demo; see `docs/agents.md` → *Image attachments*.
+- **Attachments in the sentence** — each image and file reaches the agent
+  where the person put it: a numbered label at its marker and a note mapping
+  every label to its file, written into the directory the CLI actually runs in
+  and referenced relatively; Claude Code, Codex, OpenCode, pi and Zero also get
+  each image as their CLI's own input right after its label. Measured live:
+  Claude, Codex, OpenCode 2, pi, Zero (vision models), Grok and Antigravity
+  attribute two images to the right parts of one sentence 4/4 or better; see
+  `docs/agents.md` → *Attachments in the sentence*.
 - **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
   Zero and Grok. Every idle read merges completed native-only turns into the
   bridge store (skipped while a transcript file and the thread are unchanged); OpenCode uses its official local server endpoint and the other
@@ -424,15 +427,13 @@ push validation (FOR-HUMAN).
       approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
       a headless entry point.
-- [ ] **Image attachments — follow-ups** — native per-CLI image input (a dedicated
-      flag / MCP image part) where richer than a cwd-relative file path; add
+- [ ] **Attachments in the sentence — OpenCode 1.x not measured live** (plan 047;
+      `docs/agents.md` → *Attachments in the sentence*): `prompt_async` `file`
+      parts between the text parts (`openCodeV1Parts`,
+      `src/adapters/turn-input.ts`) are unit tested, but only 2.x is installed —
+      run the two-image matrix on a 1.x server. Also open: add
       `.uxnan-attachments/` to a recommended `.gitignore` (cleaned per turn, but a
-      crash mid-turn could leave one). **Delivery itself is verified**: a
-      four-quadrant probe image was described correctly by `claude -p`,
-      `agy -p`, `grok --print`, `pi -p` and `opencode run` (the last two via
-      their file tools rather than vision), and by **Codex on-device** through
-      the phone. **Zero** takes them natively (inline ACP image block) — unit
-      tested, but not yet run end to end because the account is credit-blocked.
+      crash mid-turn could leave one).
 - [ ] **`auth/login` / `auth/logout`** — still stubs (driving a CLI's interactive
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command

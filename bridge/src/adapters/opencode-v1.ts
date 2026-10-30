@@ -36,10 +36,12 @@ import {
   type OpenCodeAgent,
   type OpenCodeEffect,
   type OpenCodePermissionPolicy,
+  type OpenCodeMessage,
   type OpenCodePrompt,
   type PermissionReply,
 } from './opencode-protocol.js';
 import { ServeProcess } from './opencode-transport.js';
+import { openCodeV1Parts } from './turn-input.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -556,7 +558,7 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
     await this.#promptAsync(
       sessionId,
-      prompt.text,
+      prompt,
       prompt.model,
       prompt.variant,
       prompt.agent,
@@ -569,13 +571,13 @@ export class OpenCodeV1Server implements IOpenCodeServer {
    * into the running work at the next tool boundary, closing with one
    * `session.idle` (verified against 1.18.11).
    */
-  async steer(sessionId: string, text: string): Promise<void> {
-    await this.#promptAsync(sessionId, text);
+  async steer(sessionId: string, message: OpenCodeMessage): Promise<void> {
+    await this.#promptAsync(sessionId, message);
   }
 
   async #promptAsync(
     sessionId: string,
-    text: string,
+    message: OpenCodeMessage,
     model?: OpenCodeModelRef,
     variant?: string,
     agent?: OpenCodeAgent,
@@ -588,7 +590,8 @@ export class OpenCodeV1Server implements IOpenCodeServer {
       ...(variant !== undefined ? { variant } : {}),
       // 1.x takes the agent per prompt (1.18.34 `prompt_async` body).
       ...(agent !== undefined ? { agent } : {}),
-      parts: [{ type: 'text', text }],
+      // Text and `file` parts in order: each image right after its label.
+      parts: openCodeV1Parts(message),
     });
   }
 

@@ -59,10 +59,10 @@ import type {
   GenerateTitleOptions,
   NativeSessionInfo,
   SendTurnOptions,
-  TurnAttachment,
 } from '@uxnan/shared';
 import type { ApprovalRequester } from './user-input.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { acpPrompt } from './turn-input.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import type { AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
@@ -86,10 +86,10 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
   // ACP `session/request_permission` gives real per-action approvals.
   approvals: true,
   forking: true,
-  // Delivered **natively**: Zero's ACP advertises `promptCapabilities.image`
+  // Delivered **inline**: Zero's ACP advertises `promptCapabilities.image`
   // and decodes an inline image block into the model's image input, while its
-  // `read_file` tool is line-oriented text — so the bridge's usual file-path
-  // delivery would have it read a PNG as garbage. See `handlesAttachments`.
+  // `read_file` tool is line-oriented text — a file it opened would read as
+  // garbage. See `takesInlineImages`.
   images: true,
   // Verified against a real ACP-driven run: no usage on the wire and none in
   // the session store either (that is an `exec`-only record). See the header.
@@ -282,10 +282,10 @@ export class ZeroAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Zero takes images natively (an inline ACP image block), so the bridge must
-   * not write attachment files nor add a path note — see {@link promptBlocks}.
+   * Zero takes images inline: each rides as an ACP image block right after
+   * its label (`acpPrompt`), which it decodes into the model's image input.
    */
-  handlesAttachments(): boolean {
+  takesInlineImages(): boolean {
     return true;
   }
 
@@ -432,7 +432,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
-    const { threadId, turnId, text } = options;
+    const { threadId, turnId } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
 
@@ -489,7 +489,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
       // timeout 0: a turn may run arbitrarily long, so never auto-reject it.
       .request<{ stopReason?: string }>(
         'session/prompt',
-        { sessionId, prompt: promptBlocks(text, options.attachments) },
+        { sessionId, prompt: acpPrompt(options) },
         0,
       )
       .then((result) => this.#completeTurn(run, result?.stopReason ?? 'end_turn'))
@@ -928,37 +928,6 @@ function selectOption(
 
 function cancelledOutcome(): { outcome: { outcome: string } } {
   return { outcome: { outcome: 'cancelled' } };
-}
-
-/**
- * Builds the ACP `prompt` blocks: the user's text plus one **inline image
- * block** per attachment (`{ type: 'image', mimeType, data }` — base64, the
- * shape Zero decodes into the model's image input).
- *
- * This is why the Zero adapter takes attachments natively instead of the
- * bridge's file-path delivery: Zero's `read_file` tool is line-oriented text,
- * so an image referenced by path would be read as binary garbage, while its
- * ACP `promptCapabilities.image` is true. Attachments without inline bytes (a
- * bare workspace `path`) are skipped here — the file stays where it is and the
- * text still mentions it.
- */
-function promptBlocks(
-  text: string,
-  attachments: readonly TurnAttachment[] | undefined,
-): Array<Record<string, unknown>> {
-  const blocks: Array<Record<string, unknown>> = [];
-  if (text.length > 0) blocks.push({ type: 'text', text });
-  for (const att of attachments ?? []) {
-    if (!att?.base64Data) continue;
-    blocks.push({
-      type: 'image',
-      mimeType: att.mimeType || 'image/png',
-      data: att.base64Data,
-    });
-  }
-  // Never send an empty prompt: an image-only turn still needs a text block.
-  if (blocks.length === 0) blocks.push({ type: 'text', text });
-  return blocks;
 }
 
 /** Extract the text of an ACP `ContentBlock` (only `text` blocks carry text). */

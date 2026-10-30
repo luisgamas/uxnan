@@ -12,6 +12,7 @@ import type {
   AgentModel,
   NativeSessionInfo,
   SendTurnOptions,
+  TurnInputPart,
 } from '@uxnan/shared';
 import { StreamNotification, isStep, previewStep } from '@uxnan/shared';
 import {
@@ -192,7 +193,7 @@ baseTest('activeTurnId reflects the in-flight turn and clears when it ends', asy
   await rmrf(baseDir);
 });
 
-test('sendTurn delivers an image-only turn: placeholder user text + attachment path in the prompt', async () => {
+test('an attachment-only turn keeps its marker and reaches the agent labelled, with its file', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-img-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
   const manager = new AgentManager({
@@ -209,26 +210,29 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   const cwd = join(tmpdir(), `uxnan-am-cwd-${randomUUID()}`);
   await mkdir(cwd, { recursive: true });
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  const { turnId } = await manager.sendTurn(thread.id, '', {
+  const { turnId } = await manager.sendTurn(thread.id, '￼', {
     cwd,
-    attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+    attachments: [{ type: 'image', name: 'shot.png', mimeType: 'image/png', base64Data: PNG_1x1 }],
   });
 
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
   const turn = await store.getTurn(turnId);
 
-  // The persisted user message is the user's own: no text, no temp path — its
-  // image is kept with it, for every client to show.
+  // The persisted user message is the user's own: its marker, no temp path —
+  // its image is kept with it, named, for every client to show in place.
   const user = turn.messages.find((m) => m.role === 'user');
-  assert.equal(user?.content, '');
+  assert.equal(user?.content, '￼');
   assert.equal(user?.attachments?.length, 1);
   assert.equal(user?.attachments?.[0]?.mimeType, 'image/png');
-  // The echo agent echoes the prompt it received: the note references a
-  // cwd-relative path (inside the workspace), not an absolute temp path.
+  assert.equal(user?.attachments?.[0]?.name, 'shot.png');
+  // The echo agent echoes the prompt it received: the label where the marker
+  // was, and a note naming a cwd-relative path (inside the workspace).
   const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
-  assert.match(assistant, /Attached image/);
-  assert.ok(assistant.includes('.uxnan-attachments/'));
+  assert.ok(assistant.startsWith('[Image 1: shot.png]'));
+  assert.ok(assistant.includes(`.uxnan-attachments/${turnId}/1/shot.png`));
+  assert.match(assistant, /open it with your file\/vision tools/);
   assert.ok(!assistant.includes(cwd));
+  assert.ok(!assistant.includes('￼'));
   // The temp dir is cleaned up once the turn ends (best-effort, async).
   await waitFor(async () => !existsSync(join(cwd, '.uxnan-attachments', turnId)));
   await rmrf(cwd);
@@ -257,7 +261,7 @@ test('a turn without a cwd writes the attachment into the ADAPTER working dir', 
   manager.register(adapter);
 
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  const { turnId } = await manager.sendTurn(thread.id, 'look at this', {
+  const { turnId } = await manager.sendTurn(thread.id, 'look at this ￼', {
     attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
   });
 
@@ -266,8 +270,8 @@ test('a turn without a cwd writes the attachment into the ADAPTER working dir', 
   const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
   // Referenced relatively (inside the adapter's workspace), never as an
   // absolute path under the OS temp dir.
-  assert.match(assistant, /Attached image/);
-  assert.ok(assistant.includes('.uxnan-attachments/'));
+  assert.ok(assistant.startsWith('look at this [Image 1]'));
+  assert.ok(assistant.includes(`.uxnan-attachments/${turnId}/1/image-1.png`));
   assert.ok(!assistant.includes(adapterCwd));
 
   await waitFor(async () => !existsSync(join(adapterCwd, '.uxnan-attachments', turnId)));
@@ -275,11 +279,9 @@ test('a turn without a cwd writes the attachment into the ADAPTER working dir', 
   await rmrf(baseDir);
 });
 
-test('an adapter that takes attachments natively gets no file and no path note', async () => {
-  // Zero decodes an inline ACP image block and its read tool is text-only, so
-  // materializing a file would only invite it to read a PNG as garbage.
-  const baseDir = join(tmpdir(), `uxnan-am-native-${randomUUID()}`);
-  const cwd = join(tmpdir(), `uxnan-am-native-cwd-${randomUUID()}`);
+test('an adapter that takes inline images gets each right after its label, and the file too', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-inline-${randomUUID()}`);
+  const cwd = join(tmpdir(), `uxnan-am-inline-cwd-${randomUUID()}`);
   await mkdir(cwd, { recursive: true });
   const store = new ThreadStore(new DaemonState(baseDir));
   const manager = new AgentManager({
@@ -290,22 +292,76 @@ test('an adapter that takes attachments natively gets no file and no path note',
     defaultAgent: 'echo',
   });
   const adapter = new EchoAgentAdapter();
-  (adapter as unknown as { handlesAttachments: () => boolean }).handlesAttachments = () => true;
+  (adapter as unknown as { takesInlineImages: () => boolean }).takesInlineImages = () => true;
+  const seen: { input?: TurnInputPart[]; fileThere: boolean }[] = [];
+  const send = adapter.sendTurn.bind(adapter);
+  adapter.sendTurn = (options) => {
+    const image = options.input?.find((p) => p.type === 'image');
+    seen.push({
+      ...(options.input !== undefined ? { input: options.input } : {}),
+      fileThere: image?.type === 'image' && image.path !== undefined && existsSync(image.path),
+    });
+    return send(options);
+  };
   manager.register(adapter);
 
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  const { turnId } = await manager.sendTurn(thread.id, 'look at this', {
+  const { turnId } = await manager.sendTurn(thread.id, 'in ￼ a cat, in ￼ a table', {
     cwd,
-    attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+    attachments: [
+      { type: 'image', name: 'a.png', mimeType: 'image/png', base64Data: PNG_1x1 },
+      { type: 'file', name: 'b.csv', mimeType: 'text/csv', base64Data: 'YSxi' },
+    ],
   });
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
 
+  const [{ input, fileThere } = { fileThere: false }] = seen;
+  assert.deepEqual(
+    input?.map((p) => (p.type === 'text' ? p.text.split('\n')[0] : `<${p.label}>`)),
+    ['in [Image 1: a.png]', '<[Image 1: a.png]>', ' a cat, in [File 1: b.csv] a table'],
+  );
+  // The image is still written for file work; the note says it came inline.
+  assert.equal(fileThere, true);
+  const assistant = String(
+    (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.content ?? '',
+  );
+  assert.match(assistant, /Image 1: a\.png: sent with this message as an image/);
+  assert.match(assistant, /File 1: b\.csv: .*\(open it with your file tools\)/);
+
+  await rmrf(cwd);
+  await rmrf(baseDir);
+});
+
+test('a command invocation carries its attachment labels in its arguments', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cmd-att-${randomUUID()}`);
+  const cwd = join(tmpdir(), `uxnan-am-cmd-att-cwd-${randomUUID()}`);
+  await mkdir(cwd, { recursive: true });
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter());
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, '', {
+    cwd,
+    command: { name: 'review', args: 'this screen ￼ please' },
+    attachments: [{ type: 'image', name: 's.png', mimeType: 'image/png', base64Data: PNG_1x1 }],
+  });
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
   const turn = await store.getTurn(turnId);
+  // History shows the command as written, its marker in place…
+  assert.equal(
+    turn.messages.find((m) => m.role === 'user')?.content,
+    '/review this screen ￼ please',
+  );
+  // …and the agent gets it labelled.
   const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
-  // The prompt is the user's text, untouched — no "[Attached image …]" note…
-  assert.ok(!assistant.includes('Attached image'));
-  // …and nothing was written to disk.
-  assert.equal(existsSync(join(cwd, '.uxnan-attachments')), false);
+  assert.ok(assistant.startsWith('/review this screen [Image 1: s.png] please'));
 
   await rmrf(cwd);
   await rmrf(baseDir);

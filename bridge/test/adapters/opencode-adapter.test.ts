@@ -25,12 +25,13 @@ import {
   type OpenCodeModel,
   type OpenCodeModelRef,
   type OpenCodePermissionPolicy,
+  type OpenCodeMessage,
   type OpenCodePrompt,
   type OpenCodeProtocolVersion,
   type PermissionReply,
   type SpawnedProcess,
 } from '../../src/index.js';
-import type { AccessMode, AgentStreamEvent } from '@uxnan/shared';
+import type { AccessMode, AgentStreamEvent, TurnInputPart } from '@uxnan/shared';
 
 // --- a fake `opencode serve` behind the neutral contract. Raw protocol events go
 // through the REAL V1 / V2 translators, so these tests cover what a live server's
@@ -42,7 +43,7 @@ class FakeServer implements IOpenCodeServer {
   readonly #v2 = new OpenCodeV2Translator();
   readonly sessions: string[] = [];
   readonly prompts: { sessionId: string; body: OpenCodePrompt }[] = [];
-  readonly steered: { sessionId: string; text: string }[] = [];
+  readonly steered: { sessionId: string; text: string; input?: TurnInputPart[] }[] = [];
   readonly aborted: string[] = [];
   readonly replies: { id: string; reply: PermissionReply }[] = [];
   readonly rejectedQuestions: string[] = [];
@@ -101,8 +102,12 @@ class FakeServer implements IOpenCodeServer {
   /** When set, `steer` waits for the test to answer (accept or refuse). */
   holdSteer = false;
   answerSteer?: (accepted: boolean) => void;
-  steer(sessionId: string, text: string): Promise<void> {
-    this.steered.push({ sessionId, text });
+  steer(sessionId: string, message: OpenCodeMessage): Promise<void> {
+    this.steered.push({
+      sessionId,
+      text: message.text,
+      ...(message.input !== undefined ? { input: message.input } : {}),
+    });
     if (!this.holdSteer) return Promise.resolve();
     return new Promise((resolve, reject) => {
       this.answerSteer = (accepted) =>
@@ -325,6 +330,24 @@ test('parseOpenCodeModelWindows maps provider/model → limit.context', () => {
 // ---------------------------------------------------------------------------
 // Adapter behaviour (driven by a fake serve process)
 // ---------------------------------------------------------------------------
+
+test('OpenCodeAdapter hands its server the ordered input of a turn with images', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  assert.equal(adapter.takesInlineImages(), true);
+  collect(adapter);
+  const input: TurnInputPart[] = [
+    { type: 'text', text: 'in [Image 1]' },
+    { type: 'image', label: '[Image 1]', mimeType: 'image/png', base64Data: 'AAAA' },
+    { type: 'text', text: ' a cat' },
+  ];
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'in [Image 1] a cat', input });
+  assert.equal(server.prompts[0]?.body.text, 'in [Image 1] a cat');
+  assert.deepEqual(server.prompts[0]?.body.input, input);
+  // A plain turn carries none.
+  await adapter.sendTurn({ threadId: 't2', turnId: 'u2', text: 'hi' });
+  assert.equal(server.prompts[1]?.body.input, undefined);
+});
 
 test('OpenCodeAdapter streams text deltas and completes on session.idle', async () => {
   const server = new FakeServer();
@@ -1406,8 +1429,8 @@ test('a message the server accepted counts as delivered even if the turn just en
   // The turn goes idle while the prompt round-trip is in flight. Reporting "not
   // taken" would make the bridge queue it and send the SAME text again — an
   // instruction acted on twice is worse than a reply we cannot attribute.
-  server.steer = (sessionId, text) => {
-    server.steered.push({ sessionId, text });
+  server.steer = (sessionId, message) => {
+    server.steered.push({ sessionId, text: message.text });
     server.emit('session.idle', { sessionID: 'ses_1' });
     return Promise.resolve();
   };

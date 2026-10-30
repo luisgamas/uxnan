@@ -16,6 +16,7 @@
  */
 import {
   JsonRpcErrorCode,
+  inlineAttachmentsError,
   RpcError,
   TRANSFER_STRATEGIES,
   type AgentId,
@@ -147,6 +148,9 @@ export function registerConversationHandlers(router: HandlerRouter): void {
     'thread/transfer',
     async (p, ctx: BridgeContext, session): Promise<ThreadTransferResult> => {
       const message = optionalString(p, 'message');
+      // The opening message carries no attachments, so no marker stands for one.
+      const markerError = message !== undefined ? inlineAttachmentsError(message, 0) : undefined;
+      if (markerError !== undefined) throw RpcError.invalidParams(markerError);
       const agentId = optionalString(p, 'agentId') as AgentId | undefined;
       const model = optionalString(p, 'model');
       const title = optionalString(p, 'title');

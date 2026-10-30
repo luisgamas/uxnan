@@ -43,6 +43,7 @@ import type {
 import { UXNAN_CWD_HEADER, encodeCwdHeader, type AgentMcpServer } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { claudeContent } from './turn-input.js';
 import { listClaudeSessions } from './native-sessions.js';
 import {
   applyTaskResult,
@@ -245,7 +246,7 @@ interface ActiveRun {
    * it back, `--replay-user-messages` — and `false` when it could not be
    * written or the CLI came down before reading it.
    */
-  send: (text: string) => Promise<boolean>;
+  send: (prompt: Pick<SendTurnOptions, 'text' | 'input'>) => Promise<boolean>;
   /**
    * Why the process is being ended from here, if it is: the user stopped the
    * turn (`cancelTurn`, which reports it itself), or the bridge is shutting
@@ -677,6 +678,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
+  /**
+   * Claude Code takes images inline: a stream-json user message's `content`
+   * is an Anthropic content array, so each image rides as a base64 `image`
+   * block right after its label (`claudeContent`).
+   */
+  takesInlineImages(): boolean {
+    return true;
+  }
+
   /** Claude Code's sessions in a folder, from its own session store (`native-sessions.ts`). */
   listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
     return listClaudeSessions(this.#homeDir, cwd);
@@ -718,7 +728,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   sendTurn(options: SendTurnOptions): Promise<void> {
-    const { threadId, turnId, text } = options;
+    const { threadId, turnId } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const sessionId = this.nativeSessionId(threadId);
@@ -817,7 +827,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // when the pipe is already gone, so a caller can report "not taken"
     // instead of pretending.
     const writeUserMessage = (
-      message: string,
+      prompt: Pick<SendTurnOptions, 'text' | 'input'>,
       onRead?: (read: boolean) => void,
     ): string | undefined => {
       const stdin = child.stdin;
@@ -829,7 +839,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           `${JSON.stringify({
             type: 'user',
             uuid,
-            message: { role: 'user', content: [{ type: 'text', text: message }] },
+            // The person's words with each image right after its label.
+            message: { role: 'user', content: claudeContent(prompt) },
           })}\n`,
         );
         return uuid;
@@ -840,9 +851,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     };
     // A follow-up is placed in the conversation when the CLI reads it, not
     // when it is written: the CLI holds it until the step it is in ends.
-    const sendFollowUp = (message: string): Promise<boolean> =>
+    const sendFollowUp = (prompt: Pick<SendTurnOptions, 'text' | 'input'>): Promise<boolean> =>
       new Promise((resolve) => {
-        if (writeUserMessage(message, resolve) === undefined) resolve(false);
+        if (writeUserMessage(prompt, resolve) === undefined) resolve(false);
       });
     // The process is gone: a follow-up the CLI never read goes back to the
     // queue, to run as a turn of its own — it was not part of this run.
@@ -883,7 +894,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.#active.set(turnId, run);
     this.emit({ type: 'turn_started', threadId, turnId });
 
-    if (writeUserMessage(text) === undefined) {
+    if (writeUserMessage(options) === undefined) {
       this.#active.delete(turnId);
       this.emit({
         type: 'turn_error',
@@ -1508,7 +1519,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // and stream a second reply into a turn the bridge has already closed.
     if (!run || run.finished) return Promise.resolve(false);
     if (run.threadId !== options.threadId) return Promise.resolve(false);
-    return run.send(options.text);
+    return run.send(options);
   }
 
   /**

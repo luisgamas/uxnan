@@ -208,6 +208,7 @@ export {
   type OpenCodeModel,
   type OpenCodeModelRef,
   type OpenCodePermissionPolicy,
+  type OpenCodeMessage,
   type OpenCodePrompt,
   type OpenCodeProtocolVersion,
   type PermissionReply,

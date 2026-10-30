@@ -102,6 +102,7 @@ import {
 } from './command-scan.js';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { codexInput, imagesOnly } from './turn-input.js';
 import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
@@ -529,6 +530,16 @@ export class CodexAdapter extends BaseAgentAdapter {
   defaultCwd(): string {
     return this.#defaultCwd;
   }
+
+  /**
+   * Codex takes images inline: `turn/start` / `turn/steer` input is a list of
+   * `UserInput` items, so each image rides as an `image` item (a data URL)
+   * right after its label (`codexInput`).
+   */
+  takesInlineImages(): boolean {
+    return true;
+  }
+
   /** Per-turn app-server connection. Spawned lazily, released when idle. */
   #rpc: CodexAppServerRpc | null = null;
   /** The skills the app-server listed per folder, briefly reused. */
@@ -636,7 +647,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
-    const { threadId, turnId, text } = options;
+    const { threadId, turnId } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
     const effort = reasoningValue(options);
@@ -769,9 +780,14 @@ export class CodexAdapter extends BaseAgentAdapter {
           native?.kind === 'skill'
             ? [
                 { type: 'text', text: native.text },
+                // A skill's text is re-cut around its arguments, so its images
+                // follow it in order rather than after each label.
+                ...codexInput({ text: '', input: imagesOnly(options.input) }).filter(
+                  (item) => item['type'] === 'image',
+                ),
                 { type: 'skill', name: native.skill.name, path: native.skill.path },
               ]
-            : [{ type: 'text', text }],
+            : codexInput(options),
         ...(typeof model === 'string' ? { model } : {}),
         ...(typeof effort === 'string' ? { effort } : {}),
         approvalPolicy,
@@ -865,7 +881,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       await this.#rpc.request('turn/steer', {
         threadId: codexThreadId,
         expectedTurnId: run.codexTurnId,
-        input: [{ type: 'text', text: options.text }],
+        input: codexInput(options),
       });
       return true;
     } catch {

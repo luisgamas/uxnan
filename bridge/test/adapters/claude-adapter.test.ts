@@ -32,6 +32,8 @@ interface FakeSpawn {
   pipedStdin: boolean;
   /** User message texts written to stdin, in order — the prompt, then any follow-up. */
   sent: string[];
+  /** The same messages' whole `content` arrays, images included. */
+  contents: unknown[][];
   /** The `control_response`s written to stdin, in order: each answer to a `control_request`. */
   controls: ControlResponse[];
   /** True once the adapter closed the pipe; the CLI only exits after this. */
@@ -81,6 +83,7 @@ function fakeSpawner(options: { holdEcho?: boolean } = {}): {
       ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       sent: [],
+      contents: [],
       controls: [],
       stdinEnded: false,
       feed: (lines) => {
@@ -120,6 +123,7 @@ function fakeSpawner(options: { holdEcho?: boolean } = {}): {
             .map((c) => c.text ?? '')
             .join('');
           record.sent.push(text);
+          record.contents.push(parsed.message?.content ?? []);
           if (parsed.uuid) echo(parsed.uuid);
         }
         callback();
@@ -272,6 +276,32 @@ test('ClaudeCodeAdapter streams text_delta as deltas and completes with the resu
   assert.deepEqual(last().sent, ['hi']);
   // …and the pipe is closed once the turn ends, or the CLI would wait forever.
   assert.equal(last().stdinEnded, true);
+});
+
+test('ClaudeCodeAdapter sends each image as an image block right after its label', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', defaultModel: 'opus', spawnFn });
+  assert.equal(adapter.takesInlineImages(), true);
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'in [Image 1: a.png] a cat',
+    input: [
+      { type: 'text', text: 'in [Image 1: a.png]' },
+      { type: 'image', label: '[Image 1: a.png]', mimeType: 'image/png', base64Data: 'AAAA' },
+      { type: 'text', text: ' a cat' },
+    ],
+  });
+  last().feed([
+    '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s"}',
+  ]);
+  await done;
+  assert.deepEqual(last().contents[0], [
+    { type: 'text', text: 'in [Image 1: a.png]' },
+    { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+    { type: 'text', text: ' a cat' },
+  ]);
 });
 
 test('ClaudeCodeAdapter streams thinking_delta as thinking events, separate from text', async () => {

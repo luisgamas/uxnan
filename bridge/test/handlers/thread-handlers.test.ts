@@ -121,7 +121,7 @@ const PNG_1x1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 test(
-  'turn/send accepts an image-only message (empty text + attachments)',
+  'turn/send accepts an image-only message (its marker + the attachment)',
   { skip: SKIP_ECHO_E2E_ON_WIN_CI },
   async () => {
     const { bridge, baseDir } = await boot();
@@ -136,11 +136,14 @@ test(
     assert.ok('result' in startRes);
     const threadId = (startRes.result as { id: string }).id;
 
-    // No `text` field at all — only an inline image.
+    // The text is just the image's marker.
     const sendRes = await bridge.router.dispatch(
       makeRequest('2', 'turn/send', {
         threadId,
-        attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+        text: '\uFFFC',
+        attachments: [
+          { type: 'image', name: 'shot.png', mimeType: 'image/png', base64Data: PNG_1x1 },
+        ],
       }),
     );
     assert.ok('result' in sendRes);
@@ -151,7 +154,8 @@ test(
     );
     const turn = await bridge.context.threadStore.getTurn(turnId);
     const user = turn.messages.find((m) => m.role === 'user');
-    assert.equal(user?.content, '');
+    assert.equal(user?.content, '\uFFFC');
+    assert.equal(user?.attachments?.[0]?.name, 'shot.png');
     // The image is kept with the message and served back as it was sent.
     const [attachment] = user?.attachments ?? [];
     assert.ok(attachment);
@@ -166,7 +170,7 @@ test(
     assert.ok('error' in missing);
     assert.match(
       String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
-      /Attached image/,
+      /^\[Image 1: shot\.png\]/,
     );
 
     await bridge.stop();
@@ -192,7 +196,7 @@ test(
     const sendRes = await bridge.router.dispatch(
       makeRequest('2', 'turn/send', {
         threadId,
-        text: 'read this',
+        text: 'read this \uFFFC',
         attachments: [
           { type: 'file', mimeType: 'text/csv', name: '../secret/table.csv', base64Data: csv },
         ],
@@ -215,13 +219,14 @@ test(
     assert.deepEqual(back.result, { mimeType: 'text/csv', base64Data: csv });
     assert.match(
       String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
-      /Attached file/,
+      /^read this \[File 1: table\.csv\]/,
     );
 
     const huge = 'A'.repeat(Math.ceil((MAX_ATTACHMENT_BYTES + 1) / 3) * 4);
     const tooBig = await bridge.router.dispatch(
       makeRequest('4', 'turn/send', {
         threadId,
+        text: '\uFFFC',
         attachments: [
           { type: 'file', mimeType: 'application/zip', name: 'x.zip', base64Data: huge },
         ],
@@ -229,6 +234,37 @@ test(
     );
     assert.ok('error' in tooBig);
     assert.match(tooBig.error.message, /larger than 20 MB/);
+
+    // Each attachment needs its marker, one for one, and carries its bytes.
+    for (const [id, params, why] of [
+      [
+        '5',
+        { text: 'no marker', attachments: [{ mimeType: 'text/csv', base64Data: csv }] },
+        /0 attachment marker/,
+      ],
+      [
+        '6',
+        { text: '\uFFFC\uFFFC', attachments: [{ mimeType: 'text/csv', base64Data: csv }] },
+        /2 attachment marker/,
+      ],
+      ['7', { text: 'stray \uFFFC' }, /1 attachment marker\(s\) .* for 0/],
+      ['8', { text: '\uFFFC', attachments: [{ mimeType: 'image/png' }] }, /carries no data/],
+      ['9', { text: '\uFFFC', attachments: ['nope'] }, /not an object/],
+      [
+        '10',
+        {
+          command: { name: 'review', args: 'look' },
+          attachments: [{ mimeType: 'image/png', base64Data: PNG_1x1 }],
+        },
+        /0 attachment marker/,
+      ],
+    ] as const) {
+      const res = await bridge.router.dispatch(
+        makeRequest(id, 'turn/send', { threadId, ...params }),
+      );
+      assert.ok('error' in res, `request ${id} is refused`);
+      assert.match(res.error.message, why);
+    }
 
     await bridge.stop();
     await rmrf(baseDir);
