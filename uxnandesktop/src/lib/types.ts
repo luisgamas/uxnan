@@ -1877,34 +1877,45 @@ export interface CommandError {
 
 /** How the desktop relates to the Uxnan bridge (`bridgeclient` in Rust):
  *  `off` = standalone; `attach` = use a bridge the user already runs;
- *  `managed` = also start `uxnan-bridge` when none runs, and stop it on exit. */
+ *  `managed` (a fresh install's default) = also make sure one runs as the
+ *  user's service — the registered one, an independent `uxnan-bridge`, or the
+ *  one this app carries. */
 export type BridgeMode = "off" | "attach" | "managed";
 
 export interface BridgeSettings {
   mode: BridgeMode;
-  /** Update the bridge on its own when a newer version is published, at a
-   *  quiet moment (no turn running on any client). Off by default. */
+  /** Let an independent (npm) bridge update itself when a newer version is
+   *  published, at a quiet moment (no turn running on any client). Off by
+   *  default. The bridge this app carries always follows the app. */
   autoUpdate?: boolean;
 }
 
-/** What is installed (mirrors `bridgeclient::install::InstallInfo`). */
+/** Who the registered bridge service is (mirrors `bridgeclient::ServiceOwner`). */
+export type BridgeServiceOwner = "bundled" | "independent";
+
+/** What is on this machine (mirrors `bridgeclient::RuntimeInfo`). */
 export interface BridgeInstallInfo {
-  installed: boolean;
-  version: string | null;
-  npm: boolean;
-  nodeVersion: string | null;
-  /** The command to copy when the user would rather run it themselves. */
-  command: string;
+  /** The bridge version this app carries; null for a build without one. */
+  bundledVersion: string | null;
+  serviceSupported: boolean;
+  /** Who the registered service is, when one is registered. */
+  service: BridgeServiceOwner | null;
+  /** The version of the bridge the service runs, when it can be read. */
+  serviceVersion: string | null;
+  /** An independent `uxnan-bridge` on PATH, and its version. */
+  pathFound: boolean;
+  pathVersion: string | null;
 }
 
-/** How an install/update ended (mirrors `bridgeclient::InstallResult`). */
+/** How installing (or switching to) the app's bridge ended (mirrors
+ *  `bridgeclient::InstallResult`). */
 export interface BridgeInstallResult {
   ok: boolean;
+  /** The version running now, when it came up. */
   version: string | null;
-  permissionDenied: boolean;
-  tail: string[];
-  /** The bridge's service was restarted on the new version (`managed`). */
-  restarted: boolean;
+  /** The new bridge did not come up and the previous one was put back. */
+  rolledBack: boolean;
+  error: string | null;
 }
 
 /** Why the bridge is not reachable (mirrors `bridgeclient::Unavailable`). */
@@ -1939,7 +1950,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
   resourceMode: { profile: "balanced", overrides: {}, autoSleep: false, schemaVersion: 1 },
   worktrees: { location: "managed", root: null },
-  bridge: { mode: "off" },
+  bridge: { mode: "managed" },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,

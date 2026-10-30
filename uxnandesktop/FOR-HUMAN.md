@@ -31,6 +31,16 @@ it, and only four flagship marks ship as assets (`claudecode`, `codex`,
         already produces an **experimental, ad-hoc-signed** build (no Apple account
         needed), which users authorize by hand (see `docs/install-macos.md`); this
         cert is the *optional* upgrade to a warning-free, notarized install.
+        **When it lands, the bundled bridge must be re-signed too:** the
+        installer carries a Node.js binary and the keyring addon
+        (`bridge-runtime/`, `docs/bridge-runtime.md`). Notarization accepts only
+        Developer-ID-signed, hardened-runtime, timestamped code without
+        `get-task-allow` — the official `node` carries `get-task-allow` and the
+        addon is unsigned — so both are re-signed with this identity and the
+        entitlements Node needs (`allow-jit`, `allow-unsigned-executable-memory`,
+        `disable-library-validation`) before the app is signed. Re-signing
+        changes the program the macOS keychain trusts: existing bundled bridges
+        may ask once for keychain access after that update.
       - **Linux** — optional GPG for `.deb`/`.rpm` (spec §5.1).
 
       **Unrelated to the updater key** (free, already configured). The

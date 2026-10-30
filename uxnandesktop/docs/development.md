@@ -141,6 +141,18 @@ To try the daemon without the app: `cargo run -p uxnan-host -- version`, and
 a daemon of its own (the frames it then expects are in
 `crates/host-protocol/src/lib.rs`). `UXNAN_HOST_HOME` keeps it out of `~/.uxnan`.
 
+## The bundled bridge
+
+A fresh profile starts with the bridge connection in `managed` mode, so a debug
+build connects to the bridge your machine already runs — the installed app's
+service. It never installs or registers **the bridge the app carries** on its
+own, because the service it would register is the machine's one bridge: only
+**Set up the bridge** (or *Use Uxnan's bridge*) does, and only if you built a
+runtime (`node scripts/build-bridge-runtime.mjs --build`; see
+[bridge-runtime.md](./bridge-runtime.md)). To exercise a runtime without
+touching your real bridge, run it from a scratch `HOME` as that page's
+*Verifying it* describes — never `install-service` from there.
+
 ## Type-check while developing
 
 ```bash

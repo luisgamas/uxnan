@@ -2,12 +2,14 @@
   // Settings → Bridge & mobile: how the desktop connects to the Uxnan bridge —
   // the process that drives the conversations a chat tab shows, the same ones
   // the phone shows (architecture/02a §5.8.15) — and getting that bridge
-  // installed, current and running without leaving the app.
+  // installed, current and running without leaving the app. The app carries
+  // its own bridge (no Node needed); a bridge the user installed with npm is
+  // used as it is and updates itself (architecture/02a §5.8.18).
   //
   // Built like the other panes: `SettingsSection` + `SettingsRow`, the mode in
   // the settings' `Combobox`, the state as a `StatusDot`, the actions laid out
   // like Settings → Updates (a check that is always there, the phase action
-  // only when there is one), and the command and npm's output in `CodeBlock`.
+  // only when there is one).
   //
   // Three modes and nothing hidden: `off` costs nothing at all, `attach` uses a
   // bridge the user already runs, `managed` keeps it running as the user's
@@ -21,7 +23,6 @@
   // Remote access (the bridge's relay, `RelaySettings`) sits under the phones it
   // serves and stays visible without a bridge, disabled with the reason.
   import { Button } from "$lib/components/ui/button";
-  import * as Collapsible from "$lib/components/ui/collapsible";
   import { Switch } from "$lib/components/ui/switch";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Icon } from "$lib/components/ui/icon";
@@ -32,7 +33,6 @@
   import StatusDot, { type StatusTone } from "$lib/components/StatusDot.svelte";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
-  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -60,7 +60,6 @@
   const info = $derived(bridgeInstall.info);
   const running = $derived(bridgeInstall.status);
   const result = $derived(bridgeInstall.lastResult);
-  let outputOpen = $state(false);
 
   const modeGroups = $derived<ComboGroup[]>([
     { items: MODES.map((m) => ({ value: m, label: i18n.t(`bridge.modeLabel.${m}`) })) },
@@ -70,9 +69,6 @@
   $effect(() => {
     void bridgeInstall.probe();
     void bridgeInstall.refreshStatus();
-  });
-  $effect(() => {
-    if (bridgeInstall.installing) outputOpen = true;
   });
 
   function setBridge(patch: { mode?: BridgeMode; autoUpdate?: boolean }) {
@@ -197,49 +193,69 @@
     }
   });
 
-  /** The running bridge predates the desktop channel: only an update helps. */
-  const outdated = $derived(status.state === "unavailable" && status.reason === "outdated");
-  /** The update on offer for the running bridge (the bridge's own, or the
-   *  app's installer for a bridge that cannot update itself). */
+  /** The update on offer for the running bridge (its own, or the bridge
+   *  this app carries put in its place). */
   const offer = $derived(bridgeInstall.offer);
   const updateTo = $derived(offer?.version ?? null);
   /** Why the bridge's last update failed, as the bridge that came back says. */
   const updateFailure = $derived(running?.update?.phase === "failed" ? (running.update.failure ?? null) : null);
+  const reason = $derived(status.state === "unavailable" ? status.reason : null);
   /** The running bridge is not the version installed now: a restart picks it up. */
-  const restartNeeded = $derived(
-    (status.state === "unavailable" && status.reason === "channelOff") ||
-      (!!result?.ok &&
-        !result.restarted &&
-        status.state === "connected" &&
-        !!info?.version &&
-        status.bridgeVersion !== info.version),
+  const restartNeeded = $derived(reason === "channelOff");
+  /** This app carries a bridge it can put in place. */
+  const carries = $derived(!!info?.bundledVersion);
+  /** Nothing is set up yet: the app's bridge is on offer. */
+  const offerSetUp = $derived(carries && status.state !== "connected" && !info?.service && reason !== "outdated");
+  /** An independent bridge is too old to talk to, or does not start: the
+   *  app's own can take its place (the user's choice). */
+  const offerReplace = $derived(
+    carries && !offer && (reason === "outdated" || (reason === "serviceFailed" && info?.service === "independent")),
   );
-  /** The app's installer is on offer: no bridge, or one too old to talk to. */
-  const offerInstall = $derived(!!info && (!info.installed || outdated));
+  /** The bridge running (or registered) is the one this app installed. */
+  const ownBridge = $derived(
+    running?.host?.install === "bundled" || (status.state !== "connected" && info?.service === "bundled"),
+  );
 
   const versionLine = $derived.by(() => {
     if (!info) return i18n.t("bridge.checking");
-    if (!info.installed) return info.npm ? i18n.t("bridge.notInstalledDesc") : i18n.t("bridge.needsNode");
-    const installed = info.version
-      ? i18n.t("bridge.versionInstalled", { version: info.version })
-      : i18n.t("bridge.versionUnknown");
-    if (bridgeInstall.updating) {
-      const target = bridgeInstall.pendingVersion ?? running?.update?.targetVersion ?? "";
-      return `${installed} · ${i18n.t("bridge.updatingTo", { version: target })}`;
+    if (bridgeInstall.updating || bridgeInstall.installing) {
+      const target = bridgeInstall.pendingVersion ?? running?.update?.targetVersion ?? info.bundledVersion ?? "";
+      return i18n.t("bridge.updatingTo", { version: target });
     }
-    if (!offer) return installed;
-    return `${installed} · ${
-      updateTo ? i18n.t("bridge.updateAvailable", { version: updateTo }) : i18n.t("bridge.olderThanApp")
-    }`;
+    const version = running?.version ?? info.serviceVersion ?? info.pathVersion;
+    if (!version) return carries ? i18n.t("bridge.notSetUpDesc", { version: info.bundledVersion ?? "" }) : i18n.t("bridge.noBundledRuntime");
+    const kind =
+      running?.host?.install === "bundled" || (!running && info.service === "bundled")
+        ? i18n.t("bridge.kindBundled", { version })
+        : i18n.t("bridge.kindIndependent", { version });
+    if (!offer) return kind;
+    return `${kind} · ${updateTo ? i18n.t("bridge.updateAvailable", { version: updateTo }) : i18n.t("bridge.olderThanApp")}`;
   });
 
   async function install() {
     const done = await bridgeInstall.install();
-    if (!done?.ok) return;
+    if (!done) return;
+    if (!done.ok) {
+      toast.error(done.rolledBack ? i18n.t("bridge.rolledBack") : i18n.t("bridge.installFailed"), {
+        description: done.error ?? undefined,
+      });
+      return;
+    }
     toast.success(i18n.t("bridge.installOk", { version: done.version ?? "" }));
-    // Installed with the connection off: connect now, the reason the user
-    // pressed Install.
+    // Set up with the connection off: connect now, the reason the user pressed it.
     if (mode === "off") setBridge({ mode: "managed" });
+  }
+
+  let uninstallOpen = $state(false);
+  async function uninstall(): Promise<void> {
+    // Off first, so nothing brings the service straight back up.
+    setBridge({ mode: "off" });
+    try {
+      await bridgeInstall.uninstall();
+      toast.success(i18n.t("bridge.uninstallOk"));
+    } catch (err) {
+      toastError(err);
+    }
   }
 
   async function update() {
@@ -312,14 +328,8 @@
 
       <SettingsRow label={i18n.t("bridge.version")} description={versionLine}>
         {#snippet meta()}
-          {#if result && !result.ok}
-            <p class={cn(text.meta, "text-destructive")}>
-              {result.permissionDenied ? i18n.t("bridge.permissionDenied") : i18n.t("bridge.installFailed")}
-            </p>
-          {:else if updateFailure}
-            <p class={cn(text.meta, "text-destructive")}>
-              {updateFailure.reason === "permission" ? i18n.t("bridge.permissionDenied") : i18n.t("bridge.updateFailed")}
-            </p>
+          {#if updateFailure}
+            <p class={cn(text.meta, "text-destructive")}>{i18n.t("bridge.updateFailed")}</p>
           {/if}
         {/snippet}
         {#snippet control()}
@@ -339,36 +349,24 @@
               {/if}
               {i18n.t("bridge.checkAgain")}
             </Button>
-            {#if !offerInstall && offer}
-              <Button size="sm" disabled={bridgeInstall.installing || bridgeInstall.updating} onclick={() => void update()}>
+            {#if offer || offerSetUp || offerReplace}
+              <Button
+                size="sm"
+                disabled={bridgeInstall.installing || bridgeInstall.updating}
+                onclick={() => void (offer ? update() : install())}
+              >
                 {#if bridgeInstall.installing || bridgeInstall.updating}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                  {i18n.t("bridge.updating")}
+                  {i18n.t(offerSetUp ? "bridge.settingUp" : "bridge.updating")}
                 {:else}
                   <Icon icon={DownloadIcon} data-icon="inline-start" />
-                  {i18n.t("bridge.updateAction")}
-                {/if}
-              </Button>
-            {/if}
-            {#if offerInstall && info}
-              <Button size="sm" disabled={bridgeInstall.installing || !info.npm} onclick={() => void install()}>
-                {#if bridgeInstall.installing}
-                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                  {i18n.t(info.installed ? "bridge.updating" : "bridge.installing")}
-                {:else}
-                  <Icon icon={DownloadIcon} data-icon="inline-start" />
-                  {i18n.t(info.installed ? "bridge.updateAction" : "bridge.installAction")}
+                  {i18n.t(offer ? "bridge.updateAction" : offerSetUp ? "bridge.setUpAction" : "bridge.useOwnAction")}
                 {/if}
               </Button>
             {/if}
           </div>
         {/snippet}
-        {#if offerInstall && info}
-          <div class="space-y-1.5">
-            <p class={text.meta}>{i18n.t("bridge.orRunIt")}</p>
-            <CodeBlock value={info.command} />
-          </div>
-        {:else if updateFailure}
+        {#if updateFailure}
           <div class="space-y-1.5">
             <p class={cn(text.meta, "break-words")}>{updateFailure.message}</p>
             {#if updateFailure.command}
@@ -376,22 +374,11 @@
               <CodeBlock value={updateFailure.command} />
             {/if}
           </div>
-        {/if}
-        {#if bridgeInstall.log.length > 0}
-          <Collapsible.Root bind:open={outputOpen} class="mt-2">
-            <Collapsible.Trigger
-              class={cn("flex w-full items-center justify-between rounded-md py-1 text-left", text.meta, focus.ring)}
-            >
-              {i18n.t("bridge.showOutput")}
-              <Icon
-                icon={ChevronDownIcon}
-                class={cn(icon.action, "text-muted-foreground transition-transform", outputOpen && "rotate-180")}
-              />
-            </Collapsible.Trigger>
-            <Collapsible.Content class="pt-1.5">
-              <CodeBlock value={bridgeInstall.log.join("\n")} copyable={false} class="max-h-48" />
-            </Collapsible.Content>
-          </Collapsible.Root>
+        {:else if result && !result.ok}
+          <p class={cn(text.meta, "break-words text-destructive")}>
+            {result.rolledBack ? i18n.t("bridge.rolledBack") : i18n.t("bridge.installFailed")}
+            {#if result.error}<span class="font-mono">{result.error}</span>{/if}
+          </p>
         {/if}
       </SettingsRow>
 
@@ -404,6 +391,24 @@
           />
         {/snippet}
       </SettingsRow>
+
+      {#if ownBridge}
+        <SettingsRow label={i18n.t("bridge.uninstall")} description={i18n.t("bridge.uninstallDesc")}>
+          {#snippet control()}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bridgeInstall.uninstalling || bridgeInstall.installing}
+              onclick={() => (uninstallOpen = true)}
+            >
+              {#if bridgeInstall.uninstalling}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
+              {i18n.t("bridge.uninstallAction")}
+            </Button>
+          {/snippet}
+        </SettingsRow>
+      {/if}
     </div>
   </SettingsSection>
 
@@ -530,4 +535,12 @@
       onconfirm={confirmRemove}
     />
   {/if}
+<ConfirmDialog
+    bind:open={uninstallOpen}
+    title={i18n.t("bridge.uninstallTitle")}
+    description={i18n.t("bridge.uninstallConfirm")}
+    confirmLabel={i18n.t("bridge.uninstallAction")}
+    danger
+    onconfirm={uninstall}
+  />
 </div>

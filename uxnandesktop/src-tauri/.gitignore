@@ -10,3 +10,5 @@
 /binaries/
 # The host engine builds bundled as resources (`scripts/build-host-engine.mjs`).
 /host-engine/
+# The bridge runtime bundled as a resource (`scripts/build-bridge-runtime.mjs`).
+/bridge-runtime/

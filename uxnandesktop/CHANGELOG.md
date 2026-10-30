@@ -50,6 +50,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   glance. The tree keeps it implicit. Below 15rem the reason a worktree has no
   branch gives way to the project name.
 
+### Added
+- **The installer carries its own bridge**, so chats and the phone work on a
+  machine with no Node: the official Node.js 24 LTS binary for the installer's
+  platform (pinned SHA-256) plus `uxnan-bridge` built from the same commit,
+  hashed file by file into a manifest (`scripts/build-bridge-runtime.mjs`,
+  bundled as the `bridge-runtime/` resource; `docs/bridge-runtime.md`). The app
+  copies it, verifying every file, to a per-user folder and registers it as the
+  user's service through the bridge's own `install-service`.
+- **First launch sets the bridge up** (`managed`, now a fresh install's
+  default): a bridge already serving the local channel is used; a registered
+  service is started; an independent `uxnan-bridge` on PATH is registered
+  rather than duplicated; only with none is the bundled one installed. A state
+  saved before keeps its mode — `off` still costs nothing.
+- Settings → Bridge & mobile: **Set up the bridge**, **Use Uxnan's bridge**
+  (in place of an independent one too old to talk to the desktop, or that does
+  not start) and **Remove the bridge** (its service and runtime; never
+  `~/.uxnan`). The version row says which bridge runs and who updates it.
+
 ### Changed
 - **Agent logos ship with the app and render offline.** Every catalog agent's
   mark comes from the repository's single set in `assets/agents/` (four drawn
@@ -58,6 +76,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   dev and build. The app no longer asks Google's favicon service for a logo:
   the backend-fetched logo path (`agentLogoCache.ts`) is gone, in Settings →
   Agents, the welcome tour and everywhere `AgentLogo` draws.
+- The bridge Uxnan installed is kept at the version the app carries: when the
+  app updates, it switches the bridge at a moment no turn runs, atomically —
+  the new runtime is verified before anything stops, and when it does not come
+  up the service is put back on the previous one. "Update automatically" now
+  only concerns an independent (npm) bridge.
+- The app never runs npm any more: its npm installer (`bridgeclient/install.rs`)
+  is gone, replaced by the bundled runtime (`bridgeclient/runtime.rs`).
+- A development build sets up the bundled bridge only when asked, never on its
+  own (the service it would register is the machine's one bridge).
 
 ## [0.0.82] - 20261022
 ### Changed

@@ -169,11 +169,15 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 
 - [ ] Panel de terminal desacoplable/flotante independiente de los worktrees.
 
-#### T3.5 - Integracion Bridge [NUEVO]
+#### T3.5 - Integracion Bridge — ✅ Hecho (`02e` §3.5)
 
-- [ ] Bridge embebido como sidecar de Tauri (proceso Node.js gestionado).
-- [ ] Conexion movil desde la interfaz de escritorio.
-- [ ] Emparejamiento QR desde la GUI del ADE.
+- [x] El bridge viaja **dentro del instalador** como runtime Node privado (no
+      como sidecar con IPC propio: el desktop es cliente del canal local), se
+      registra como servicio del usuario en el primer arranque y se actualiza
+      con la app (`docs/bridge-runtime.md`). Falta su ejecucion real como
+      servicio en cada SO (`FOR-DEV.md`).
+- [x] Conexion movil desde la interfaz de escritorio (ventana *Bridge*, Ajustes).
+- [x] Emparejamiento QR desde la GUI del ADE (y en el tour de bienvenida).
 
 #### T3.6 - Mascotas (pets) — ✅ Hecho (`02d` §1.7)
 
@@ -615,8 +619,14 @@ ADE MVP completo, pulido y listo para uso diario.
 
 #### Backend Rust
 
-- Configurar Tauri sidecar para el proceso Node.js del bridge.
-- Implementar canal IPC (stdin/stdout JSON-RPC) entre Rust y el proceso bridge.
+> **Como se construyo (2026-10):** sin sidecar ni IPC propio. El desktop es
+> cliente del canal de control local del bridge (`02e` §3.5), el bridge corre
+> como servicio del usuario, y el instalador trae un runtime Node privado que la
+> app copia, verifica y registra (`bridgeclient/runtime.rs`). Lo de abajo es el
+> plan original, como historia.
+
+- ~~Configurar Tauri sidecar para el proceso Node.js del bridge.~~
+- ~~Implementar canal IPC (stdin/stdout JSON-RPC) entre Rust y el proceso bridge.~~
 - Implementar gestion del ciclo de vida del bridge (inicio, detencion, reinicio, health check).
 - Implementar Tauri command para generar codigo QR de emparejamiento.
 
