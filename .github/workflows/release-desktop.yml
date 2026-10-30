@@ -90,15 +90,15 @@ jobs:
             args: ''
             rust-target: ''
           # EXPERIMENTAL macOS — two separate DMGs, one per architecture, both built
-          # on Apple Silicon runners (macos-14). GitHub's Intel (macos-13) runners
+          # on Apple Silicon runners (macos-15). GitHub's Intel (macos-13) runners
           # are being retired and queue unpredictably, so the Intel DMG is
           # cross-compiled to x86_64 (the frontend is arch-agnostic and the Rust
           # deps cross-compile). Bundling only compiles + packages — it never runs
           # the x86_64 binary — so no Rosetta is needed.
-          - os: macos-14
+          - os: macos-15
             args: '--target aarch64-apple-darwin'
             rust-target: 'aarch64-apple-darwin'
-          - os: macos-14
+          - os: macos-15
             args: '--target x86_64-apple-darwin'
             rust-target: 'x86_64-apple-darwin'
     runs-on: ${{ matrix.os }}

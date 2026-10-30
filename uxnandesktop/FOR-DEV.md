@@ -1781,7 +1781,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
-  macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
+  macos-15}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
   keeps the default `{ubuntu, windows}`. 1,125 Rust + 1,914 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
@@ -1793,7 +1793,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   are set. The build now also depends on the **platform-support gate**
   (`node scripts/platform-support.mjs gate`): a release whose announced platform
   state exceeds the matrix's evidence fails before any installer is built. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
-  DMGs, both built on Apple Silicon `macos-14` with the Intel `x86_64` DMG
+  DMGs, both built on Apple Silicon `macos-15` with the Intel `x86_64` DMG
   **cross-compiled**, `fail-fast: false`). Windows and macOS ship without OS
   code-signing (SmartScreen / Gatekeeper warnings).
 - ✅ **Auto-updater** — `tauri-plugin-updater` wired end-to-end in the app

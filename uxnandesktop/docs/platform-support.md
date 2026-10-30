@@ -44,7 +44,7 @@ a rewritten subsystem, or evidence older than ~6 months), the claim is
 | Platform | Minimum version | Announced level | Why not higher |
 |---|---|---|---|
 | `windows-x64` — Windows 11 x64 | Windows 10 + WebView2 Evergreen | `smoke` | `validated` blocked by: unscripted install/upgrade/uninstall cycle, wake-fidelity checked only by hand, R07/R08 still assisted (R10's 2 h soak and R12 were captured 2026-08-01). `signed` needs the paid Authenticode cert (`FOR-HUMAN.md`). |
-| `macos-aarch64` — macOS Apple Silicon | macOS 11.0 | `builds` | Experimental ad-hoc-signed DMG; CI compiles + runs the full suites on `macos-14`. A from-source dev build first ran on real Apple Silicon on 2026-09-02 and produced the first round of Mac-only fixes; the shipped DMG has still never been launched, so the level stands. |
+| `macos-aarch64` — macOS Apple Silicon | macOS 11.0 | `builds` | Experimental ad-hoc-signed DMG; CI compiles + runs the full suites on `macos-15`. A from-source dev build first ran on real Apple Silicon on 2026-09-02 and produced the first round of Mac-only fixes; the shipped DMG has still never been launched, so the level stands. |
 | `macos-x64` — macOS Intel | macOS 11.0 | `builds` | Cross-compiled on an Apple Silicon runner; the x86_64 binary has never executed anywhere, not even its test suite. |
 | `linux-x64` — Ubuntu LTS reference | WebKitGTK 4.1 distro (Ubuntu 22.04+) | `builds` | Full suites pass on `ubuntu-latest` and installers ship, but no human has installed or launched any of them; the E2E driver supports Linux and has never been run. |
 
@@ -89,7 +89,7 @@ locally on 2026-07-30 (`docs/testing.md`); the approved resource baseline
 2026-07-30); the maintainer's installed daily-driver build self-updating on
 both channels each release. Key macOS/Linux evidence anchors: the
 `ci-desktop.yml` verify legs (compile + full Rust/Vitest suites on
-`ubuntu-latest` and `macos-14`) and the installers shipped in
+`ubuntu-latest` and `macos-15`) and the installers shipped in
 `desktop-stable-v0.0.24` (2026-07-29, `039866bb`).
 
 ## Where CI ends and hardware begins
@@ -97,7 +97,7 @@ both channels each release. Key macOS/Linux evidence anchors: the
 CI already gives every platform what a runner can give it:
 
 - **Build + test per OS** — `verify-desktop.yml` compiles and runs the full
-  Rust + Vitest suites on `{ubuntu-latest, windows-latest, macos-14}` for every
+  Rust + Vitest suites on `{ubuntu-latest, windows-latest, macos-15}` for every
   PR (`ci-desktop.yml`), and `release-desktop.yml` bundles installers for all
   four targets on tags — the Linux ones on `ubuntu-22.04`, so they need glibc
   2.35 at most, and the AppImage is launched under firejail before the leg
@@ -160,7 +160,7 @@ uncovered branches get evidence before they get changes.
 | `automations/oscheduler/` | Dispatch per OS; Task Scheduler XML; LaunchAgent plist; systemd user units | All three document builders fully unit-tested on every platform (hostile text included); support probe + `Failed` serde tested; Windows has an `#[ignore]`d round-trip against the real scheduler | Real registration on macOS (`launchctl`) and Linux (`systemctl --user`) never executed → checklists |
 | `automations/store.rs` / `graph.rs` | Per-OS data dir bases; `cmd /C` vs `sh -c` for shell steps | Store integration suite (12 tests, incl. non-ASCII paths); graph logic (10 tests) | Shell-step branch runs only on its host OS |
 | `updater.rs` | No OS branches in code; Windows `installMode: passive` + MSI numeric-version constraint in config | Per-channel endpoints tested; stale-staged guard code-reviewed; channel parsing tested (`desktop-release-tag`) | Signed round trip is L5 by nature → checklists |
-| `editors.rs`, `fonts.rs`, `agentcli.rs`, `agent_hooks.rs`, `hooks.rs`, `browse.rs`, `zero.rs`, `codex_trust.rs`, `which.rs` | Home-dir/`PATHEXT`/`%VAR%` expansion, per-OS probe paths, `.cmd` vs `.sh` reporters, `chmod 0755/0600` on Unix, `WSLENV` injection, 8.3 short paths | Host-OS halves covered by their module suites (each runs on all three CI runners); Windows-gated cases in `editors.rs` | `fonts.rs` enumeration (3 per-OS impls) has no tests — output feeds a font picker, degrades to empty list; macOS-only branches execute on the `macos-14` leg only |
+| `editors.rs`, `fonts.rs`, `agentcli.rs`, `agent_hooks.rs`, `hooks.rs`, `browse.rs`, `zero.rs`, `codex_trust.rs`, `which.rs` | Home-dir/`PATHEXT`/`%VAR%` expansion, per-OS probe paths, `.cmd` vs `.sh` reporters, `chmod 0755/0600` on Unix, `WSLENV` injection, 8.3 short paths | Host-OS halves covered by their module suites (each runs on all three CI runners); Windows-gated cases in `editors.rs` | `fonts.rs` enumeration (3 per-OS impls) has no tests — output feeds a font picker, degrades to empty list; macOS-only branches execute on the `macos-15` leg only |
 | `path_env.rs` (macOS Finder PATH) | macOS-only enrichment; no-op elsewhere | Merge/dedupe logic + the off-macOS no-op tested | The macOS ON-branch (login-shell probe) needs real hardware → mac checklist (agent/`gh` detection item) |
 | `pty.rs`, `model.rs` | Default shell per OS (PowerShell / zsh / bash), profile seeds | Lifecycle + seed tests run per-OS on each runner | Interactive behavior per OS → smoke checklists |
 | `main.rs`, `Cargo.toml`, `tauri.conf.json`, `tauri.macos.conf.json`, `capabilities/` | `windows_subsystem`, `windows-sys` deps, `macOSPrivateApi`, native macOS overlay titlebar/traffic lights, ad-hoc signing identity, bundle targets, per-window capabilities | Config is exercised by each platform build; the macOS window override also has a static frontend/config contract test, which pins `trafficLightPosition` to the app-bar height and the `macTrafficLightsInset` clearance; capabilities audit is a standing FOR-DEV item | Placement was measured once on real Apple Silicon (dev build, 2026-09-02) and matched the contract; the rest of the window chrome still rides the macOS visual smoke checklist |
