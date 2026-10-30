@@ -197,15 +197,17 @@ export function lockedClosure(lock, roots = ["bridge", "shared"]) {
 }
 
 /** The staging `package.json` npm installs the runtime from. Pure. */
-export function stagingPackage({ sharedTgz, bridgeTgz, keyringVersion, keyringPlatform, pins }) {
+export function stagingPackage({ sharedTgz, bridgeTgz, keyringVersion, pins }) {
   const direct = {
     "@uxnan/shared": `file:${sharedTgz}`,
     "uxnan-bridge": `file:${bridgeTgz}`,
     // The OS keychain the bridge keeps its identity in: an optional
     // dependency of the bridge (so `--omit=optional` drops it) that the
-    // runtime must have, with the native build for this platform.
+    // runtime must have. Its native build for the target is added after the
+    // install (`addPlatformPackage`): npm refuses to install a package for
+    // another CPU even with `--cpu`, and the Intel DMG is built on Apple
+    // Silicon.
     "@napi-rs/keyring": keyringVersion,
-    [keyringPlatform]: keyringVersion,
   };
   const overrides = Object.fromEntries(Object.entries(pins).filter(([name]) => !(name in direct)));
   return { name: "uxnan-bridge-runtime", private: true, dependencies: direct, overrides };
@@ -327,6 +329,23 @@ export function tarCommand(platform = process.platform, env = process.env, exist
   return exists(system) ? system : "tar";
 }
 
+/** Where a package lives under `node_modules`, as path segments. Pure. */
+export function packageDir(name) {
+  return ["node_modules", ...name.split("/")];
+}
+
+/** Put the target's native build of a package into the installed tree from its
+ *  published tarball — the one step npm will not do for another CPU. */
+function addPlatformPackage(app, name, version, packs) {
+  run("npm", ["pack", `${name}@${version}`, "--pack-destination", packs, "--silent"], { cwd: packs });
+  const scoped = name.replace(/^@/, "").replace("/", "-");
+  const tgz = readdirSync(packs).find((f) => f.startsWith(`${scoped}-${version}`) && f.endsWith(".tgz"));
+  if (!tgz) throw new Error(`npm pack left no tarball for ${name}@${version}`);
+  const dest = join(app, ...packageDir(name));
+  mkdirSync(dest, { recursive: true });
+  run(tarCommand(), ["-xzf", join(packs, tgz), "-C", dest, "--strip-components=1"]);
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: "inherit",
@@ -380,7 +399,6 @@ async function build(triple) {
       sharedTgz: join(packs, sharedTgz).split(sep).join("/"),
       bridgeTgz: join(packs, bridgeTgz).split(sep).join("/"),
       keyringVersion,
-      keyringPlatform: spec.keyring,
       pins: lockedClosure(lock),
     });
     writeFileSync(join(app, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
@@ -403,6 +421,7 @@ async function build(triple) {
       ],
       { cwd: app },
     );
+    addPlatformPackage(app, spec.keyring, keyringVersion, packs);
     // What only npm needed: the file references would point at this machine's
     // temp folder, and the hidden lock is npm's own cache of the tree.
     rmSync(join(app, "package.json"));

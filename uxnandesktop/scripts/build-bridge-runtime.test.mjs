@@ -11,6 +11,7 @@ import {
   layoutFor,
   listFiles,
   lockedClosure,
+  packageDir,
   stagingPackage,
   tarCommand,
   targetOf,
@@ -73,12 +74,19 @@ describe("build-bridge-runtime", () => {
       sharedTgz: "/t/s.tgz",
       bridgeTgz: "/t/b.tgz",
       keyringVersion: "1.3.0",
-      keyringPlatform: "@napi-rs/keyring-darwin-arm64",
       pins: { ws: "8.21.0", "@napi-rs/keyring": "1.2.0" },
     });
     expect(pkg.dependencies["uxnan-bridge"]).toBe("file:/t/b.tgz");
-    expect(pkg.dependencies["@napi-rs/keyring-darwin-arm64"]).toBe("1.3.0");
+    expect(pkg.dependencies["@napi-rs/keyring"]).toBe("1.3.0");
+    // The target's native build is added after the install, never by npm:
+    // npm refuses another CPU's package (the Intel DMG builds on Apple Silicon).
+    expect(Object.keys(pkg.dependencies).some((d) => d.startsWith("@napi-rs/keyring-"))).toBe(false);
     expect(pkg.overrides).toEqual({ ws: "8.21.0" });
+  });
+
+  it("places a scoped package under node_modules by its name", () => {
+    expect(packageDir("@napi-rs/keyring-darwin-x64")).toEqual(["node_modules", "@napi-rs", "keyring-darwin-x64"]);
+    expect(packageDir("ws")).toEqual(["node_modules", "ws"]);
   });
 
   it("hashes every file, and a changed or missing one fails verification", () => {
