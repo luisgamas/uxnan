@@ -84,7 +84,17 @@ const COMMANDS_TTL_MS = 60_000;
 
 /** Something the replica changed, for listeners that mirror it (projects). */
 export type ReplicaChange =
-  | { type: 'projects'; projects: Project[]; removed: Project[]; reset: boolean };
+  | {
+      type: 'projects';
+      projects: Project[];
+      removed: Project[];
+      reset: boolean;
+      /** `sync`: a whole `sync/changes` answer (the replica now matches the
+       *  bridge at `storeId`); `notification`: one change as it happened. */
+      source: 'sync' | 'notification';
+      /** The bridge state the replica belongs to (`SyncChanges.storeId`). */
+      storeId?: string;
+    };
 
 export class ChatStore {
   readonly #client: BridgeClientStore;
@@ -253,6 +263,8 @@ export class ChatStore {
       projects: [...this.projects.values()],
       removed: removedProjects,
       reset: changes.reset,
+      source: 'sync',
+      storeId: changes.storeId,
     });
   }
 
@@ -522,7 +534,14 @@ export class ChatStore {
         const project = (notification.params as ProjectUpdatedParams | undefined)?.project;
         if (project && typeof project.id === 'string' && this.#admit(project.rev)) {
           this.projects.set(project.id, project);
-          this.#emitReplica({ type: 'projects', projects: [project], removed: [], reset: false });
+          this.#emitReplica({
+            type: 'projects',
+            projects: [project],
+            removed: [],
+            reset: false,
+            source: 'notification',
+            ...(this.#storeId !== undefined ? { storeId: this.#storeId } : {}),
+          });
         }
         return;
       }
@@ -531,7 +550,16 @@ export class ChatStore {
         if (typeof params?.projectId === 'string' && this.#admit(params.rev)) {
           const gone = this.projects.get(params.projectId);
           this.projects.delete(params.projectId);
-          if (gone) this.#emitReplica({ type: 'projects', projects: [], removed: [gone], reset: false });
+          if (gone) {
+            this.#emitReplica({
+              type: 'projects',
+              projects: [],
+              removed: [gone],
+              reset: false,
+              source: 'notification',
+              ...(this.#storeId !== undefined ? { storeId: this.#storeId } : {}),
+            });
+          }
         }
         return;
       }
