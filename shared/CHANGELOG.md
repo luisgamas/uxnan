@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.36-alpha.20261030] - 20261030
 ### Added
 
 - **Conversations as a catalog** (architecture/02a §5.8.21). `thread/transfer`
