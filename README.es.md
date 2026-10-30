@@ -344,9 +344,10 @@ espera assets de desarrollador de Apple que el proyecto todavía no tiene.
 
 Uxnan Mobile se empareja con **`uxnan-bridge`**, un pequeño daemon que corre en
 tu PC por su cuenta, así que no necesitas tener Desktop instalado para usar
-Mobile, ni al revés. Si usas Uxnan Desktop, habla con el mismo bridge: su ventana
-Bridge muestra el QR de emparejamiento, lista tus teléfonos, e instala o
-actualiza el bridge por ti.
+Mobile, ni al revés. **Uxnan Desktop trae el bridge incluido** — y el Node con
+el que corre — y lo deja como tu servicio en su primer arranque (o usa uno que
+ya hayas instalado); su recorrido de bienvenida activa tus agentes y muestra el
+QR de emparejamiento. Sin Desktop, instala el bridge tú mismo:
 
 ```bash
 npm install -g uxnan-bridge
@@ -403,6 +404,9 @@ Aviso: las notificaciones push podrían no funcionar en una compilación propia 
 iOS, porque las credenciales de firma de APNs no vienen incluidas en el repo.
 
 ### El bridge (para Mobile, y para los chats de Desktop)
+
+Uxnan Desktop ya lo trae y lo corre como tu servicio: no hay nada que instalar.
+Para usar Mobile sin Desktop:
 
 ```bash
 npm install -g uxnan-bridge

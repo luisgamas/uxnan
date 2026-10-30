@@ -19,7 +19,10 @@ the bridge.
 
 ## 1. Same network
 
-Install and start the bridge, then scan the QR it shows (or type the short code):
+With Uxnan Desktop the bridge is already there (it comes with the app and runs
+as your service): pair from its welcome tour or the sidebar's **Bridge** row.
+Without it, install and start the bridge, then scan the QR it shows (or type the
+short code):
 
 ```bash
 npm install -g uxnan-bridge

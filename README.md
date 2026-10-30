@@ -341,9 +341,10 @@ waiting on Apple developer assets the project doesn't have yet.
 
 Uxnan Mobile pairs with **`uxnan-bridge`**, a small daemon that runs on your PC on
 its own, so you don't need Desktop installed at all to use Mobile, or the other
-way around. If you do use Uxnan Desktop, it talks to the same bridge: its Bridge
-window shows the pairing QR, lists your phones, and installs or updates the
-bridge for you.
+way around. **Uxnan Desktop comes with the bridge** — and the Node it runs on —
+and sets it up as your service on its first launch (or uses one you already
+installed); its welcome tour turns on your agents and shows the pairing QR.
+Without Desktop, install the bridge yourself:
 
 ```bash
 npm install -g uxnan-bridge
@@ -398,6 +399,9 @@ Heads-up: push notifications may not work on a self-built iOS app, since the
 APNs signing credentials aren't included in the repo.
 
 ### The bridge (for Mobile, and for Desktop's chats)
+
+Uxnan Desktop already carries it and runs it as your service — nothing to
+install. To use Mobile without Desktop:
 
 ```bash
 npm install -g uxnan-bridge
