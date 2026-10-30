@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+- `BridgeInstallKind` (`bundled` | `npm` | `source`) and the optional
+  `BridgeHost.install`: how the running bridge was installed, which decides
+  who updates it — Uxnan Desktop for the bridge it carries, the bridge itself
+  for an npm install (architecture/02a §5.8.18). Additive; older clients ignore it.
+
 ## [0.0.35-alpha.20261022] - 20261022
 ### Added
 
