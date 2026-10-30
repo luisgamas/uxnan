@@ -35,6 +35,7 @@
   import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
   import { detectAgents, revealPath } from "$lib/api";
+  import { catalogAgents } from "$lib/state/catalogAgents.svelte";
   import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { usage } from "$lib/state/usage.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -247,25 +248,15 @@
   }
 
   // --- Agents ---------------------------------------------------------------
-  // Which catalog commands are installed (null = not checked yet).
-  let installed = $state<Set<string> | null>(null);
-  let detectingAgents = $state(false);
-  async function detectInstalled() {
-    detectingAgents = true;
-    try {
-      const found = await detectAgents(AGENT_CATALOG.map((c) => c.command));
-      installed = new Set(found);
-    } catch {
-      installed = new Set(); // backend unreachable (e.g. web preview)
-    } finally {
-      detectingAgents = false;
-    }
-  }
+  // What is installed and adding it is one owner (`catalogAgents`), shared
+  // with the welcome tour.
+  const installed = $derived(catalogAgents.installed);
+  const detectingAgents = $derived(catalogAgents.detecting);
   /** Re-check what's on PATH now. Detection is a live filesystem walk, so this is
    *  all it takes for an agent installed (or uninstalled) since the app started to
    *  appear or disappear. */
   function refreshAgents() {
-    void detectInstalled();
+    void catalogAgents.detect();
   }
   // Re-check every time the Agents pane is opened — not just once per app run, or
   // an agent uninstalled meanwhile keeps showing as available until a restart.
@@ -273,27 +264,17 @@
   let agentsPaneWasOpen = false;
   $effect(() => {
     const open = app.settingsOpen && app.settingsSection === "agents";
-    if (open && !agentsPaneWasOpen) void detectInstalled();
+    if (open && !agentsPaneWasOpen) void catalogAgents.detect();
     agentsPaneWasOpen = open;
   });
 
-  const isInstalled = (c: CatalogAgent) => installed?.has(c.command) ?? false;
+  const isInstalled = (c: CatalogAgent) => catalogAgents.isInstalled(c);
 
   function addCatalogAgent(c: CatalogAgent) {
-    app.settings.agentProfiles.push({
-      id: crypto.randomUUID(),
-      name: c.name,
-      command: c.command,
-      args: [],
-      terminalProfileId: null,
-      icon: c.logo,
-    });
-    persistNow();
+    catalogAgents.add([c]);
   }
   function addAllInstalled() {
-    for (const c of AGENT_CATALOG) {
-      if (isInstalled(c) && !isConfigured(c)) addCatalogAgent(c);
-    }
+    catalogAgents.addAllInstalled();
   }
   function addCustomAgent() {
     app.settings.agentProfiles.push({
@@ -313,24 +294,14 @@
     persistNow();
   }
   // Installed catalog agents not yet configured (for the "Add all" button).
-  const addableCount = $derived(
-    AGENT_CATALOG.filter((c) => isInstalled(c) && !isConfigured(c)).length,
-  );
+  const addableCount = $derived(catalogAgents.addable.length);
 
   // Single, deduplicated agents list (the original flat layout): detected
   // catalog agents you can add come first, then your configured agents, then the
   // rest of the catalog (not installed). Each group is alphabetical; configured
   // agents appear exactly once, so the catalog never shows a duplicate "add"
-  // row for the same command. The match key is case/space-insensitive because
-  // profiles the user typed may differ in casing or surrounding spaces from the
-  // catalog `command`.
-  const profileKey = (command: string) =>
-    command.trim().toLowerCase().replace(/\s+/g, "");
-  const configuredByKey = $derived(
-    new Map(app.agentProfiles.map((a) => [profileKey(a.command), a] as const)),
-  );
-  const isConfigured = (c: CatalogAgent) =>
-    configuredByKey.has(profileKey(c.command));
+  // row for the same command (`catalogAgents.isConfigured`).
+  const isConfigured = (c: CatalogAgent) => catalogAgents.isConfigured(c);
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   type AgentRow =

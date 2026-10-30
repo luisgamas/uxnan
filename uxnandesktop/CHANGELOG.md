@@ -67,6 +67,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (in place of an independent one too old to talk to the desktop, or that does
   not start) and **Remove the bridge** (its service and runtime; never
   `~/.uxnan`). The version row says which bridge runs and who updates it.
+- A **new welcome tour** (version 3): chat or terminal, continuing on the
+  phone; reaching this computer over the LAN, Tailscale or the user's own
+  relay; agents working together through `uxnan-cli`; **turning on the agents
+  found here**, every one checked by default; **pairing a phone** with the
+  running bridge's QR right in the tour; and a closing checklist (bridge as a
+  service, agents on, phone paired).
+  The tour's pictures of Uxnan Desktop and Uxnan Mobile (`welcome/mock/`) now
+  speak the app's language (English and Spanish) through the app's own i18n.
 
 ### Changed
 - **Agent logos ship with the app and render offline.** Every catalog agent's
@@ -83,8 +91,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   only concerns an independent (npm) bridge.
 - The app never runs npm any more: its npm installer (`bridgeclient/install.rs`)
   is gone, replaced by the bundled runtime (`bridgeclient/runtime.rs`).
+- Settings → Agents and the welcome tour share one owner for detecting and
+  adding agents (`state/catalogAgents.svelte.ts`); the Bridge window and the
+  tour share one pairing surface (`PhonePairing.svelte`).
 - A development build sets up the bundled bridge only when asked, never on its
   own (the service it would register is the machine's one bridge).
+- The pairing countdown reads as minutes and seconds (`8:55`, `formatCountdown`
+  in `clock.ts`), in the Bridge window and the tour alike.
 
 ## [0.0.82] - 20261022
 ### Changed

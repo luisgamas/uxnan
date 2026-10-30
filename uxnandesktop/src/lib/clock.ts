@@ -17,6 +17,12 @@ export function formatClock(date: Date): string {
   return `${hh}:${mm}`;
 }
 
+/** What is left of a countdown, as `m:ss` (`8:55`, `0:07`); never negative. */
+export function formatCountdown(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /**
  * A moment with its date and clock time: `Sep 12, 14:30`, or with
  * `withYear` `Sep 12, 2026, 14:30`. The date part follows `locale`.

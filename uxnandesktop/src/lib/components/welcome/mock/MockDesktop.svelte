@@ -27,6 +27,7 @@
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { cn } from "$lib/utils";
   import { chat } from "$lib/design";
+  import { i18n } from "$lib/i18n";
 
   let { center = "terminal" }: { center?: "terminal" | "chat" | "tools" } = $props();
 
@@ -46,31 +47,33 @@
     children?: { kind: string; name: string; tool?: string }[];
   };
 
-  const agents: Agent[] = [
+  // In the app's language (`welcome.mock.*`, the agent states the monitor
+  // uses); code, paths, commands and tool calls stay as an agent prints them.
+  const agents = $derived<Agent[]>([
     {
       name: "Claude Code",
       logo: "claudecode",
-      state: "Working",
+      state: i18n.t("monitor.working"),
       status: "working",
-      time: "now",
+      time: i18n.t("welcome.mock.now"),
       active: true,
       children: [
-        { kind: "explorer", name: "Map the mobile screens" },
-        { kind: "general-purpose", name: "Document the mockups" },
+        { kind: "explorer", name: i18n.t("welcome.mock.taskMapScreens") },
+        { kind: "general-purpose", name: i18n.t("welcome.mock.taskDocMockups") },
       ],
     },
-    { name: "Codex", logo: "codex", state: "Done", status: "done", time: "40m" },
+    { name: "Codex", logo: "codex", state: i18n.t("monitor.done"), status: "done", time: "40m" },
     {
       name: "OpenCode",
       logo: "opencode",
-      state: "Blocked",
+      state: i18n.t("monitor.blocked"),
       status: "blocked",
-      time: "now",
+      time: i18n.t("welcome.mock.now"),
       badge: "2/2",
-      children: [{ kind: "general", name: "Sweep the changelog", tool: "grep" }],
+      children: [{ kind: "general", name: i18n.t("welcome.mock.taskChangelog"), tool: "grep" }],
     },
-    { name: "Antigravity", logo: "antigravity", state: "Waiting for input", status: "waiting", time: "2m" },
-  ];
+    { name: "Antigravity", logo: "antigravity", state: i18n.t("monitor.waiting"), status: "waiting", time: "2m" },
+  ]);
 
   const projects = ["website", "wallium", "notes", "calendar"];
   const tree = ["architecture", "bridge", "relay", "shared", "uxnandesktop", "uxnanmobile"];
@@ -117,11 +120,11 @@
       <aside class="flex w-[200px] shrink-0 flex-col border-r border-border/60 bg-sidebar p-2.5">
         <div class="flex items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5 text-[10.5px] text-muted-foreground">
           <Icon icon={SearchIcon} class="size-3" />
-          <span class="truncate">Search a project…</span>
+          <span class="truncate">{i18n.t("welcome.mock.searchProject")}</span>
           <kbd class="ml-auto shrink-0 rounded border border-border/60 px-1 text-[9px]">⌘ P</kbd>
         </div>
         <div class="mb-1.5 mt-4 flex items-center px-1">
-          <span class="text-[9px] font-medium tracking-[0.14em] text-muted-foreground">PROJECTS (5)</span>
+          <span class="text-[9px] font-medium tracking-[0.14em] text-muted-foreground">{i18n.t("welcome.mock.projects", { count: 5 })}</span>
           <span class="ml-auto flex items-center gap-1.5 text-muted-foreground/70">
             <Icon icon={RefreshIcon} class="size-2.5" />
             <Icon icon={PlusIcon} class="size-2.5" />
@@ -144,7 +147,7 @@
           </div>
           <div class="mb-1 pl-[17px] text-[9px] text-muted-foreground/70">uxnan</div>
           <div class="flex items-center gap-1 px-1 py-1 text-[8.5px] tracking-[0.14em] text-muted-foreground/70">
-            <Icon icon={ChevronDownIcon} class="size-2.5" />AGENTS {agents.length}
+            <Icon icon={ChevronDownIcon} class="size-2.5" />{i18n.t("welcome.mock.agents", { count: agents.length })}
           </div>
           {#each agents as agent (agent.name)}
             <div class={cn("flex items-center gap-1.5 rounded-md px-1 py-1", agent.active && "bg-accent")}>
@@ -197,23 +200,22 @@
           <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-6 py-5">
             <div class="flex justify-end">
               <span class={cn(chat.userBubble, "text-[11px] leading-[1.55]")}>
-                /review the checkout flow before we ship
+                {i18n.t("welcome.mock.reviewPrompt")}
               </span>
             </div>
             <div class="flex flex-col gap-1 text-[10.5px] text-muted-foreground">
-              <span>● Read src/checkout/cart.ts</span>
-              <span>● Ran npm test — 42 passed</span>
+              <span>● {i18n.t("welcome.mock.stepRead")}</span>
+              <span>● {i18n.t("welcome.mock.stepTest")}</span>
             </div>
             <p class="text-[11px] leading-[1.6] text-foreground/90">
-              Two things before shipping: the coupon total rounds before tax, and the empty-cart
-              state never clears the saved address. I can fix both.
+              {i18n.t("welcome.mock.reviewReply")}
             </p>
           </div>
           <div class="relative mx-6 mb-4">
             <div class="absolute bottom-full left-0 mb-1.5 w-60 rounded-lg bg-popover p-1 shadow-md ring-1 ring-foreground/10">
-              <div class="px-2 py-1 text-[9px] text-muted-foreground">Skills</div>
-              <div class="rounded-md bg-accent px-2 py-1 text-[10.5px]"><b>/review</b> <span class="text-muted-foreground">Review the diff</span></div>
-              <div class="px-2 py-1 text-[10.5px]"><b>/compact</b> <span class="text-muted-foreground">Free up context</span></div>
+              <div class="px-2 py-1 text-[9px] text-muted-foreground">{i18n.t("welcome.mock.skills")}</div>
+              <div class="rounded-md bg-accent px-2 py-1 text-[10.5px]"><b>/review</b> <span class="text-muted-foreground">{i18n.t("welcome.mock.skillReview")}</span></div>
+              <div class="px-2 py-1 text-[10.5px]"><b>/compact</b> <span class="text-muted-foreground">{i18n.t("welcome.mock.skillCompact")}</span></div>
             </div>
             <div class="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2.5 shadow-xs">
               <span class="text-[11px]">/re</span>
@@ -234,18 +236,18 @@
               </div>
             </div>
             {#if center === "tools"}
-              <p class="text-foreground/70"><span class="text-emerald-600 dark:text-emerald-400">&gt;</span> ship the checkout fixes — have Codex write the tests</p>
+              <p class="text-foreground/70"><span class="text-emerald-600 dark:text-emerald-400">&gt;</span> {i18n.t("welcome.mock.toolsPrompt")}</p>
               <p class="mt-2.5"><span class="text-foreground">⏺</span> uxnan-browser · worktree_create(<span class="text-sky-500">feat/checkout</span>)</p>
               <p class="text-muted-foreground/70">  ⎿ created ~/uxnan/worktrees/uxnan/feat-checkout</p>
               <p><span class="text-foreground">⏺</span> uxnan-browser · agent_send(<span class="text-sky-500">Codex</span>, "write the tests")</p>
-              <p class="text-muted-foreground/70">  ⎿ Codex is working in feat/checkout</p>
+              <p class="text-muted-foreground/70">  ⎿ {i18n.t("welcome.mock.toolsWorking")}</p>
               <p><span class="text-foreground">⏺</span> uxnan-browser · browser_open(<span class="text-foreground/80">localhost:5173/checkout</span>)</p>
               <p class="text-muted-foreground/70">  ⎿ page loaded · 0 console errors</p>
               <p><span class="text-foreground">⏺</span> uxnan-browser · terminal_read(<span class="text-foreground/80">tests</span>)</p>
               <p class="text-muted-foreground/70">  ⎿ <span class="text-emerald-600 dark:text-emerald-400">✓ 42 tests passed</span></p>
-              <p class="mt-2.5 text-foreground/90"><span class="text-foreground">⏺</span> Codex wrote the tests, the page renders clean. Ready for review.</p>
+              <p class="mt-2.5 text-foreground/90"><span class="text-foreground">⏺</span> {i18n.t("welcome.mock.toolsDone")}</p>
             {:else}
-              <p class="text-foreground/70"><span class="text-emerald-600 dark:text-emerald-400">&gt;</span> add a reconnect backoff to the zero adapter and cover it with a test</p>
+              <p class="text-foreground/70"><span class="text-emerald-600 dark:text-emerald-400">&gt;</span> {i18n.t("welcome.mock.terminalPrompt")}</p>
               <p class="mt-2.5"><span class="text-foreground">⏺</span> Read(<span class="text-sky-500">bridge/src/adapters/zero-adapter.ts</span>)</p>
               <p class="text-muted-foreground/70">  ⎿ 142 lines</p>
               <p><span class="text-foreground">⏺</span> Update(<span class="text-sky-500">bridge/src/adapters/zero-adapter.ts</span>)</p>
@@ -253,7 +255,7 @@
               <p><span class="text-foreground">⏺</span> Task(<span class="text-sky-500">doc-check</span>) <span class="text-amber-500">running 12s</span></p>
               <p><span class="text-foreground">⏺</span> Bash(<span class="text-foreground/80">npm test -w uxnan-bridge</span>)</p>
               <p class="text-muted-foreground/70">  ⎿ <span class="text-emerald-600 dark:text-emerald-400">✓ 800 tests passed in 6.2s</span></p>
-              <p class="mt-2.5 text-foreground/90"><span class="text-foreground">⏺</span> Reconnect backoff is in, with a test that fakes three dropped sockets. Want me to open the PR?</p>
+              <p class="mt-2.5 text-foreground/90"><span class="text-foreground">⏺</span> {i18n.t("welcome.mock.terminalDone")}</p>
             {/if}
           </div>
           <div class="px-3 pb-2.5">
@@ -269,7 +271,7 @@
       <aside class="flex w-[170px] shrink-0 flex-col border-l border-border/60 bg-sidebar">
         <div class="flex items-center border-b border-border/60 px-1.5 py-1.5 text-[10px]">
           <span class="flex items-center gap-1 rounded px-1 py-0.5 font-medium">
-            <Icon icon={FolderTreeIcon} class="size-3" />Files
+            <Icon icon={FolderTreeIcon} class="size-3" />{i18n.t("dock.files")}
             <Icon icon={ChevronDownIcon} class="size-2.5 text-muted-foreground/70" />
           </span>
         </div>
