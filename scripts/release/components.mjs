@@ -121,12 +121,25 @@ export const COMPONENTS = [
     // Both channels share one numeric line: a base must be new against BOTH, or
     // the Windows MSI and the updater cannot see the newer build.
     tagPrefixes: ['desktop-stable-v', 'desktop-nightly-v'],
-    // `uxnandesktop/scripts/` is check, benchmark and release tooling. Tauri
-    // declares no `bundle.resources` and its `beforeBuildCommand` is the Vite
-    // build, so nothing in there reaches an installer. This is deliberately NOT
-    // a global rule: `bridge/package.json` lists `scripts` in its `files`, so
-    // the bridge's scripts folder is published to npm and does ship.
-    nonShipping: [/^uxnandesktop\/scripts\//],
+    // `uxnandesktop/scripts/` is check, benchmark and release tooling — except
+    // the three scripts that assemble what an installer carries: `uxnan-cli`,
+    // the host engines and the bridge runtime (`build-*.mjs`, run by the
+    // `tauri.cli.conf.json` overlay). This is deliberately NOT a global rule:
+    // `bridge/package.json` lists `scripts` in its `files`, so the bridge's
+    // scripts folder is published to npm and does ship.
+    nonShipping: [/^uxnandesktop\/scripts\/(?!build-(cli|host-engine|bridge-runtime)\.mjs$)/],
+    /**
+     * Built elsewhere in the repo and shipped inside every installer, under
+     * the version its own component gives it: the bridge runtime
+     * (`uxnandesktop/scripts/build-bridge-runtime.mjs`) packs `bridge/` and
+     * `shared/` — and the relay Worker bundle the bridge carries — from the
+     * commit the installer is built from. A shipping change there, the
+     * bridge's own version bump included, is a change to what the desktop
+     * ships: the bridge that came with Uxnan Desktop is updated by the next
+     * desktop release and no other way. Unlike `carries`, these paths move no
+     * version of the desktop's: `RELEASE_ORDER` cuts the bridge first.
+     */
+    embeds: ['bridge', 'shared', 'relay'],
     versionFiles: [
       { file: 'uxnandesktop/src-tauri/tauri.conf.json', adapter: 'json' },
       { file: 'uxnandesktop/src-tauri/Cargo.toml', adapter: 'cargo-toml' },
@@ -186,7 +199,7 @@ export function component(id) {
 
 /** Every path whose change can reach this component's artifact. */
 export function pathsOf(meta) {
-  return [meta.path, ...(meta.carries ?? []).flatMap((part) => part.paths)];
+  return [meta.path, ...(meta.carries ?? []).flatMap((part) => part.paths), ...(meta.embeds ?? [])];
 }
 
 /** True when `file` sits at or under `path` (a path segment, not a prefix). */

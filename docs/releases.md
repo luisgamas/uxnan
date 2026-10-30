@@ -391,6 +391,32 @@ The registry entry is `carries` on the bridge in `scripts/release/components.mjs
 
 ---
 
+## Every desktop installer carries the bridge
+
+Each desktop installer ships a private bridge runtime — the official Node.js
+binary for its platform (SHA-256 pinned in
+`uxnandesktop/scripts/build-bridge-runtime.mjs`) plus `uxnan-bridge` packed from
+the **same commit** — so the app runs a bridge on a machine without Node
+(`uxnandesktop/docs/bridge-runtime.md`). Two consequences, enforced by the
+tooling:
+
+- **A bridge change is a desktop change.** The desktop is measured over
+  `bridge/`, `shared/` and `relay/` too (`embeds` on the desktop in
+  `scripts/release/components.mjs`), the bridge's own version bump included: the
+  bridge that came with Uxnan Desktop is updated by the next desktop release and
+  no other way. `RELEASE_ORDER` already cuts the bridge before the desktop, so a
+  run that cuts both ships an installer carrying the bridge just released.
+- **No installer without it.** Every `release-desktop.yml` leg runs `npm ci &&
+  npm run build` at the root and `build-bridge-runtime.mjs --build --require
+  --target <triple>` before `tauri build`; `ci-desktop.yml`'s installer job does
+  the same and checks the `.deb` and the NSIS install carry it.
+
+The npm-published bridge is unchanged: it still updates itself
+(`host.install: npm`). The desktop-carried one never asks npm
+(`host.install: bundled`).
+
+---
+
 ## Order, and why it is not negotiable
 
 `release-npm.yml` resolves `@uxnan/shared` **from npm at build time**. Tagging
@@ -535,6 +561,7 @@ inside the bridge.)
 | shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved. ✅ 0.0.16-alpha.20260919 — published through **Trusted Publishing** with signed provenance, via the `release-npm.yml` dispatch on an already-existing tag | — |
 | bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow. ✅ 0.0.25-alpha.20260920 — Trusted Publishing, pinned to 0.0.16, verified by a clean `npm install uxnan-bridge@latest` (`npm audit signatures` reports the attestations) | — |
 | mobile | ✅ 0.0.19-alpha.20260810+20260810 — pubspec↔tag gate passed on a pubspec `prepare.mjs` wrote, notes gate passed, uploaded to Play open testing | — |
+| bridge runtime (inside every desktop installer) | ❌ | assembled and verified on macOS arm64 only; the first release legs that build it on Linux, Windows and the cross-assembled Intel mac have not run yet |
 | relay Worker (inside the bridge) | ❌ | a bridge cut that carries a Worker change — and so moves `relay/package.json` with it — has not run for real yet; `prepare.test.mjs` drives it end to end in a scratch repository |
 
 **The npm-visibility wait ran for real** on that cut, and it is the one thing no
