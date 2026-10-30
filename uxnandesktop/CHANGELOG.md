@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The Intel Mac installer builds again.** Its bridge runtime is assembled on an
+  Apple Silicon runner, and npm refuses to install another CPU's package even
+  when told the target, so the x86_64 keychain addon stopped the build (and
+  the Apple Silicon one with it). The target's native build is now taken from
+  its published tarball after the install.
 
 ## [0.0.83] - 20261030
 ### Changed

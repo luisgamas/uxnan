@@ -16,7 +16,7 @@ resource:
 |---|---|
 | `node/bin/node` (`node/node.exe` on Windows) | The official Node.js binary for the installer's platform — **24.22.2 LTS**, downloaded from nodejs.org and checked against the SHA-256 pinned in the script (`NODE`), never against a checksum file fetched beside it. Its `LICENSE` sits next to it. |
 | `app/node_modules/uxnan-bridge/` | The bridge **built from this commit** (`npm pack` of `shared` and `bridge`), with its production dependencies resolved to the versions the root `package-lock.json` pins (npm `overrides`), installed with `--ignore-scripts` for the installer's `--os`/`--cpu`. |
-| `app/node_modules/@napi-rs/keyring*` | The OS keychain module and its native build for that platform — where the bridge keeps its identity. |
+| `app/node_modules/@napi-rs/keyring*` | The OS keychain module and its native build for that platform — where the bridge keeps its identity. The native build is unpacked from its published tarball after the install: npm refuses another CPU's package even with `--cpu`. |
 | `uxnan-runtime.json` | The manifest: bridge version, Node version, target triple, the two entry points (`node`, `cli`) and the size and SHA-256 of **every** file. |
 
 `firebase-admin` (an optional dependency of the bridge, ~66 MB) is left out by
@@ -45,7 +45,7 @@ and says so.
 
 **Release.** `release-desktop.yml` builds the workspaces and runs
 `--build --require --target <triple>` on every installer leg (the Intel mac leg
-cross-assembles it: npm resolves the x64 keyring build; nothing is run).
+cross-assembles it: the x64 keyring build is unpacked from its tarball; nothing is run).
 `ci-desktop.yml`'s installer job does the same and checks the `.deb` and the
 NSIS install carry it. Because every installer ships the bridge of its commit,
 a shipping change under `bridge/`, `shared/` or `relay/` — the bridge's own
