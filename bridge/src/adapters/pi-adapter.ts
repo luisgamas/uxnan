@@ -92,6 +92,7 @@ import {
   type SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { piImages } from './turn-input.js';
 import { listPiSessions } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { piResultText, piToolBlock, piToolStartBlock, type PiToolUse } from './pi-tools.js';
@@ -719,6 +720,15 @@ export class PiAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
+  /**
+   * pi takes images inline: its RPC `prompt` and `steer` carry an `images`
+   * list beside the message, which it hands the model after the text, in the
+   * order of their labels (`piImages`).
+   */
+  takesInlineImages(): boolean {
+    return true;
+  }
+
   /** The configured idle timeout (observability + tests). */
   get idleTimeoutMs(): number {
     return this.#idleTimeoutMs;
@@ -1142,7 +1152,7 @@ export class PiAdapter extends BaseAgentAdapter {
     session.activeTurn = activeTurn;
     this.emit({ type: 'turn_started', threadId, turnId });
 
-    if (!session.send({ type: 'prompt', message: text })) {
+    if (!session.send({ type: 'prompt', message: text, ...piImagesField(options) })) {
       this.#teardownSession(threadId);
       this.emit({
         type: 'turn_error',
@@ -1209,7 +1219,7 @@ export class PiAdapter extends BaseAgentAdapter {
     // delivered, the message handed off and never answered.
     return new Promise((resolve) => {
       session.steerAcks.push(resolve);
-      if (!session.send({ type: 'steer', message: options.text })) {
+      if (!session.send({ type: 'steer', message: options.text, ...piImagesField(options) })) {
         session.steerAcks.pop();
         resolve(false);
       }
@@ -1372,4 +1382,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * A prompt's images as pi's RPC takes them — `images`, in order, after the
+ * message text (pi does not interleave; each image's label sits in the text in
+ * the same order). Nothing for a text-only prompt.
+ */
+function piImagesField(options: Pick<SendTurnOptions, 'input'>): {
+  images?: ReturnType<typeof piImages>;
+} {
+  const images = piImages(options);
+  return images.length > 0 ? { images } : {};
 }

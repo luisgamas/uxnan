@@ -210,6 +210,45 @@ test('a turn that fails before the agent answers leaves the context for the next
   }
 });
 
+test('a transferred conversation carries each attachment as its name; its message takes no marker', async () => {
+  const h = await harness();
+  try {
+    const [project] = await h.call<{ id: string }[]>('project/list', undefined);
+    const source = await h.call<Thread>('thread/start', {
+      projectId: project?.id,
+      agentId: 'echo',
+    });
+    await h.call('turn/send', {
+      threadId: source.id,
+      text: 'The logo is \uFFFC, keep it.',
+      attachments: [
+        { type: 'image', name: 'logo.png', mimeType: 'image/png', base64Data: 'iVBORw0KGgo=' },
+      ],
+    });
+    await h.ended(source.id);
+    const prepared = await h.call<ThreadTransferContextResult>('thread/transferContext', {
+      threadId: (
+        await h.call<ThreadTransferResult>('thread/transfer', {
+          sourceThreadId: source.id,
+          agentId: 'codex',
+        })
+      ).thread.id,
+    });
+    assert.ok(prepared.text.includes('The logo is [logo.png], keep it.'));
+    assert.ok(!prepared.text.includes('\uFFFC'));
+    assert.equal(
+      await h.fails('thread/transfer', {
+        sourceThreadId: source.id,
+        agentId: 'codex',
+        message: 'see \uFFFC',
+      }),
+      JsonRpcErrorCode.InvalidParams,
+    );
+  } finally {
+    await h.close();
+  }
+});
+
 test('a message sent with the transfer goes at once; a retry under the same key makes and sends nothing', async () => {
   const h = await harness();
   try {

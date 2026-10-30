@@ -255,12 +255,12 @@ export interface TurnStepParams {
 export interface TurnStepResult {
   block: unknown;
 }
-/** `turn/attachment`: one image a user message carries (`Message.attachments`). */
+/** `turn/attachment`: one image or file a user message carries (`Message.attachments`). */
 export interface TurnAttachmentParams {
   threadId: string;
   attachmentId: string;
 }
-/** The image's bytes, as they were sent. */
+/** The image's or file's bytes, as they were sent. */
 export interface TurnAttachmentData {
   mimeType: string;
   /** Base64 payload (no `data:` URI prefix). */
@@ -282,9 +282,13 @@ export interface ViewReadResult {
 export interface TurnSendParams {
   threadId: string;
   /**
-   * User prompt text. Optional when `attachments` (an image-only message) is
-   * present; otherwise required and non-empty. The bridge rejects a turn with
-   * neither text nor attachments.
+   * The message as the person wrote it. Each attachment sits inside it as one
+   * `ATTACHMENT_MARKER` (U+FFFC), in order — the n-th marker is
+   * `attachments[n - 1]` — so the agent receives which part of the sentence
+   * each image or file belongs to (`models/inline-attachments.ts`). An
+   * attachment-only message is just its markers. The bridge rejects a turn
+   * with nothing to send, and one whose markers do not match `attachments`
+   * one for one (counted in `command.args` for a command invocation).
    */
   text?: string;
   service?: string;
@@ -300,9 +304,9 @@ export interface TurnSendParams {
    */
   options?: Record<string, string | boolean>;
   /**
-   * Inline image attachments for this turn. The bridge materializes each to a
-   * temp file and references it in the prompt so any file/vision-capable agent
-   * CLI can open it. An image-only message (empty `text`) is allowed.
+   * The images and files of this message, in the order of their markers in
+   * `text`. The bridge keeps them with the message and delivers each to the
+   * agent at its place in the sentence (architecture/02a §5.8.12).
    */
   attachments?: TurnAttachment[];
   /**
@@ -634,7 +638,7 @@ export interface JsonRpcMethodRegistry {
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
   // Stops a RUNNING turn, or takes a QUEUED one off the queue (→ `cancelled`).
   'turn/cancel': { params: { threadId: string; turnId: string }; result: void };
-  /** The bytes of an image a user message carries (`Message.attachments`). */
+  /** The bytes of an image or file a user message carries (`Message.attachments`). */
   'turn/attachment': { params: TurnAttachmentParams; result: TurnAttachmentData };
   'view/read': { params: ViewReadParams; result: ViewReadResult };
   // Message queue (follow-ups sent while a turn is in flight)

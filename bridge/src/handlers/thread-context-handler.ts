@@ -9,6 +9,7 @@ import {
   ACCESS_MODES,
   JsonRpcErrorCode,
   MAX_ATTACHMENT_BYTES,
+  inlineAttachmentsError,
   RpcError,
   previewStepRange,
   summarizeTurn,
@@ -337,6 +338,13 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     if (text.length === 0 && attachments.length === 0 && !command) {
       throw RpcError.invalidParams('turn/send requires non-empty text, attachments, or a command');
     }
+    // Every attachment sits in the message where the person put it: one
+    // marker each, in order — in the command's arguments for a command.
+    const markerError = inlineAttachmentsError(
+      command ? (command.args ?? '') : text,
+      attachments.length,
+    );
+    if (markerError !== undefined) throw RpcError.invalidParams(markerError);
     // A turn runs with the thread's agent/model/cwd/mode (refused while a
     // terminal holds its session); explicit params override.
     const runtime = await turnRuntimeOptions(ctx, threadId, session);
@@ -475,41 +483,44 @@ function optionalQuestionResponse(params: unknown): QuestionResponse | undefined
 }
 
 /**
- * Extracts the inline `attachments` from `turn/send` params, keeping only
- * well-formed entries — an image, or a file with its name (a `mimeType` plus
- * at least one of `base64Data`/`path`). Tolerant — malformed entries are
- * dropped, never thrown, so an older/garbled client degrades to a text turn
- * instead of an error. One past {@link MAX_ATTACHMENT_BYTES} is refused: it
- * is the person's file, and silently dropping it would send the turn without
- * what they meant to share.
+ * Extracts the inline `attachments` from `turn/send` params. Each one stands
+ * for a marker in the message's text, so none may be dropped quietly — that
+ * would shift every later attachment onto the wrong marker: an entry that is
+ * not an object, carries no bytes, or is past {@link MAX_ATTACHMENT_BYTES}
+ * is refused with `invalidParams` (it is the person's file, and sending the
+ * turn without it is not what they asked for).
  */
 function optionalAttachments(params: unknown): TurnAttachment[] {
   if (!params || typeof params !== 'object') return [];
   const raw = (params as Record<string, unknown>)['attachments'];
-  if (!Array.isArray(raw)) return [];
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) throw RpcError.invalidParams('attachments must be an array');
   const out: TurnAttachment[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+  for (const [index, item] of raw.entries()) {
+    if (!item || typeof item !== 'object') {
+      throw RpcError.invalidParams(`attachment ${index + 1} is not an object`);
+    }
     const obj = item as Record<string, unknown>;
     const mimeType =
-      typeof obj['mimeType'] === 'string' ? obj['mimeType'] : 'application/octet-stream';
-    const base64Data = typeof obj['base64Data'] === 'string' ? obj['base64Data'] : undefined;
-    const path = typeof obj['path'] === 'string' ? obj['path'] : undefined;
-    if (base64Data === undefined && path === undefined) continue;
-    if (
-      base64Data !== undefined &&
-      Math.floor((base64Data.length * 3) / 4) > MAX_ATTACHMENT_BYTES
-    ) {
+      typeof obj['mimeType'] === 'string' && obj['mimeType'].length > 0
+        ? obj['mimeType']
+        : 'application/octet-stream';
+    const base64Data = typeof obj['base64Data'] === 'string' ? obj['base64Data'] : '';
+    if (base64Data.length === 0) {
+      throw RpcError.invalidParams(`attachment ${index + 1} carries no data`);
+    }
+    if (Math.floor((base64Data.length * 3) / 4) > MAX_ATTACHMENT_BYTES) {
       throw RpcError.invalidParams(
         `an attachment is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB`,
       );
     }
-    const isFile = obj['type'] === 'file';
-    const att: TurnAttachment = { type: isFile ? 'file' : 'image', mimeType };
-    const name = isFile ? attachmentName(obj['name']) : undefined;
+    const att: TurnAttachment = {
+      type: obj['type'] === 'file' ? 'file' : 'image',
+      mimeType,
+      base64Data,
+    };
+    const name = attachmentName(obj['name']);
     if (name !== undefined) att.name = name;
-    if (base64Data !== undefined) att.base64Data = base64Data;
-    if (path !== undefined) att.path = path;
     if (typeof obj['width'] === 'number') att.width = obj['width'];
     if (typeof obj['height'] === 'number') att.height = obj['height'];
     out.push(att);

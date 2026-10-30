@@ -3,45 +3,56 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
+import 'package:uxnan/domain/value_objects/inline_attachments.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 
 /// A draft that was set aside to make room for text coming back from the queue.
 class RescuedDraft extends Equatable {
   /// Creates a [RescuedDraft].
-  const RescuedDraft({required this.id, required this.text});
+  const RescuedDraft({
+    required this.id,
+    required this.text,
+    this.attachments = const [],
+  });
 
   /// Stable identity, so a row can be restored or dismissed on its own.
   final String id;
 
-  /// The full text the composer held.
+  /// The full text the composer held, one attachment marker per chip.
   final String text;
 
+  /// The chips' images and files, in the order of their markers, with their
+  /// bytes — they go back into the composer with the text.
+  final List<AttachmentContent> attachments;
+
+  /// [text] for the Drafts card: each chip named where it sat.
+  String get wordsText =>
+      inlineAttachmentsPlainText(text, [for (final a in attachments) a.name]);
+
   @override
-  List<Object?> get props => [id, text];
+  List<Object?> get props => [id, text, attachments];
 }
 
 /// What comes back into the composer: a queued message being edited — its
-/// wording AND whatever it carried — or a saved draft (text only).
+/// wording AND whatever it carried — or a saved draft.
 class ComposerIncoming extends Equatable {
   /// Creates a [ComposerIncoming].
   const ComposerIncoming({
     required this.text,
-    this.images = const [],
-    this.files = const [],
+    this.attachments = const [],
   });
 
-  /// The text to put in the field (may be empty for an image-only message).
+  /// The text to put in the field, one attachment marker per entry of
+  /// [attachments] (just its markers for an attachment-only message).
   final String text;
 
-  /// Images to attach again, each with its bytes inline so it can be re-sent.
-  final List<ImageContent> images;
-
-  /// Files to attach again, each with its bytes inline so it can be re-sent.
-  final List<AttachedFileContent> files;
+  /// Images and files to attach again, in the order of their markers, each
+  /// with its bytes inline so it can be re-sent.
+  final List<AttachmentContent> attachments;
 
   @override
-  List<Object?> get props => [text, images, files];
+  List<Object?> get props => [text, attachments];
 }
 
 /// Composer ↔ queue hand-off state for one thread.
@@ -51,6 +62,7 @@ class ComposerHandoffState extends Equatable {
     this.incoming,
     this.rescued = const [],
     this.draft = '',
+    this.draftAttachments = const [],
   });
 
   /// An empty hand-off (nothing waiting, nothing set aside).
@@ -70,22 +82,28 @@ class ComposerHandoffState extends Equatable {
   /// would overwrite something.
   final String draft;
 
+  /// The chips of [draft], in the order of its markers — kept so a draft set
+  /// aside keeps its images and files.
+  final List<AttachmentContent> draftAttachments;
+
   /// Returns a copy with the given fields replaced.
   ComposerHandoffState copyWith({
     ComposerIncoming? incoming,
     List<RescuedDraft>? rescued,
     String? draft,
+    List<AttachmentContent>? draftAttachments,
     bool clearIncoming = false,
   }) {
     return ComposerHandoffState(
       incoming: clearIncoming ? null : (incoming ?? this.incoming),
       rescued: rescued ?? this.rescued,
       draft: draft ?? this.draft,
+      draftAttachments: draftAttachments ?? this.draftAttachments,
     );
   }
 
   @override
-  List<Object?> get props => [incoming, rescued, draft];
+  List<Object?> get props => [incoming, rescued, draft, draftAttachments];
 }
 
 /// What [ComposerHandoff.edit] did, so the caller can say so.
@@ -131,10 +149,26 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     state = map;
   }
 
-  /// Mirrors the composer's current text (called as the user types).
-  void reportDraft(String threadId, String text) {
-    _set(threadId, _of(threadId).copyWith(draft: text));
+  /// Mirrors the composer's current text and chips (called as the user
+  /// types).
+  void reportDraft(
+    String threadId,
+    String text, {
+    List<AttachmentContent> attachments = const [],
+  }) {
+    _set(
+      threadId,
+      _of(threadId).copyWith(draft: text, draftAttachments: attachments),
+    );
   }
+
+  /// The composer's current message, set aside as a [RescuedDraft] with [id].
+  static RescuedDraft _rescue(ComposerHandoffState current, String id) =>
+      RescuedDraft(
+        id: id,
+        text: current.draft,
+        attachments: current.draftAttachments,
+      );
 
   /// Offers page-authored text to the conversation composer without sending it.
   /// An existing draft is kept as a rescued draft instead of being overwritten.
@@ -142,23 +176,24 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     final current = _of(threadId);
     final occupied = current.draft.trim().isNotEmpty;
     final incoming = current.incoming;
+    // A page's text can never carry an attachment.
+    final offered = stripAttachmentMarkers(text);
     final offeredText = [
       if (incoming?.text.trim().isNotEmpty ?? false) incoming!.text,
-      if (text.trim().isNotEmpty) text,
+      if (offered.trim().isNotEmpty) offered,
     ].join('\n\n');
     _set(
       threadId,
       current.copyWith(
         incoming: ComposerIncoming(
           text: offeredText,
-          images: incoming?.images ?? const [],
-          files: incoming?.files ?? const [],
+          attachments: incoming?.attachments ?? const [],
         ),
         rescued: occupied
             ? [
-                RescuedDraft(
-                  id: 'view-${DateTime.now().microsecondsSinceEpoch}',
-                  text: current.draft,
+                _rescue(
+                  current,
+                  'view-${DateTime.now().microsecondsSinceEpoch}',
                 ),
                 ...current.rescued,
               ]
@@ -168,7 +203,8 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
   }
 
   /// Withdraws [turnId] from the queue — removing its bubble entirely — and
-  /// hands [text], [images] and [files] back to the composer for rewriting.
+  /// hands [text] and its [attachments] (in marker order) back to the
+  /// composer for rewriting, each chip where it was.
   ///
   /// The attachments go back with their bytes. One the phone holds only by
   /// reference (queued from another device, or restored from the bridge) is
@@ -178,21 +214,14 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     required String threadId,
     required String turnId,
     required String text,
-    List<ImageContent> images = const [],
-    List<AttachedFileContent> files = const [],
+    List<AttachmentContent> attachments = const [],
   }) async {
     final manager = ref.read(threadManagerProvider);
-    final sendableImages = <ImageContent>[];
-    for (final image in images) {
-      final ready = await _sendableImage(manager, threadId, image);
+    final sendable = <AttachmentContent>[];
+    for (final attachment in attachments) {
+      final ready = await _sendable(manager, threadId, attachment);
       if (ready == null) return RecoverOutcome.failed;
-      sendableImages.add(ready);
-    }
-    final sendableFiles = <AttachedFileContent>[];
-    for (final file in files) {
-      final ready = await _sendableFile(manager, threadId, file);
-      if (ready == null) return RecoverOutcome.failed;
-      sendableFiles.add(ready);
+      sendable.add(ready);
     }
     final ok = await manager.withdrawQueuedTurn(threadId, turnId);
     // Only move the text once the bridge confirms the message really left the
@@ -205,16 +234,9 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     _set(
       threadId,
       current.copyWith(
-        incoming: ComposerIncoming(
-          text: text,
-          images: sendableImages,
-          files: sendableFiles,
-        ),
+        incoming: ComposerIncoming(text: text, attachments: sendable),
         rescued: occupied
-            ? [
-                RescuedDraft(id: turnId, text: current.draft),
-                ...current.rescued,
-              ]
+            ? [_rescue(current, turnId), ...current.rescued]
             : current.rescued,
       ),
     );
@@ -223,43 +245,33 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
         : RecoverOutcome.restored;
   }
 
-  /// [image] with its bytes inline — as the composer holds a picked one — or
-  /// null when they cannot be had.
-  static Future<ImageContent?> _sendableImage(
+  /// [attachment] with its bytes inline — as the composer holds a picked one
+  /// — or null when they cannot be had.
+  static Future<AttachmentContent?> _sendable(
     ThreadManager manager,
     String threadId,
-    ImageContent image,
+    AttachmentContent attachment,
   ) async {
-    if (image.base64Data != null) return image;
-    final id = image.attachmentId;
+    if (attachment.base64Data != null) return attachment;
+    final id = attachment.attachmentId;
     if (id == null) return null;
     final bytes = await manager.loadAttachment(threadId, id);
     if (bytes == null) return null;
-    return ImageContent(
-      mimeType: image.mimeType,
-      base64Data: base64Encode(bytes),
-      width: image.width,
-      height: image.height,
-    );
-  }
-
-  /// [file] with its bytes inline, or null when they cannot be had.
-  static Future<AttachedFileContent?> _sendableFile(
-    ThreadManager manager,
-    String threadId,
-    AttachedFileContent file,
-  ) async {
-    if (file.base64Data != null) return file;
-    final id = file.attachmentId;
-    if (id == null) return null;
-    final bytes = await manager.loadAttachment(threadId, id);
-    if (bytes == null) return null;
-    return AttachedFileContent(
-      name: file.name,
-      mimeType: file.mimeType,
-      bytes: bytes.length,
-      base64Data: base64Encode(bytes),
-    );
+    return switch (attachment) {
+      final ImageContent image => ImageContent(
+          mimeType: image.mimeType,
+          name: image.name,
+          base64Data: base64Encode(bytes),
+          width: image.width,
+          height: image.height,
+        ),
+      final AttachedFileContent file => AttachedFileContent(
+          name: file.name,
+          mimeType: file.mimeType,
+          bytes: bytes.length,
+          base64Data: base64Encode(bytes),
+        ),
+    };
   }
 
   /// Puts a rescued draft back — **only into an empty composer**. Returns false
@@ -270,7 +282,10 @@ class ComposerHandoff extends Notifier<Map<String, ComposerHandoffState>> {
     _set(
       threadId,
       current.copyWith(
-        incoming: ComposerIncoming(text: draft.text),
+        incoming: ComposerIncoming(
+          text: draft.text,
+          attachments: draft.attachments,
+        ),
         rescued: [
           for (final entry in current.rescued)
             if (entry.id != draft.id) entry,

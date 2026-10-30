@@ -14,7 +14,7 @@
  * this: sessions, turns, the neutral {@link OpenCodeEvent}s, and normalized
  * history. Nothing above this line knows which version it is talking to.
  */
-import type { AccessMode, QuestionItem } from '@uxnan/shared';
+import type { AccessMode, QuestionItem, TurnInputPart } from '@uxnan/shared';
 import type { PlanStepBlock } from './content-blocks.js';
 
 /** An OpenCode major version the bridge speaks. */
@@ -58,8 +58,17 @@ export interface OpenCodeModelRef {
  */
 export type OpenCodeAgent = 'build' | 'plan';
 
-export interface OpenCodePrompt {
+/**
+ * A message for the session: its text, and — when it carries images the
+ * server should hand the model — the same text cut into ordered parts with
+ * each image after its label (`SendTurnOptions.input`).
+ */
+export interface OpenCodeMessage {
   text: string;
+  input?: TurnInputPart[];
+}
+
+export interface OpenCodePrompt extends OpenCodeMessage {
   /** Split from a `provider/model` id; absent = the session's current model. */
   model?: OpenCodeModelRef;
   /** The model variant (OpenCode's reasoning knob). */
@@ -256,7 +265,7 @@ export interface IOpenCodeServer {
    */
   runCommand(sessionId: string, command: OpenCodeCommandRun): Promise<void>;
   /** Hand a message to the turn the session is already running. */
-  steer(sessionId: string, text: string): Promise<void>;
+  steer(sessionId: string, message: OpenCodeMessage): Promise<void>;
   /** Stop the session's running turn. */
   interrupt(sessionId: string): Promise<void>;
   /** Answer a `permission` event. */

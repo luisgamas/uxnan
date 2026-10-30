@@ -32,6 +32,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   who updates it — Uxnan Desktop for the bridge it carries, the bridge itself
   for an npm install (architecture/02a §5.8.18). Additive; older clients ignore it.
 
+<!-- plan 047: attachments in the sentence -->
+### Added
+
+- **Attachments sit in the sentence** (`models/inline-attachments.ts`;
+  architecture/02a §5.8.12). `ATTACHMENT_MARKER` (U+FFFC) stands for one
+  attachment in a message's text, in order — the n-th marker is the n-th
+  attachment — with `countAttachmentMarkers`, `splitAtAttachmentMarkers`,
+  `stripAttachmentMarkers`, `inlineAttachmentsError` (why a text cannot carry
+  N attachments) and `inlineAttachmentsPlainText` (each marker as `[name]`, for
+  titles, previews and the clipboard).
+- `TurnInputPart` and `SendTurnOptions.input`: a turn's prompt cut into
+  ordered parts with each image right after its label, for an adapter whose
+  CLI takes images; `IAgentAdapter.takesInlineImages()` declares it.
+
+### Changed
+
+- `TurnSendParams.text` (or `command.args`) carries one marker per entry of
+  `attachments`, and `Message.content` keeps them with `Message.attachments`
+  in the same order. `TurnAttachment.base64Data` is required, `name` names an
+  image too (`MessageAttachment.name` likewise).
+
+### Removed
+
+- `TurnAttachment.path`, `SendTurnOptions.attachments` and
+  `IAgentAdapter.handlesAttachments()` — replaced by the marker contract,
+  `input` and `takesInlineImages()`.
+<!-- /plan 047 -->
+
 ## [0.0.35-alpha.20261022] - 20261022
 ### Added
 

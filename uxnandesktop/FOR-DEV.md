@@ -40,7 +40,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (2
 integration), of which 56 are ignored probes that need something real to talk to
 (one copies and runs a built bridge runtime, 48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 2,019 frontend Vitest tests across two
+GitHub tests) + 2,066 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -56,7 +56,9 @@ channel (modes off / attach / managed — `managed` keeps the bridge running as
 the user's service, `docs/chat.md`); chat tabs show and drive the bridge's
 threads live alongside the phone, as a revisioned **replica** of the bridge's
 threads, projects, shared settings and presence, keeping every message in an
-outbox until the bridge has it (a failed one survives a restart with Retry) and
+outbox until the bridge has it (a failed one survives a restart with Retry),
+writing images and files as chips inside the message's text where they go
+(plan 047, `docs/chat.md` → *Commands, files and images*) and
 setting the composer's text aside as a saved draft when a message comes back;
 the desktop's projects and the phone's are **one mirrored registry**; a phone
 is **paired from the Bridge window** (the sidebar's Bridge row, or Settings)
@@ -1060,6 +1062,18 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       `phone | desktop`; a conversation picked up from a terminal session is
       not marked as such. Needs an origin kind from the bridge (`thread/start`
       with `agentSessionId`) and both apps — `src/lib/bridge/conversationsView.ts`.
+
+### Chat composer — attachment chips in the text (plan 047)
+- [ ] **Verify the chip editor on WebKit.** `InputGroup.ChipEditor`
+      (`src/lib/components/ui/input-group/input-group-chip-editor.svelte`) is
+      a `contenteditable` field; its behavior was checked in jsdom (Vitest) and
+      in a real Chromium (paste → chips, Backspace over a chip, the caret
+      stepping over one, Shift+Enter, undo, copy as `[name]`, plain-text
+      paste) — which is what WebView2 on Windows runs — but not yet in macOS's
+      WKWebView or Linux's WebKitGTK, whose caret handling next to a
+      `contenteditable="false"` node is known to differ. Run the same checks in
+      `npm run tauri dev` on macOS and Linux; fix in the editor (one layer) what
+      differs. Unblocked by: a WebKit run (no headless WebKit here).
 
 ### Chat tabs — parity with the phone's conversation screen
 - [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the

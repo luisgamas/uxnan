@@ -1,6 +1,21 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.5.0 | **Fecha:** 2026-10-29 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.6.0 | **Fecha:** 2026-10-30 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.6.0):** a message's attachments sit **inside its
+> text**. `turn/send` `text` (or `command.args`) carries one
+> `ATTACHMENT_MARKER` (U+FFFC) per entry of `attachments`, in order — the n-th
+> marker is the n-th attachment — and the bridge refuses a send whose markers
+> do not match one for one, or an attachment without bytes
+> (`TurnAttachment.base64Data` is required, `path` is gone, `name` names
+> images too). The stored `Message.content` keeps the markers and
+> `Message.attachments` keeps the same order, so every client draws each
+> attachment where it was written and the agent receives the same
+> interleaving (02a §5.8.12). Helpers in `shared/src/models/inline-attachments.ts`.
+> The adapter contract trades `SendTurnOptions.attachments` for
+> `input?: TurnInputPart[]` and `handlesAttachments()` for
+> `takesInlineImages()`. No method or notification count changes: **108
+> methods**, 26 notifications.
 >
 > **Executive summary (1.5.0):** conversations as a catalog (02a §5.8.21).
 > Three new methods: **`thread/transfer`** (continue a conversation with any
@@ -282,8 +297,8 @@ turn/list               -> turnos de un thread, oldest->newest, **tal como una p
 turn/read               -> un turno, tal como una pagina lo sirve (resumido, mismo shape que en `turn/list`). Params: { turnId }. Result: Turn
 turn/steps              -> los pasos guardados en `from`..`to` (inclusive) de la respuesta de un turno, como `StepPreview` — normalmente el rango de un `WorkRunSegment`. Params: { threadId, turnId, from, to } (enteros >= 0, `to >= from`). Result: StepPage { steps: StepPreview[], next? }: a lo sumo `STEP_PAGE_MAX_BYTES` (256 KiB) de previews, siempre al menos un paso; `next` es el `from` con el que pedir el resto cuando el presupuesto corto la respuesta. Lo que en el rango no es un paso se salta; un `to` mas alla del final lee hasta el final. `from` fuera del mensaje → -32008. Sirve igual para un turno en vuelo
 turn/step               -> un bloque guardado de la respuesta de un turno, entero (el comando y su salida completos, el diff con su cuerpo, la llamada con su entrada y resultado, un pensamiento `{ type:'thinking', text }` con todo su texto — no hay otro metodo para el razonamiento). Params: { threadId, turnId, index }. Result: { block }. Un indice fuera del mensaje o que apunta a una corrida de texto → -32008
-turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
-turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` nombra un archivo) (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
+turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional. **Adjuntos en la frase:** el texto (o `command.args`) lleva un `ATTACHMENT_MARKER` (U+FFFC) por adjunto, en orden — el n-esimo marcador es `attachments[n-1]` — y un mensaje solo de adjuntos es solo sus marcadores; si los marcadores no casan uno a uno con `attachments`, o un adjunto no trae bytes, responde `invalidParams` (02a §5.8.12).
+turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` es su nombre) (`Message.attachments[].id`, en el orden de los marcadores de `Message.content`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
 view/read               -> la pagina de una vista de agente (`ViewContentBlock.viewId`, §5.8.20 de 02a). Params: { viewId } (32 hex). Result: ViewReadResult { viewId, title, html, bytes }: el HTML del agente (≤ 512 KiB, `VIEW_MAX_HTML_BYTES`) con la CSP sin red y el bootstrap de la vista ya insertados por el bridge, listo para renderizarse en un iframe con sandbox (desktop) o un WebView (telefono). Un id desconocido responde un error de recurso no encontrado. Los clientes lo piden solo cuando la vista entra en pantalla y lo guardan en memoria acotada.
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
 queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason?, deliveringTurnId? }.
@@ -888,8 +903,8 @@ MUST NOT create, refresh or upgrade a trusted-device record.
 ```typescript
 interface TurnSendParams {
   threadId: string;
-  text?: string;                              // OPCIONAL: un mensaje image-only es valido
-  attachments?: TurnAttachment[];             // imagenes y archivos inline (base64, mime, name?, width?, height?)
+  text?: string;                              // un U+FFFC (ATTACHMENT_MARKER) por adjunto, en su sitio; solo-adjuntos = solo marcadores
+  attachments?: TurnAttachment[];             // imagenes y archivos inline, en el orden de sus marcadores (base64, mime, name?, width?, height?)
   options?: Record<string, string | boolean>; // per-model run-option knobs (ej. { reasoning: 'high' })
   approvalResponse?: ApprovalResponse;        // control-only: responde a un approval (no crea turno nuevo)
   questionResponse?: QuestionResponse;        // control-only: responde a un `question` del agente (no crea turno nuevo)
@@ -934,14 +949,17 @@ Codex lo usa con `serverRequest/resolved`; Claude cuando su proceso termina.
 
 **`TurnAttachment`** (adjunto inline en `turn/send`: una imagen o cualquier
 archivo, hasta `MAX_ATTACHMENT_BYTES` = 20 MB decodificado cada uno; uno mayor
-se rechaza con `invalidParams` en vez de enviarse sin el):
+o uno sin bytes se rechaza con `invalidParams` en vez de enviarse sin el). Esta
+en el texto donde lo puso la persona: el n-esimo `ATTACHMENT_MARKER` (U+FFFC)
+del texto es el n-esimo adjunto (`shared/src/models/inline-attachments.ts`:
+`countAttachmentMarkers`, `splitAtAttachmentMarkers`, `inlineAttachmentsError`,
+`inlineAttachmentsPlainText`, `stripAttachmentMarkers`):
 ```typescript
 interface TurnAttachment {
   type?: 'image' | 'file';                    // 'image' por defecto
-  name?: string;                              // nombre de un archivo (solo el ultimo segmento)
+  name?: string;                              // su nombre (ultimo segmento) — chip y etiqueta del agente; imagenes tambien
   mimeType: string;                           // 'image/png' | 'text/csv' | ...
-  base64Data?: string;                        // una de base64Data o path
-  path?: string;                              // ruta alternativa (tolerante)
+  base64Data: string;                         // los bytes (obligatorio)
   width?: number;
   height?: number;
 }
@@ -1023,7 +1041,7 @@ interface AgentCapabilities {
   streaming: boolean;
   approvals: boolean;            // emite `approval` content blocks (opt-in)
   forking: boolean;
-  images: boolean;               // acepta TurnAttachment[] en sendTurn
+  images: boolean;               // acepta imagenes (el telefono ofrece adjuntarlas); takesInlineImages() = las recibe como entrada nativa
   reportsContextUsage: boolean;  // emite `usage` en turn/completed
   reportsCompaction?: boolean;   // emite `compaction` solo con señal nativa fiable
 }

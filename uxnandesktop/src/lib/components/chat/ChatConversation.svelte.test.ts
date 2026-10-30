@@ -11,6 +11,10 @@ import { writeOutbox } from "$lib/bridge/outbox";
 import type { Turn } from "$shared/models/thread";
 import type { ChatTab } from "$lib/state/terminals.svelte";
 import ChatConversation from "./ChatConversation.svelte";
+import { serialize } from "$lib/components/ui/input-group/chip-editor";
+
+/** What the composer's editor holds, as the string it sends (a chip is a marker). */
+const valueOf = (box: HTMLElement) => serialize(box).text;
 
 const THREAD = "th-outbox";
 
@@ -110,8 +114,8 @@ describe("ChatConversation", () => {
       busy: false,
     });
     await until(() => screen.queryByText(/open in a terminal on Studio/) !== null);
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
-    expect(box.disabled).toBe(true);
+    const box = screen.getByRole("textbox");
+    expect(box.getAttribute("aria-disabled")).toBe("true");
     await user.click(screen.getByRole("button", { name: "Continue here" }));
     await until(() => calls.some((c) => c.method === "agent/requestHandoff"));
     expect(calls.find((c) => c.method === "agent/requestHandoff")?.params).toMatchObject({
@@ -120,7 +124,7 @@ describe("ChatConversation", () => {
     });
     chat.holds.delete("codex:c-1");
     await until(() => screen.queryByText(/open in a terminal on Studio/) === null);
-    expect(box.disabled).toBe(false);
+    expect(box.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("brings back a message the bridge never confirmed, and sends it again", async () => {
@@ -142,7 +146,7 @@ describe("ChatConversation", () => {
     expect(screen.queryByText("Not sent")).toBeNull();
   });
 
-  it("shows the images of a message, as the bridge keeps them", async () => {
+  it("shows the images of a message where they sit in its words, as the bridge keeps them", async () => {
     const { screen } = mountWithProviders(ChatConversation, {
       props: { tab: chatTab(), threadId: THREAD, cwd: "/repo", active: true },
       commands: {
@@ -162,8 +166,8 @@ describe("ChatConversation", () => {
               id: "t-img-u",
               turnId: "t-img",
               role: "user",
-              content: "What overlaps here?",
-              attachments: [{ id: "t-img-0.png", mimeType: "image/png", bytes: 3 }],
+              content: "What overlaps \uFFFC here?",
+              attachments: [{ id: "t-img-0.png", mimeType: "image/png", bytes: 3, name: "plan.png" }],
               createdAt: 1,
             },
           ],
@@ -171,9 +175,51 @@ describe("ChatConversation", () => {
       ],
       total: 1,
     });
-    const thumb = await screen.findByRole("button", { name: "Open image 1" });
-    await until(() => thumb.querySelector("img")?.getAttribute("src") === "data:image/png;base64,AAAA");
-    expect(screen.getByText("What overlaps here?")).toBeTruthy();
+    // The image sits in the words, where it was written.
+    const chip = await screen.findByRole("button", { name: "Open plan.png" });
+    await until(() => chip.querySelector("img")?.getAttribute("src") === "data:image/png;base64,AAAA");
+    const bubble = chip.closest("[class*='rounded-2xl']");
+    expect(bubble?.textContent?.replace(/\s+/g, " ")).toMatch(/What overlaps .*plan\.png.* here\?/);
+  });
+
+  it("brings a queued message back to be edited with its images where they sat", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const { screen, user } = mountWithProviders(ChatConversation, {
+      props: { tab: chatTab(), threadId: THREAD, cwd: "/repo", active: true },
+      commands: {
+        bridge_call: (args: Record<string, unknown>) => {
+          calls.push({ method: String(args.method), params: args.params });
+          return args.method === "turn/attachment" ? { mimeType: "image/png", base64Data: "AAAA" } : {};
+        },
+      },
+    });
+    const queued = queuedTurn("q1", "in ￼ the button is red");
+    queued.messages[0]!.attachments = [{ id: "q1-0.png", mimeType: "image/png", bytes: 3, name: "ui.png" }];
+    chat.conversation(THREAD).adoptPage({ turns: [queued], total: 1, queuedTurnIds: ["q1"] });
+    const box = screen.getByRole("textbox");
+    await user.click(await screen.findByRole("button", { name: "Edit (take it off the queue)" }));
+    await until(() => valueOf(box) === "in ￼ the button is red");
+    expect(box.querySelector("[data-chip]")?.textContent).toContain("ui.png");
+    await until(() => box.querySelector<HTMLImageElement>("img[data-chip-thumb]")?.src.startsWith("data:image/png") === true);
+  });
+
+  it("shows a message being sent with its chips inline, from the bytes it carries", async () => {
+    writeOutbox(THREAD, [
+      {
+        clientTurnId: "c2",
+        text: "compare ￼ with ￼",
+        request: {
+          text: "compare ￼ with ￼",
+          attachments: [
+            { type: "image", name: "before.png", mimeType: "image/png", base64Data: "AAAA" },
+            { type: "file", name: "after.csv", mimeType: "text/csv", base64Data: "aGk=" },
+          ],
+        },
+      },
+    ]);
+    const { screen } = mount(chatTab());
+    expect(await screen.findByRole("button", { name: "Open before.png" })).toBeTruthy();
+    expect(screen.getByText("after.csv")).toBeTruthy();
   });
 
   it("sends a queued message now when nothing is running", async () => {
@@ -256,16 +302,16 @@ describe("ChatConversation", () => {
       total: 1,
       queuedTurnIds: ["q1"],
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
 
     await user.click(await screen.findByRole("button", { name: "Edit (take it off the queue)" }));
-    await until(() => box.value === "then update the docs");
+    await until(() => valueOf(box) === "then update the docs");
     expect(tab.rescued).toEqual(["half a thought"]);
     expect(screen.getByText("1 saved draft")).toBeTruthy();
 
     // Putting the saved draft back swaps it with what the composer holds now.
     await user.click(screen.getByText("half a thought"));
-    await until(() => box.value === "half a thought");
+    await until(() => valueOf(box) === "half a thought");
     expect(tab.rescued).toEqual(["then update the docs"]);
 
     await user.click(screen.getByRole("button", { name: "Discard draft" }));

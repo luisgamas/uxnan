@@ -14,6 +14,7 @@ import {
   RpcError,
   StreamNotification,
   effectiveAccessMode,
+  inlineAttachmentsPlainText,
   isStep,
   makeNotification,
   previewStep,
@@ -34,6 +35,7 @@ import {
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
+  type TurnInputPart,
   type ApprovalResolvedParams,
   type QuestionResolvedParams,
   type TurnCreatedParams,
@@ -43,7 +45,14 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { withTransferContext } from '../conversation/transfer-context.js';
-import { materializeAttachments } from './attachments.js';
+import {
+  attachmentNote,
+  interleaveImages,
+  labelMarkers,
+  prepareAttachments,
+  withNote,
+  type PreparedAttachments,
+} from './attachments.js';
 import { REASONING_KEY } from '../adapters/run-options.js';
 import type { ApprovalRequestInfo } from '../adapters/user-input.js';
 import {
@@ -179,6 +188,29 @@ export interface SendTurnOptions {
    * attached. A turn from anywhere else gets the longest-attached desktop's.
    */
   desktopClient?: string;
+}
+
+/**
+ * What an adapter is handed for a turn's message: the prompt text, its ordered
+ * parts when it carries inline images, and the command invocation with its
+ * arguments labelled.
+ */
+interface ResolvedTurnPrompt {
+  text: string;
+  input?: TurnInputPart[];
+  command?: AgentCommandInvocation;
+}
+
+/**
+ * [prompt] with a carried-over context before the person's words — in its
+ * text, and at the head of its ordered parts when it has them, so the parts
+ * still concatenate to the text.
+ */
+function withCarriedContext(context: string, prompt: ResolvedTurnPrompt): ResolvedTurnPrompt {
+  const text = withTransferContext(context, prompt.text);
+  if (prompt.input === undefined) return { ...prompt, text };
+  const head = text.slice(0, text.length - prompt.text.length);
+  return { ...prompt, text, input: [{ type: 'text', text: head }, ...prompt.input] };
 }
 
 /** Outcome of {@link AgentManager.sendTurn} — mirrors `TurnSendResult`. */
@@ -874,9 +906,9 @@ export class AgentManager {
 
     // The turn's own text still needs the command/attachment resolution a
     // normal turn gets, so a steered `/command` or image behaves identically.
-    let text: string;
+    let prompt: ResolvedTurnPrompt;
     try {
-      text = await this.#resolveTurnText(adapter, entry, runId);
+      prompt = await this.#resolveTurnText(adapter, entry, runId);
     } catch (err) {
       this.#options.logger.warn(`could not prepare a mid-turn message: ${String(err)}`);
       return false;
@@ -884,12 +916,15 @@ export class AgentManager {
 
     let taken = false;
     try {
+      const { attachments: _attachments, ...steered } = entry.options;
       taken = await adapter.steerTurn({
-        ...entry.options,
+        ...steered,
         threadId,
         turnId: entry.turnId,
         activeTurnId: runId,
-        text,
+        text: prompt.text,
+        ...(prompt.input !== undefined ? { input: prompt.input } : {}),
+        ...(prompt.command !== undefined ? { command: prompt.command } : {}),
       });
     } catch (err) {
       // A broken transport is not the user's problem: fall back to queueing.
@@ -972,7 +1007,6 @@ export class AgentManager {
     turn: QueuedTurn,
   ): Promise<void> {
     const { turnId, assistantMessageId, options } = turn;
-    const attachments = options.attachments ?? [];
     this.#assistantByTurn.set(turnId, assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
     const cwd = options.cwd ?? adapter.defaultCwd?.();
@@ -992,28 +1026,31 @@ export class AgentManager {
     // person's words, which are never shortened for it — and the store marks
     // it `sent` with this turn, then `delivered` once the agent answers.
     const carried = await this.#options.store.claimTransferContext(threadId, turnId);
-    const agentText = carried !== undefined ? withTransferContext(carried, resolved) : resolved;
+    const prompt = carried !== undefined ? withCarriedContext(carried, resolved) : resolved;
     await this.#restoreAgentSession(threadId, agentId, adapter);
 
     await adapter.sendTurn({
       threadId,
       turnId,
-      text: agentText,
+      text: prompt.text,
+      ...(prompt.input !== undefined ? { input: prompt.input } : {}),
       ...(options.service !== undefined ? { service: options.service } : {}),
       ...(options.effort !== undefined ? { effort: options.effort } : {}),
       ...(options.options !== undefined ? { options: options.options } : {}),
-      ...(attachments.length > 0 ? { attachments } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...accessModeFor(adapter, options.accessMode),
-      ...(options.command !== undefined ? { command: options.command } : {}),
+      ...(prompt.command !== undefined ? { command: prompt.command } : {}),
       mcpServers: this.#mcpServersFor(options.desktopClient),
     });
   }
 
   /**
-   * The text the agent actually receives for a turn: a command invocation
-   * resolved to its real prompt, plus a reference to any image attachment
-   * materialized into the CLI's workspace.
+   * The prompt the agent actually receives for a turn: a command invocation
+   * resolved to its real prompt, with every attachment labelled where the
+   * person put it and a note mapping each label to the file written into the
+   * CLI's workspace — plus, for an adapter that takes images itself, the same
+   * prompt cut into ordered parts with each image right after its label
+   * (`SendTurnOptions.input`, `agents/attachments.ts`).
    *
    * Shared by a turn that runs on its own and one steered into a running turn,
    * so a `/command` or an image behaves identically either way.
@@ -1027,45 +1064,51 @@ export class AgentManager {
     adapter: IAgentAdapter,
     turn: QueuedTurn,
     attachmentOwnerTurnId: string,
-  ): Promise<string> {
+  ): Promise<ResolvedTurnPrompt> {
     const { turnId, userText, options } = turn;
     const attachments = options.attachments ?? [];
 
-    // Resolve a command invocation to the prompt the agent actually runs (an
-    // expanded custom template, or the CLI's native `/name args` form). A plain
-    // turn keeps its text verbatim.
-    let agentText = options.command
-      ? await this.#resolveCommandText(adapter, options.command, options.cwd)
-      : userText;
-
-    // Materialize image attachments to files and reference them in the prompt
-    // so any file/vision-capable agent CLI can open them. The files MUST land
-    // in the directory the CLI actually runs in — every supported agent
-    // refuses to read outside its workspace (verified: Claude answers "the
-    // read was blocked by a permission prompt" for a path in the OS temp dir)
-    // — so a turn without its own `cwd` falls back to the adapter's, never to
-    // a directory the agent cannot reach. Best-effort: a failure to write
-    // degrades to a text-only turn, never aborts it.
-    // An adapter whose protocol carries images natively (Zero's ACP image
-    // block) consumes `attachments` itself in sendTurn — writing files and
-    // pointing at them would only invite it to read a binary as text.
-    if (attachments.length > 0 && !adapter.handlesAttachments?.()) {
+    // The files MUST land in the directory the CLI actually runs in — every
+    // supported agent refuses to read outside its workspace (verified: Claude
+    // answers "the read was blocked by a permission prompt" for a path in the
+    // OS temp dir) — so a turn without its own `cwd` falls back to the
+    // adapter's, never to a directory the agent cannot reach. Best-effort: a
+    // file that cannot be written is still labelled, never aborts the turn.
+    let prepared: PreparedAttachments = { items: [] };
+    if (attachments.length > 0) {
       try {
         const attachmentCwd = options.cwd ?? adapter.defaultCwd?.();
-        const materialized = await materializeAttachments(attachments, turnId, {
+        prepared = await prepareAttachments(attachments, turnId, {
           ...(attachmentCwd !== undefined ? { cwd: attachmentCwd } : {}),
+          inlineImages: adapter.takesInlineImages?.() === true,
         });
-        if (materialized.note) {
-          agentText =
-            agentText.length > 0 ? `${agentText}\n\n${materialized.note}` : materialized.note;
-        }
-        if (materialized.dir)
-          this.#attachmentDirByTurn.set(attachmentOwnerTurnId, materialized.dir);
+        if (prepared.dir) this.#attachmentDirByTurn.set(attachmentOwnerTurnId, prepared.dir);
       } catch (err) {
         this.#options.logger.warn(`attachment materialization failed: ${String(err)}`);
       }
     }
-    return agentText;
+
+    // Each marker becomes its label before anything else reads the text — in
+    // a command's arguments too, so an expanded template or a CLI's own
+    // `/name args` carries the labels where the person wrote them.
+    const command: AgentCommandInvocation | undefined = options.command
+      ? {
+          ...options.command,
+          ...(options.command.args !== undefined
+            ? { args: labelMarkers(options.command.args, prepared) }
+            : {}),
+        }
+      : undefined;
+    const message = command
+      ? await this.#resolveCommandText(adapter, command, options.cwd)
+      : labelMarkers(userText, prepared);
+    const note = attachmentNote(prepared);
+    const input = interleaveImages(message, note, prepared);
+    return {
+      text: withNote(message, note),
+      ...(input !== undefined ? { input } : {}),
+      ...(command !== undefined ? { command } : {}),
+    };
   }
 
   /**
@@ -1136,13 +1179,18 @@ export class AgentManager {
     }
   }
 
-  /** The user's message on [turnId], for summarizing. */
+  /** The user's message on [turnId], for summarizing — each attachment as `[name]`. */
   async #userText(turnId: string): Promise<string | undefined> {
     try {
       const turn = await this.#options.store.getTurn(turnId);
       const message = turn.messages.find((m) => m.role === 'user');
       const content = message?.content;
-      return typeof content === 'string' && content.trim().length > 0 ? content : undefined;
+      if (typeof content !== 'string') return undefined;
+      const text = inlineAttachmentsPlainText(
+        content,
+        (message?.attachments ?? []).map((a) => a.name),
+      );
+      return text.trim().length > 0 ? text : undefined;
     } catch {
       return undefined;
     }

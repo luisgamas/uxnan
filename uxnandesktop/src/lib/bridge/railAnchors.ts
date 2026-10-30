@@ -5,6 +5,7 @@
 
 import type { Turn } from "$shared/models/thread";
 import { assistantOf, userAttachments, userText } from "./conversation.svelte";
+import { messagePlainText } from "./inlineMessage";
 
 /** One mark on the rail. */
 export interface RailAnchor {
@@ -34,12 +35,13 @@ function replyEnd(turn: Turn): string {
 }
 
 /** The anchors for [turns]: every turn that carries something the user sent
- *  (words, or only attachments — then named by the first one's name, or
- *  [imageLabel] for an image, which has none). */
+ *  (words — each attachment in them as its `[name]` — or, for a message with
+ *  no place for them, its first attachment's name, or [imageLabel] for an
+ *  image sent without one). */
 export function railAnchors(turns: readonly Turn[], imageLabel: string): RailAnchor[] {
   const anchors: RailAnchor[] = [];
   for (const turn of turns) {
-    const words = oneLine(userText(turn), PREVIEW_LENGTH);
+    const words = oneLine(messagePlainText(userText(turn), userAttachments(turn)), PREVIEW_LENGTH);
     const attachment = userAttachments(turn)[0];
     const preview = words || (attachment ? oneLine(attachment.name ?? imageLabel, PREVIEW_LENGTH) : "");
     if (!preview) continue;

@@ -329,6 +329,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
+   * OpenCode takes images inline on both protocols: 2.x as prompt `files`
+   * each tied by a `mention` to its label in the text, 1.x as `file` parts
+   * between the text parts (`turn-input.ts`).
+   */
+  takesInlineImages(): boolean {
+    return true;
+  }
+
+  /**
    * A persisted session's messages, normalized, through the server's own history
    * API. It also sees turns written by OpenCode's desktop app or another CLI,
    * since every client shares OpenCode's session store.
@@ -494,7 +503,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         await server.runCommand(sessionId, {
           ...(system ? { system } : {}),
           name,
-          args: options.command.args?.trim() ?? '',
+          // The labelled arguments and, after them, the attachment note the
+          // manager closed the prompt with (`/name args` + note).
+          args: commandArgs(text, options.command),
           skill: known?.skill ?? false,
           agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
@@ -504,6 +515,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } else {
         await server.prompt(sessionId, {
           text,
+          ...(options.input !== undefined ? { input: options.input } : {}),
           ...(system ? { system } : {}),
           agent: agentFor(options.accessMode),
           ...(modelRef ? { model: modelRef } : {}),
@@ -564,7 +576,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const server = await this.#existingServer(run.cwd);
       if (!server) throw new Error('its server is gone');
       // The running turn's model stays in force — this is a message inside it.
-      await server.steer(run.sessionId, options.text);
+      await server.steer(run.sessionId, {
+        text: options.text,
+        ...(options.input !== undefined ? { input: options.input } : {}),
+      });
       accepted = true;
     } catch (err) {
       this.#log(`turn ${run.turnId} mid-turn message refused: ${errorMessage(err)}`);
@@ -1131,4 +1146,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * The arguments a command turn hands OpenCode's server: what follows `/name`
+ * in the prompt the manager composed — the labelled arguments and any
+ * attachment note after them — or the arguments alone when the prompt is not
+ * in that form.
+ */
+export function commandArgs(text: string, command: { name: string; args?: string }): string {
+  const display = `/${command.name}`;
+  if (
+    text.startsWith(display) &&
+    (text.length === display.length || /\s/.test(text[display.length] ?? ''))
+  ) {
+    return text.slice(display.length).trim();
+  }
+  return command.args?.trim() ?? '';
 }

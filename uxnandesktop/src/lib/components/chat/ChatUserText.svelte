@@ -4,16 +4,24 @@
   // not push the conversation off the screen; "Show less" folds it back. Short
   // messages draw exactly as before. Copying (the message meta) always takes
   // the whole text.
+  //
+  // The images and files it carries sit inside the text, where they were
+  // written (`inlineMessage.ts`); one without a place follows the text.
   import { i18n } from "$lib/i18n";
+  import { messagePieces, type ChatChip } from "$lib/bridge/inlineMessage";
+  import ChatSentAttachment from "./ChatSentAttachment.svelte";
   import { chat } from "$lib/design";
   import { cn } from "$lib/utils";
 
   let {
     text,
+    attachments = [],
     queued = false,
     class: className,
   }: {
     text: string;
+    /** The message's images and files, in the order of its markers. */
+    attachments?: ChatChip[];
     /** Waiting in the queue: the same bubble, outlined instead of filled. */
     queued?: boolean;
     class?: string;
@@ -33,6 +41,7 @@
     const el = body;
     if (!el) return;
     void text;
+    void attachments.length;
     const measure = () => {
       long = el.scrollHeight > FOLDED_LINES * LINE_PX + 24;
     };
@@ -43,6 +52,7 @@
   });
 
   const folded = $derived(long && !expanded);
+  const pieces = $derived(messagePieces(text, attachments));
 </script>
 
 <div class={cn("flex max-w-[85%] flex-col items-end", className)}>
@@ -55,7 +65,7 @@
       folded && "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
     )}
     style:max-height={folded ? `${FOLDED_LINES * LINE_PX + 16}px` : undefined}
-  >{text}</div>
+  >{#each pieces as piece, i (i)}{#if piece.kind === "text"}{piece.text}{:else}{#if piece.trailing && i > 0 && pieces[i - 1]?.kind === "text"}<br />{/if}<ChatSentAttachment chip={piece.attachment} />{/if}{/each}</div>
   {#if long}
     <button
       type="button"

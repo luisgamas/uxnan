@@ -1349,14 +1349,29 @@ test('a user message keeps its images: served back, carried by a fork, gone with
   try {
     const thread = await store.startThread({ projectId: 'p' }, 1);
     const png = Buffer.from('not really a png').toString('base64');
-    const { turnId } = await store.startTurn(thread.id, 'look at this', 2, [
-      { type: 'image', mimeType: 'image/png', base64Data: png, width: 4, height: 3 },
-      { type: 'image', mimeType: 'image/jpeg', path: '/elsewhere/not-ours.jpg' },
+    const { turnId } = await store.startTurn(thread.id, 'look at this \uFFFC', 2, [
+      {
+        type: 'image',
+        name: 'shot.png',
+        mimeType: 'image/png',
+        base64Data: png,
+        width: 4,
+        height: 3,
+      },
     ]);
 
     const [user] = (await store.getTurn(turnId)).messages;
+    // The text keeps its marker; the image keeps its name, beside it.
+    assert.equal(user?.content, 'look at this \uFFFC');
     assert.deepEqual(user?.attachments, [
-      { id: `${turnId}-0.png`, mimeType: 'image/png', bytes: 16, width: 4, height: 3 },
+      {
+        id: `${turnId}-0.png`,
+        mimeType: 'image/png',
+        bytes: 16,
+        name: 'shot.png',
+        width: 4,
+        height: 3,
+      },
     ]);
     assert.deepEqual(await store.readAttachment(thread.id, `${turnId}-0.png`), {
       mimeType: 'image/png',

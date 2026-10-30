@@ -99,16 +99,20 @@ void main() {
       'th1': const ComposerHandoffState(
         draft: 'existing draft',
         incoming: ComposerIncoming(
-          text: 'prior offered text',
-          images: [image],
+          text: 'prior offered text \uFFFC',
+          attachments: [image],
         ),
       ),
     };
 
-    notifier().offerText('th1', 'view note');
+    // A page's text can never bring an attachment: a stray marker goes.
+    notifier().offerText('th1', 'view \uFFFCnote');
 
-    expect(stateOf('th1').incoming?.text, 'prior offered text\n\nview note');
-    expect(stateOf('th1').incoming?.images, [image]);
+    expect(
+      stateOf('th1').incoming?.text,
+      'prior offered text \uFFFC\n\nview note',
+    );
+    expect(stateOf('th1').incoming?.attachments, [image]);
     expect(stateOf('th1').rescued.single.text, 'existing draft');
     expect(sent, isEmpty);
   });
@@ -228,7 +232,8 @@ void main() {
     expect(stateOf('th2').rescued, isEmpty);
   });
 
-  test('editing hands the attachments back with the text', () async {
+  test('editing hands the attachments back with the text, in marker order',
+      () async {
     // What a message sent from this phone holds: the bytes inline.
     const image = ImageContent(mimeType: 'image/png', base64Data: 'iVBO');
     const file = AttachedFileContent(
@@ -241,18 +246,16 @@ void main() {
     final outcome = await notifier().edit(
       threadId: 'th1',
       turnId: 'turn-a',
-      text: 'look at these',
-      images: const [image],
-      files: const [file],
+      text: 'read \uFFFC then look at \uFFFC',
+      attachments: const [file, image],
     );
 
     expect(outcome, RecoverOutcome.restored);
     expect(
       stateOf('th1').incoming,
       const ComposerIncoming(
-        text: 'look at these',
-        images: [image],
-        files: [file],
+        text: 'read \uFFFC then look at \uFFFC',
+        attachments: [file, image],
       ),
     );
   });
@@ -262,11 +265,14 @@ void main() {
     final outcome = await notifier().edit(
       threadId: 'th1',
       turnId: 'turn-a',
-      text: '',
-      images: const [
-        ImageContent(mimeType: 'image/png', attachmentId: 'att-1', width: 2),
-      ],
-      files: const [
+      text: '\uFFFC \uFFFC',
+      attachments: const [
+        ImageContent(
+          mimeType: 'image/png',
+          name: 'shot.png',
+          attachmentId: 'att-1',
+          width: 2,
+        ),
         AttachedFileContent(
           name: 'log.txt',
           mimeType: 'text/plain',
@@ -280,10 +286,13 @@ void main() {
     // Fetched while the message is still queued, then withdrawn.
     expect(sent, ['turn/attachment', 'turn/attachment', 'turn/cancel']);
     final incoming = stateOf('th1').incoming!;
-    expect(incoming.images.single.base64Data, 'AAEC');
-    expect(incoming.images.single.width, 2);
-    expect(incoming.files.single.name, 'log.txt');
-    expect(incoming.files.single.base64Data, 'AAEC');
+    final image = incoming.attachments.first as ImageContent;
+    expect(image.base64Data, 'AAEC');
+    expect(image.width, 2);
+    expect(image.name, 'shot.png');
+    final file = incoming.attachments.last as AttachedFileContent;
+    expect(file.name, 'log.txt');
+    expect(file.base64Data, 'AAEC');
   });
 
   test('an attachment that cannot be fetched keeps the message queued',
@@ -293,13 +302,44 @@ void main() {
     final outcome = await notifier().edit(
       threadId: 'th1',
       turnId: 'turn-a',
-      text: 'with a picture',
-      images: const [ImageContent(mimeType: 'image/png', attachmentId: 'x')],
+      text: 'with a picture \uFFFC',
+      attachments: const [
+        ImageContent(mimeType: 'image/png', attachmentId: 'x'),
+      ],
     );
 
     expect(outcome, RecoverOutcome.failed);
     // Never withdrawn: editing must not silently drop part of the message.
     expect(sent, isNot(contains('turn/cancel')));
     expect(stateOf('th1').incoming, isNull);
+  });
+
+  test('a draft set aside keeps its chips, and restores them', () async {
+    const image = ImageContent(
+      mimeType: 'image/png',
+      name: 'a.png',
+      base64Data: 'AAEC',
+    );
+    notifier().reportDraft(
+      'th1',
+      'my draft \uFFFC',
+      attachments: const [image],
+    );
+
+    await notifier().edit(threadId: 'th1', turnId: 'turn-a', text: 'queued');
+
+    final rescued = stateOf('th1').rescued.single;
+    expect(rescued.text, 'my draft \uFFFC');
+    expect(rescued.attachments, [image]);
+    expect(rescued.wordsText, 'my draft [a.png]');
+
+    notifier()
+      ..consumeIncoming('th1')
+      ..reportDraft('th1', '');
+    expect(notifier().restore('th1', rescued), isTrue);
+    expect(
+      stateOf('th1').incoming,
+      const ComposerIncoming(text: 'my draft \uFFFC', attachments: [image]),
+    );
   });
 }

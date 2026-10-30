@@ -323,6 +323,36 @@ test('PiAdapter prefers the context window `get_state` reports for the session',
   });
 });
 
+test('PiAdapter sends the images of a prompt with it, in the order of their labels', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  assert.equal(adapter.takesInlineImages(), true);
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'in [Image 1] a cat, in [Image 2] a dog',
+    input: [
+      { type: 'text', text: 'in [Image 1]' },
+      { type: 'image', label: '[Image 1]', mimeType: 'image/png', base64Data: 'AAAA' },
+      { type: 'text', text: ' a cat, in [Image 2]' },
+      { type: 'image', label: '[Image 2]', mimeType: 'image/jpeg', base64Data: 'BBBB' },
+      { type: 'text', text: ' a dog' },
+    ],
+  });
+  last().feedOpen([SESSION, assistantEnd('ok', { tokens: 1 }), AGENT_END, AGENT_SETTLED]);
+  await done;
+  await flush();
+  assert.deepEqual(last().sent[1], {
+    type: 'prompt',
+    message: 'in [Image 1] a cat, in [Image 2] a dog',
+    images: [
+      { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+      { type: 'image', data: 'BBBB', mimeType: 'image/jpeg' },
+    ],
+  });
+});
+
 test('PiAdapter streams text_delta as deltas and completes with the text + usage', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });

@@ -478,7 +478,7 @@ test('OpenCodeV2Server speaks /api behind the password it set, and translates th
       [{ agent: 'build' }, { agent: 'plan' }],
     );
 
-    await server.steer(S, 'more');
+    await server.steer(S, { text: 'more' });
     await server.interrupt(S);
     await server.replyPermission(S, 'per_1', 'always');
     await server.answerQuestion(S, 'frm_unknown', []);

@@ -378,11 +378,46 @@ class CodeContent extends MessageContent with EquatableMixin {
   List<Object?> get props => [code, language, filename];
 }
 
+/// An image or a file a user attached to a message — one chip in the
+/// composer, at its place in the sentence: the n-th attachment of a message
+/// is the one its text's n-th marker stands for (`inline_attachments.dart`).
+///
+/// Carries its bytes inline while it is written and sent, and the bridge's
+/// id (`Message.attachments[].id`) once it is stored, fetched with
+/// `turn/attachment` when it is shown.
+sealed class AttachmentContent extends MessageContent {
+  const AttachmentContent();
+
+  /// Its file name (no directories), as shown on its chip; a pasted image may
+  /// have none.
+  String? get name;
+
+  /// MIME type.
+  String get mimeType;
+
+  /// Inline base64 data, while it is being written or sent.
+  String? get base64Data;
+
+  /// The id the bridge keeps it under with its message, once sent.
+  String? get attachmentId;
+
+  /// Whether it travels as an image (`TurnAttachment.type`).
+  bool get isImage;
+
+  /// A copy carrying [name].
+  AttachmentContent withName(String name);
+
+  /// Its `TurnAttachment` for `turn/send`: the bytes inline, with its name.
+  /// Only meaningful while [base64Data] is held.
+  Map<String, dynamic> toTurnAttachment();
+}
+
 /// An image, either by workspace path or inline base64.
-class ImageContent extends MessageContent with EquatableMixin {
+class ImageContent extends AttachmentContent with EquatableMixin {
   /// Creates an [ImageContent].
   const ImageContent({
     required this.mimeType,
+    this.name,
     this.path,
     this.base64Data,
     this.attachmentId,
@@ -393,6 +428,7 @@ class ImageContent extends MessageContent with EquatableMixin {
   /// Decodes an [ImageContent].
   factory ImageContent.fromJson(Map<String, dynamic> json) => ImageContent(
         mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
+        name: json['name'] as String?,
         path: json['path'] as String?,
         base64Data: json['base64Data'] as String?,
         attachmentId: json['attachmentId'] as String?,
@@ -400,18 +436,22 @@ class ImageContent extends MessageContent with EquatableMixin {
         height: json['height'] as int?,
       );
 
+  @override
+  final String? name;
+
   /// Workspace path, if any.
   final String? path;
 
-  /// Inline base64 data, if any.
+  @override
   final String? base64Data;
 
   /// The id the bridge keeps this image under with its message
   /// (`Message.attachments`), when the bytes are not here: they are fetched
   /// with `turn/attachment` when the image is shown.
+  @override
   final String? attachmentId;
 
-  /// MIME type.
+  @override
   final String mimeType;
 
   /// Pixel width, if known.
@@ -427,12 +467,37 @@ class ImageContent extends MessageContent with EquatableMixin {
   String get type => typeName;
 
   @override
-  String get asPlainText => '[image]';
+  bool get isImage => true;
+
+  @override
+  String get asPlainText => '[${name ?? 'image'}]';
+
+  @override
+  ImageContent withName(String name) => ImageContent(
+        mimeType: mimeType,
+        name: name,
+        path: path,
+        base64Data: base64Data,
+        attachmentId: attachmentId,
+        width: width,
+        height: height,
+      );
+
+  @override
+  Map<String, dynamic> toTurnAttachment() => {
+        'type': 'image',
+        if (name != null) 'name': name,
+        'mimeType': mimeType,
+        'base64Data': base64Data ?? '',
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+      };
 
   @override
   Map<String, dynamic> toJson() => {
         'type': typeName,
         'mimeType': mimeType,
+        if (name != null) 'name': name,
         if (path != null) 'path': path,
         if (base64Data != null) 'base64Data': base64Data,
         if (attachmentId != null) 'attachmentId': attachmentId,
@@ -442,14 +507,14 @@ class ImageContent extends MessageContent with EquatableMixin {
 
   @override
   List<Object?> get props =>
-      [path, base64Data, attachmentId, mimeType, width, height];
+      [name, path, base64Data, attachmentId, mimeType, width, height];
 }
 
 /// A file (not an image) the user attached to a message: sent inline with its
 /// name (`turn/send { attachments: [{ type: 'file', name, … }] }`); the bridge
 /// writes it under that name where the agent opens it with its own tools, and
 /// keeps it with the message (`Message.attachments[].name`).
-class AttachedFileContent extends MessageContent with EquatableMixin {
+class AttachedFileContent extends AttachmentContent with EquatableMixin {
   /// Creates a [AttachedFileContent].
   const AttachedFileContent({
     required this.name,
@@ -470,18 +535,19 @@ class AttachedFileContent extends MessageContent with EquatableMixin {
       );
 
   /// The file's name (no directories).
+  @override
   final String name;
 
-  /// MIME type.
+  @override
   final String mimeType;
 
   /// Its size in bytes.
   final int bytes;
 
-  /// Inline base64 data, while it is being sent.
+  @override
   final String? base64Data;
 
-  /// The id the bridge keeps it under with its message, once sent.
+  @override
   final String? attachmentId;
 
   /// Wire type discriminator.
@@ -491,7 +557,27 @@ class AttachedFileContent extends MessageContent with EquatableMixin {
   String get type => typeName;
 
   @override
-  String get asPlainText => '[file: $name]';
+  bool get isImage => false;
+
+  @override
+  String get asPlainText => '[$name]';
+
+  @override
+  AttachedFileContent withName(String name) => AttachedFileContent(
+        name: name,
+        mimeType: mimeType,
+        bytes: bytes,
+        base64Data: base64Data,
+        attachmentId: attachmentId,
+      );
+
+  @override
+  Map<String, dynamic> toTurnAttachment() => {
+        'type': 'file',
+        'name': name,
+        'mimeType': mimeType,
+        'base64Data': base64Data ?? '',
+      };
 
   @override
   Map<String, dynamic> toJson() => {

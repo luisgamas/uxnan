@@ -478,49 +478,52 @@ test('ZeroAdapter cancelTurn sends session/cancel and emits turn_aborted', async
   assert.ok(events.some((e) => e.type === 'turn_aborted'));
 });
 
-test('ZeroAdapter sends an attachment as an INLINE ACP image block', async () => {
-  // Zero's `read_file` is line-oriented text, so a path reference would have it
-  // read a PNG as garbage. Its ACP advertises `promptCapabilities.image`, so the
-  // adapter takes attachments natively (`handlesAttachments`) and inlines them.
+test('ZeroAdapter sends each image as an ACP image block right after its label', async () => {
+  // Zero's `read_file` is line-oriented text, so a file it opened would read
+  // as garbage. Its ACP advertises `promptCapabilities.image`, so the adapter
+  // takes images inline (`takesInlineImages`), each where the person put it.
   const { adapter, server } = setup();
-  const events: AgentStreamEvent[] = [];
-  adapter.onEvent((e) => events.push(e));
   server.handle((m) => void m); // leave the turn in flight
 
-  assert.equal(adapter.handlesAttachments(), true);
+  assert.equal(adapter.takesInlineImages(), true);
   await adapter.sendTurn({
     threadId: 't1',
     turnId: 'u1',
-    text: 'what is in this image?',
-    attachments: [
-      { type: 'image', mimeType: 'image/png', base64Data: 'AAAA' },
-      // A bare workspace path carries no bytes → not inlined.
-      { type: 'image', mimeType: 'image/png', path: 'shot.png' },
+    text: 'in [Image 1: a.png] a cat, in [Image 2] a dog',
+    input: [
+      { type: 'text', text: 'in [Image 1: a.png]' },
+      {
+        type: 'image',
+        label: '[Image 1: a.png]',
+        name: 'a.png',
+        mimeType: 'image/png',
+        base64Data: 'AAAA',
+      },
+      { type: 'text', text: ' a cat, in [Image 2]' },
+      { type: 'image', label: '[Image 2]', mimeType: 'image/jpeg', base64Data: 'BBBB' },
+      { type: 'text', text: ' a dog' },
     ],
   });
   await tick();
 
   const prompt = server.sent.find((m) => m.method === 'session/prompt');
   assert.deepEqual(prompt.params.prompt, [
-    { type: 'text', text: 'what is in this image?' },
+    { type: 'text', text: 'in [Image 1: a.png]' },
     { type: 'image', mimeType: 'image/png', data: 'AAAA' },
+    { type: 'text', text: ' a cat, in [Image 2]' },
+    { type: 'image', mimeType: 'image/jpeg', data: 'BBBB' },
+    { type: 'text', text: ' a dog' },
   ]);
 });
 
-test('ZeroAdapter keeps a text block for an image-only turn', async () => {
+test('ZeroAdapter sends a text-only turn as one text block', async () => {
   const { adapter, server } = setup();
   server.handle((m) => void m);
-  await adapter.sendTurn({
-    threadId: 't1',
-    turnId: 'u1',
-    text: '',
-    attachments: [{ type: 'image', mimeType: 'image/jpeg', base64Data: 'BBBB' }],
-  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hello' });
   await tick();
 
   const prompt = server.sent.find((m) => m.method === 'session/prompt');
-  // The image rides alone — no empty text block padding the prompt.
-  assert.deepEqual(prompt.params.prompt, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
+  assert.deepEqual(prompt.params.prompt, [{ type: 'text', text: 'hello' }]);
 });
 
 test('Zero advertises its own skills as commands, expanded to a prompt that loads them', () => {

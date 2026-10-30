@@ -75,6 +75,7 @@ class AttachmentPickerService {
         images.add(
           ImageContent(
             mimeType: _mimeFor(file.name),
+            name: pickedImageName(file.name),
             base64Data: base64Encode(bytes),
           ),
         );
@@ -152,6 +153,17 @@ class AttachmentPickerService {
     if (lower.endsWith('.bmp')) return 'image/bmp';
     return 'image/jpeg';
   }
+}
+
+/// The name a picked image is shown and sent by: the photo's own, without the
+/// prefix the plugin adds when it rescales one (`scaled_`), or null for a
+/// name the plugin made up (`image_picker_<uuid>.jpg` on iOS) — the composer
+/// then names it `image-<n>`.
+String? pickedImageName(String raw) {
+  var name = raw.split(RegExp(r'[\\/]')).last.trim();
+  if (name.startsWith('scaled_')) name = name.substring('scaled_'.length);
+  if (name.isEmpty || name.startsWith('image_picker_')) return null;
+  return name;
 }
 
 /// The MIME type a picked file travels as, from its extension.

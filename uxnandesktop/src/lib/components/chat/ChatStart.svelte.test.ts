@@ -10,6 +10,10 @@ import { chat } from "$lib/bridge/chat.svelte";
 import { bridge } from "$lib/bridge/client.svelte";
 import type { ChatTab } from "$lib/state/terminals.svelte";
 import ChatStart from "./ChatStart.svelte";
+import { serialize } from "$lib/components/ui/input-group/chip-editor";
+
+/** What the composer's editor holds, as the string it sends (a chip is a marker). */
+const valueOf = (box: HTMLElement) => serialize(box).text;
 
 function chatTab(): ChatTab {
   return { id: "tab-1", kind: "chat", title: "Chat", cwd: "/repo", draft: "fix it" } as ChatTab;
@@ -52,8 +56,8 @@ describe("ChatStart", () => {
         bridge_call: (args: Record<string, unknown>) => (args.method === "thread/start" ? started : {}),
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
-    expect(box.value).toBe("fix it");
+    const box = screen.getByRole("textbox");
+    expect(valueOf(box)).toBe("fix it");
     await user.click(box);
     await user.keyboard("{Enter}");
     await until(() => backend.called("bridge_call"));
@@ -71,11 +75,11 @@ describe("ChatStart", () => {
         },
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("{Enter}");
     await until(() => tab.draft === "fix it");
-    await until(() => box.value === "fix it");
+    await until(() => valueOf(box) === "fix it");
   });
 
   // The agents' own sessions here that no conversation continues yet can be

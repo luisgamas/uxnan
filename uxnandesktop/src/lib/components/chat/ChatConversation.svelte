@@ -30,8 +30,6 @@
   import ChatUserText from "./ChatUserText.svelte";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
-  import ChatImages from "./ChatImages.svelte";
-  import ChatFiles from "./ChatFiles.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import { effectiveAccessMode } from "$lib/bridge/accessMode";
   import type { TurnAttachment } from "$shared/models/workspace";
@@ -52,7 +50,15 @@
   import { settleScroll } from "./chatScroll";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
-  import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
+  import { userAttachments, userText, type PendingSend } from "$lib/bridge/conversation.svelte";
+  import { messagePlainText, pendingChips, sentChips } from "$lib/bridge/inlineMessage";
+  import {
+    keepAttachments,
+    keptAttachments,
+    savedDraftKey,
+    type ComposerAttachment,
+  } from "$lib/bridge/composerAttachments";
+  import { stripAttachmentMarkers } from "$shared/models/inline-attachments";
   import { requestIdOf } from "$lib/bridge/timeline";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
   import { toast, toastError } from "$lib/toast";
@@ -102,14 +108,20 @@
   // Kept as the tab's draft (persisted with the layout), a beat after typing
   // stops, so it survives switching tabs and closing the app.
   let draft = $state(untrack(() => tab.draft ?? ""));
-  provideViewComposer((text) => { draft = draft ? `${draft}\n\n${text}` : text; });
+  provideViewComposer((text) => {
+    const words = stripAttachmentMarkers(text);
+    draft = draft ? `${draft}\n\n${words}` : words;
+  });
   $effect(() => {
     const text = draft;
     const timer = setTimeout(() => (tab.draft = text || undefined), 300);
     return () => clearTimeout(timer);
   });
-  /** Earlier messages of this thread, oldest first, for ↑ recall. */
-  const history = $derived(conversation.turns.map((t) => userText(t)).filter((t) => t.length > 0));
+  /** Earlier messages of this thread, oldest first, for ↑ recall (their
+   *  words; an attachment as its `[name]`). */
+  const history = $derived(
+    conversation.turns.map((t) => messagePlainText(userText(t), userAttachments(t))).filter((t) => t.length > 0),
+  );
 
   // --- drafts set aside --------------------------------------------------------
   // A message coming back to be edited takes the composer; what it held is set
@@ -122,26 +134,62 @@
     tab.rescued = next.length > 0 ? next : undefined;
   }
 
-  /** Puts a message back into the composer, setting aside what was there. */
-  function putBack(text: string) {
-    if (draft.trim() && draft.trim() !== text.trim()) setRescued([draft, ...rescued]);
-    draft = text;
+  /** Set [held] aside as a saved draft — its chips kept with it in memory. */
+  function setAside(held: { text: string; attachments: ComposerAttachment[] }) {
+    keepAttachments(savedDraftKey(tab.id, held.text), held.attachments);
+    setRescued([held.text, ...rescued.filter((r) => r !== held.text)]);
+  }
+
+  /** What the composer holds right now. */
+  function held(): { text: string; attachments: ComposerAttachment[] } {
+    return composer?.snapshot() ?? { text: draft, attachments: [] };
+  }
+
+  /** Puts a message back into the composer — with its images and files where
+   *  they sat — setting aside what was there. */
+  function putBack(text: string, attachments: TurnAttachment[] = []) {
+    const current = held();
+    if (current.text.trim() && current.text.trim() !== text.trim()) setAside(current);
+    if (composer) composer.load(text, attachments);
+    else draft = stripAttachmentMarkers(text);
   }
 
   /** A saved draft returns to the composer; one being written takes its place. */
   function restoreDraft(index: number) {
     const chosen = rescued[index];
     if (chosen === undefined) return;
-    const rest = rescued.filter((_, i) => i !== index);
-    setRescued(draft.trim() ? [draft, ...rest] : rest);
-    draft = chosen;
+    const key = savedDraftKey(tab.id, chosen);
+    const attachments = keptAttachments(key) ?? [];
+    keepAttachments(key, []);
+    const current = held();
+    setRescued(rescued.filter((_, i) => i !== index));
+    if (current.text.trim()) setAside(current);
+    if (composer) composer.load(chosen, attachments);
+    else draft = stripAttachmentMarkers(chosen);
   }
 
-  /** A failed message back in the composer, its images too, to be reworded. */
+  /** A saved draft thrown away, its chips with it. */
+  function discardDraft(index: number) {
+    const chosen = rescued[index];
+    if (chosen !== undefined) keepAttachments(savedDraftKey(tab.id, chosen), []);
+    setRescued(rescued.filter((_, i) => i !== index));
+  }
+
+  /** A saved draft's words, its chips named (`[name]`). */
+  function draftPreview(saved: string): string {
+    return messagePlainText(
+      saved,
+      (keptAttachments(savedDraftKey(tab.id, saved)) ?? []).map((a) => ({
+        name: a.name,
+        mimeType: a.attachment.mimeType,
+      })),
+    ).trim();
+  }
+
+  /** A failed message back in the composer, its images and files too, to be reworded. */
   function editFailed(p: PendingSend) {
     conversation.dropPending(p.clientTurnId);
-    putBack(p.request.command ? p.text : (p.request.text ?? ""));
-    if (p.request.attachments?.length) composer?.restoreAttachments(p.request.attachments);
+    putBack(p.request.command ? p.text : (p.request.text ?? ""), p.request.attachments ?? []);
   }
 
   /** Queued messages withdrawn into the composer here: the bridge keeps them
@@ -156,19 +204,17 @@
     const user = turn.messages.find((m) => m.role === "user");
     const text = String(user?.content ?? "");
     try {
+      const chips = sentChips(user?.attachments ?? [], (id) => chat.attachment(threadId, id));
       const attachments = await Promise.all(
-        (user?.attachments ?? []).map(async (a): Promise<TurnAttachment> => {
-          const dataUrl = await chat.attachment(threadId, a.id);
+        chips.map(async (c): Promise<TurnAttachment> => {
+          const dataUrl = await c.load();
           const base64Data = dataUrl.slice(dataUrl.indexOf(",") + 1);
-          return a.name !== undefined || !a.mimeType.startsWith("image/")
-            ? { type: "file", name: a.name ?? a.id, mimeType: a.mimeType, base64Data }
-            : { type: "image", mimeType: a.mimeType, base64Data };
+          return { type: c.kind, name: c.name, mimeType: c.mimeType, base64Data };
         }),
       );
       await chat.cancel(threadId, turn.id);
       withdrawn = new Set([...withdrawn, turn.id]);
-      putBack(text);
-      if (attachments.length > 0) composer?.restoreAttachments(attachments);
+      putBack(text, attachments);
     } catch (err) {
       toastError(err);
     }
@@ -593,26 +639,13 @@
 
           {#each conversation.pending as p (p.clientTurnId)}
             {@const failed = p.error !== undefined}
-            {@const images = (p.request.attachments ?? [])
-              .filter((a) => a.type !== "file")
-              .map((a, i) => ({
-                id: `${p.clientTurnId}-${i}`,
-                load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
-              }))}
-            {@const sentFiles = (p.request.attachments ?? [])
-              .filter((a) => a.type === "file")
-              .map((a, i) => ({
-                id: `${p.clientTurnId}-f${i}`,
-                name: a.name ?? "file",
-                bytes: Math.floor(((a.base64Data ?? "").length * 3) / 4),
-              }))}
             <div class="flex flex-col items-end gap-1">
-              {#if images.length > 0}
-                <ChatImages {images} class={cn("max-w-[85%]", !failed && "opacity-70")} />
-              {/if}
-              <ChatFiles files={sentFiles} class={cn(!failed && "opacity-70")} />
-              {#if p.text}
-                <ChatUserText text={p.text} class={cn(!failed && "opacity-70")} />
+              {#if p.text || p.request.attachments?.length}
+                <ChatUserText
+                  text={p.text}
+                  attachments={pendingChips(p.request.attachments ?? [], p.clientTurnId)}
+                  class={cn(!failed && "opacity-70")}
+                />
               {/if}
               {#if failed}
                 <p class="flex items-center gap-2 text-xs text-destructive">
@@ -647,7 +680,11 @@
           {#each queued as turn, qi (turn.id)}
             {@const user = turn.messages.find((m) => m.role === "user")}
             <div class="flex flex-col items-end gap-0.5">
-              <ChatUserText text={String(user?.content ?? "")} queued />
+              <ChatUserText
+                text={String(user?.content ?? "")}
+                attachments={sentChips(user?.attachments ?? [], (id) => chat.attachment(threadId, id))}
+                queued
+              />
               <div class={cn(text.meta, "flex items-center gap-1")}>
                 {#if conversation.queue.delivering === turn.id}
                   <!-- The agent has it: it reads it when the step it is in
@@ -801,7 +838,7 @@
                     title={i18n.t("chat.restoreDraft")}
                     onclick={() => restoreDraft(index)}
                   >
-                    {saved.trim()}
+                    {draftPreview(saved)}
                   </button>
                   <Button
                     variant="ghost"
@@ -817,7 +854,7 @@
                     size="icon-xs"
                     aria-label={i18n.t("chat.discardDraft")}
                     title={i18n.t("chat.discardDraft")}
-                    onclick={() => setRescued(rescued.filter((_, i) => i !== index))}
+                    onclick={() => discardDraft(index)}
                   >
                     <Icon icon={Delete02Icon} class={icon.status} />
                   </Button>
@@ -831,6 +868,7 @@
       <ChatComposer
         bind:this={composer}
         bind:value={draft}
+        draftKey={tab.id}
         {history}
         running={conversation.running}
         disabled={thread?.status === "archived" || hold !== undefined}

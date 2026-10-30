@@ -103,6 +103,17 @@ class UxnanSize {
   /// Default height of compact status badges embedded in Markdown.
   static const double inlineBadgeHeight = 20;
 
+  /// Height of an attachment chip inside a sentence (the composer, the user
+  /// bubble): a touch above a body line, so it sits in the text without
+  /// spreading the lines apart.
+  static const double attachmentChip = 24;
+
+  /// Side of the thumbnail an image's attachment chip leads with.
+  static const double attachmentChipThumb = 18;
+
+  /// Widest an attachment chip grows before its name is shortened.
+  static const double attachmentChipMaxWidth = 200;
+
   /// Maximum height of an unconstrained image embedded in Markdown.
   static const double maxInlineMediaHeight = 420;
 

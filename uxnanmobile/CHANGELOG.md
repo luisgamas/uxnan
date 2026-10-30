@@ -35,6 +35,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   kept, but they now list under *Other conversations* instead of under the old
   folder's name, which looked like the project was still there.
 
+### Changed
+
+- **Images and files sit inside your sentence.** What you attach from the "+"
+  menu becomes a chip right where the cursor was — "in this image ⟨a.jpg⟩
+  you can see X, and in this one ⟨b.jpg⟩ Y" — and the agent receives the
+  message in that same order, so it knows which picture each part of the
+  sentence is about. One backspace removes a chip; tapping it shows the image
+  (or the file's size and type) with *Remove from message*. A long name is
+  shortened in the middle so its extension stays visible. The sent message
+  shows the same chips inline; tap an image chip to open it full size.
+  Editing a queued message, and drafts set aside in the Drafts card, keep
+  their chips where they were; previews and *Copy message* name each one.
+  Requires a bridge that takes attachment markers (plans/047).
+
 ## [0.0.45-alpha.20261022+20261022] - 20261022
 ### Changed
 

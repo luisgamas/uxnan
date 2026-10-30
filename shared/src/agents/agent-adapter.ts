@@ -11,7 +11,6 @@ import type {
   AgentModel,
 } from './agent-capabilities.js';
 import type { AgentConfig } from './agent-config.js';
-import type { TurnAttachment } from '../models/workspace.js';
 import type { ApprovalDecision } from '../models/approval.js';
 import type { AccessMode } from '../models/thread.js';
 
@@ -35,9 +34,35 @@ export interface AgentStreamEvent {
   data?: unknown;
 }
 
+/**
+ * One piece of a user turn, in the order the person wrote it: the prompt text
+ * (with each attachment's label, e.g. `[Image 1: a.png]`, where it sat) cut
+ * after every image label, and the image right after its label. The text
+ * pieces concatenate to `SendTurnOptions.text`.
+ */
+export type TurnInputPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image';
+      /** The label it follows in the text, e.g. `[Image 1: a.png]`. */
+      label: string;
+      /** The image's name, when it has one. */
+      name?: string;
+      mimeType: string;
+      /** The bytes, base64 (no `data:` prefix). */
+      base64Data: string;
+      /** Absolute path of the copy written into the agent's folder for this turn. */
+      path?: string;
+    };
+
 export interface SendTurnOptions {
   threadId: string;
   turnId: string;
+  /**
+   * The prompt the agent receives: the person's text with each attachment's
+   * label at its place (`[Image 1: a.png]`, `[File 1: b.pdf]`) and a closing
+   * note that maps every label to the file written into the agent's folder.
+   */
   text: string;
   /** Model/service identifier (e.g. `provider/model`) for adapters that accept one. */
   service?: string;
@@ -50,11 +75,13 @@ export interface SendTurnOptions {
    */
   options?: Record<string, string | boolean>;
   /**
-   * Inline image attachments for this turn. The {@link AgentManager}
-   * materializes these to temp files and appends a reference to {@link text}
-   * before the adapter runs, so adapters need no per-CLI image handling.
+   * The same prompt as {@link text}, cut into ordered parts with each image
+   * right after its label — present only when the turn carries an image and
+   * the adapter {@link IAgentAdapter.takesInlineImages | takes inline images}.
+   * Such an adapter sends these parts as its CLI's own interleaved input
+   * instead of the bare text.
    */
-  attachments?: TurnAttachment[];
+  input?: TurnInputPart[];
   /** Working directory the agent should run in for this turn. */
   cwd?: string;
   /**
@@ -231,18 +258,18 @@ export interface IAgentAdapter {
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;
 
   /**
-   * True when this adapter delivers `SendTurnOptions.attachments` to its CLI
-   * **itself** (a native image input), so the bridge must not materialize them
-   * to files nor append a path note to the prompt.
+   * True when this adapter hands `SendTurnOptions.input` to its CLI — the
+   * images as the protocol's own image input, each right after its label —
+   * so the model sees the pictures where the person put them. The bridge then
+   * says so in the prompt's attachment note (the image was sent with the
+   * message; its file is there for file work) instead of asking the agent to
+   * open each file to see it.
    *
-   * Default (unset/false) is the CLI-agnostic path: the bridge writes each
-   * attachment into the agent's working directory and references it, which
-   * works for every agent whose file tools can open an image. An adapter opts
-   * in here when its protocol carries images natively AND its file tools
-   * cannot (Zero: ACP `promptCapabilities.image` accepts an inline image
-   * block, while its `read_file` is line-oriented text only).
+   * Default (unset/false): the agent receives the text alone, and opens each
+   * labelled file with its own tools. Every attachment is written into the
+   * agent's folder either way (architecture/02a §5.8.12).
    */
-  handlesAttachments?(): boolean;
+  takesInlineImages?(): boolean;
 
   /**
    * The directory this adapter runs a turn in when the turn carries no `cwd`

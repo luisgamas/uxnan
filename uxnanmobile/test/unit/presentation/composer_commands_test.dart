@@ -46,4 +46,11 @@ void main() {
       expect(rows[1].description, 'args: <file>');
     });
   });
+
+  test('a chip right after the name starts the args, markers kept', () {
+    final parsed = parseAgentCommand('/refactor\uFFFC then \uFFFC', commands);
+    expect(parsed, isNotNull);
+    expect(parsed!.name, 'refactor');
+    expect(parsed.args, '\uFFFC then \uFFFC');
+  });
 }

@@ -148,6 +148,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project changed.
 
 
+### Changed
+
+- **Images and files sit inside the sentence you write.** In the chat
+  composer, a pasted, dropped or picked image or file becomes a chip in the
+  text, right where the caret was — *in this image ⟨a.png⟩ you can see X, and
+  in this one ⟨b.png⟩ Y* — instead of a thumbnail strip above it, and the agent
+  receives it in that same place, so it knows which words go with which
+  picture. A chip moves with the text, goes away whole with one Backspace (or
+  its ✕), copies as `[name]`, and keeps its long name readable by shortening
+  it in the middle; resting on an image chip shows the image. Sent messages
+  show their chips the same way, inline — resting on an image shows it whole,
+  a click opens it, and a text file shows its first lines. Chips survive a
+  failed send, editing a queued message, a set-aside draft and switching tabs.
+  A pasted screenshot is named `image-1.png`, `image-2.png`… so two are told
+  apart.
+
 ## [0.0.82] - 20261022
 ### Changed
 

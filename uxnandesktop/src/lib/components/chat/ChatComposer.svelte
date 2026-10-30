@@ -13,30 +13,35 @@
   // loaded as soon as the agent is known) and a `/name args` message is sent as
   // `turn/send { command }`; `@` browses and searches the project through the
   // bridge that owns its folder (`workspace/list`, `workspace/searchFiles`) —
-  // a folder drills in, a file is written as `@path`; images — from the paperclip,
-  // pasted or dropped, up to the phone's limit — ride along as `attachments`
-  // when the agent takes them. A file dropped on it (from the OS or the file
-  // tree, routed by `$lib/fileDrop`) is mentioned when it is one of the
-  // project's and attached otherwise. The suggestion panel sits over the composer,
-  // which keeps the focus and drives it (↑ ↓, Enter or Tab, Esc).
+  // a folder drills in, a file is written as `@path`. Images and files — from
+  // the paperclip, pasted or dropped, up to the phone's limit — become chips
+  // INSIDE the text, at the caret, and the message goes out with them where
+  // they sit (one `ATTACHMENT_MARKER` per chip in `value`, the attachments in
+  // the same order), so the agent knows which words each one belongs to. A
+  // file dropped on it (from the OS or the file tree, routed by
+  // `$lib/fileDrop`) is mentioned when it is one of the project's and attached
+  // otherwise. Resting on an image chip shows the image. The suggestion panel
+  // sits over the composer, which keeps the focus and drives it (↑ ↓, Enter or
+  // Tab, Esc).
   //
   // Built on the shared `InputGroup` (the same primitive the command palette's
-  // search uses): a `Textarea` over a `block-end` toolbar of quiet pills — the
-  // agent and the model with its run options (`leading`), the access mode
-  // (`trailing`) — then the context ring and the round send / stop button.
+  // search uses): its chip editor (plain text with atomic chips) over a
+  // `block-end` toolbar of quiet pills — the agent and the model with its run
+  // options (`leading`), the access mode (`trailing`) — then the context ring
+  // and the round send / stop button.
   import * as InputGroup from "$lib/components/ui/input-group";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
   import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
-  import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
-  import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-  import { untrack, type ComponentProps, type Snippet } from "svelte";
+  import * as HoverCard from "$lib/components/ui/hover-card";
+  import { mount, tick, unmount, untrack, type ComponentProps, type Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { AgentCommand, AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import ChatContextRing from "./ChatContextRing.svelte";
   import ChatSuggestions, { type Suggestion } from "./ChatSuggestions.svelte";
+  import ChatAttachmentChip from "./ChatAttachmentChip.svelte";
   import {
     asCommand,
     complete,
@@ -44,26 +49,22 @@
     tokenAt,
     type ComposerToken,
   } from "$lib/bridge/composerTokens";
+  import { imageFromBlob, imageFromDataUrl, MAX_IMAGES } from "$lib/bridge/imageAttachment";
   import {
-    imageFromBlob,
-    imageFromDataUrl,
-    MAX_IMAGES,
-    type ComposerImage,
-  } from "$lib/bridge/imageAttachment";
+    attachmentFromTurn,
+    keepAttachments,
+    keptAttachments,
+    pastedImageName,
+    reconcileDraft,
+    type ComposerAttachment,
+  } from "$lib/bridge/composerAttachments";
+  import { stripAttachmentMarkers } from "$shared/models/inline-attachments";
   import { mentionEntries, mentionFor } from "$lib/bridge/mentions";
   import { fileDropTarget } from "$lib/fileDrop";
   import { fsIsDir } from "$lib/api";
   import { quoteDropPath } from "$lib/terminal/terminalDrop";
   import { clipSpan, fitPanel, type PanelFit } from "$lib/floatingFit";
-  import {
-    MAX_FILES,
-    fileFromBlob,
-    fileFromRead,
-    formatBytes,
-    isImageName,
-    type ComposerFile,
-    type ReadFile,
-  } from "$lib/bridge/fileAttachment";
+  import { MAX_FILES, fileFromBlob, fileFromRead, isImageName, type ReadFile } from "$lib/bridge/fileAttachment";
   import { useChat } from "$lib/bridge/chat.svelte";
   import { errorMessage, toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
@@ -87,8 +88,10 @@
     mentionRoot,
     acceptsImages = false,
     atNextPause = false,
+    draftKey,
   }: {
-    /** The text being written (the view persists it as the tab's draft). */
+    /** The text being written (the view persists it as the tab's draft), one
+     *  `ATTACHMENT_MARKER` where each attachment chip sits. */
     value?: string;
     /** The thread's earlier messages, oldest first, for ↑ / ↓ recall. */
     history?: string[];
@@ -96,7 +99,8 @@
     disabled?: boolean;
     placeholder?: string;
     autofocus?: boolean;
-    /** Sends the message; a known `/command` and any images come with it. */
+    /** Sends the message (its markers where the chips sat); a known
+     *  `/command` and its attachments, in the order of the markers, come with it. */
     onsend: (
       text: string,
       extras: { command?: AgentCommandInvocation; attachments?: TurnAttachment[] },
@@ -123,14 +127,43 @@
      * which will happen.
      */
     atNextPause?: boolean;
+    /** Where this composer's attachments are kept while the app runs (the
+     *  tab's id), so a draft keeps its chips when the composer is rebuilt. */
+    draftKey?: string;
   } = $props();
   // The bridge of the machine this chat is on — mentions are its files.
   const bridge = useChat().client;
 
-  let ref = $state<HTMLTextAreaElement | null>(null);
-  let images = $state<ComposerImage[]>([]);
-  let attachedFiles = $state<ComposerFile[]>([]);
-  const empty = $derived(value.trim().length === 0 && images.length === 0 && attachedFiles.length === 0);
+  let ref = $state<HTMLDivElement | null>(null);
+  let editor = $state<ReturnType<typeof InputGroup.ChipEditor> | null>(null);
+
+  // ---- attachments: chips in the text ----
+  /** Every attachment this composer has held (an undo may bring a removed
+   *  chip back), by chip id; what is sent is the chips in the text. */
+  const registry = new Map<string, ComposerAttachment>();
+  /** The chips in the text, in order (the editor keeps it in step). */
+  let chipIds = $state<string[]>([]);
+  const attachments = $derived(
+    chipIds.map((id) => registry.get(id)).filter((a): a is ComposerAttachment => a !== undefined),
+  );
+  const imageCount = $derived(attachments.filter((a) => a.kind === "image").length);
+  const fileCount = $derived(attachments.length - imageCount);
+  const empty = $derived(stripAttachmentMarkers(value).trim().length === 0 && attachments.length === 0);
+
+  // What the tab's draft carried, when the composer is rebuilt (a chat that
+  // starts, a tab that comes back): its chips, or — its bytes gone with a
+  // restart — its words without their markers.
+  untrack(() => {
+    const kept = draftKey ? keptAttachments(draftKey) : undefined;
+    const draft = reconcileDraft(value, kept);
+    for (const a of draft.attachments) registry.set(a.id, a);
+    chipIds = draft.attachments.map((a) => a.id);
+    if (draft.text !== value) value = draft.text;
+  });
+  $effect(() => {
+    const list = attachments;
+    if (draftKey) keepAttachments(draftKey, list);
+  });
 
   // ---- the suggestion panel: `/command` or `@file` under the caret ----
   let token = $state<ComposerToken | undefined>(undefined);
@@ -160,7 +193,7 @@
   );
 
   function readToken() {
-    token = ref ? tokenAt(value, ref.selectionStart ?? value.length) : undefined;
+    token = editor && ref?.ownerDocument.activeElement === ref ? tokenAt(value, editor.caret()) : undefined;
   }
 
   // The agent's commands, asked as soon as the agent is known — not when `/`
@@ -258,9 +291,8 @@
     const next = complete(value, token, replacement);
     value = next.text;
     token = undefined;
-    queueMicrotask(() => {
-      ref?.focus();
-      ref?.setSelectionRange(next.caret, next.caret);
+    void tick().then(() => {
+      editor?.setCaret(next.caret);
       readToken();
     });
   }
@@ -289,44 +321,75 @@
     return false;
   }
 
-  // ---- images ----
-  async function addImages(list: ComposerImage[]) {
-    const room = Math.max(0, MAX_IMAGES - images.length);
-    if (list.length > room) toast(i18n.t("chat.imagesLimit", { count: MAX_IMAGES }));
-    if (room === 0) return;
-    images = [...images, ...list.slice(0, room)];
+  // ---- attachments ----
+  /** A chip's look, built by the chip component itself (the editor copies it
+   *  into its text: a chip has no life of its own there). */
+  function renderChip(id: string): HTMLElement {
+    const a = registry.get(id);
+    const host = document.createElement("span");
+    const instance = mount(ChatAttachmentChip, {
+      target: host,
+      props: {
+        name: a?.name ?? "",
+        kind: a?.kind ?? "file",
+        mimeType: a?.attachment.mimeType ?? "",
+        removeLabel: i18n.t("chat.removeImage", { name: a?.name ?? "" }),
+      },
+    });
+    const node = (host.firstElementChild?.cloneNode(true) as HTMLElement | null) ?? document.createElement("span");
+    void unmount(instance);
+    return node;
   }
 
-  async function addFiles(list: ComposerFile[]) {
-    const room = Math.max(0, MAX_FILES - attachedFiles.length);
-    if (list.length > room) toast(i18n.t("chat.filesLimit", { count: MAX_FILES }));
-    if (room === 0) return;
-    attachedFiles = [...attachedFiles, ...list.slice(0, room)];
+  /** An image chip's pixels, once it is in the text. */
+  function hydrateChip(node: HTMLElement, id: string) {
+    const url = registry.get(id)?.previewUrl;
+    const img = node.querySelector<HTMLImageElement>("img[data-chip-thumb]");
+    if (!url || !img) return;
+    img.src = url;
+    img.classList.remove("hidden");
   }
 
-  /** What a message coming back to be edited (a send that failed) carried. */
-  export function restoreAttachments(attachments: TurnAttachment[]) {
-    const inline = attachments.filter((a) => a.base64Data);
-    void addImages(
-      inline
-        .filter((a) => a.type !== "file")
-        .map((attachment) => ({
-          id: crypto.randomUUID(),
-          name: attachment.path?.split(/[\\/]/).pop() || "image",
-          previewUrl: `data:${attachment.mimeType};base64,${attachment.base64Data}`,
-          attachment,
-        })),
+  /** Put [list] in the text at the caret, as far as the per-message limits
+   *  allow (a toast says when they leave some out). */
+  function addAttachments(list: ComposerAttachment[]) {
+    let roomImages = Math.max(0, MAX_IMAGES - imageCount);
+    let roomFiles = Math.max(0, MAX_FILES - fileCount);
+    const taken: ComposerAttachment[] = [];
+    let leftImages = false;
+    let leftFiles = false;
+    for (const a of list) {
+      if (a.kind === "image") {
+        if (roomImages === 0) leftImages = true;
+        else (roomImages -= 1, taken.push(a));
+      } else if (roomFiles === 0) leftFiles = true;
+      else (roomFiles -= 1, taken.push(a));
+    }
+    if (leftImages) toast(i18n.t("chat.imagesLimit", { count: MAX_IMAGES }));
+    if (leftFiles) toast(i18n.t("chat.filesLimit", { count: MAX_FILES }));
+    if (taken.length === 0) return;
+    for (const a of taken) registry.set(a.id, a);
+    editor?.insertChips(taken.map((a) => a.id));
+  }
+
+  /** Replace what the composer holds with [text] and its [list] of
+   *  attachments (in the order of its markers) — a message coming back to be
+   *  edited, a saved draft put back. A text whose attachments are not all
+   *  here loses its markers instead. */
+  export function load(text: string, list: readonly (ComposerAttachment | TurnAttachment)[] = []) {
+    const draft = reconcileDraft(
+      text,
+      list.map((a) => ("kind" in a ? a : attachmentFromTurn(a))),
     );
-    void addFiles(
-      inline
-        .filter((a) => a.type === "file")
-        .map((attachment) => ({
-          id: crypto.randomUUID(),
-          name: attachment.name ?? "file",
-          bytes: Math.floor(((attachment.base64Data ?? "").length * 3) / 4),
-          attachment,
-        })),
-    );
+    for (const a of draft.attachments) registry.set(a.id, a);
+    chipIds = draft.attachments.map((a) => a.id);
+    value = draft.text;
+    void tick().then(() => editor?.setCaret(draft.text.length));
+  }
+
+  /** What the composer holds: its text and its attachments, in order. */
+  export function snapshot(): { text: string; attachments: ComposerAttachment[] } {
+    return { text: value, attachments: [...attachments] };
   }
 
   /** Attach files by path: an image goes as an image (scaled, a thumbnail)
@@ -335,62 +398,62 @@
    *  Each path stands on its own: one that cannot be read (too large, gone, a
    *  folder) is named in a toast, and every other one is still attached. */
   async function attachPaths(paths: string[]) {
-    const readyImages: ComposerImage[] = [];
-    const readyFiles: ComposerFile[] = [];
+    const ready: ComposerAttachment[] = [];
     for (const path of paths) {
       const name = path.split(/[\\/]/).pop() || "file";
       try {
         if (acceptsImages && isImageName(name)) {
           const dataUrl = await invoke<string>("fs_read_data_url", { path });
-          readyImages.push(await imageFromDataUrl(dataUrl, name));
+          ready.push(await imageFromDataUrl(dataUrl, name));
         } else {
-          readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
+          ready.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
         }
       } catch (err) {
         toast.error(i18n.t("chat.attachFailed", { name, reason: errorMessage(err) }));
       }
     }
-    await addImages(readyImages);
-    await addFiles(readyFiles);
+    addAttachments(ready);
   }
 
-  /** The paperclip: any file, attached. */
+  /** The paperclip: any file, attached at the caret. */
   async function chooseAttachments() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({ multiple: true });
       await attachPaths(Array.isArray(picked) ? picked : picked ? [picked] : []);
-      ref?.focus();
+      editor?.focus();
     } catch (err) {
       toastError(err);
     }
   }
 
-  /** Pasted files: images as images when the agent takes them, everything
-   *  else as files. */
+  /** Pasted files: images as images when the agent takes them (a pasted
+   *  screenshot named `image-<n>` so two are told apart), everything else as
+   *  files. */
   async function takeBlobs(blobs: File[]) {
-    const asImage = (f: File) => acceptsImages && f.type.startsWith("image/");
-    await addImages(
-      await Promise.all(blobs.filter(asImage).map((f) => imageFromBlob(f, f.name || "image"))),
-    );
-    await addFiles(
-      await Promise.all(blobs.filter((f) => !asImage(f)).map((f) => fileFromBlob(f, f.name || "file"))),
-    );
+    const names = attachments.map((a) => a.name);
+    const ready: ComposerAttachment[] = [];
+    for (const f of blobs) {
+      if (acceptsImages && f.type.startsWith("image/")) {
+        const name = pastedImageName(f.name, f.type, names);
+        names.push(name);
+        ready.push(await imageFromBlob(f, name));
+      } else {
+        ready.push(await fileFromBlob(f, f.name || "file"));
+      }
+    }
+    addAttachments(ready);
   }
 
   /** [insert] written at the caret (the end, before the composer was ever
    *  focused), set apart from the words around it. */
   function insertAtCaret(insert: string) {
-    const at = ref?.selectionEnd ?? value.length;
+    const at = editor?.caret() ?? value.length;
     const before = value.slice(0, at);
     const after = value.slice(at);
-    const text = `${before === "" || /\s$/.test(before) ? "" : " "}${insert}${/^\s/.test(after) ? "" : " "}`;
-    value = before + text + after;
-    const caret = at + text.length;
-    queueMicrotask(() => {
-      ref?.focus();
-      ref?.setSelectionRange(caret, caret);
-    });
+    editor?.insertText(
+      `${before === "" || /\s$/.test(before) ? "" : " "}${insert}${/^\s/.test(after) ? "" : " "}`,
+    );
   }
 
   /** What a dropped path becomes in the message. */
@@ -411,14 +474,15 @@
     return folder ? { text: quoteDropPath(path) } : { attach: path };
   }
 
-  /** Paths dropped on the composer — from the OS or the file tree. */
+  /** Paths dropped on the composer — from the OS or the file tree — land at
+   *  the caret, in the order they were dropped. */
   async function takeDroppedPaths(paths: string[]) {
     if (disabled) return;
     const sorted = await Promise.all(paths.map(droppedAs));
     const texts = sorted.flatMap((d) => ("text" in d ? [d.text] : []));
     if (texts.length > 0) insertAtCaret(texts.join(" "));
     await attachPaths(sorted.flatMap((d) => ("attach" in d ? [d.attach] : [])));
-    ref?.focus();
+    editor?.focus();
   }
 
   /** Files are being dragged over the composer (`$lib/fileDrop` says so). */
@@ -435,6 +499,49 @@
     }
   }
 
+  // ---- an image chip's preview, on hover ----
+  let previewOpen = $state(false);
+  let previewAnchor = $state<HTMLElement | null>(null);
+  const previewed = $derived(
+    previewAnchor ? registry.get(previewAnchor.getAttribute("data-chip") ?? "") : undefined,
+  );
+  let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  function schedulePreview(next: HTMLElement | null, delay: number) {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      if (next) previewAnchor = next;
+      previewOpen = next !== null;
+    }, delay);
+  }
+  function chipOf(target: EventTarget | null): HTMLElement | null {
+    return (target as HTMLElement | null)?.closest?.<HTMLElement>("[data-chip]") ?? null;
+  }
+  function onpointerover(e: PointerEvent) {
+    const chip = chipOf(e.target);
+    if (!chip || chip === chipOf(e.relatedTarget)) return;
+    const a = registry.get(chip.getAttribute("data-chip") ?? "");
+    if (a?.previewUrl) schedulePreview(chip, previewOpen ? 0 : 300);
+  }
+  function onpointerout(e: PointerEvent) {
+    const chip = chipOf(e.target);
+    if (!chip || chip === chipOf(e.relatedTarget)) return;
+    schedulePreview(null, 120);
+  }
+  $effect(() => () => clearTimeout(previewTimer));
+
+  /** A click on a chip's ✕ takes it out. */
+  function onclick(e: MouseEvent) {
+    const remove = (e.target as HTMLElement | null)?.closest?.("[data-chip-action='remove']");
+    const chip = chipOf(remove ?? null);
+    if (chip) {
+      e.preventDefault();
+      previewOpen = false;
+      editor?.removeChip(chip.getAttribute("data-chip") ?? "");
+      return;
+    }
+    readToken();
+  }
+
   $effect(() => {
     if (autofocus && ref && !disabled) ref.focus();
   });
@@ -445,14 +552,15 @@
     const command = message.trimStart().startsWith("/")
       ? asCommand(message, await ensureCommands())
       : undefined;
-    const attachments = [...images.map((i) => i.attachment), ...attachedFiles.map((f) => f.attachment)];
+    const sent = attachments.map((a) => a.attachment);
+    chipIds = [];
     value = "";
-    images = [];
-    attachedFiles = [];
+    registry.clear();
     token = undefined;
+    previewOpen = false;
     await onsend(message, {
       ...(command ? { command } : {}),
-      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(sent.length > 0 ? { attachments: sent } : {}),
     });
   }
 
@@ -475,7 +583,7 @@
     }
     recalled = next;
     value = history[next];
-    queueMicrotask(() => ref?.setSelectionRange(value.length, value.length));
+    void tick().then(() => editor?.setCaret(value.length));
     return true;
   }
 
@@ -518,68 +626,38 @@
       />
     </div>
   {/if}
-  <!-- The group dims only when the INPUT is disabled, not whenever any of its
+  <!-- The group dims only when the EDITOR is disabled, not whenever any of its
        buttons is (the send button is disabled on an empty draft, and the
        primitive's `has-disabled` would fade the whole composer for it). -->
   <InputGroup.Root
     class={cn(
       chat.composer,
-      "rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50",
+      "rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[[data-chip-editor][aria-disabled=true]]:opacity-50",
       dragging && "ring-2 ring-ring/40",
     )}
   >
-    {#if images.length > 0 || attachedFiles.length > 0}
-      <InputGroup.Addon align="block-start" class="flex-wrap gap-1.5">
-        {#each attachedFiles as file (file.id)}
-          <span
-            class="group/file flex h-12 max-w-56 items-center gap-2 rounded-md bg-muted/60 pl-2 pr-1 ring-1 ring-border/60"
-          >
-            <Icon icon={File01Icon} class={cn(icon.action, "shrink-0 text-muted-foreground")} />
-            <span class="flex min-w-0 flex-col text-left">
-              <span class={cn(text.body, "truncate")} title={file.name}>{file.name}</span>
-              <span class={text.meta}>{formatBytes(file.bytes)}</span>
-            </span>
-            <button
-              type="button"
-              class="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-              aria-label={i18n.t("chat.removeImage", { name: file.name })}
-              onclick={() => (attachedFiles = attachedFiles.filter((f) => f.id !== file.id))}
-            >
-              <Icon icon={CancelIcon} class="size-3" />
-            </button>
-          </span>
-        {/each}
-        {#each images as image (image.id)}
-          <span class="group/thumb relative size-12 overflow-hidden rounded-md ring-1 ring-border/60">
-            <img src={image.previewUrl} alt={image.name} class="size-full object-cover" />
-            <button
-              type="button"
-              class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-xs transition-opacity group-hover-thumb:opacity-100 focus-visible:opacity-100"
-              aria-label={i18n.t("chat.removeImage", { name: image.name })}
-              onclick={() => (images = images.filter((i) => i.id !== image.id))}
-            >
-              <Icon icon={CancelIcon} class="size-3" />
-            </button>
-          </span>
-        {/each}
-      </InputGroup.Addon>
-    {/if}
-    <InputGroup.Textarea
+    <InputGroup.ChipEditor
+      bind:this={editor}
       bind:ref
       bind:value
+      bind:chips={chipIds}
+      {renderChip}
+      hydrate={hydrateChip}
+      chipText={(id) => `[${registry.get(id)?.name ?? ""}]`}
       {onkeydown}
       {onpaste}
+      {onclick}
+      {onpointerover}
+      {onpointerout}
       oninput={readToken}
-      onclick={readToken}
-      onkeyup={(e) => {
+      onkeyup={(e: KeyboardEvent) => {
         if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") readToken();
       }}
       onblur={() => (token = undefined)}
       {disabled}
-      rows={1}
       placeholder={placeholder ?? i18n.t("chat.composerPlaceholder")}
       aria-label={i18n.t("chat.composerLabel")}
-      class={cn("max-h-60 min-h-11 px-3 leading-5", text.body)}
+      class={cn("max-h-60 min-h-11 px-3 leading-5 uxnan-scroll", text.body)}
     />
     <InputGroup.Addon align="block-end" class="min-w-0 gap-0.5">
       <InputGroup.Button
@@ -588,7 +666,7 @@
         class="rounded-full text-muted-foreground"
         aria-label={i18n.t("chat.attach")}
         title={i18n.t("chat.attach")}
-        disabled={disabled || (images.length >= MAX_IMAGES && attachedFiles.length >= MAX_FILES)}
+        disabled={disabled || (imageCount >= MAX_IMAGES && fileCount >= MAX_FILES)}
         onclick={() => void chooseAttachments()}
       >
         <Icon icon={Attachment01Icon} class={icon.action} />
@@ -628,6 +706,23 @@
       {/if}
     </InputGroup.Addon>
   </InputGroup.Root>
+  <!-- An image chip, whole: shown while the pointer rests on it. -->
+  <HoverCard.Root bind:open={previewOpen}>
+    <HoverCard.Content
+      customAnchor={previewAnchor}
+      side="top"
+      align="center"
+      width="form"
+      class="w-auto max-w-[min(26rem,80vw)] p-1.5"
+      onpointerenter={() => clearTimeout(previewTimer)}
+      onpointerleave={() => schedulePreview(null, 120)}
+    >
+      {#if previewed?.previewUrl}
+        <img src={previewed.previewUrl} alt={previewed.name} class={chat.attachmentPreview} />
+        <p class={cn(text.meta, "truncate px-1 pt-1")}>{previewed.name}</p>
+      {/if}
+    </HoverCard.Content>
+  </HoverCard.Root>
   {#if running && !empty}
     <p class={cn(text.meta, "px-1")}>
       {i18n.t(atNextPause ? "chat.nextPauseHint" : "chat.queueHint")}

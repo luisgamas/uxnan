@@ -1197,45 +1197,59 @@ ACP). Every row was verified by running the CLI through its adapter (Claude
 2.1.282, Codex 0.156.1, OpenCode 1.18.32 and 2.0.16, pi 0.85.1, agy 1.2.11,
 Zero 0.9.x, Grok 2026-09-25).
 
-## Image attachments (`turn/send { attachments }`)
+## Attachments in the sentence (`turn/send { text, attachments }`)
 
-The phone sends images inline (base64). No agent CLI accepts inline base64 over
-the headless path, but every wired agent can **open a local file** with its own
-file/vision tools — so the bridge materializes each attachment and references
-its path in the prompt (`src/agents/attachments.ts`). No per-adapter image code.
+A message is written with its images and files **inside** it — "the shape in
+this image ⟨a⟩ belongs to Ana, and the one in ⟨b⟩ to Luis" — and only means
+something if the agent knows which picture each part of the sentence is about.
+The contract (`@uxnan/shared` `models/inline-attachments.ts`): the text carries
+one U+FFFC marker per attachment, in order, and `turn/send` refuses a message
+whose markers do not match its attachments one for one (counted in
+`command.args` for a command) or an attachment without bytes. The stored
+message keeps the markers; the thread store keeps every attachment beside it
+under `~/.uxnan/attachments/<threadId>/`, named, and serves each with
+`turn/attachment`, so both apps draw each one where it was written.
 
-One adapter opts out of that path: **Zero** takes attachments natively
-(`IAgentAdapter.handlesAttachments()`), so the bridge writes nothing and adds no
-path note for it — see the table below.
+What the agent gets is built once, for every agent (`src/agents/attachments.ts`):
 
-Two rules make the file-path delivery work, both verified against the real CLIs:
+1. **Every attachment is written into the directory the CLI runs in**
+   (`<cwd>/.uxnan-attachments/<turnId>/<n>/<name>`; an unnamed image is
+   `image-<k>.<ext>`) and referenced **relative to that cwd**. Agents are
+   confined to their workspace: given the same image under the OS temp dir,
+   Claude answers *"the read was blocked by a permission prompt"*. A turn
+   without its own `cwd` uses the adapter's folder (`defaultCwd()`). The
+   directory is removed when the turn ends.
+2. **Each marker becomes a numbered label at its place** — `[Image 1: a.png]`,
+   `[File 1: b.pdf]`, numbered per kind — also inside a command's arguments,
+   before the command is resolved. A closing note maps every label to its file.
+3. **An adapter that declares `takesInlineImages()` also gets
+   `SendTurnOptions.input`**: the same prompt cut into ordered parts with each
+   image right after its label, which it translates into its protocol's own
+   image input (`src/adapters/turn-input.ts`), on a mid-turn message too. Its
+   note then says the image came with the message and its file is there for
+   file work. Only PNG, JPEG, GIF and WebP go inline; any other image is a file
+   to open.
 
-1. **The file lands inside the directory the CLI actually runs in**
-   (`<cwd>/.uxnan-attachments/<turnId>/`) and is referenced **relative to that
-   cwd**. Agents are confined to their workspace: given the same image under the
-   OS temp dir, Claude answers *"the read was blocked by a permission prompt"*.
-   A turn without its own `cwd` therefore falls back to the adapter's own
-   folder (`IAgentAdapter.defaultCwd()`, the user's home), never to the temp dir.
-2. **The directory is removed when the turn ends**; no temp path leaks into the
-   conversation. The images themselves are kept **with the message**: the
-   thread store writes them to `~/.uxnan/attachments/<threadId>/`, names them in
-   `Message.attachments`, and serves each with `turn/attachment`, so every
-   client shows them in the user's bubble.
+| Agent | Delivery on the driven surface | Measured (two different images in one sentence; n/N = each attributed to the right part) |
+|---|---|---|
+| **Claude Code** 2.1.312 | inline — stream-json `content`: `text` / base64 `image` blocks interleaved | `haiku` (cheapest and weakest): **4/4**, no tool call, ~5 s. The text-only path for comparison: 2/2, one `Read` step |
+| **Codex** 0.163.0 | inline — app-server `turn/start` / `turn/steer` `input`: `text` / `image` (data URL) items interleaved | `gpt-5.6-luna`: **4/4**, no tool call, ~3 s |
+| **OpenCode** 2.2.0 | inline — `/api/session/:id/prompt` `files[]` (data URI, `name`, `mention` spanning the label in `text`) | `opencode/nemotron-3.5-super-vl-free` (free, the weakest vision model offered): **4/4**, ~3 s. Text-only path: 4/4 but 17–42 s (it opens each file). `opencode/gemini-3.5-flash-lite` could not run: the account answers "Insufficient account funds" |
+| OpenCode 1.x | inline — `prompt_async` `parts`: `text` / `file` (data URL) interleaved | **not measured**: only 2.2.0 is installed here ([`../FOR-DEV.md`](../FOR-DEV.md)) |
+| **pi** 1.4.0 | inline — RPC `prompt` / `steer` `images[]` in label order after the text (pi does not interleave; each label sits in the text in the same order) | `openrouter/thinkingmachines/inkling-small:free`: **4/4**, ~2 s. `openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` (the weakest vision model tried): each picture attributed to the right person **4/4**, though it called the square a "rectangle" in 3 runs. OpenRouter's free Gemma 4 (`google/gemma-4-31b-it:free`, `…-26b-a4b-it:free`) never ran: Google's shared free pool answered `429` to every attempt that session (pi took the prompt with its `images` each time) |
+| **Zero** 0.10.0 | inline — ACP `session/prompt`: `text` / `image` blocks interleaved (`promptCapabilities.image`) | `nvidia/nemotron-3.5-super-vl:free` (OpenRouter): **4/4**. Its default `openrouter/free` has no vision: Zero itself prepends *"Model openrouter/free does not support image input; ignoring 2 prompt image(s)"* and the agent says it cannot see them (0/3) |
+| **Grok** 1.0.70 | text — labels + note; ACP `promptCapabilities.image` is false, so it opens each file with its own tools | `grok-4.7`: **6/6**, one read step |
+| **Antigravity** 1.4.10 | text — labels + note; `agy` stream-json refuses any block but `text` (*"stream input content block type "image" is not supported (only "text")"*, measured), so it opens each file | `gemini-3.8-flash`: **4/4**. `gpt-oss-120b-medium` (no vision): 0/2, it says it cannot view the images and asks for a description |
 
-`capabilities.images` decides whether the phone offers the "+" attach action:
+Measured 2026-10-30 through the real `AgentManager` and adapter on a scratch
+bridge, with three different shapes in rotated pairs, file names that say
+nothing about their content, and the reply checked for both people.
 
-| Agent | `images` | What actually happens |
-|---|:--:|---|
-| **Claude Code** | ✅ | reads the file with `Read` (native vision) |
-| **Codex** | ✅ | reads it natively |
-| **Antigravity** | ✅ | `agy` opens it with its file tools (multimodal Gemini models) |
-| **Grok** | ✅ | opens it with its file tools — its ACP `promptCapabilities.image` is false, but that only rules out an *inline* image block, not a workspace file |
-| **Zero** | ✅ | **natively**: the attachment rides as an inline ACP image block (`{ type: "image", mimeType, data }`), because Zero's ACP advertises `promptCapabilities.image` while its `read_file` is line-oriented text — a path reference would have it read a PNG as garbage. No file is written for it |
-| **pi**, **OpenCode** | ✅ | the CLI opens it; whether the *model* sees pixels depends on the selected model — a non-multimodal one still answers by inspecting the file with tools |
-
-A non-multimodal model is not a bug: the attachment is delivered either way, the
-agent just reasons about the bytes instead of the picture. Pick a multimodal
-model when you need real vision.
+A model without vision is not a delivery bug: the attachment arrives either
+way, labelled where it was written, and the agent says what it can and cannot
+do with it. Pick a vision model when the picture matters. `capabilities.images`
+still decides whether the apps offer images for an agent; files go to every
+agent.
 
 ## Claude Code models: what `initialize` reports
 

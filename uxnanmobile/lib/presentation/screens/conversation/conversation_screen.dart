@@ -64,8 +64,9 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// How many images one turn may carry. Attachments travel inline (base64) on
-/// `turn/send`, so the queue is bounded rather than left to the picker.
+/// How many images — and, separately, how many files — one message may carry.
+/// Attachments travel inline (base64) on `turn/send`, so the message is
+/// bounded rather than left to the picker.
 const int _maxAttachments = 10;
 
 /// The active conversation: a Neural Expressive layout — a transparent top bar
@@ -160,11 +161,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Guards the one-time restore so later timeline updates don't re-yank the
   /// scroll.
   bool _restoredScroll = false;
-
-  /// Images the user attached for the next turn (shown as removable thumbnails
-  /// inside the composer, above the text field); cleared on send.
-  final List<ImageContent> _attachments = [];
-  final List<AttachedFileContent> _files = [];
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
   // Riverpod (the clear could be dropped, leaving this thread marked as
@@ -824,104 +820,49 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
-  /// Picks images from [source] and appends them to the pending attachments.
-  /// The gallery allows a multi-selection; the queue is capped at
-  /// [_maxAttachments] because every image rides inline on the turn.
-  Future<void> _pickAttachment(AttachmentSource source) async {
-    if (source == AttachmentSource.file) return _pickFiles();
+  /// Picks from [source] for the message being written, which already
+  /// carries [images] images and [files] files: the gallery takes a
+  /// multi-selection, the camera one photo, the file picker any files — each
+  /// kind capped at [_maxAttachments] because everything rides inline on the
+  /// turn. Returns what was picked (the composer writes it as chips at the
+  /// caret); the snackbar says what was left out and why.
+  Future<List<AttachmentContent>> _pickAttachments(
+    AttachmentSource source, {
+    required int images,
+    required int files,
+  }) async {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
-    final free = _maxAttachments - _attachments.length;
-    if (free <= 0) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
-        );
-      return;
+    void say(String text) => messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(text)));
+    final picker = ref.read(attachmentPickerServiceProvider);
+    if (source == AttachmentSource.file) {
+      final free = _maxAttachments - files;
+      if (free <= 0) {
+        say(l10n.composerFilesLimit(_maxAttachments));
+        return const [];
+      }
+      final picked = await picker.pickFiles(limit: free);
+      if (mounted && picked.tooLarge > 0) {
+        say(l10n.composerFileTooLarge(picked.tooLarge));
+      }
+      return picked.files;
     }
-    final picked = await ref
-        .read(attachmentPickerServiceProvider)
-        .pickImages(source, limit: free);
-    if (!mounted || picked.isEmpty) return;
+    final free = _maxAttachments - images;
+    if (free <= 0) {
+      say(l10n.composerAttachLimit(_maxAttachments));
+      return const [];
+    }
+    final picked = await picker.pickImages(source, limit: free);
+    if (!mounted || picked.isEmpty) return const [];
     final usable = picked.where((i) => i.base64Data != null).toList();
     if (usable.isEmpty) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.composerAttachFailed)));
-      return;
+      say(l10n.composerAttachFailed);
+      return const [];
     }
-    final accepted = usable.take(free).toList();
-    setState(() => _attachments.addAll(accepted));
-    if (accepted.length < usable.length) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
-        );
-    }
-  }
-
-  /// Picks files of any kind for the next message, up to [_maxAttachments];
-  /// a file past the size limit is left out, and the snackbar says so.
-  Future<void> _pickFiles() async {
-    final messenger = ScaffoldMessenger.of(context);
-    final l10n = AppLocalizations.of(context);
-    final free = _maxAttachments - _files.length;
-    if (free <= 0) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(l10n.composerFilesLimit(_maxAttachments))),
-        );
-      return;
-    }
-    final picked =
-        await ref.read(attachmentPickerServiceProvider).pickFiles(limit: free);
-    if (!mounted) return;
-    if (picked.files.isNotEmpty) setState(() => _files.addAll(picked.files));
-    if (picked.tooLarge > 0) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(content: Text(l10n.composerFileTooLarge(picked.tooLarge))),
-        );
-    }
-  }
-
-  /// Puts the images and files of a queued message taken back to be edited
-  /// beside whatever is already pending, up to [_maxAttachments] of each; the
-  /// snackbar says so when the limit leaves one out.
-  void _addRecoveredAttachments(
-    List<ImageContent> images,
-    List<AttachedFileContent> files,
-  ) {
-    final freeImages = _maxAttachments - _attachments.length;
-    final freeFiles = _maxAttachments - _files.length;
-    setState(() {
-      _attachments.addAll(images.take(freeImages.clamp(0, images.length)));
-      _files.addAll(files.take(freeFiles.clamp(0, files.length)));
-    });
-    final l10n = AppLocalizations.of(context);
-    final message = images.length > freeImages
-        ? l10n.composerAttachLimit(_maxAttachments)
-        : files.length > freeFiles
-            ? l10n.composerFilesLimit(_maxAttachments)
-            : null;
-    if (message == null) return;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _removeFile(int index) {
-    if (index < 0 || index >= _files.length) return;
-    setState(() => _files.removeAt(index));
-  }
-
-  void _removeAttachment(int index) {
-    if (index < 0 || index >= _attachments.length) return;
-    setState(() => _attachments.removeAt(index));
+    if (usable.length > free) say(l10n.composerAttachLimit(_maxAttachments));
+    return usable.take(free).toList();
   }
 
   /// Opens the session-info sheet: the bridge thread id plus the agent's native
@@ -1654,13 +1595,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       key: const ValueKey('composer-bar'),
                       threadId: widget.threadId,
                       enabled: connectedHere && !_cwdMissing && hold == null,
-                      // Pending images ride inside the pill, above the field.
-                      attachments: _attachments,
-                      onRemoveAttachment: _removeAttachment,
-                      files: _files,
-                      onRemoveFile: _removeFile,
-                      // An edited queued message brings its attachments back.
-                      onRecoveredAttachments: _addRecoveredAttachments,
                       acceptsImages: showImages,
                       // A drafted message during a live turn is what reveals
                       // the floating "queue message" action above the pill.
@@ -1680,8 +1614,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       onStop: () => ref
                           .read(threadManagerProvider)
                           .cancelTurn(widget.threadId),
-                      onAttach: connectedHere ? _pickAttachment : null,
-                      onSend: (text) {
+                      onAttach: connectedHere ? _pickAttachments : null,
+                      onSend: (text, attachments) {
                         // Honor the scroll-to-latest-on-send setting: arm a
                         // forced scroll so the user sees their message even if
                         // scrolled up.
@@ -1690,8 +1624,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         }
                         final options =
                             ref.read(threadRunOptionsProvider(widget.threadId));
-                        final attachments = List<ImageContent>.of(_attachments);
-                        final files = List<AttachedFileContent>.of(_files);
                         // Route `/name args` for an advertised agent command as a
                         // real command (turn/send `command`); anything else is
                         // sent verbatim as text.
@@ -1701,15 +1633,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                               text,
                               options: options,
                               attachments: attachments,
-                              files: files,
                               command: command,
                             );
-                        if (_attachments.isNotEmpty || _files.isNotEmpty) {
-                          setState(() {
-                            _attachments.clear();
-                            _files.clear();
-                          });
-                        }
                       },
                     ),
                   ],

@@ -346,8 +346,6 @@
   "composerAttachCamera": "Tomar una foto",
   "composerAttachFailed": "No se pudo adjuntar esa imagen",
   "composerAttachLimit": "Puedes adjuntar hasta {count} imágenes por mensaje",
-  "attachmentImage": "Imagen adjunta",
-  "attachmentRemove": "Quitar imagen",
   "composerStop": "Detener",
   "composerQueueMessage": "Enviar en cola",
   "composerQueueHint": "El agente está trabajando: este mensaje espera en la cola y sale cuando termine.",
@@ -1265,5 +1263,9 @@
   "continuationLine": "{agent} — «{title}»",
   "transferStrategySelectionShort": "Selección",
   "transferStrategyReferenceShort": "Referencia",
-  "transferStrategyForkShort": "Copia completa"
+  "transferStrategyForkShort": "Copia completa",
+  "attachmentChipImage": "Imagen {name}",
+  "attachmentChipFile": "Archivo {name}, {size}",
+  "attachmentUnnamedImage": "Imagen",
+  "attachmentRemoveFromMessage": "Quitar del mensaje"
 }

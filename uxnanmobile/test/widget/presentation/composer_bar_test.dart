@@ -9,8 +9,6 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
-import 'package:uxnan/presentation/theme/icons.dart';
-import '../../support/ux_icon_finder.dart';
 
 /// Fixed `/` palette templates so the command test doesn't depend on disk/seed.
 const _templates = [
@@ -71,8 +69,8 @@ FileBrowserManager _oldBridgeManager() => FileBrowserManager(
 Widget _wrap({
   required Widget child,
   FileBrowserManager? manager,
-  List<ImageContent> attachments = const [],
-  ValueChanged<int>? onRemoveAttachment,
+  List<AttachmentContent> picked = const [],
+  void Function(String text, List<AttachmentContent> attachments)? onSend,
 }) {
   return ProviderScope(
     overrides: [
@@ -88,10 +86,10 @@ Widget _wrap({
         body: Align(
           alignment: Alignment.bottomCenter,
           child: ComposerBar(
-            onSend: (_) {},
+            onSend: onSend ?? (_, __) {},
             cwd: '/repo',
-            attachments: attachments,
-            onRemoveAttachment: onRemoveAttachment,
+            onAttach: (source, {required images, required files}) async =>
+                picked,
           ),
         ),
       ),
@@ -107,8 +105,19 @@ const _pngPixel =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ'
     'DwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-ImageContent _image() =>
-    const ImageContent(mimeType: 'image/png', base64Data: _pngPixel);
+ImageContent _image([String? name]) =>
+    ImageContent(mimeType: 'image/png', name: name, base64Data: _pngPixel);
+
+TextEditingController _controller(WidgetTester tester) =>
+    tester.widget<TextField>(find.byType(TextField)).controller!;
+
+/// Picks from the "+" menu's photo library (what [_wrap]'s `picked` holds).
+Future<void> _attachFromGallery(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('turn-tools-menu')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Photo library'));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('typing / opens the command palette and inserts a template',
@@ -217,60 +226,96 @@ void main() {
     expect(_composerText(tester), '@README.md ');
   });
 
-  testWidgets('pending attachments sit inside the pill, above the field',
+  testWidgets('picked images become chips at the caret, inside the text',
       (tester) async {
-    await tester.pumpWidget(
-      _wrap(child: const SizedBox(), attachments: [_image(), _image()]),
-    );
-    await tester.pumpAndSettle();
-
-    final strip = find.byKey(const ValueKey('composer-attachments'));
-    expect(strip, findsOneWidget);
-    expect(find.byType(Image), findsNWidgets(2));
-
-    // Inside the composer surface, not stacked above it…
-    final surface = find.byKey(const ValueKey('composer-surface'));
-    final surfaceRect = tester.getRect(surface);
-    final stripRect = tester.getRect(strip);
-    expect(stripRect.top, greaterThanOrEqualTo(surfaceRect.top));
-    expect(stripRect.bottom, lessThanOrEqualTo(surfaceRect.bottom));
-    // …and above the text field.
-    final fieldRect = tester.getRect(find.byType(TextField));
-    expect(stripRect.bottom, lessThanOrEqualTo(fieldRect.top));
-
-    // Short enough that the pill only grows a little.
-    expect(stripRect.height, 56);
-
-    // An attachment alone enables Send (image-only message).
-    expect(find.byKey(const ValueKey('send')), findsOneWidget);
-  });
-
-  testWidgets('each attachment has its own ✕ that removes just that image',
-      (tester) async {
-    final removed = <int>[];
     await tester.pumpWidget(
       _wrap(
         child: const SizedBox(),
-        attachments: [_image(), _image(), _image()],
-        onRemoveAttachment: removed.add,
+        picked: [_image('a.png'), _image('b.png')],
       ),
     );
     await tester.pumpAndSettle();
 
-    final closers = find.descendant(
-      of: find.byKey(const ValueKey('composer-attachments')),
-      matching: findUxIcon(UxIcons.close),
-    );
-    expect(closers, findsNWidgets(3));
+    await tester.enterText(find.byType(TextField), 'in this image you see X');
+    // The caret after "image".
+    _controller(tester).selection = const TextSelection.collapsed(offset: 13);
+    await _attachFromGallery(tester);
 
-    await tester.tap(closers.at(1));
-    await tester.pumpAndSettle();
-    expect(removed, [1]);
+    expect(
+      _composerText(tester),
+      'in this image \uFFFC \uFFFC you see X',
+    );
+    // Chips drawn inside the field itself, in order.
+    final field = find.byType(TextField);
+    final first = find.byKey(const ValueKey('composer-chip-0'));
+    final second = find.byKey(const ValueKey('composer-chip-1'));
+    expect(find.descendant(of: field, matching: first), findsOneWidget);
+    expect(find.descendant(of: field, matching: second), findsOneWidget);
+    expect(find.text('a.png'), findsOneWidget);
+    expect(find.text('b.png'), findsOneWidget);
+    expect(
+      tester.getRect(first).left,
+      lessThan(tester.getRect(second).left),
+    );
+    // The caret lands after what was inserted, ready to keep writing.
+    expect(_controller(tester).selection.baseOffset, 17);
   });
 
-  testWidgets('without attachments the composer keeps its stadium shape',
+  testWidgets('send passes the text with its markers and the chips in order',
       (tester) async {
-    await tester.pumpWidget(_wrap(child: const SizedBox()));
+    String? sentText;
+    List<AttachmentContent>? sentAttachments;
+    await tester.pumpWidget(
+      _wrap(
+        child: const SizedBox(),
+        picked: [_image('a.png')],
+        onSend: (text, attachments) {
+          sentText = text;
+          sentAttachments = attachments;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _attachFromGallery(tester);
+    // An attachment alone enables Send (attachment-only message).
+    expect(find.byKey(const ValueKey('send')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('send')));
+    await tester.pumpAndSettle();
+
+    expect(sentText, '\uFFFC');
+    expect(sentAttachments, [_image('a.png')]);
+    expect(_composerText(tester), isEmpty);
+  });
+
+  testWidgets('tapping a chip opens its preview; Remove takes it out',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(child: const SizedBox(), picked: [_image('a.png')]),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'see');
+    await _attachFromGallery(tester);
+    expect(_composerText(tester), 'see \uFFFC ');
+
+    await tester.tap(find.byKey(const ValueKey('composer-chip-0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('attachment-sheet-image')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('attachment-sheet-remove')));
+    await tester.pumpAndSettle();
+
+    expect(_composerText(tester), 'see ');
+    expect(find.byKey(const ValueKey('composer-chip-0')), findsNothing);
+  });
+
+  testWidgets('the composer keeps its stadium shape until it holds a chip',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(child: const SizedBox(), picked: [_image('a.png')]),
+    );
     await tester.pumpAndSettle();
 
     RoundedRectangleBorder shapeOf(WidgetTester tester) => tester
@@ -278,14 +323,10 @@ void main() {
         .shape! as RoundedRectangleBorder;
 
     expect(shapeOf(tester).borderRadius, BorderRadius.circular(999));
-    expect(find.byKey(const ValueKey('composer-attachments')), findsNothing);
 
-    // With attachments it morphs into a rounded surface so the thumbnails
-    // aren't clipped by the pill's round ends.
-    await tester.pumpWidget(
-      _wrap(child: const SizedBox(), attachments: [_image()]),
-    );
-    await tester.pumpAndSettle();
+    // With a chip it morphs into a rounded surface so a chip at a line's
+    // end isn't clipped by the pill's round ends.
+    await _attachFromGallery(tester);
     expect(shapeOf(tester).borderRadius, BorderRadius.circular(24));
   });
 }

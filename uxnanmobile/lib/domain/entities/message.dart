@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/value_objects/inline_attachments.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 
 /// [text] on one line: every run of whitespace collapsed to one space, the
@@ -74,16 +75,33 @@ class Message extends Equatable {
   /// Concatenated plain-text projection of all content blocks.
   String get plainText => contents.map((c) => c.asPlainText).join('\n');
 
-  /// The message's text on one line, for a preview: its text runs (or, with
-  /// none, its plain-text projection) with every run of whitespace collapsed
-  /// to one space. Untruncated — each surface cuts it to its own length.
+  /// The images and files a user message carries, in the order of the
+  /// attachment markers in its text.
+  List<AttachmentContent> get attachments =>
+      contents.whereType<AttachmentContent>().toList();
+
+  /// The message's text runs joined, exactly as written — a user message's
+  /// attachment markers included.
+  String get text => contents
+      .whereType<TextContent>()
+      .map((t) => t.text)
+      .where((t) => t.isNotEmpty)
+      .join('\n\n');
+
+  /// [text] for a place that shows only words (a preview, the clipboard): each
+  /// attachment marker becomes `[name]` of the attachment it stands for.
+  String get wordsText => inlineAttachmentsPlainText(
+        text,
+        [for (final a in attachments) a.name],
+      );
+
+  /// The message's text on one line, for a preview: its text runs (attachments
+  /// named where they sit, or, with no text, its plain-text projection) with
+  /// every run of whitespace collapsed to one space. Untruncated — each
+  /// surface cuts it to its own length.
   String get previewText {
-    final text = contents
-        .whereType<TextContent>()
-        .map((t) => t.text)
-        .where((t) => t.trim().isNotEmpty)
-        .join(' ');
-    return collapsePreviewText(text.isEmpty ? plainText : text);
+    final words = wordsText;
+    return collapsePreviewText(words.trim().isEmpty ? plainText : words);
   }
 
   /// Whether any content block is still streaming.

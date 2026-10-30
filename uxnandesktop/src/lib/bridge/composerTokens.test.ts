@@ -78,3 +78,16 @@ describe('asCommand', () => {
     expect(asCommand('please /compact', commands)).toBeUndefined();
   });
 });
+
+describe('tokens beside attachment chips', () => {
+  const M = '￼';
+  it('ends a word at a chip, as a space does', () => {
+    expect(tokenAt(`${M}@sr`, 4)).toEqual({ kind: 'mention', query: 'sr', start: 1, end: 4 });
+    expect(tokenAt(`@src${M}`, 4)).toEqual({ kind: 'mention', query: 'src', start: 0, end: 4 });
+    expect(tokenAt(`/rev${M}`, 4)).toEqual({ kind: 'command', query: 'rev', start: 0, end: 4 });
+  });
+
+  it('keeps a chip inside a command\'s arguments', () => {
+    expect(asCommand(`/review ${M} this`, commands)).toEqual({ name: 'review', args: `${M} this` });
+  });
+});

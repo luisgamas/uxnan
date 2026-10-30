@@ -71,6 +71,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and unpair every phone. Only a missing entry is `null` now; any other error
   stops the start with the reason.
 
+<!-- plan 047: attachments in the sentence -->
+### Changed
+
+- **The agent gets a message's images and files where the person put them**
+  (architecture/02a §5.8.12; plan 047). `turn/send` text carries one U+FFFC
+  marker per attachment, in order; the bridge keeps the markers in the stored
+  message and every attachment beside it, named (images too). For the agent,
+  each marker becomes a numbered label at its place — `[Image 1: a.png]`,
+  `[File 1: b.pdf]` — and a closing note maps every label to the file written
+  into its folder (now `<cwd>/.uxnan-attachments/<turnId>/<n>/<name>`, for
+  every agent, Zero included). Claude Code, Codex, OpenCode, pi and Zero also
+  get each image as their CLI's own image input right after its label
+  (`takesInlineImages`, `src/adapters/turn-input.ts`): stream-json `image`
+  blocks, app-server `image` items, OpenCode 2 `files` with a `mention` on the
+  label (1.x `file` parts), pi `images`, ACP `image` blocks — on a mid-turn
+  message too. Grok and Antigravity read the labelled files with their tools
+  (`agy` stream-json takes only `text` blocks: measured). The per-agent matrix
+  is in `docs/agents.md` → *Attachments in the sentence*.
+- `turn/send` refuses (`invalidParams`) a message whose markers do not match
+  its attachments one for one (counted in `command.args` for a command), and
+  an attachment without bytes — it used to drop one quietly, which would now
+  move every later attachment onto the wrong marker.
+- The provisional and the generated title read each marker as `[name]`.
+
+### Removed
+
+- `materializeAttachments` and the trailing "[Attached images …]" note, and
+  Zero's `handlesAttachments` path (replaced by the shared delivery above).
+<!-- /plan 047 -->
+
 ## [0.0.53-alpha.20261022] - 20261022
 ### Added
 

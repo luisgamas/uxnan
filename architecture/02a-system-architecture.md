@@ -1,11 +1,24 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.9.0
-> **Fecha:** 2026-10-29
+> **Version:** 1.10.0
+> **Fecha:** 2026-10-30
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.10.0):** a message's images and files sit **inside
+> its sentence** (§5.8.12). The text carries one `ATTACHMENT_MARKER` (U+FFFC)
+> per attachment, in order — the n-th marker is the n-th attachment — in
+> `turn/send` and in the stored message alike, and the bridge refuses a send
+> whose markers do not match its attachments one for one. Both composers draw
+> each marker as a chip where it was inserted and both transcripts draw the
+> sent message the same way. The agent receives the same interleaving: each
+> marker becomes a numbered label (`[Image 1: a.png]`) at its place, a note
+> maps every label to the file written into its folder, and an adapter whose
+> CLI takes images (`IAgentAdapter.takesInlineImages`, replacing
+> `handlesAttachments`) also gets the prompt as ordered parts with each image
+> right after its label (`SendTurnOptions.input`, replacing `attachments`).
+>
 > **Executive summary (1.9.0):** conversations are a catalog (§5.8.21). A
 > conversation continues with another agent — or the same one, as a fork — as a
 > NEW conversation (`thread/transfer`, `thread/fork`, `thread/start {
@@ -400,7 +413,9 @@ mientras esta configurado y habilitado (§5.10).
 > **Cambios desde la v1 (2026-06):** la interfaz gano `listModels()` con
 > `AgentModel[]` estructurado (en lugar de `string[]`), `respondApproval()`
 > para aprobaciones interactivas, `nativeSessionId()` para que el bridge
-> localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
+> localice la sesion on-disk del agente, y `attachments` en `sendTurn()`
+> (desde 1.10.0 `input`: el prompt partido con cada imagen tras su etiqueta,
+> para el adaptador que declara `takesInlineImages()`, §5.8.12).
 > `AgentCapabilities` ahora incluye `reportsContextUsage`, `reportsCompaction`
 > e `images`; `AgentDescriptor.deprecated?` retira un adapter sin romper el
 > contrato de instalaciones antiguas.
@@ -440,7 +455,7 @@ interface IAgentAdapter {
   sendTurn(
     threadId: string,
     content: TurnContent,
-    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse, command?: AgentCommandInvocation }
+    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, input?: TurnInputPart[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse, command?: AgentCommandInvocation }
   ): Promise<TurnResult>;
 
   // Aprobaciones interactivas (opt-in por agente)
@@ -948,7 +963,7 @@ class ComposerManager {
   // Acciones
   Future<void> send({String? threadId});
   void updateDraft(String text);
-  void addAttachment(Attachment attachment);
+  void addAttachment(Attachment attachment);   // inserta su chip (U+FFFC) en el cursor, §5.8.12
   void removeAttachment(String id);
   Future<List<String>> autocompleteMentions(String prefix);
   Future<List<String>> autocompleteFiles(String partial);
@@ -1778,8 +1793,7 @@ ConversationScreen
 │   ├── Indicador de carga de historial anterior (pull-to-load-more)
 │   └── ConnectionRecoveryCard (si desconectado)
 ├── ComposerWidget
-│   ├── TextField expandible
-│   ├── AttachmentRow (imagenes, archivos)
+│   ├── TextField expandible (cada adjunto es un chip en su sitio del texto, §5.8.12)
 │   ├── AutocompleteOverlay (menciones, archivos, slash commands)
 │   ├── SendButton (activo segun canSend)
 │   └── VoiceInputButton
@@ -2139,7 +2153,7 @@ bridge/
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn (+ child-ledger, orphan-reaper)
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
-│   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
+│   ├── agents/attachments.ts       # adjuntos → archivos en el cwd + etiquetas en su sitio (§5.8.12)
 │   ├── conversation/               # thread-store, native-session history convergence
 │   ├── git/                        # git-runner, git-service
 │   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
@@ -2854,51 +2868,66 @@ attribution, revocation and migration semantics exist.
 
 ---
 
-#### 5.8.12 Entrega de adjuntos de imagen (`turn/send { attachments }`)
+#### 5.8.12 Adjuntos en la frase (`turn/send { text, attachments }`)
 
-Ningun CLI de agente acepta base64 inline por la via headless, pero **todos**
-los cableados pueden ABRIR un fichero local con sus propias herramientas de
-archivo/vision. Por eso el bridge materializa cada adjunto a disco y referencia
-la ruta en el prompt (`src/agents/attachments.ts`), sin manejo de imagen por
-adaptador.
+Un mensaje se escribe como una frase con sus imagenes y archivos **dentro**:
+"en esta imagen ⟨a.png⟩ se ve X, y en esta ⟨b.png⟩ se ve Y". El agente debe
+recibir la misma intercalacion — sin ella no sabe a que imagen se refiere cada
+parte — en todos los agentes del modo chat, desde el desktop y el telefono.
 
-Reglas (no negociables, verificadas contra los CLIs reales):
+**Contrato (una sola representacion, `shared/src/models/inline-attachments.ts`):**
 
-- El fichero se escribe **dentro del directorio de trabajo del agente**
-  (`<cwd>/.uxnan-attachments/<turnId>/`) y se referencia con ruta **relativa al
-  cwd**: los agentes estan confinados a su workspace y rechazan una ruta fuera
-  de el (Claude responde *"the read was blocked by a permission prompt"* para la
-  misma imagen colocada en el temp del SO).
-- Si el turno no trae `cwd`, se usa el del **adaptador**
-  (`IAgentAdapter.defaultCwd()`), que es donde el CLI se lanza realmente. El
-  temp del SO queda solo como ultimo recurso para un adaptador que no reporte
-  ninguno.
-- Un **archivo** (`type: 'file'`) conserva su nombre, en una carpeta propia
-  (`.../<turnId>/<n>/<nombre>`) para que dos con el mismo nombre no choquen; la
-  nota del prompt dice *Attached file(s)*. Una imagen es `image-<n>.<ext>`.
-  Cualquier agente lo abre con sus herramientas de archivos, asi que no depende
-  de `capabilities.images`.
-- El directorio se borra al terminar el turno.
-- El mensaje que se persiste en el historial no filtra rutas temporales: guarda
-  el texto del usuario tal cual (vacio en un turno solo-imagen) y **las imagenes
-  junto al mensaje**. El bridge es su dueno: las escribe en
-  `~/.uxnan/attachments/<threadId>/<turnId>-<n>.<ext>`, las nombra en
-  `Message.attachments` (`{ id, mimeType, bytes, width?, height? }`, solo en el
-  mensaje del usuario) y entrega los bytes con `turn/attachment { threadId,
-  attachmentId }`. `turn/list` solo las nombra — una pagina de historial sigue
-  siendo ligera — y cada cliente (telefono, desktop) pide la que muestra y la
-  guarda en memoria. Un fork copia las imagenes; borrar el hilo las borra.
-- `capabilities.images` declara si el agente puede recibirlos; el telefono
-  oculta el "+" cuando es `false`. Que el modelo *vea* los pixeles o razone
-  sobre los bytes con herramientas es cosa del modelo — un modelo no multimodal
-  igualmente responde inspeccionando el fichero.
-- **Excepcion: entrega nativa.** Un adaptador cuyo protocolo transporta imagenes
-  y cuyas herramientas de fichero NO pueden abrirlas declara
-  `IAgentAdapter.handlesAttachments()`; entonces el bridge **no** materializa
-  nada ni añade la nota, y el adaptador entrega los adjuntos el mismo. Es el
-  caso de **Zero**: su ACP anuncia `promptCapabilities.image` y decodifica un
-  bloque `{ type: "image", mimeType, data }` inline, mientras que su `read_file`
-  es texto por lineas — referenciar la ruta le haria leer un PNG como basura.
+- El texto lleva un `ATTACHMENT_MARKER` (U+FFFC, OBJECT REPLACEMENT CHARACTER)
+  por adjunto, en orden: el n-esimo marcador es `attachments[n-1]`. Un solo
+  caracter, asi un composer lo dibuja como chip atomico y toda posicion sigue
+  siendo un indice del string (es tambien el placeholder de un `WidgetSpan` de
+  Flutter). Un mensaje solo de adjuntos es solo sus marcadores.
+- `turn/send` exige **exactamente** un marcador por adjunto — en `text`, o en
+  `command.args` si es un comando — y bytes en cada uno (`base64Data`
+  obligatorio; ya no existe `path`); si no casan responde `invalidParams`
+  (`inlineAttachmentsError`). Nunca descarta uno en silencio: correria todos los
+  siguientes al marcador equivocado.
+- El mensaje guardado conserva los marcadores (`Message.content`) y los
+  adjuntos en el mismo orden (`Message.attachments`, con `name` tambien en
+  imagenes). Un cliente dibuja cada adjunto en su marcador; uno sin marcador (un
+  mensaje anterior) va tras el texto. Titulo provisional, titulo generado,
+  portapapeles y previews usan `inlineAttachmentsPlainText` → `[nombre]`.
+
+**Entrega al agente (`src/agents/attachments.ts`, una sola capa para todos):**
+
+1. Cada adjunto se escribe **dentro del directorio de trabajo del agente**
+   (`<cwd>/.uxnan-attachments/<turnId>/<n>/<nombre>`; una imagen sin nombre es
+   `image-<k>.<ext>`) y se referencia con ruta **relativa al cwd**: los agentes
+   estan confinados a su workspace (Claude responde *"the read was blocked by a
+   permission prompt"* para la misma imagen en el temp del SO). Sin `cwd` del
+   turno se usa el del adaptador (`IAgentAdapter.defaultCwd()`); el temp del SO
+   es el ultimo recurso. El directorio se borra al terminar el turno.
+2. Cada marcador se sustituye por una etiqueta numerada por tipo —
+   `[Image 1: a.png]`, `[File 1: b.pdf]` — en su sitio (en los argumentos de un
+   comando antes de resolverlo), y una nota final mapea cada etiqueta a su
+   archivo.
+3. Un adaptador cuyo CLI acepta imagenes (`IAgentAdapter.takesInlineImages()`)
+   recibe ademas `SendTurnOptions.input`: el mismo prompt partido con cada
+   imagen **justo despues de su etiqueta** (`TurnInputPart[]`), que traduce a
+   la entrada nativa de su protocolo (`src/adapters/turn-input.ts`); la nota
+   dice entonces que la imagen viajo con el mensaje y su archivo queda para
+   trabajo de ficheros. Solo PNG/JPEG/GIF/WebP van inline; otra imagen (HEIC,
+   BMP) va como archivo a abrir. Los demas agentes reciben el texto con las
+   etiquetas y abren cada archivo con sus herramientas.
+
+| Agente | Superficie | Como llega cada imagen |
+|---|---|---|
+| Claude Code | `claude -p` stream-json | bloques `content` intercalados `text` / `image` (base64) |
+| Codex | app-server `turn/start` / `turn/steer` | items `input` intercalados `text` / `image` (data URL) |
+| OpenCode 2.x / 1.x | `/api/session/:id/prompt` / `prompt_async` | 2.x: `files[]` con `mention` sobre la etiqueta; 1.x: partes `file` entre las de texto |
+| pi | `--mode rpc` `prompt` / `steer` | `images[]` en orden tras el texto (pi no intercala) |
+| Zero | ACP `session/prompt` | bloques intercalados `text` / `image` |
+| Grok | ACP (`promptCapabilities.image` false) | solo texto: etiqueta + ruta, la abre con sus herramientas |
+| Antigravity | `agy` stream-json (solo bloques `text`) | solo texto: etiqueta + ruta, la abre con sus herramientas |
+
+La matriz medida (dos imagenes distintas en una frase, n/N por agente y
+modelo) vive en `bridge/docs/agents.md` → *Attachments in the sentence*.
+`capabilities.images` sigue declarando si el agente puede recibirlos.
 
 ---
 
