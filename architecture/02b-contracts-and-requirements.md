@@ -1,6 +1,20 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.4.3 | **Fecha:** 2026-10-29 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.5.0 | **Fecha:** 2026-10-29 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.5.0):** conversations as a catalog (02a §5.8.21).
+> Three new methods: **`thread/transfer`** (continue a conversation with any
+> agent as a NEW one: `{ sourceThreadId, agentId?, model?, title?, strategy?:
+> 'selection'|'reference'|'fork', message?, clientTransferId?, createdBy? } →
+> { thread, created, turnId? }`), **`thread/transferContext`** (the exact
+> context a continuation carries: `{ text, summary }`) and **`thread/search`**
+> (titles and what was said, from the bridge's per-conversation digest:
+> `{ query, projectId?, includeArchived?, limit?, cursor? } → { hits, nextCursor?,
+> searched, total }`). `thread/start` gains `continueFrom`; `thread/fork` is the
+> same continuation with the source's agent (`newBranch` removed — never used).
+> `Thread` gains `transfer?: ConversationTransfer` and `continuations?:
+> ThreadContinuation[]`; `BridgeFeatures.conversations`. No new error codes.
+> **108 methods**, 26 notifications.
 >
 > **Executive summary (1.4.3):** `BridgeStatus.host` gains the optional
 > `install: BridgeInstallKind` (`bundled` | `npm` | `source`): how the running
@@ -234,7 +248,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 105 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 108 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge consume el paquete
 > compartido directamente y el relay empaqueta solo su subpath
@@ -242,18 +256,21 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 105 metodos request/response** + 26 notificaciones de streaming
+> **Total: 108 metodos request/response** + 26 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
 
-**Threads y turns (22):**
+**Threads y turns (25):**
 ```
 thread/list             -> lista de threads del PC, con filtro opcional. Cada Thread lleva, en vivo y sin persistir, `activeTurnId?` (el turno que corre ahora, igual que `TurnList.activeTurnId`): un cliente recien conectado sabe que conversaciones trabajan sin leer los turnos de cada una
 thread/read             -> datos completos de un thread (con el mismo `activeTurnId?` en vivo)
-thread/start            -> crear nuevo thread (agentId, model, cwd, opcional). La carpeta (`cwd`) decide el proyecto y lo registra (`02a` §5.8.17); `projectId` solo da la carpeta cuando falta `cwd`. Guarda `origin { kind: phone|desktop, name }`. Un `title` dado aqui es del usuario (`titleSource: user`). Con `agentSessionId` (requiere `agentId`) continua esa sesion del agente: el hilo la guarda desde el inicio, su primer turno la retoma e importa su historial; si otra conversacion ya la continua, devuelve esa; su `title` es provisional (`titleSource: prompt`) (`02a` §5.8.19)
+thread/start            -> crear nuevo thread (agentId, model, cwd, opcional). Con `continueFrom: { threadId, strategy?, clientTransferId? }` es la continuacion de esa conversacion en la carpeta y con el agente elegidos (mismo camino que `thread/transfer`; no junto con `agentSessionId`). La carpeta (`cwd`) decide el proyecto y lo registra (`02a` §5.8.17); `projectId` solo da la carpeta cuando falta `cwd`. Guarda `origin { kind: phone|desktop, name }`. Un `title` dado aqui es del usuario (`titleSource: user`). Con `agentSessionId` (requiere `agentId`) continua esa sesion del agente: el hilo la guarda desde el inicio, su primer turno la retoma e importa su historial; si otra conversacion ya la continua, devuelve esa; su `title` es provisional (`titleSource: prompt`) (`02a` §5.8.19)
 thread/resume           -> abrir un thread existente: valida que exista y **no cambia nada** (ni estado ni `updatedAt`; abrir un archivado no lo desarchiva)
-thread/fork             -> fork de un thread en uno nuevo
+thread/fork             -> copia con el mismo agente: el historial copiado y su primer mensaje con una seleccion del contexto (su sesion de agente empieza vacia). Params: { threadId, clientTransferId?, createdBy? }. Es `thread/transfer` con estrategia `fork` y el agente del origen (`02a` §5.8.21)
+thread/transfer         -> continuar una conversacion con otro agente (o el mismo) como conversacion NUEVA en su carpeta. Params: { sourceThreadId, agentId?, model?, title?, strategy?: selection|reference|fork, message?, clientTransferId? (≤128, idempotencia sobre el mismo origen), createdBy?: user|agent }. Result: { thread, created, turnId? }. El bridge prepara el contexto (seleccion determinista ≤ `TRANSFER_CONTEXT_MAX_BYTES` = 64 000 bytes; el mensaje de la persona nunca se recorta), registra `Thread.transfer` en la nueva y `Thread.continuations` en el origen, y prueba la entrega contra el turno real (`pending → sent → delivered`; `unverifiable` tras un reinicio). Con `message` lo envia al momento. No vuelve a registrar un proyecto quitado. Errores: `-32008` origen inexistente, `-32602` agente/estrategia/clave invalidos (`02a` §5.8.21)
+thread/transferContext  -> el contexto exacto que lleva una continuacion: { text, summary: { turns, omittedTurns, bytes, approxTokens } }. `-32008` si la conversacion no continua otra
+thread/search           -> buscar en titulos y en lo que se dijo (mensajes de la persona y texto de las respuestas; no pasos). Params: { query (2..256), projectId?, includeArchived?, limit? (≤50), cursor? }. Result: { hits: [{ threadId, titleMatch, matches: [{ turnId, seq?, role, snippet, matchStart, matchLength }] (≤3, mas nuevas primero), matchCount }], nextCursor?, searched, total }. Pliega mayusculas y acentos; todas las palabras en el mismo mensaje; de la mas reciente a la mas antigua; cada respuesta ≤50 conversaciones y ≤250 ms de busqueda. Responde desde `digest.json` por conversacion, nunca leyendo turnos (`02a` §5.8.21)
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion. Como `thread/setAccessMode`, es un **ajuste**: se propaga (`rev` nueva) pero no mueve `Thread.updatedAt`, que es cuando la conversacion se movio por ultima vez (turnos, historia, titulo, estado) y por el que toda lista ordena y fecha
 thread/rename           -> renombrar thread (devuelve el Thread actualizado; `titleSource: user`). El titulo provisional lo pone el bridge al guardar el primer turno y el generado tras un turno completado (`02a` §5.8.17); los clientes no renombran por su cuenta. Un `source: 'prompt'` nunca pisa un titulo `user` o `agent`. `ageMs?` (ms, 0..1 año): una accion hecha sin conexion y enviada ahora; se aplica solo si nadie renombro a mano despues (`02a` §5.8.17)
 thread/setAccessMode    -> persistir el modo de acceso por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess | plan). Devuelve el Thread actualizado; idempotente. **Rechaza (`-32602`) un modo que el agente del hilo no ofrece** (`AgentCapabilities.accessModes`). El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?`. `thread/start` guarda el modo por defecto del agente (`defaultAccessMode`): ningun cliente lo escribe. **Enforcement:** en cada `turn/send` el bridge resuelve el modo efectivo (`effectiveAccessMode`: el guardado si el agente lo ofrece, si no su defecto) y solo ese llega al adapter (`SendTurnOptions.accessMode`), que lo mapea a las banderas de su CLI en cada turno. Cada modo significa lo mismo en todos los agentes — requestApproval: toda accion con efecto espera a la persona; approveForMe: trabaja solo dentro del proyecto y lo que sale lo decide el revisor propio del CLI (o pregunta); fullAccess: sin preguntas ni sandbox; plan: lee y planifica, no escribe ni ejecuta. Mapeo verificado por CLI: `bridge/docs/agents.md` → *Access modes*.

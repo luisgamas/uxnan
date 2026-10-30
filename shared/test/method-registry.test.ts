@@ -7,6 +7,9 @@ test('isKnownMethod recognizes registered methods', () => {
   assert.ok(isKnownMethod('bridge/generatePairingQr'));
   assert.ok(isKnownMethod('bridge/pairingCode'));
   assert.ok(isKnownMethod('workspace/resolveFileLink'));
+  assert.ok(isKnownMethod('thread/transfer'));
+  assert.ok(isKnownMethod('thread/transferContext'));
+  assert.ok(isKnownMethod('thread/search'));
 });
 
 test('isKnownMethod rejects unknown methods', () => {
