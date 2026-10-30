@@ -475,10 +475,15 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   button resumes it.
 - **Messages**: a long message you sent folds to its first ten lines under a
   fade, with *Show more* / *Show less* (copying always takes the whole text).
-  Hovering one shows when it was sent and a copy button. The
-  images sent with a message sit beside it as thumbnails — the bridge keeps
-  them with the message and hands each over with `turn/attachment` — and a
-  click shows one whole.
+  Hovering one shows when it was sent and a copy button (the copy writes each
+  attachment as its `[name]`). The images and files sent with a message sit
+  **inside its text, where they were written**, as the same chips the
+  composer draws (`ChatSentAttachment.svelte`, cut by
+  `src/lib/bridge/inlineMessage.ts`): resting on an image shows it whole and a
+  click opens it; resting on a text file shows its first lines. The bridge
+  keeps them with the message and hands each over with `turn/attachment`. A
+  message stored before attachments had a place in the text shows them after
+  its words.
 - **Approvals and questions** wait in a dock **pinned above the composer**
   until they are answered. Several questions asked at once come one at a
   time (*1 of 3*, *Back* / *Next*, *Answer* on the last; a single choice moves
@@ -512,22 +517,28 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   and ends with *Continues below, with your next message*; the message it
   continued in is marked *Reached the agent while it was working*.
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
-  with the layout, so it survives switching tabs and restarting. On an empty
-  composer **↑** recalls the thread's earlier messages (newest first) and **↓**
-  walks back.
+  with the layout, so it survives switching tabs and restarting; its chips are
+  kept with the tab in memory (`src/lib/bridge/composerAttachments.ts` — the
+  bytes are too large for the layout), so they survive switching tabs and a
+  new chat becoming a conversation, and a draft that comes back after a
+  restart keeps its words without them. On an empty composer **↑** recalls the
+  thread's earlier messages (newest first; an attachment as its `[name]`) and
+  **↓** walks back.
 - **Nothing written is lost.** Every message waits in the chat's outbox
   (`src/lib/bridge/outbox.ts`, this machine's storage) from the moment it is
   sent until the bridge has it. One that did not get there — refused,
   unreachable, or the app closed before an answer (*Not sent*) — stays as a
   failed bubble, across restarts, with **Retry** (sent again as written,
-  images and model options included), **Edit** and *Dismiss*.
+  attachments and model options included), **Edit** and *Dismiss*. A message
+  whose attachments did not fit the storage comes back as its words alone
+  (`withAttachments`), never with markers the bridge would refuse.
 - **Saved drafts.** A message coming back into the composer (**Edit** on a
   queued or failed one) never merges with what is being written: that text is
   set aside, whole, in a *saved drafts* card in the dock, kept with the tab.
   Clicking one puts it back — setting aside whatever the composer holds then —
   and the bin throws it away. A failed or queued message brings its images
-  and files back too (a queued one's are read back from the bridge,
-  `turn/attachment`).
+  and files back too, each at its place in the words (a queued one's are read
+  back from the bridge, `turn/attachment`); a saved draft keeps its chips.
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it; the paperclip attaches files. A narrow chat keeps
   the toolbar inside the composer: its pills shrink, then the effort and access
@@ -566,7 +577,21 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   folder drills in and a picked file is inserted as its relative path.
   **Images and files** come from **+**, a paste or a drop onto the composer —
   from the system file manager (Finder, Explorer, the Linux one) or a row of
-  the file tree. What each dropped item becomes:
+  the file tree — and each becomes a **chip inside the text, at the caret**,
+  like a word of the sentence: *in this image ⟨a.png⟩ you can see X, and in
+  this one ⟨b.png⟩ Y*. The message goes out exactly so — one
+  `ATTACHMENT_MARKER` (U+FFFC) per chip in `turn/send { text }`, the
+  attachments in the same order (`shared/src/models/inline-attachments.ts`) —
+  and the bridge hands every agent the same interleaving
+  (`bridge/docs/agents.md`). A chip is atomic: the caret steps over it,
+  Backspace removes it whole, its ✕ takes it out (with the space that set it
+  apart), copying a selection writes it as `[name]`, and pasted text arrives
+  plain (never formatting, never a marker). Its label is the file name,
+  shortened in the middle when long; an image shows a tiny thumbnail and
+  resting on it shows the image whole; a file shows its type's glyph
+  (`attachmentIcon.ts`). A pasted screenshot without a name of its own is
+  `image-<n>.<ext>`, so two in one sentence are told apart. What each dropped
+  item becomes:
   - an **image**, when the agent takes images — attached as an image;
   - a **file or folder of the conversation's project** — **mentioned**
     (`@path`, as if picked from `@`: the agent opens it itself);
@@ -596,13 +621,12 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   neighbours and shows that message with the last paragraph of its reply; a
   click, or ↑ ↓ then Enter once it has the focus, scrolls to it. It needs at
   least two messages.
-  Images show as thumbnails; they are scaled to 2048 px on the long edge (JPEG
-  85 % when larger, as on the phone), up to 10 per message (the phone's limit —
-  past it a toast says so), and go as images only to an agent that takes them
+  Images are scaled to 2048 px on the long edge (JPEG 85 % when larger, as on
+  the phone), up to 10 per message (the phone's limit — past it a toast says
+  so), and go as images only to an agent that takes them
   (`capabilities.images`). Anything else — and an image for an agent that takes
   none — goes as a **file** (`type: 'file'` with its name, up to 20 MB and 10
-  per message; `fs_read_attachment` reads a picked one), shown as a chip with
-  its name and size in the composer and in the message: the bridge writes it
+  per message; `fs_read_attachment` reads a picked one): the bridge writes it
   under its name in the agent's folder, so every agent opens it with its own
   tools.
 

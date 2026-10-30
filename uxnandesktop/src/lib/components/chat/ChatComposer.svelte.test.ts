@@ -15,6 +15,10 @@ import { failsWith } from "../../../test/tauri";
 import type { AgentCommand } from "$shared/agents/agent-capabilities";
 import { dropPathsAt } from "$lib/fileDrop";
 import ChatComposer from "./ChatComposer.svelte";
+import { serialize, setCaret } from "$lib/components/ui/input-group/chip-editor";
+
+/** What the composer's editor holds, as the string it sends (a chip is a marker). */
+const valueOf = (box: HTMLElement) => serialize(box).text;
 
 // jsdom lays nothing out, so it has no `elementFromPoint`; each test says
 // what is under the pointer.
@@ -40,16 +44,16 @@ describe("ChatComposer", () => {
     const { screen, user } = mountWithProviders(ChatComposer, {
       props: { history: ["first", "second"], onsend: () => undefined },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("{ArrowUp}");
-    expect(box.value).toBe("second");
+    expect(valueOf(box)).toBe("second");
     await user.keyboard("{ArrowUp}");
-    expect(box.value).toBe("first");
+    expect(valueOf(box)).toBe("first");
     await user.keyboard("{ArrowDown}");
-    expect(box.value).toBe("second");
+    expect(valueOf(box)).toBe("second");
     await user.keyboard("{ArrowDown}");
-    expect(box.value).toBe("");
+    expect(valueOf(box)).toBe("");
   });
 
   it("never replaces text being written, and sends it on Enter", async () => {
@@ -57,13 +61,13 @@ describe("ChatComposer", () => {
     const { screen, user } = mountWithProviders(ChatComposer, {
       props: { history: ["old"], onsend: (t: string) => void sent.push(t) },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("new idea{ArrowUp}");
-    expect(box.value).toBe("new idea");
+    expect(valueOf(box)).toBe("new idea");
     await user.keyboard("{Enter}");
     expect(sent).toEqual(["new idea"]);
-    expect(box.value).toBe("");
+    expect(valueOf(box)).toBe("");
   });
 
   it("completes an agent command with / and sends it as a command", async () => {
@@ -78,14 +82,14 @@ describe("ChatComposer", () => {
         onsend: (text: string, extras: unknown) => void sent.push({ text, extras }),
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("/rev");
     await until(() => screen.queryByRole("option", { name: /\/review/ }) !== null);
     expect(screen.getByText("Your commands")).toBeTruthy();
     expect(screen.queryByRole("option", { name: /\/compact/ })).toBeNull();
     await user.keyboard("{Enter}");
-    expect(box.value).toBe("/review ");
+    expect(valueOf(box)).toBe("/review ");
     await user.keyboard("src/app.ts{Enter}");
     expect(sent).toEqual([
       { text: "/review src/app.ts", extras: { command: { name: "review", args: "src/app.ts" } } },
@@ -100,7 +104,7 @@ describe("ChatComposer", () => {
         onsend: (text: string, extras: unknown) => void sent.push([text, extras]),
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("/");
     await until(() => screen.queryByRole("listbox") !== null);
@@ -121,7 +125,7 @@ describe("ChatComposer", () => {
         },
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("look at @ap");
     await until(() => screen.queryByRole("option", { name: "src/app.ts" }) !== null);
@@ -130,7 +134,7 @@ describe("ChatComposer", () => {
       params: { cwd: "/repo", query: "ap", limit: 40 },
     });
     await user.keyboard("{Tab}");
-    expect(box.value).toBe("look at @src/app.ts ");
+    expect(valueOf(box)).toBe("look at @src/app.ts ");
   });
 
   it("lists the project on a bare @ and drills into a picked folder", async () => {
@@ -148,12 +152,12 @@ describe("ChatComposer", () => {
         },
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("@");
     await until(() => screen.queryByRole("option", { name: "src/" }) !== null);
     await user.keyboard("{Enter}");
-    expect(box.value).toBe("@src/");
+    expect(valueOf(box)).toBe("@src/");
     await until(() => screen.queryByRole("option", { name: "src/main.ts" }) !== null);
     expect(listed).toContainEqual({ cwd: "/repo/src" });
   });
@@ -167,9 +171,9 @@ describe("ChatComposer", () => {
         onsend: (text: string, extras: unknown) => void sent.push([text, extras]),
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
+    setCaret(box, valueOf(box).length);
     await user.keyboard("{Enter}");
     await until(() => sent.length > 0);
     expect(sent).toEqual([["/compact now", { command: { name: "compact", args: "now" } }]]);
@@ -181,16 +185,16 @@ describe("ChatComposer", () => {
       props: { onsend: (text: string, extras: unknown) => void sent.push({ text, extras }) },
     });
     expect(screen.getByRole("button", { name: "Attach images or files" })).toBeTruthy();
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     const file = new File(["id\n1\n"], "people.csv", { type: "text/csv" });
     await fireEvent.paste(box, { clipboardData: { files: [file] } });
-    expect(await screen.findByText("people.csv")).toBeTruthy();
-    expect(screen.getByText("5 B")).toBeTruthy();
-    await user.click(box);
-    await user.keyboard("read it{Enter}");
+    await until(() => box.querySelector("[data-chip]") !== null);
+    expect(box.querySelector("[data-chip]")?.textContent).toContain("people.csv");
+    // The caret is right after the chip: the words follow it.
+    await user.keyboard("is the list{Enter}");
     await until(() => sent.length > 0);
     expect(sent[0]).toEqual({
-      text: "read it",
+      text: "\uFFFC is the list",
       extras: {
         attachments: [{ type: "file", name: "people.csv", mimeType: "text/csv", base64Data: "aWQKMQo=" }],
       },
@@ -209,11 +213,13 @@ describe("ChatComposer", () => {
         },
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     vi.spyOn(document, "elementFromPoint").mockReturnValue(box);
     expect(dropPathsAt(["/repo/src/app.ts", "/tmp/notes.txt"], 10, 10, "os")).toBe(true);
-    await until(() => box.value === "look at @src/app.ts ");
-    expect(await screen.findByText("notes.txt")).toBeTruthy();
+    // The mention is written where the caret was, and the file from elsewhere
+    // becomes a chip right after it.
+    await until(() => valueOf(box) === "look at @src/app.ts \uFFFC ");
+    expect(box.querySelector("[data-chip]")?.textContent).toContain("notes.txt");
     expect(read).toEqual(["/tmp/notes.txt"]);
   });
 
@@ -229,12 +235,13 @@ describe("ChatComposer", () => {
             : failing(args),
       },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     vi.spyOn(document, "elementFromPoint").mockReturnValue(box);
     const dropped = ["/tmp/notes.txt", "/tmp/My Folder", "/tmp/huge.bin", "/repo"];
     expect(dropPathsAt(dropped, 10, 10, "os")).toBe(true);
-    await until(() => box.value === 'look at "/tmp/My Folder" /repo ');
-    expect(await screen.findByText("notes.txt")).toBeTruthy();
+    await until(() => valueOf(box) === 'look at "/tmp/My Folder" /repo \uFFFC ');
+    expect(box.querySelectorAll("[data-chip]")).toHaveLength(1);
+    expect(box.querySelector("[data-chip]")?.textContent).toContain("notes.txt");
     await until(() => toasts.error.length > 0);
     expect(toasts.error).toEqual(["Couldn't attach huge.bin: the file is larger than 20 MB"]);
   });
@@ -243,7 +250,7 @@ describe("ChatComposer", () => {
     const { screen, user } = mountWithProviders(ChatComposer, {
       props: { running: true, atNextPause: true, onstop: () => undefined, onsend: () => undefined },
     });
-    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const box = screen.getByRole("textbox");
     await user.click(box);
     await user.keyboard("also check the docs");
     expect(screen.getByText(/reaches it at its next pause/)).toBeTruthy();
@@ -260,4 +267,116 @@ describe("ChatComposer", () => {
     expect(screen.getByText(/waits in the queue/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Queue" })).toBeTruthy();
   });
+
+  it("puts an attachment at the caret, inside the sentence, and sends it there", async () => {
+    const sent: { text: string; extras: unknown }[] = [];
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: {
+        value: "in this you see a cat",
+        onsend: (text: string, extras: unknown) => void sent.push({ text, extras }),
+      },
+    });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    setCaret(box, "in this".length);
+    const file = new File(["x"], "cat.txt", { type: "text/plain" });
+    await fireEvent.paste(box, { clipboardData: { files: [file] } });
+    await until(() => valueOf(box) === "in this ￼ you see a cat");
+    await user.keyboard("{Enter}");
+    await until(() => sent.length > 0);
+    expect(sent[0]?.text).toBe("in this ￼ you see a cat");
+    expect((sent[0]?.extras as { attachments: { name: string }[] }).attachments.map((a) => a.name)).toEqual([
+      "cat.txt",
+    ]);
+  });
+
+  it("takes a chip out with its ✕, whole, and sends without it", async () => {
+    const sent: { text: string; extras: unknown }[] = [];
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { onsend: (text: string, extras: unknown) => void sent.push({ text, extras }) },
+    });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    await fireEvent.paste(box, {
+      clipboardData: { files: [new File(["a"], "a.txt", { type: "text/plain" }), new File(["b"], "b.txt")] },
+    });
+    await until(() => box.querySelectorAll("[data-chip]").length === 2);
+    const remove = box.querySelectorAll<HTMLElement>("[data-chip-action='remove']")[0]!;
+    expect(remove.getAttribute("aria-label")).toBe("Remove a.txt");
+    await fireEvent.click(remove);
+    expect(box.querySelectorAll("[data-chip]")).toHaveLength(1);
+    expect(valueOf(box)).toBe("￼ ￼ ".replace("￼ ", ""));
+    await user.keyboard("only b{Enter}");
+    await until(() => sent.length > 0);
+    expect((sent[0]?.extras as { attachments: { name: string }[] }).attachments.map((a) => a.name)).toEqual([
+      "b.txt",
+    ]);
+  });
+
+  it("copies a selection with each chip as its name, never a marker", async () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    await fireEvent.paste(box, { clipboardData: { files: [new File(["x"], "plan.pdf")] } });
+    await until(() => box.querySelector("[data-chip]") !== null);
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    const data = new Map<string, string>();
+    const event = new Event("copy", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(event, "clipboardData", {
+      value: { setData: (type: string, value: string) => data.set(type, value) },
+    });
+    box.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(data.get("text/plain")).toBe("[plan.pdf] ");
+  });
+
+  it("pastes text without markers or formatting", async () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    await fireEvent.paste(box, {
+      clipboardData: { files: [], getData: (type: string) => (type === "text/plain" ? "a￼b" : "<b>x</b>") },
+    });
+    expect(valueOf(box)).toBe("ab");
+  });
+
+  it("keeps a draft's chips when the composer is built again, and drops markers it cannot fill", async () => {
+    const first = mountWithProviders(ChatComposer, { props: { draftKey: "tab-chips", onsend: () => undefined } });
+    const box = first.screen.getByRole("textbox");
+    box.focus();
+    await fireEvent.paste(box, { clipboardData: { files: [new File(["x"], "kept.csv")] } });
+    await until(() => box.querySelector("[data-chip]") !== null);
+    const draft = valueOf(box);
+    first.screen.unmount();
+
+    const again = mountWithProviders(ChatComposer, {
+      props: { value: draft, draftKey: "tab-chips", onsend: () => undefined },
+    });
+    const rebuilt = again.screen.getByRole("textbox");
+    await until(() => rebuilt.querySelector("[data-chip]") !== null);
+    expect(rebuilt.querySelector("[data-chip]")?.textContent).toContain("kept.csv");
+    again.screen.unmount();
+
+    // A restart: the words come back, the bytes do not — so neither do the markers.
+    const restarted = mountWithProviders(ChatComposer, {
+      props: { value: "see ￼", draftKey: "tab-other", onsend: () => undefined },
+    });
+    const box3 = restarted.screen.getByRole("textbox");
+    await until(() => valueOf(box3) === "see ");
+    expect(box3.querySelector("[data-chip]")).toBeNull();
+  });
+
+  it("never sends while an input method is composing", async () => {
+    const sent: string[] = [];
+    const { screen } = mountWithProviders(ChatComposer, {
+      props: { value: "にほん", onsend: (t: string) => void sent.push(t) },
+    });
+    const box = screen.getByRole("textbox");
+    await fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    expect(sent).toEqual([]);
+  });
 });
+

@@ -69,6 +69,7 @@
   let starting = $state(false);
   // The composer's text is the tab's draft (persisted with the layout).
   let draft = $state(untrack(() => tab.draft ?? ""));
+  let composer = $state<ReturnType<typeof ChatComposer> | null>(null);
   $effect(() => {
     const text = draft;
     const timer = setTimeout(() => (tab.draft = text || undefined), 300);
@@ -239,8 +240,10 @@
       conversation.loaded = true;
       await chat.send(thread.id, message, { options: optionValues, ...extras });
     } catch (err) {
-      // Nothing was sent: give the text back instead of losing it.
-      draft = message;
+      // Nothing was sent: give the text back — its chips with it — instead
+      // of losing it.
+      if (composer) composer.load(message, extras.attachments ?? []);
+      else draft = message;
       tab.draft = message;
       toastError(err);
     } finally {
@@ -383,7 +386,9 @@
         </div>
       {/if}
       <ChatComposer
+        bind:this={composer}
         bind:value={draft}
+        draftKey={tab.id}
         disabled={!agentId || starting}
         autofocus={active}
         placeholder={i18n.t("chat.startPlaceholder")}

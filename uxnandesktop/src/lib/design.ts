@@ -442,6 +442,19 @@ export const chat = {
   pillLabelTight: "min-w-0 truncate @max-[24rem]/composer:hidden",
   /** What waits above the composer — open approvals and questions, the queue. */
   dock: "mb-2 flex max-h-[45vh] flex-col gap-2 overflow-y-auto uxnan-scroll",
+  /** An image or file inside a message's text — in the composer and in the
+   *  sent bubble alike: a small token on the line, its thumbnail or type
+   *  glyph and its name, lifted off the surface by a hairline. */
+  attachmentChip:
+    "mx-px inline-flex h-[18px] max-w-60 translate-y-px select-none items-center gap-1 rounded-md bg-background/70 py-0 pl-px pr-1.5 align-top text-xs leading-[18px] text-foreground ring-1 ring-border/70 dark:bg-foreground/[0.07]",
+  /** The chip's thumbnail (an image) or glyph frame (a file). */
+  attachmentChipThumb: "size-4 shrink-0 rounded-[3px] object-cover",
+  attachmentChipGlyph: "size-3.5 shrink-0 text-muted-foreground",
+  /** The ✕ that takes a chip out of the composer. */
+  attachmentChipRemove:
+    "-mr-1 flex size-4 shrink-0 cursor-default items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground",
+  /** The image a chip's hover card shows whole. */
+  attachmentPreview: "block max-h-72 max-w-full rounded-md object-contain",
   /** A message's hover actions (copy) and time, revealed with its row. */
   messageMeta:
     "flex h-5 items-center gap-1 text-[11px] text-muted-foreground/70 opacity-0 transition-opacity group-hover-message:opacity-100 group-focus-within-message:opacity-100",

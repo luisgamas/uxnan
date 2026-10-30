@@ -86,7 +86,7 @@ export interface SendOptions {
    * for the phone.
    */
   command?: AgentCommandInvocation;
-  /** Images for the agent to see (only when it advertises `images`). */
+  /** The message's images and files, in the order of the markers in its text. */
   attachments?: TurnAttachment[];
 }
 
@@ -654,7 +654,7 @@ export class ChatStore {
     const conversation = this.conversation(threadId);
     const clientTurnId = crypto.randomUUID();
     // The bubble shows what history will: the command as typed or the text,
-    // with the images beside it — the bridge stores the same.
+    // with its images and files where they sit — the bridge stores the same.
     const shown = command ? `/${command.name}${command.args ? ` ${command.args}` : ''}` : trimmed;
     // The bridge names the conversation from its first message itself. A
     // command carries no text: the bridge resolves it (as for the phone).

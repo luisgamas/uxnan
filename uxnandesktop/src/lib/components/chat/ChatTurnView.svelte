@@ -27,8 +27,6 @@
   import ChatBlock from "./ChatBlock.svelte";
   import ChatMessageMeta from "./ChatMessageMeta.svelte";
   import ChatWorkGroup from "./ChatWorkGroup.svelte";
-  import ChatImages from "./ChatImages.svelte";
-  import ChatFiles from "./ChatFiles.svelte";
   import { useChat } from "$lib/bridge/chat.svelte";
   import {
     assistantOf,
@@ -36,6 +34,8 @@
     userText,
     type Conversation,
   } from "$lib/bridge/conversation.svelte";
+  import { plainTextOf } from "$lib/bridge/composerAttachments";
+  import { sentChips } from "$lib/bridge/inlineMessage";
   import {
     changedFiles,
     formatElapsed,
@@ -71,18 +71,11 @@
   const chatStore = useChat();
 
   const prompt = $derived(userText(turn));
-  /** The images the user sent with the message, kept by the bridge. */
-  const images = $derived(
-    userAttachments(turn)
-      .filter((a) => a.name === undefined && a.mimeType.startsWith("image/"))
-      .map((a) => ({ id: a.id, load: () => chatStore.attachment(threadId, a.id) })),
-  );
-  /** And the files: every other attachment, named. */
-  const sentFiles = $derived(
-    userAttachments(turn)
-      .filter((a) => a.name !== undefined || !a.mimeType.startsWith("image/"))
-      .map((a) => ({ id: a.id, name: a.name ?? a.id, bytes: a.bytes })),
-  );
+  /** The images and files the user's message carries, kept by the bridge and
+   *  drawn where they sit in its text. */
+  const chips = $derived(sentChips(userAttachments(turn), (id) => chatStore.attachment(threadId, id)));
+  /** What copying the message takes: its words, each attachment as `[name]`. */
+  const promptPlain = $derived(plainTextOf(prompt, chips));
   const assistant = $derived(assistantOf(turn));
   const streaming = $derived(conversation.activeTurnId === turn.id);
   const answered = $derived(turn.status !== "queued" && turn.status !== "cancelled");
@@ -167,16 +160,14 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-  {#if prompt || images.length > 0 || sentFiles.length > 0}
+  {#if prompt || chips.length > 0}
     <div class="group/message flex flex-col items-end gap-0.5">
-      {#if images.length > 0}
-        <ChatImages {images} class={cn("max-w-[85%]", prompt && "mb-1")} />
-      {/if}
-      <ChatFiles files={sentFiles} class={cn(prompt && "mb-1")} />
-      {#if prompt}
-        <ChatUserText text={prompt} class={cn(turn.status === "cancelled" && "opacity-60")} />
-      {/if}
-      <ChatMessageMeta text={prompt} at={turn.createdAt} align="end" />
+      <ChatUserText
+        text={prompt}
+        attachments={chips}
+        class={cn(turn.status === "cancelled" && "opacity-60")}
+      />
+      <ChatMessageMeta text={promptPlain} at={turn.createdAt} align="end" />
       {#if joinedRun}
         <p class={cn(text.meta, "flex items-center gap-1")}>
           <Icon icon={CornerDownRightIcon} class={cn(icon.status, "shrink-0")} />

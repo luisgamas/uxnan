@@ -3,21 +3,13 @@
 // bridge writes it under that name where the agent can open it. Images keep
 // their own path (`imageAttachment.ts`), scaled like the phone's.
 
-import type { TurnAttachment } from '$shared/models/workspace';
+import type { ComposerAttachment } from './composerAttachments';
 
 /** The largest file a message carries: the bridge's `MAX_ATTACHMENT_BYTES`. */
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 /** How many files one message may carry. */
 export const MAX_FILES = 10;
-
-/** A file waiting in the composer. */
-export interface ComposerFile {
-  id: string;
-  name: string;
-  bytes: number;
-  attachment: TurnAttachment;
-}
 
 /** What the desktop's `fs_read_attachment` answers for a picked file. */
 export interface ReadFile {
@@ -37,9 +29,10 @@ export function isImageName(name: string): boolean {
 }
 
 /** A file read from disk, ready to send. */
-export function fileFromRead(read: ReadFile): ComposerFile {
+export function fileFromRead(read: ReadFile): ComposerAttachment {
   return {
     id: crypto.randomUUID(),
+    kind: 'file',
     name: read.name,
     bytes: read.bytes,
     attachment: {
@@ -52,7 +45,7 @@ export function fileFromRead(read: ReadFile): ComposerFile {
 }
 
 /** A dropped or pasted file, ready to send; rejects one past {@link MAX_FILE_BYTES}. */
-export async function fileFromBlob(blob: Blob, name: string): Promise<ComposerFile> {
+export async function fileFromBlob(blob: Blob, name: string): Promise<ComposerAttachment> {
   if (blob.size > MAX_FILE_BYTES) {
     throw new Error(`${name} is larger than ${MAX_FILE_BYTES / (1024 * 1024)} MB`);
   }

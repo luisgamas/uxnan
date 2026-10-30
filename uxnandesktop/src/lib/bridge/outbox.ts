@@ -12,11 +12,13 @@
 
 import type { AgentCommandInvocation } from '$shared/agents/agent-capabilities';
 import type { TurnAttachment } from '$shared/models/workspace';
+import { countAttachmentMarkers, stripAttachmentMarkers } from '$shared/models/inline-attachments';
 import { isLocalTarget, type TargetId } from '$lib/target';
 
 const KEY = 'uxnan.chat.outbox';
 
-/** Everything `turn/send` needs to send the message again. */
+/** Everything `turn/send` needs to send the message again: its text (or
+ *  command) holds one marker per attachment, in order. */
 export interface SendRequest {
   text?: string;
   command?: AgentCommandInvocation;
@@ -53,14 +55,14 @@ function writeAll(all: Stored): void {
     else localStorage.setItem(KEY, json(all));
   } catch {
     // Images can outgrow the storage quota; the words are what must survive,
-    // so keep those rather than nothing.
+    // so keep those rather than nothing — without the markers of the
+    // attachments they no longer carry.
     try {
       const textOnly: Stored = {};
       for (const [threadId, entries] of Object.entries(all)) {
-        textOnly[threadId] = entries.map(({ request: { attachments: _, ...request }, ...entry }) => ({
-          ...entry,
-          request,
-        }));
+        textOnly[threadId] = entries.map((entry) =>
+          withAttachments({ ...entry, request: { ...entry.request, attachments: [] } }),
+        );
       }
       localStorage.setItem(KEY, json(textOnly));
     } catch {
@@ -80,6 +82,38 @@ function isEntry(value: unknown): value is OutboxEntry {
   );
 }
 
+/**
+ * [entry] as it can still be sent: unchanged while its text (or command) has
+ * one marker per attachment it carries, otherwise its words alone — the
+ * bridge refuses markers without their attachments.
+ */
+export function withAttachments(entry: OutboxEntry): OutboxEntry {
+  const { request } = entry;
+  const attachments = request.attachments ?? [];
+  const written = request.command ? (request.command.args ?? '') : (request.text ?? '');
+  if (countAttachmentMarkers(written) === attachments.length) {
+    if (request.attachments && attachments.length === 0) {
+      const { attachments: _, ...rest } = request;
+      return { ...entry, request: rest };
+    }
+    return entry;
+  }
+  const { attachments: _, ...rest } = request;
+  const words: SendRequest = {
+    ...rest,
+    ...(rest.text !== undefined ? { text: stripAttachmentMarkers(rest.text) } : {}),
+    ...(rest.command
+      ? {
+          command: {
+            ...rest.command,
+            ...(rest.command.args !== undefined ? { args: stripAttachmentMarkers(rest.command.args) } : {}),
+          },
+        }
+      : {}),
+  };
+  return { ...entry, text: stripAttachmentMarkers(entry.text), request: words };
+}
+
 /** Where a thread's messages wait: under its id for this machine's bridge,
  *  under `ssh:<host>/<id>` for a host's own — one machine's outbox is never
  *  replayed into another's bridge, even should two threads share an id. */
@@ -92,7 +126,7 @@ export function outboxKey(target: TargetId, threadId: string): string {
 export function readOutbox(threadId: string): OutboxEntry[] {
   const entries = readAll()[threadId];
   return Array.isArray(entries)
-    ? entries.filter(isEntry).map((e) => ({ ...e, error: e.error ?? '' }))
+    ? entries.filter(isEntry).map((e) => withAttachments({ ...e, error: e.error ?? '' }))
     : [];
 }
 

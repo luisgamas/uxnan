@@ -14,15 +14,16 @@ export type ComposerToken =
 /**
  * The token at [caret] in [text]: a `/name` that is the message's first word
  * (a command is the whole message, never mid-sentence), or an `@path` that
- * starts a word. `undefined` otherwise.
+ * starts a word. `undefined` otherwise. An attachment chip (its marker,
+ * U+FFFC) ends a word like a space does: a token never runs into one.
  */
 export function tokenAt(text: string, caret: number): ComposerToken | undefined {
   const before = text.slice(0, caret);
-  const command = /^\/(\S*)$/.exec(before);
+  const command = /^\/([^\s\uFFFC]*)$/.exec(before);
   if (command) {
     return { kind: 'command', query: command[1] ?? '', start: 0, end: wordEnd(text, caret) };
   }
-  const mention = /(^|\s)@([^\s@]*)$/.exec(before);
+  const mention = /(^|[\s\uFFFC])@([^\s@\uFFFC]*)$/.exec(before);
   if (mention) {
     const start = before.length - (mention[2]?.length ?? 0) - 1;
     return { kind: 'mention', query: mention[2] ?? '', start, end: wordEnd(text, caret) };
@@ -31,7 +32,7 @@ export function tokenAt(text: string, caret: number): ComposerToken | undefined 
 }
 
 function wordEnd(text: string, caret: number): number {
-  const rest = /^\S*/.exec(text.slice(caret));
+  const rest = /^[^\s\uFFFC]*/.exec(text.slice(caret));
   return caret + (rest?.[0].length ?? 0);
 }
 
@@ -94,7 +95,7 @@ export function asCommand(
   text: string,
   commands: AgentCommand[],
 ): AgentCommandInvocation | undefined {
-  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  const match = /^\/([^\s\uFFFC]+)(?:\s*([\s\S]*))?$/.exec(text.trim());
   if (!match) return undefined;
   const name = match[1] ?? '';
   const known = commands.some((c) => c.name === name && c.headlessSupported !== false);
