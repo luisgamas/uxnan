@@ -16,6 +16,7 @@ import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -66,6 +67,8 @@ void main() {
   // Runs while `turn/list` is on the wire — what happens in flight.
   Future<void> Function()? duringTurnList;
   late ThreadManager manager;
+  // The params of the last call of each method.
+  late Map<String, Map<String, dynamic>?> lastParams;
 
   setUp(() {
     db = UxnanDatabase.forTesting(NativeDatabase.memory());
@@ -73,6 +76,7 @@ void main() {
     messageRepo = DriftMessageRepository(db);
     events = StreamController<DomainEvent>.broadcast();
     sentMethods = [];
+    lastParams = {};
     turnSendParams = null;
     turnListResult = null;
     turnReadResult = null;
@@ -91,6 +95,7 @@ void main() {
           await turnSendGate?.future;
         }
         if (method == 'turn/list') await duringTurnList?.call();
+        lastParams[method] = params;
         final result = switch (method) {
           'turn/send' => turnSendResult ?? <String, dynamic>{},
           'turn/list' => turnListResult ?? <String, dynamic>{},
@@ -141,6 +146,70 @@ void main() {
               'agentId': 'codex',
               'status': 'active',
               'model': 'gpt-5',
+            },
+          // `ThreadTransferResult` (shared/src/jsonrpc/methods.ts).
+          'thread/transfer' => {
+              'thread': {
+                'id': 'th-next',
+                'projectId': 'p1',
+                'title': 'Thread 1',
+                'titleSource': 'prompt',
+                'status': 'active',
+                'turnCount': 0,
+                'createdAt': 5,
+                'updatedAt': 5,
+                'agentId': params?['agentId'],
+                'cwd': '/projects/app',
+                'transfer': {
+                  'id': 'x1',
+                  'strategy': params?['strategy'] ?? 'selection',
+                  'sourceThreadId': params?['sourceThreadId'],
+                  'sourceTitle': 'Thread 1',
+                  'sourceAgentId': 'codex',
+                  'createdBy': 'user',
+                  'status': 'pending',
+                  'context': {
+                    'turns': 4,
+                    'omittedTurns': 0,
+                    'bytes': 4096,
+                    'approxTokens': 1024,
+                  },
+                },
+                'rev': 9,
+              },
+              'created': true,
+            },
+          'thread/transferContext' => {
+              'text': '[Context carried over from another conversation]',
+              'summary': {
+                'turns': 4,
+                'omittedTurns': 0,
+                'bytes': 4096,
+                'approxTokens': 1024,
+              },
+            },
+          // `ThreadSearchResult`.
+          'thread/search' => {
+              'hits': [
+                {
+                  'threadId': 'th1',
+                  'titleMatch': false,
+                  'matches': [
+                    {
+                      'turnId': 't3',
+                      'seq': 3,
+                      'role': 'assistant',
+                      'snippet': '…the codename is PELICAN-7342 and…',
+                      'matchStart': 17,
+                      'matchLength': 12,
+                    },
+                  ],
+                  'matchCount': 1,
+                },
+              ],
+              'nextCursor': '20',
+              'searched': 20,
+              'total': 73,
             },
           'turn/attachment' => {'mimeType': 'image/png', 'base64Data': 'AAEC'},
           _ => <String, dynamic>{},
@@ -1725,6 +1794,83 @@ void main() {
     final stored = await threadRepo.getThread('th-fork');
     expect(stored, isNotNull);
     expect(stored!.title, 'Thread 1 (fork)');
+  });
+
+  test(
+      'transferThread continues a conversation with another agent and '
+      'stores it', () async {
+    await seedThread();
+    await _settle();
+
+    final next = await manager.transferThread(
+      sourceThreadId: 'th1',
+      agentId: 'claude-code',
+      strategy: TransferStrategy.reference,
+      message: 'Take it from here.',
+      clientTransferId: 'k1',
+    );
+
+    expect(lastParams['thread/transfer'], {
+      'sourceThreadId': 'th1',
+      'agentId': 'claude-code',
+      'strategy': 'reference',
+      'message': 'Take it from here.',
+      'clientTransferId': 'k1',
+    });
+    expect(next.id, 'th-next');
+    expect(next.agentId, 'claude-code');
+    expect(next.transfer?.sourceThreadId, 'th1');
+    expect(next.transfer?.strategy, TransferStrategy.reference);
+    expect(next.transfer?.status, TransferStatus.pending);
+    expect(next.transfer?.context.approxTokens, 1024);
+    final stored = await threadRepo.getThread('th-next');
+    expect(stored?.transfer, next.transfer);
+    expect(stored?.deviceId, (await threadRepo.getThread('th1'))?.deviceId);
+  });
+
+  test('startThread continueFrom names the source and the strategy', () async {
+    await manager.startThread(
+      cwd: '/projects/app',
+      agentId: 'codex',
+      continueFromThreadId: 'th1',
+      continueStrategy: TransferStrategy.fork,
+    );
+    expect(lastParams['thread/start']?['continueFrom'], {
+      'threadId': 'th1',
+      'strategy': 'fork',
+    });
+  });
+
+  test('searchThreads reads the bridge page: hits, snippets and the cursor',
+      () async {
+    final page = await manager.searchThreads(
+      'pelican',
+      projectId: 'p1',
+      includeArchived: true,
+    );
+    expect(lastParams['thread/search'], {
+      'query': 'pelican',
+      'projectId': 'p1',
+      'includeArchived': true,
+    });
+    expect(page.nextCursor, '20');
+    expect(page.total, 73);
+    final match = page.hits.single.matches.single;
+    expect(
+      match.snippet.substring(
+        match.matchStart,
+        match.matchStart + match.matchLength,
+      ),
+      'PELICAN-7342',
+    );
+    expect(match.fromUser, isFalse);
+  });
+
+  test('transferContext answers what the agent reads', () async {
+    expect(
+      await manager.transferContext('th-next'),
+      startsWith('[Context carried over'),
+    );
   });
 
   test('resumeThread sends thread/resume', () async {

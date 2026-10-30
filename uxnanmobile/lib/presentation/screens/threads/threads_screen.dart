@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/devices/connect_failure_text.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_catalog_screen.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
@@ -186,10 +187,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     final projectSort = ref.watch(listSortProvider(SortLevel.projects));
     // Conversations are sorted BEFORE grouping — the grouping keeps the order
     // it is given, so one setting decides the order inside every folder.
+    final registry = ref.watch(projectsProvider(widget.deviceId));
     final groups = groupThreadsByWorkspace(
       threads: sortThreads(threads, sort, statusRank: _threadRank),
       // This PC's own registry, whichever PC we are connected to.
-      projects: ref.watch(projectsProvider(widget.deviceId)).value ?? const [],
+      projects: registry.value ?? const [],
+      // Once it is known, a conversation whose project left the registry
+      // lists under "Other conversations", never under its old folder.
+      registryLoaded: registry.hasValue,
       // Empty on a bridge without `git/worktrees`, which is exactly the
       // fallback: no table, no repository nodes, the flat list as before. The
       // table describes the CONNECTED PC's folders, so another PC's list does
@@ -210,10 +215,15 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
 
     final l10n = AppLocalizations.of(context);
     final actions = [
-      // Search all of this PC's threads (ignores the agent filter).
-      ThreadSearchAnchor(
-        threads: threads,
-        onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
+      // The catalog: every conversation of this PC, by title and by what was
+      // said (the bridge answers that part), with its filters.
+      IconSurface(
+        icon: UxIcons.search,
+        tooltip: l10n.threadsSearch,
+        onPressed: () => ConversationCatalogScreen.push(
+          context,
+          deviceId: widget.deviceId,
+        ),
       ),
       ThreadSortMenu(
         levels: {
@@ -332,6 +342,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
       [...nodes]..sort((a, b) => _compareNodes(a, b, sort));
 
   int _compareNodes(WorkspaceTreeNode a, WorkspaceTreeNode b, ListSort sort) {
+    // "Other conversations" closes the list whatever the order: it is what is
+    // left over, not a project to rank among them.
+    final aOther = a is LoneWorkspace && a.workspace.isOther;
+    final bOther = b is LoneWorkspace && b.workspace.isOther;
+    if (aOther != bOther) return aOther ? 1 : -1;
     return switch (sort) {
       ListSort.name =>
         _nodeLabel(a).toLowerCase().compareTo(_nodeLabel(b).toLowerCase()),
@@ -505,6 +520,25 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             expanded: expanded,
             onToggle: () =>
                 ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+          ),
+        );
+      case _WorkspaceRow(:final group, :final expanded, :final depth)
+          when group.isOther:
+        // Conversations whose project is no longer on the PC's list: kept,
+        // never deleted, and headed as what they are — no folder actions.
+        return Padding(
+          padding: EdgeInsets.only(
+            left: depth * kSpaceIndent,
+            bottom: UxnanSpacing.xs,
+          ),
+          child: WorkspaceGroupRow(
+            key: const ValueKey('workspace-other'),
+            group: group,
+            expanded: expanded,
+            onToggle: () =>
+                ref.read(collapsedProjectsProvider.notifier).toggle(group.key),
+            onDetails: null,
+            onNewConversation: null,
           ),
         );
       case _WorkspaceRow(:final group, :final expanded, :final depth):

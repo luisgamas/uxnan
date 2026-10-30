@@ -3812,4 +3812,224 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get turnDetailCopied => 'Copied to clipboard';
+
+  @override
+  String get spacesOtherConversations => 'Other conversations';
+
+  @override
+  String get catalogTitle => 'Conversations';
+
+  @override
+  String get catalogSearchHint => 'Search titles and what was said';
+
+  @override
+  String get catalogScopeProject => 'This project';
+
+  @override
+  String get catalogScopeAll => 'All';
+
+  @override
+  String get catalogFilterAgent => 'Agent';
+
+  @override
+  String get catalogAnyAgent => 'Any agent';
+
+  @override
+  String get catalogFilterState => 'State';
+
+  @override
+  String get catalogStateAny => 'Any state';
+
+  @override
+  String get catalogStateWorking => 'Working';
+
+  @override
+  String get catalogStateNeedsYou => 'Needs you';
+
+  @override
+  String get catalogStateDone => 'Finished, unread';
+
+  @override
+  String get catalogStateIdle => 'Idle';
+
+  @override
+  String get catalogFilterOrigin => 'Origin';
+
+  @override
+  String get catalogOriginAny => 'Started anywhere';
+
+  @override
+  String get catalogOriginPhone => 'Started on a phone';
+
+  @override
+  String get catalogOriginDesktop => 'Started on the desktop';
+
+  @override
+  String get catalogFilterArchived => 'Archived';
+
+  @override
+  String get catalogGroupToday => 'Today';
+
+  @override
+  String get catalogGroupWeek => 'This week';
+
+  @override
+  String get catalogGroupEarlier => 'Earlier';
+
+  @override
+  String get catalogTitlesSection => 'Titles';
+
+  @override
+  String get catalogContentSection => 'In what was said';
+
+  @override
+  String get catalogSearching => 'Searching the PC…';
+
+  @override
+  String get catalogLoadMore => 'Search more conversations';
+
+  @override
+  String get catalogNoResults => 'Nothing matches';
+
+  @override
+  String get catalogContentUnavailable =>
+      'Update the bridge on the PC to search what was said. Titles are searched here.';
+
+  @override
+  String get catalogContentOffline =>
+      'Connect to this PC to search what was said. Titles are searched here.';
+
+  @override
+  String get catalogSearchFailed => 'Couldn\'t search the PC';
+
+  @override
+  String get catalogMatchYou => 'You';
+
+  @override
+  String get newThreadRecent => 'Recent in this folder';
+
+  @override
+  String newThreadSeeAll(int count) {
+    return 'See all conversations ($count)';
+  }
+
+  @override
+  String get newThreadContinueFrom => 'Continue from…';
+
+  @override
+  String newThreadContinuingFrom(String title) {
+    return 'Continues ‘$title’';
+  }
+
+  @override
+  String get newThreadContinueFromPick => 'Continue from a conversation';
+
+  @override
+  String get newThreadContinueFromClear => 'Start from nothing';
+
+  @override
+  String get transferAction => 'Continue with another agent…';
+
+  @override
+  String get transferSheetTitle => 'Continue with another agent';
+
+  @override
+  String get transferSheetHint =>
+      'A new conversation is made for the agent you pick and carries this one\'s context. This one stays as it is.';
+
+  @override
+  String get transferStrategy => 'What to carry over';
+
+  @override
+  String get transferStrategySelection => 'Selected context';
+
+  @override
+  String get transferStrategySelectionHint =>
+      'The opening request, the latest exchanges in full and older ones shortened — chosen by the PC, never summarized.';
+
+  @override
+  String get transferStrategyReference => 'Just a reference';
+
+  @override
+  String get transferStrategyReferenceHint =>
+      'Only the title, the opening request and the last exchange: the new agent starts fresh.';
+
+  @override
+  String get transferStrategyFork => 'Full copy';
+
+  @override
+  String get transferStrategyForkHint =>
+      'The whole history is copied into the new conversation, and its agent gets the selected context.';
+
+  @override
+  String get transferMessage => 'First message (optional)';
+
+  @override
+  String get transferMessageHint =>
+      'Leave it empty to write it in the new conversation';
+
+  @override
+  String get transferConfirm => 'Continue';
+
+  @override
+  String get transferFailed => 'Couldn\'t continue the conversation';
+
+  @override
+  String get transferNeedsBridge =>
+      'Update the bridge on the PC to continue conversations with another agent.';
+
+  @override
+  String transferOriginTitle(String title) {
+    return 'Continued from ‘$title’';
+  }
+
+  @override
+  String transferOriginFacts(String agent, String tokens) {
+    return '$agent · ~$tokens tokens of context';
+  }
+
+  @override
+  String get transferStatusPending => 'Goes with your first message';
+
+  @override
+  String get transferStatusSent => 'Sent — waiting for the agent';
+
+  @override
+  String get transferStatusDelivered => 'Delivered';
+
+  @override
+  String get transferStatusUnverifiable =>
+      'Not proven read — goes again with your next message';
+
+  @override
+  String get transferOpenSource => 'Open the original';
+
+  @override
+  String get transferSourceGone => 'The original was deleted';
+
+  @override
+  String get transferViewContext => 'See what was carried over';
+
+  @override
+  String get transferContextTitle => 'What the agent received';
+
+  @override
+  String get transferContextFailed => 'Couldn\'t read it from the PC';
+
+  @override
+  String get continuationsTitle => 'This conversation goes on';
+
+  @override
+  String continuationLine(String agent, String title) {
+    return '$agent — ‘$title’';
+  }
+
+  @override
+  String get transferStrategySelectionShort => 'Selection';
+
+  @override
+  String get transferStrategyReferenceShort => 'Reference';
+
+  @override
+  String get transferStrategyForkShort => 'Full copy';
 }

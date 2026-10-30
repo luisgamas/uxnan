@@ -364,6 +364,46 @@ conversation yet still gets its (empty) row, and the long-press sheet of a
 project folder offers removing it from the registry (`project/remove`: the
 folder and its conversations stay).
 
+**A conversation belongs to a project by its `projectId`, not by its folder**
+(architecture/02a §5.8.17). Once the registry has loaded, a conversation whose
+`projectId` is no longer registered — the project was removed on the phone or
+on the desktop — goes to the one **Other conversations** group
+(`kOtherGroupKey`, last in the list, no folder actions) instead of heading a
+group under its old folder's name, which read as the project never having
+left. Removing a project neither deletes nor archives its conversations.
+Before the registry loads, and for a conversation stored by a bridge older than
+the registry (no `projectId`), the folder still decides.
+
+**The catalog** (`conversation_catalog_screen.dart`, architecture/02a §5.8.21)
+is every conversation of a PC in one searchable list — the search action of
+the conversations list, and *See all* on the new-conversation screen (scoped to
+its project). Filters: scope (*This project* / *All*, when opened for a
+project), agent, state (`CatalogState` over `agentRunStatusProvider`), origin
+and archived (`CatalogFilters`, pure). Empty query: grouped by age
+(`CatalogAge`: today, this week, earlier). With a query, **titles** are
+matched here over the replica, instantly, and **what was said** is asked of the
+bridge (`thread/search`, debounced 250 ms, at least two characters, paged by
+`nextCursor`) — the bridge owns the history and keeps a text digest of it,
+while the phone holds only what it opened. The two are listed apart; an
+answer to an older query is dropped. Content search needs
+`features.conversations` and a live channel to that PC; otherwise the catalog
+says so and still filters titles.
+
+**Continuing a conversation** (`conversation_continuity.dart`) is one pair of
+actions shared by the list's long-press sheet and the conversation's menu:
+*Continue with another agent…* (`ContinueConversationSheet` → `thread/transfer`
+with an idempotency key, the agent cards of the new-conversation screen, a
+model, the strategy — selected context, a reference, a full copy — and an
+optional first message) and *Fork* (`thread/fork`). Both make a NEW
+conversation; the source stays. A continuation shows where it came from at its
+start (`TransferOriginCard`: source, agent, ~tokens carried, the status the
+bridge proved — pending, sent, delivered, unverifiable — and the exact context
+via `thread/transferContext`); its source lists it after its last message
+(`ContinuationsCard`). The new-conversation screen shows the folder's three
+latest conversations, *See all (N)* and *Continue from…*
+(`thread/start { continueFrom }`). `Thread.transfer` / `continuations` are kept
+in `threads_table.continuity_json` (schema v14).
+
 A **repository level** sits above the folders when the bridge can prove one:
 `git/worktrees` (`workspaceRepoTableProvider`) says which folders are worktrees
 of which repository. It asks about the folders **on the list** — the distinct

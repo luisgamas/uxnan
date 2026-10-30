@@ -29,6 +29,26 @@ pass.
 
 **Built (DONE):**
 
+- **Conversations as a catalog** (architecture/02a §5.8.21; §5.8.17 for the
+  removed-project rule). `ConversationCatalogScreen` lists every conversation
+  of a PC with scope / agent / state / origin / archived filters and age
+  groups; titles are matched locally, what was said through `thread/search`
+  (debounced, paged). `ContinueConversationSheet` continues a conversation with
+  another agent (`thread/transfer`, idempotency key), *Fork* goes through
+  `thread/fork`, both from the list's long-press sheet and the conversation's
+  menu; `TransferOriginCard` / `ContinuationsCard` show both ends with the
+  delivery status the bridge proved, and `thread/transferContext` shows what
+  the agent received. The new-conversation screen shows the folder's three
+  latest conversations, *See all* and *Continue from…*
+  (`thread/start { continueFrom }`). Conversations whose project left the
+  registry list under *Other conversations* (`groupThreadsByWorkspace`,
+  `registryLoaded`). Continuity is persisted in `threads_table`
+  (`continuity_json`, schema v14). Gated on `features.conversations`. Covered
+  by `thread_manager_test`, `workspace_grouping_registry_test`,
+  `catalog_filters_test`, `threads_list_test` and
+  `local_database_migration_test`. **Not yet device-verified** — see
+  *App+bridge seams*.
+
 - **Bounded history** (plans/046 phase 4; architecture/02a §5.8.3 *What a
   page carries*, 02b §1.5). A reply is stored the way a page serves it: each
   run of steps (thoughts included) one `WorkRunContent` (`type: 'work'`);
@@ -569,6 +589,15 @@ shipping.
       questions the list is actually asked.
 
 ## App+bridge seams (need a live bridge to finish/verify)
+
+- [ ] **Conversations catalog and continuing a conversation, on a device.**
+      The catalog's content search, *Continue with another agent…*, *Fork*,
+      *Continue from…* and the origin/continuation cards are covered by unit
+      and widget tests against the `shared/` shapes and reviewed as golden
+      renders; they have not been driven on a phone against a live bridge
+      (search a long conversation's words, continue it with a second agent,
+      watch the status reach *Delivered*, remove a project on the desktop and
+      see its conversations move to *Other conversations*).
 
 - [ ] **Bounded history — on-device verification against a live bridge
       (plans/046).** The phone reads the summarized pages (`work` runs,

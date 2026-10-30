@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:uxnan/core/extensions/enum_ext.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
+import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
@@ -55,6 +58,7 @@ class DriftThreadRepository implements IThreadRepository {
             ),
             originKind: Value(thread.origin?.kind.name),
             originName: Value(thread.origin?.name),
+            continuityJson: Value(_continuityJson(thread)),
           ),
         );
   }
@@ -142,5 +146,31 @@ class DriftThreadRepository implements IThreadRepository {
           'kind': row.originKind,
           'name': row.originName,
         }),
+        transfer: ConversationTransfer.fromJson(_continuity(row)['transfer']),
+        continuations:
+            ThreadContinuation.listFromJson(_continuity(row)['continuations']),
       );
+
+  /// The `{ transfer?, continuations? }` a thread keeps, or null when it has
+  /// neither.
+  static String? _continuityJson(Thread thread) {
+    if (thread.transfer == null && thread.continuations.isEmpty) return null;
+    return jsonEncode({
+      if (thread.transfer case final transfer?) 'transfer': transfer.toJson(),
+      if (thread.continuations.isNotEmpty)
+        'continuations': [for (final c in thread.continuations) c.toJson()],
+    });
+  }
+
+  /// A row's stored continuity; empty when it has none or it is unreadable.
+  static Map<String, Object?> _continuity(ThreadRow row) {
+    final raw = row.continuityJson;
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, Object?> ? decoded : const {};
+    } on FormatException {
+      return const {};
+    }
+  }
 }

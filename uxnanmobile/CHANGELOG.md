@@ -5,6 +5,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Every conversation in one searchable catalog.** The search button of the
+  conversations list opens all of a PC's conversations: grouped by today, this
+  week and earlier, filtered by project, agent, state, where they were started
+  and archived. Typing searches titles at once and, through your PC, what was
+  said in every conversation — each result shows the words that matched.
+- **Continue a conversation with another agent.** From a conversation's menu,
+  or by long-pressing it in a list: pick the agent and model, what to carry
+  over (a selection of the conversation, just a reference, or a full copy) and
+  an optional first message. A new conversation is made and opened; the
+  original stays as it was. The new one says where it came from, how much
+  context went with it, and whether the agent received it — tap to read
+  exactly what it got. The original lists the conversations that continue it.
+- **New conversations start from what you were doing.** The new-conversation
+  screen shows the folder's three latest conversations, *See all* opens the
+  catalog for that project, and *Continue from…* starts the new conversation
+  with another one's context.
+
+### Changed
+
+- **Forking carries the context.** A fork's agent now receives a selection of
+  the conversation with its first message, so it knows what happened before.
+
+### Fixed
+
+- **A removed project no longer lingers on the phone.** Its conversations are
+  kept, but they now list under *Other conversations* instead of under the old
+  folder's name, which looked like the project was still there.
 
 ## [0.0.45-alpha.20261022+20261022] - 20261022
 ### Changed

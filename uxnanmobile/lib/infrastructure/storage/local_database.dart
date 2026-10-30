@@ -54,7 +54,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -173,6 +173,12 @@ class UxnanDatabase extends _$UxnanDatabase {
               _backfillMessagePreviews,
               [MessagePreviewLimits.columnLength],
             );
+          }
+          // v14: a thread keeps where it came from and what continues it
+          // (architecture/02a §5.8.21). Nothing to backfill: the next sync
+          // brings every thread's continuity with it.
+          if (from < 14) {
+            await m.addColumn(threadsTable, threadsTable.continuityJson);
           }
         },
         beforeOpen: (details) async {

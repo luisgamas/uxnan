@@ -257,6 +257,13 @@ final bridgeSupportsAgentSessionsProvider = Provider<bool>((ref) {
   return ref.watch(bridgeStatusProvider).value?.supportsAgentSessions ?? false;
 });
 
+/// Whether the connected bridge continues conversations with another agent and
+/// searches what was said in them (`features.conversations`, architecture/02a
+/// §5.8.21). False whenever we don't know: then only titles are filtered.
+final bridgeSupportsConversationsProvider = Provider<bool>((ref) {
+  return ref.watch(bridgeStatusProvider).value?.supportsConversations ?? false;
+});
+
 /// Tracks the bridge-update notices the user dismissed (by
 /// [BridgeUpdateNotice.key]) so each stays hidden until a newer bridge, or a
 /// new failure, appears. In-memory (per app session).

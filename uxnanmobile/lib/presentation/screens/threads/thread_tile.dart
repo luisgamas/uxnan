@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_continuity.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -24,7 +25,15 @@ import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A per-thread action chosen from the long-press menu.
-enum _ThreadAction { rename, copyId, archive, unarchive, delete }
+enum _ThreadAction {
+  rename,
+  copyId,
+  transfer,
+  fork,
+  archive,
+  unarchive,
+  delete,
+}
 
 /// A conversation row used by both the active threads list and the archived
 /// list. Tapping opens the conversation; long-pressing opens the actions menu
@@ -78,7 +87,7 @@ class _ThreadTileState extends ConsumerState<ThreadTile>
   /// this slot is already invisible (no abrupt disappearance). The repository
   /// delete cascades to the thread's messages/turns/draft/git-log.
   Future<void> _delete() async {
-    final confirmed = await _confirmDeleteThread(context, widget.thread);
+    final confirmed = await confirmDeleteThread(context, widget.thread);
     if (!confirmed || !mounted) return;
     // Honour the platform "reduce motion" setting: drop the row without the
     // fade-collapse (the manager clears in-memory state and the list rebuilds).
@@ -390,6 +399,9 @@ Future<void> showThreadActions(
   final l10n = AppLocalizations.of(context);
   final colors = Theme.of(context).colorScheme;
   final isArchived = thread.status == ThreadStatus.archived;
+  // Only against a bridge that continues conversations (which forks with
+  // context too); an older one keeps the actions it always had.
+  final canContinue = ref.read(bridgeSupportsConversationsProvider);
   final action = await showModalBottomSheet<_ThreadAction>(
     context: context,
     useRootNavigator: true,
@@ -418,6 +430,20 @@ Future<void> showThreadActions(
               title: Text(l10n.threadActionCopyId),
               onTap: () => Navigator.pop(context, _ThreadAction.copyId),
             ),
+            // Continuing it — with another agent, or the same one as a fork —
+            // makes a NEW conversation; this one stays (§5.8.21).
+            if (canContinue) ...[
+              ListTile(
+                leading: const UxIcon(UxIcons.altRoute),
+                title: Text(l10n.transferAction),
+                onTap: () => Navigator.pop(context, _ThreadAction.transfer),
+              ),
+              ListTile(
+                leading: const UxIcon(UxIcons.callSplit),
+                title: Text(l10n.threadActionFork),
+                onTap: () => Navigator.pop(context, _ThreadAction.fork),
+              ),
+            ],
             if (isArchived)
               ListTile(
                 leading: const UxIcon(UxIcons.unarchive),
@@ -454,6 +480,10 @@ Future<void> showThreadActions(
           SnackBar(content: Text(l10n.threadIdCopied)),
         );
       }
+    case _ThreadAction.transfer:
+      await continueWithAnotherAgent(context, ref, thread);
+    case _ThreadAction.fork:
+      await forkConversation(context, ref, thread);
     case _ThreadAction.archive:
       await ref.read(threadManagerProvider).archiveThread(thread.id);
     case _ThreadAction.unarchive:
@@ -505,7 +535,7 @@ Future<void> _promptRenameThread(
 /// The actual delete — and its exit animation — is driven by the caller so the
 /// row can animate out before the thread (and its cascading child rows) is
 /// removed.
-Future<bool> _confirmDeleteThread(
+Future<bool> confirmDeleteThread(
   BuildContext context,
   Thread thread,
 ) async {

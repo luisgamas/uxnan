@@ -30,6 +30,7 @@ import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/services/work_runs.dart';
+import 'package:uxnan/domain/value_objects/conversation_transfer.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -37,6 +38,7 @@ import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
+import 'package:uxnan/domain/value_objects/thread_search.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 
 /// Sends a JSON-RPC request and resolves with the bridge response.
@@ -880,17 +882,15 @@ class ThreadManager {
     }
   }
 
-  /// Forks [threadId] on the bridge (`thread/fork`): the bridge deep-copies the
-  /// thread and its turns into a new thread, which is persisted locally
-  /// (inheriting the source's `deviceId`) and returned so the caller can open
-  /// it. Returns null when the bridge rejects it (e.g. no fork support).
-  Future<Thread?> forkThread(String threadId, {String? newBranch}) async {
+  /// Forks [threadId] on the bridge (`thread/fork`): a copy with the same
+  /// agent — its history copied, and its first message carrying a selection
+  /// of it, since a fork's agent session starts empty (architecture/02a
+  /// §5.8.21). The new conversation is stored under the source's PC and
+  /// returned so the caller can open it; null when the bridge refuses.
+  Future<Thread?> forkThread(String threadId) async {
     final RpcMessage response;
     try {
-      response = await _sendRequest('thread/fork', {
-        'threadId': threadId,
-        if (newBranch != null && newBranch.isNotEmpty) 'newBranch': newBranch,
-      });
+      response = await _sendRequest('thread/fork', {'threadId': threadId});
     } on Object catch (error, stackTrace) {
       AppLogger.warn('thread/fork failed', error, stackTrace);
       return null;
@@ -901,11 +901,91 @@ class ThreadManager {
     }
     final result = response.result;
     if (result is! Map) return null;
-    final source = await _threadRepository.getThread(threadId);
-    final forked = _parseThread(result.cast<String, dynamic>());
-    final tagged = source?.deviceId != null
-        ? forked.copyWith(deviceId: source!.deviceId)
-        : forked;
+    return _storeContinuation(threadId, result.cast<String, dynamic>());
+  }
+
+  /// Continues [sourceThreadId] with [agentId] as a NEW conversation
+  /// (`thread/transfer`, architecture/02a §5.8.21). The source stays as it is;
+  /// the bridge prepares its context with [strategy] and the first message
+  /// carries it — [message] at once when given, otherwise the first one the
+  /// person sends. [clientTransferId] makes a retry safe: the bridge answers
+  /// the continuation already made under it. Throws [StateError] with the
+  /// bridge's reason when it refuses.
+  Future<Thread> transferThread({
+    required String sourceThreadId,
+    required String agentId,
+    String? model,
+    TransferStrategy strategy = TransferStrategy.selection,
+    String? message,
+    String? clientTransferId,
+  }) async {
+    final response = await _sendRequest('thread/transfer', {
+      'sourceThreadId': sourceThreadId,
+      'agentId': agentId,
+      if (model != null && model.isNotEmpty) 'model': model,
+      'strategy': strategy.wire,
+      if (message != null && message.trim().isNotEmpty) 'message': message,
+      if (clientTransferId != null) 'clientTransferId': clientTransferId,
+    });
+    if (response.error != null) {
+      throw StateError('thread/transfer failed: ${response.error!.message}');
+    }
+    final result = response.result;
+    final thread = result is Map ? result['thread'] : null;
+    if (thread is! Map) throw StateError('thread/transfer returned no thread');
+    return _storeContinuation(sourceThreadId, thread.cast<String, dynamic>());
+  }
+
+  /// What a continuation carries over, exactly as its agent reads it
+  /// (`thread/transferContext`); null when the bridge has none.
+  Future<String?> transferContext(String threadId) async {
+    try {
+      final response = await _sendRequest(
+        'thread/transferContext',
+        {'threadId': threadId},
+      );
+      final result = response.result;
+      final text = result is Map ? result['text'] : null;
+      return text is String ? text : null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('thread/transferContext failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// One page of conversations whose title or words match [query]
+  /// (`thread/search`, answered by the bridge from its digests —
+  /// architecture/02a §5.8.21). Pass the previous page's `nextCursor` as
+  /// [cursor] for more. Throws [StateError] when the bridge refuses.
+  Future<ThreadSearchPage> searchThreads(
+    String query, {
+    String? projectId,
+    bool includeArchived = false,
+    String? cursor,
+  }) async {
+    final response = await _sendRequest('thread/search', {
+      'query': query,
+      if (projectId != null) 'projectId': projectId,
+      if (includeArchived) 'includeArchived': true,
+      if (cursor != null) 'cursor': cursor,
+    });
+    if (response.error != null) {
+      throw StateError('thread/search failed: ${response.error!.message}');
+    }
+    return ThreadSearchPage.fromJson(response.result);
+  }
+
+  /// Stores a continuation the bridge made from [sourceThreadId] under the
+  /// source's PC, and returns it.
+  Future<Thread> _storeContinuation(
+    String sourceThreadId,
+    Map<String, dynamic> json,
+  ) async {
+    final source = await _threadRepository.getThread(sourceThreadId);
+    final made = _parseThread(json);
+    final tagged = made.copyWith(
+      deviceId: source?.deviceId ?? _currentDeviceId?.call(),
+    );
     await _threadRepository.saveThread(tagged);
     return tagged;
   }
@@ -967,6 +1047,8 @@ class ThreadManager {
     String? deviceId,
     String? worktreePath,
     String? agentSessionId,
+    String? continueFromThreadId,
+    TransferStrategy continueStrategy = TransferStrategy.selection,
   }) async {
     // The folder decides the project (the bridge registers it); a project id
     // only stands in for a folder when none is given. With [agentSessionId]
@@ -981,6 +1063,13 @@ class ThreadManager {
       if (model != null && model.isNotEmpty) 'model': model,
       if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
       if (agentSessionId != null) 'agentSessionId': agentSessionId,
+      // Continuing another conversation (§5.8.21): the bridge prepares its
+      // context and this conversation's first message carries it.
+      if (continueFromThreadId != null)
+        'continueFrom': {
+          'threadId': continueFromThreadId,
+          'strategy': continueStrategy.wire,
+        },
     });
     // The bridge MUST return the created thread (with its own id). Do NOT
     // fabricate a local id on failure: a phantom thread the bridge never
@@ -2839,6 +2928,8 @@ class ThreadManager {
           ? DateTime.fromMillisecondsSinceEpoch(createdAt)
           : null,
       origin: ThreadOrigin.fromJson(json['origin']),
+      transfer: ConversationTransfer.fromJson(json['transfer']),
+      continuations: ThreadContinuation.listFromJson(json['continuations']),
     );
   }
 
