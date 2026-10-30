@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.83] - 20261030
 ### Changed
 
 - **macOS builds move to GitHub's `macos-15` runners.** CI, the platform smoke
