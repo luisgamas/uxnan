@@ -252,10 +252,24 @@ test('thread handlers announce every change to every client, and deletion too', 
     await call('thread/delete', { threadId: fork.id });
 
     const updates = of<ThreadUpdatedParams>(notes, StreamNotification.ThreadUpdated);
+    // A fork names its source (`continuations`) and its deletion un-names it,
+    // so the source is announced both times (§5.8.21).
     assert.deepEqual(
       updates.map((u) => u.thread.id),
-      [thread.id, thread.id, thread.id, thread.id, thread.id, thread.id, fork.id],
+      [
+        thread.id,
+        thread.id,
+        thread.id,
+        thread.id,
+        thread.id,
+        thread.id,
+        fork.id,
+        thread.id,
+        thread.id,
+      ],
     );
+    assert.equal(updates[7]?.thread.continuations?.[0]?.threadId, fork.id);
+    assert.equal(updates[8]?.thread.continuations, undefined);
     assert.equal(updates[1]?.thread.title, 'Named on the desktop');
     assert.equal(updates[1]?.thread.titleSource, 'user');
     assert.equal(updates[2]?.thread.model, 'echo-large');

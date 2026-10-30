@@ -22,6 +22,23 @@ async function revOf(store: ThreadStore, threadId: string): Promise<number | und
   return (await store.getThread(threadId)).rev;
 }
 
+/** A fork as `thread/fork` makes it (the same agent, the history copied). */
+async function forkOf(store: ThreadStore, threadId: string, now: number) {
+  const source = await store.getThread(threadId);
+  const made = await store.transferThread(
+    {
+      sourceThreadId: threadId,
+      strategy: 'fork',
+      projectId: source.projectId,
+      agentId: source.agentId ?? 'echo',
+      createdBy: 'user',
+      context: { text: 'ctx', summary: { turns: 0, omittedTurns: 0, bytes: 3, approxTokens: 1 } },
+    },
+    now,
+  );
+  return made.thread;
+}
+
 function newStore(): { store: ThreadStore; baseDir: string } {
   const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
   return { store: new ThreadStore(new DaemonState(baseDir)), baseDir };
@@ -950,7 +967,7 @@ test('fork copies a thread; unknown ids reject', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
   await store.startTurn(thread.id, 'q', 2);
-  const fork = await store.forkThread(thread.id, 3);
+  const fork = await forkOf(store, thread.id, 3);
   assert.notEqual(fork.id, thread.id);
   assert.equal(fork.turnCount, 1);
 
@@ -1321,7 +1338,7 @@ test('a fork never continues the original native session', async () => {
   const store = new ThreadStore(new DaemonState(baseDir));
   const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
   await store.setAgentSession(thread.id, 'native-1');
-  const fork = await store.forkThread(thread.id, 3);
+  const fork = await forkOf(store, thread.id, 3);
   assert.equal((await store.getHistorySource(fork.id)).agentSessionId, undefined);
   assert.equal((await store.getHistorySource(thread.id)).agentSessionId, 'native-1');
   await rmrf(baseDir);
@@ -1348,7 +1365,7 @@ test('a user message keeps its images: served back, carried by a fork, gone with
     // Only an id a message of this thread names is served — never a path.
     await assert.rejects(store.readAttachment(thread.id, '../threads/x.json'), RpcError);
 
-    const fork = await store.forkThread(thread.id, 3);
+    const fork = await forkOf(store, thread.id, 3);
     assert.equal((await store.readAttachment(fork.id, `${turnId}-0.png`)).base64Data, png);
 
     await store.deleteThread(thread.id);

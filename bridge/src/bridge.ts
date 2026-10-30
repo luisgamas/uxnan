@@ -85,6 +85,7 @@ import { NetworkWatcher } from './transport/network-watcher.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
+import { ThreadSearch } from './conversation/thread-search.js';
 import { UsageScanner } from './usage/usage-scan.js';
 import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
@@ -321,6 +322,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (count > 0) logger.info(`cancelled ${count} queued turn(s) left by a previous run`);
     })
     .catch((err: unknown) => logger.warn(`failed to close orphaned queued turns: ${String(err)}`));
+  // A conversation's carried-over context that went with a turn this process
+  // never saw end cannot be proven read: the next message carries it again.
+  await threadStore
+    .recoverInterruptedTransfers()
+    .catch((err: unknown) => logger.warn(`failed to recover transfers: ${String(err)}`));
   // Assigned once the context and router exist (below); read lazily by the
   // pairing payload and the context.
   let relayService: RelayService | undefined;
@@ -740,6 +746,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     sessionRegistry,
     trustStore,
     threadStore,
+    threadSearch: new ThreadSearch(threadStore),
     metrics,
     usage,
     sessionHistory,

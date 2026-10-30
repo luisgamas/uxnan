@@ -1,11 +1,23 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.8.3
+> **Version:** 1.9.0
 > **Fecha:** 2026-10-29
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.9.0):** conversations are a catalog (§5.8.21). A
+> conversation continues with another agent — or the same one, as a fork — as a
+> NEW conversation (`thread/transfer`, `thread/fork`, `thread/start {
+> continueFrom }`): the bridge builds a deterministic, budgeted selection of the
+> source (≤64 000 bytes, the person's message never shortened), records both
+> ends (`Thread.transfer`, `Thread.continuations`) and proves delivery against
+> the real turn (`pending → sent → delivered`, `unverifiable` after a restart).
+> `thread/search` answers titles and what was said from a per-conversation text
+> digest the store keeps, bounded per answer. A removed project's conversations
+> stay and list under "No project"; they never bring it back (§5.8.17), and the
+> desktop's project mirror converges on removals made while it was closed.
+>
 > **Executive summary (1.8.3):** a bridge can come inside Uxnan Desktop
 > (§5.8.18, *Instalaciones*). Every desktop installer carries a private bridge
 > runtime — the official Node.js binary and `uxnan-bridge` from the same commit,
@@ -3341,6 +3353,19 @@ solo registra carpetas dentro de las raices de exploracion; el desktop
 cualquiera. `thread/start` decide el proyecto por la carpeta (`cwd`), nunca al
 reves, y lo registra.
 
+**Las conversaciones de un proyecto quitado (2026-10).** Quitar un proyecto no
+borra ni archiva sus conversaciones; su `projectId` sigue siendo el id que el
+proyecto tendria. Una conversacion **pertenece a un proyecto cuando su
+`projectId` esta en el registro** — nunca por su carpeta: las demas se listan
+juntas bajo "Sin proyecto" / "Otras conversaciones" en ambas apps (antes el
+telefono agrupaba por carpeta y un proyecto quitado seguia apareciendo con el
+nombre de su carpeta). Continuar o transferir una de esas conversaciones
+(§5.8.21) no vuelve a registrar el proyecto; solo **empezar** una conversacion
+nueva en esa carpeta lo hace (`thread/start`). Agregar de nuevo el proyecto
+devuelve sus conversaciones a su grupo (mismo id). Cerrar la pestana de un chat
+en el desktop es una accion de vista (como cerrar una ventana) y no oculta nada
+en el telefono; lo compartido es **archivar**.
+
 **Carpeta de inicio compartida** (`settings/get|set`, `home` en
 `daemon-config.json`, `stream/settings/updated`): de donde parte la exploracion
 para agregar proyectos, sin importar desde que carpeta se ejecuto `start`. Por
@@ -3467,7 +3492,13 @@ bridge, la lista dice "Enlazado con Uxnan Desktop en <maquina>"; una
 conversacion nacida en el desktop lleva su marca. En el desktop, `ChatStore`
 (`uxnandesktop/src/lib/bridge/chat.svelte.ts`) aplica la misma regla y
 `projectMirror` une los proyectos del desktop con el registro
-(`uxnandesktop/architecture/02e-bridge-integration.md`).
+(`uxnandesktop/architecture/02e-bridge-integration.md`). Converge sin confiar en
+que llego cada baja: recuerda de forma duradera, por `storeId`, que proyectos
+locales ya vio en el registro; en cada sincronizacion completa, uno espejado que
+el registro ya no tiene se quito en otro lado y se quita tambien en el desktop
+(antes la union lo volvia a publicar: el primer `sync/changes` de cada arranque
+del desktop es un `reset` sin lapidas); solo se publica lo agregado en el
+desktop sin conexion, y una baja hecha sin conexion espera en el mismo registro.
 
 **Acciones sin conexion: gana la mas reciente.** Ningun cliente depende de
 otro: el desktop chatea con el bridge sin telefono y el telefono sin desktop, y
@@ -3738,6 +3769,90 @@ tambien: funciona con solo el telefono.
   la respuesta es el texto tras el ultimo bloque o el ultimo fin de respuesta
   del agente; lo anterior se pliega tras "Worked for…") las vistas salen de lo
   plegado, en el orden en que se mostraron, y abren la respuesta visible.
+
+#### 5.8.21 Conversaciones como catalogo: continuar con otro agente y buscar (2026-10)
+
+Ningun CLI continua la sesion nativa de otro, y una conversacion nunca cambia de
+agente (`thread.agentId` es inmutable). Pasar el trabajo a otro agente es, por
+eso, una conversacion **nueva** cuya primera entrega lleva el contexto de la
+original, preparado por el bridge — dueno del historial — y registrado en ambos
+extremos. Contratos: `shared/src/models/thread.ts` (`ConversationTransfer`,
+`ThreadContinuation`, `ThreadSearch*`), `shared/src/jsonrpc/methods.ts`;
+codigo: `bridge/src/handlers/conversation-handler.ts`,
+`bridge/src/conversation/{transfer-context,thread-digest,thread-search}.ts`,
+`ThreadStore.transferThread`. Puerta: `BridgeFeatures.conversations`.
+
+**Un solo camino, tres entradas.** `thread/transfer { sourceThreadId, agentId?,
+model?, title?, strategy?, message?, clientTransferId?, createdBy? } → { thread,
+created, turnId? }` continua en la carpeta del origen con cualquier agente;
+`thread/fork { threadId, clientTransferId? }` es lo mismo con el agente del
+origen y estrategia `fork`; `thread/start { …, continueFrom: { threadId,
+strategy?, clientTransferId? } }` lo hace desde "nueva conversacion", con la
+carpeta, el agente y el modelo elegidos alli (no junto con `agentSessionId`).
+Las tres terminan en `ThreadStore.transferThread`: una transaccion crea el hilo
+nuevo (`Thread.transfer`: id, estrategia, origen, titulo y agente del origen,
+`createdBy`, estado, resumen del contexto), lo nombra en el origen
+(`Thread.continuations`) y escribe antes el contexto en
+`threads/<id>/transfer.md`. Borrar la continuacion la quita de su origen; borrar
+el origen deja la referencia como historia. Con `clientTransferId`, repetir la
+llamada sobre el mismo origen devuelve la misma continuacion y no envia nada. Un
+transfer no registra de nuevo un proyecto quitado (§5.8.17).
+
+**El contexto: una seleccion determinista, no un resumen.** Se construye al
+crear la continuacion (sin modelo, en milisegundos), a partir de los digests del
+origen (abajo), y `thread/transferContext` lo devuelve exacto:
+- `selection` (por defecto): la peticion inicial; desde el intercambio mas
+  nuevo hacia atras, completos mientras quepan en tres cuartos del presupuesto,
+  los anteriores recortados a 240 caracteres por mensaje, hasta
+  `TRANSFER_CONTEXT_MAX_BYTES` (64 000 bytes, ~16k tokens); los archivos que
+  editaron; cuantos turnos antiguos quedaron fuera.
+- `reference`: titulo, peticion inicial y ultimo intercambio, recortados.
+- `fork`: copia el historial completo al hilo nuevo (lo que ve la persona) y el
+  agente recibe una `selection` (lo que sabe: su sesion empieza vacia).
+El texto de la persona **nunca se recorta**: va completo despues del contexto.
+Se guarda tal cual en el turno; el agente recibe contexto + texto (la
+reconciliacion con el historial nativo no lo duplica, como con adjuntos y
+comandos: el turno nativo cae dentro de la ejecucion del bridge).
+
+**Entrega probada, no supuesta.** El primer turno que **corre** reclama el
+contexto (`claimTransferContext`, `pending|unverifiable → sent` con su
+`turnId`); al terminar con respuesta del agente pasa a `delivered`; si falla o se
+detiene antes de que el agente diga algo vuelve a `pending` y lo lleva el
+siguiente mensaje; si el bridge se reinicia con `sent`, queda `unverifiable` y
+lo lleva el siguiente mensaje. "Continuar en terminal" de una continuacion =
+entregar primero con un mensaje (en el chat) y despues retomar la sesion nativa
+del agente — que ya contiene el contexto — con la ruta existente
+(`agentResume.ts`); Zero no tiene retoma interactiva y no lo ofrece. Medido con
+el adaptador real de los 7 agentes: todos aceptan un primer turno de 60 KB y lo
+recuerdan en el segundo (`bridge/docs/agents.md` → *Continuing a conversation*).
+
+**Busqueda (`thread/search { query, projectId?, includeArchived?, limit?,
+cursor? }`).** Titulos y lo que se dijo (mensajes de la persona y texto de las
+respuestas; no comandos, salidas ni diffs). Las respuestas salen de
+`threads/<id>/digest.json` — por turno asentado: prompt, texto de la respuesta
+(≤32 000 caracteres cada uno), archivos editados, numero de comandos — que el
+`ThreadStore` reescribe cada vez que escribe el archivo de un turno (un solo
+escritor); una conversacion anterior a los digests lo construye una vez, turno a
+turno y fuera del lock. Nunca se lee un turno para buscar. Pliega mayusculas y
+acentos; cada palabra debe estar en el mismo mensaje; recorre de la mas reciente
+a la mas antigua y cada respuesta lleva a lo sumo 50 conversaciones y 250 ms de
+busqueda (`nextCursor` sigue), cediendo el event loop entre conversaciones; una
+cache de digests plegados de 32 MiB hace barata la busqueda mientras se teclea.
+Medido (73 conversaciones, 162,6 MB, la mayor de 45 MB / 8 883 pasos): primera
+busqueda sin digests 990 ms en 4 respuestas (peor bloqueo del event loop 17 ms),
+en caliente 25–93 ms, tras reiniciar 79 ms; el contexto de la conversacion de
+45 MB, 2 ms. Los clientes filtran titulos al instante y piden el contenido al
+bridge.
+
+**Superficies.** Desktop: pestana "Conversaciones" (todas o las del proyecto,
+busqueda, filtros agente/estado/origen/archivadas, por edad, detalles con
+"Continuar en chat / en terminal / con otro agente", bifurcar y las acciones de
+`chatActions`), la pantalla de chat nuevo muestra las 3 recientes + "Ver todas"
+y "Continuar de…", la cabecera del chat ofrece bifurcar, continuar con otro
+agente e informacion de sesion, y el inicio de la conversacion dice de donde
+viene y a donde siguio. Movil: la misma busqueda, filtros y acciones en la lista
+de conversaciones y su menu. `uxnan-cli`: `chat fork`, `chat forward`, `chat
+search`, `chat start --continue-from` (catalogo de control, mismo camino).
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

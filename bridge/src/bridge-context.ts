@@ -26,6 +26,7 @@ import type { PresenceRegistry } from './presence/presence-registry.js';
 import type { BridgeHost, PairingCode, PairingPayload } from '@uxnan/shared';
 import type { AgentInstalls } from './agents/agent-installs.js';
 import type { ViewStore } from './views/view-store.js';
+import type { ThreadSearch } from './conversation/thread-search.js';
 
 export interface BridgeContext {
   readonly version: string;
@@ -40,6 +41,8 @@ export interface BridgeContext {
   readonly trustStore: TrustStore;
   /** Persistent conversation store. */
   readonly threadStore: ThreadStore;
+  /** What was said in every conversation, searched from their digests (`thread/search`). */
+  readonly threadSearch: ThreadSearch;
   /** Bridge-owned profile metrics (survivable stats + tamper-proof backup). */
   readonly metrics: MetricsService;
   /** What the agent CLIs on this PC spent, from their own transcripts (`usage/summary`). */

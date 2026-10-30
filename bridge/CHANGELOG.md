@@ -4,6 +4,47 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Continue a conversation with another agent** (architecture/02a §5.8.21).
+  `thread/transfer`, `thread/fork` and `thread/start { continueFrom }` are one
+  path (`handlers/conversation-handler.ts` → `ThreadStore.transferThread`): a
+  NEW conversation for the agent chosen, recorded on both ends
+  (`Thread.transfer`, `Thread.continuations`), idempotent by
+  `clientTransferId`. Its context is a deterministic selection of the source
+  built by the bridge (`conversation/transfer-context.ts`: the opening request,
+  the newest exchanges whole, older ones cut to 240 characters, the files edited,
+  ≤64 000 bytes; `reference` carries only a pointer; `fork` copies the history
+  and carries a selection), written to `threads/<id>/transfer.md` and readable
+  with `thread/transferContext`. The first turn that runs carries it before the
+  person's words — never shortened — and its status is proven against that turn:
+  `sent`, then `delivered` when the agent answered, back to `pending` when the
+  turn failed before it did, `unverifiable` after a restart (the next message
+  carries it again). `thread/transfer { message }` sends a first message at once.
+  Verified live through the real adapters: all seven agents take a 60 KB first
+  turn and recall it on the next (`docs/agents.md` → *Continuing a
+  conversation*); a Claude Code conversation continued with Codex and OpenCode
+  answered from the carried context.
+- **`thread/search`: titles and what was said, in every conversation.** Answered
+  from `threads/<id>/digest.json` — per settled turn, the prompt, the reply's
+  text, the files edited and the commands counted — which the store rewrites
+  with each turn file (one writer) and builds once, turn by turn and outside its
+  lock, for a conversation stored before it. A search never reads a turn; each
+  answer covers ≤50 conversations and ≤250 ms and yields between conversations.
+  Measured on 73 conversations / 162.6 MB (the largest 45 MB, 8 883 steps):
+  first search 990 ms over 4 answers with a 17 ms worst event-loop block, warm
+  25–93 ms, after a restart 79 ms.
+- `BridgeFeatures.conversations`.
+
+### Changed
+
+- `thread/fork` copies the history **and** its first message carries a selection
+  of it, so the fork's agent — whose session starts empty — knows what happened.
+- `turn/send`'s runtime options (agent, model, folder, access mode, the
+  terminal-hold check, the desktop's tools) live in one place
+  (`handlers/turn-runtime.ts`), shared with the first message a transfer sends.
+- Deleting a continuation takes it off its source's `continuations`.
+
 
 ### Added
 - A bridge can come **inside Uxnan Desktop**: a private Node runtime the app

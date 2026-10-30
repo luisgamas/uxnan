@@ -31,14 +31,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   AccessMode,
+  ConversationTransfer,
   Message,
   MessageAttachment,
   MessageRole,
   Thread,
   ThreadList,
   ThreadOrigin,
+  ThreadContinuation,
   ThreadStatus,
   ThreadTitleSource,
+  TransferContextSummary,
+  TransferStrategy,
   Turn,
   TurnAttachment,
   TurnAttachmentData,
@@ -58,6 +62,13 @@ import { provisionalTitle } from '../agents/thread-title.js';
 import { SyncLedger } from '../sync/sync-ledger.js';
 import { blockIdOf, isRunning, settleBlock } from '../adapters/content-blocks.js';
 import { canonicalTurn, isAgentWake } from './session-history.js';
+import {
+  digestOfTurn,
+  parseDigest,
+  type DigestEntry,
+  type ThreadDigestFile,
+  type TurnDigest,
+} from './thread-digest.js';
 import { utcDayKey } from '../metrics/day.js';
 import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
 
@@ -200,6 +211,10 @@ interface ThreadMeta {
   titleAttempts?: number;
   /** Which client started it. */
   origin?: ThreadOrigin;
+  /** The conversation it continues and what was carried over (`Thread.transfer`). */
+  transfer?: StoredTransfer;
+  /** The conversations that continue it (`Thread.continuations`). */
+  continuations?: ThreadContinuation[];
   /** Sync revision of the last change to its summary. */
   rev?: number;
   /**
@@ -227,6 +242,12 @@ interface ThreadMeta {
 
 interface ThreadRecord extends ThreadMeta {
   turns: TurnRecord[];
+}
+
+/** A continuation's origin as stored: the wire shape plus its idempotency key. */
+interface StoredTransfer extends ConversationTransfer {
+  /** The caller's `clientTransferId`. Private: what makes a retry find this one. */
+  key?: string;
 }
 
 /** A thread with every turn's messages loaded ({@link Tx.whole}). */
@@ -384,6 +405,32 @@ export interface StartThreadInput {
   accessMode?: AccessMode;
 }
 
+/** A conversation that continues another ({@link ThreadStore.transferThread}). */
+export interface TransferThreadInput {
+  sourceThreadId: string;
+  strategy: TransferStrategy;
+  /** The project and folder it runs in (the source's, unless asked otherwise). */
+  projectId: string;
+  cwd?: string;
+  agentId: string;
+  model?: string;
+  /** Its name; absent → the source's (a fork's with " (fork)"), provisional. */
+  title?: string;
+  origin?: ThreadOrigin;
+  accessMode?: AccessMode;
+  createdBy: 'user' | 'agent';
+  /** The caller's idempotency key (`clientTransferId`). */
+  key?: string;
+  /** The context its first message carries, already built from the source's digest. */
+  context: { text: string; summary: TransferContextSummary };
+}
+
+export interface TransferThreadResult {
+  thread: Thread;
+  /** False when [TransferThreadInput.key] found the continuation already made. */
+  created: boolean;
+}
+
 /** Runtime config the AgentManager needs to drive a thread's turns. */
 export interface ThreadRuntime {
   agentId?: string;
@@ -435,6 +482,8 @@ export class ThreadStore {
   #mutation: Mutation | undefined;
   /** The layout of each turn able to stream in this process ({@link turnKey}). */
   readonly #layouts = new Map<string, SegmentLayout>();
+  /** How many times this process wrote each conversation's digest ({@link digestVersion}). */
+  readonly #digestVersions = new Map<string, number>();
 
   constructor(
     state: DaemonState,
@@ -927,6 +976,15 @@ export class ThreadStore {
           projection.turns,
         );
       }
+      // A continuation that is gone is no longer one: its source stops naming
+      // it. (A deleted source stays named by its continuations, as history.)
+      const sourceId = thread.transfer?.sourceThreadId;
+      const source = sourceId !== undefined ? tx.find(sourceId) : undefined;
+      if (source?.continuations?.some((c) => c.threadId === threadId)) {
+        source.continuations = source.continuations.filter((c) => c.threadId !== threadId);
+        if (source.continuations.length === 0) delete source.continuations;
+        this.#bump(source);
+      }
       tx.remove(threadId);
       for (const turn of thread.turns) this.#layouts.delete(turnKey(threadId, turn.id));
       this.#deleted.push({ threadId, rev: this.#ledger.tombstone('thread', threadId) });
@@ -948,32 +1006,224 @@ export class ThreadStore {
     });
   }
 
-  async forkThread(threadId: string, now: number): Promise<Thread> {
-    const fork = await this.#mutate(async (tx) => {
-      const source = await tx.view(threadId);
-      const copy = structuredCloneValue(source) as StoredThread;
-      copy.id = randomUUID();
-      copy.title = `${source.title} (fork)`;
-      copy.createdAt = now;
-      copy.updatedAt = now;
-      for (const turn of copy.turns) turn.threadId = copy.id;
-      // The fork is a conversation of its own: it must never continue the
-      // original's native session, or both would write into one transcript
-      // (and every agent now resumes the session a thread stores). Its first
-      // turn opens a session of its own.
-      // FOR-DEV: fork the native session instead, so the fork keeps the agent's
-      // memory of the copied history (bridge/FOR-DEV.md → "A fork keeps its
-      // agent's memory"); needs each CLI's fork measured on the driven surface.
-      delete copy.agentSessionId;
-      delete copy.nativeSource;
-      tx.add(copy);
-      this.#bump(copy);
-      return { thread: toThread(copy), projection: metricProjection(copy) };
+  /**
+   * Starts a conversation that continues [input.sourceThreadId]
+   * (architecture/02a §5.8.21) — `thread/transfer`, `thread/fork` and
+   * `thread/start { continueFrom }` all end here. One transaction makes the new
+   * conversation (with the source's history copied when the strategy is
+   * `fork`), records where it came from (`transfer`) and names it on the
+   * source (`continuations`), so both conversations tell the same story. The
+   * context its first message carries is written beside it first
+   * (`transfer.md`). With a key a continuation of the same source already
+   * made under it is returned instead, unchanged.
+   */
+  async transferThread(input: TransferThreadInput, now: number): Promise<TransferThreadResult> {
+    const made = await this.#mutate(async (tx) => {
+      if (input.key !== undefined) {
+        // Read, not reached: a lookup must not mark every index for writing.
+        const existing = [...(this.#loaded?.values() ?? [])].find(
+          (t) =>
+            t.transfer?.key === input.key && t.transfer?.sourceThreadId === input.sourceThreadId,
+        );
+        if (existing) return { thread: toThread(existing), created: false, projection: undefined };
+      }
+      const source = tx.thread(input.sourceThreadId);
+      const id = randomUUID();
+      const transfer: StoredTransfer = {
+        id: randomUUID(),
+        strategy: input.strategy,
+        sourceThreadId: source.id,
+        sourceTitle: source.title,
+        ...(source.agentId !== undefined ? { sourceAgentId: source.agentId } : {}),
+        createdBy: input.createdBy,
+        status: 'pending',
+        context: { ...input.context.summary },
+        ...(input.key !== undefined ? { key: input.key } : {}),
+      };
+      const created: StoredThread = {
+        id,
+        projectId: input.projectId,
+        title: input.title ?? (input.strategy === 'fork' ? `${source.title} (fork)` : source.title),
+        // A name the caller chose is final; the source's is provisional, so the
+        // bridge still names the continuation after its first exchange.
+        titleSource: input.title !== undefined ? 'user' : 'prompt',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+        turns: [],
+        agentId: input.agentId,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        ...(input.origin !== undefined ? { origin: { ...input.origin } } : {}),
+        ...(input.accessMode !== undefined ? { accessMode: input.accessMode } : {}),
+        transfer,
+      };
+      if (input.strategy === 'fork') {
+        // The whole history, copied: what the person sees. Never the source's
+        // native session — the fork's agent opens its own, and its first
+        // message carries the selection that tells it what happened.
+        // FOR-DEV: fork the native session instead, so the fork keeps the
+        // agent's own memory (bridge/FOR-DEV.md → "A fork keeps its agent's own
+        // memory"); needs each CLI's fork measured on the driven surface.
+        const whole = await tx.view(source.id);
+        created.turns = structuredCloneValue(whole.turns) as StoredTurn[];
+        for (const turn of created.turns) {
+          turn.threadId = id;
+          delete turn.nativeHistoryTurnId;
+        }
+        created.lastSeq = whole.lastSeq ?? whole.turns.length;
+      }
+      // The context is on disk before anything names it.
+      await this.#state.writeTransferContext(id, input.context.text);
+      tx.add(created);
+      this.#ledger.revive('thread', id);
+      this.#bump(created);
+      const continuations = source.continuations ?? [];
+      source.continuations = [
+        ...continuations,
+        {
+          threadId: id,
+          transferId: transfer.id,
+          agentId: input.agentId,
+          strategy: input.strategy,
+        },
+      ];
+      this.#bump(source);
+      return { thread: toThread(created), created: true, projection: metricProjection(created) };
     });
-    // The fork's messages keep their images: they are the same messages.
-    await this.#state.copyAttachments(threadId, fork.thread.id);
-    await this.#sendMetrics(fork.projection);
-    return fork.thread;
+    if (made.created && input.strategy === 'fork') {
+      // The copied messages keep their images: they are the same messages.
+      await this.#state.copyAttachments(input.sourceThreadId, made.thread.id);
+    }
+    await this.#sendMetrics(made.projection);
+    return { thread: made.thread, created: made.created };
+  }
+
+  /**
+   * The context a continuation's next turn carries, when it still has to go:
+   * marks it `sent` with [turnId] and answers its text. `undefined` when the
+   * conversation continues nothing, or its context already reached the agent.
+   */
+  claimTransferContext(threadId: string, turnId: string): Promise<string | undefined> {
+    return this.#mutate(async (tx) => {
+      const thread = tx.find(threadId);
+      const transfer = thread?.transfer;
+      if (!thread || !transfer) return undefined;
+      if (transfer.status !== 'pending' && transfer.status !== 'unverifiable') return undefined;
+      const text = await this.#state.readTransferContext(threadId);
+      if (text === null) return undefined;
+      transfer.status = 'sent';
+      transfer.turnId = turnId;
+      this.#bump(thread);
+      return text;
+    });
+  }
+
+  /**
+   * After a restart: a context that went with a turn this process never saw
+   * end cannot be proven read — `unverifiable`, and the next message carries
+   * it again. Returns how many.
+   */
+  recoverInterruptedTransfers(): Promise<number> {
+    return this.#mutate(async (tx) => {
+      let count = 0;
+      for (const candidate of [...(this.#loaded?.values() ?? [])]) {
+        if (candidate.transfer?.status !== 'sent') continue;
+        const thread = tx.thread(candidate.id);
+        if (!thread.transfer) continue;
+        thread.transfer.status = 'unverifiable';
+        this.#bump(thread);
+        count += 1;
+      }
+      return count;
+    });
+  }
+
+  /** What a continuation carries over, as its agent reads it (`thread/transferContext`). */
+  async transferContext(
+    threadId: string,
+  ): Promise<{ text: string; summary: TransferContextSummary }> {
+    const thread = requireThread(await this.#records(), threadId);
+    const text = thread.transfer ? await this.#state.readTransferContext(threadId) : null;
+    if (!thread.transfer || text === null) {
+      throw notFound(`conversation ${threadId} continues no other`);
+    }
+    return { text, summary: { ...thread.transfer.context } };
+  }
+
+  /**
+   * The digest of each of [threadId]'s settled turns, oldest first — what a
+   * search scans and a continuation selects from ({@link TurnDigest}). Read
+   * from `digest.json`; a turn missing from it (a conversation stored before
+   * digests existed) is read once, digested and kept. That catch-up runs
+   * outside the store's lock, one turn at a time, so it never holds up a
+   * streaming conversation; only merging what it found takes the lock.
+   */
+  async digestTurns(threadId: string): Promise<DigestEntry[]> {
+    const record = requireThread(await this.#records(), threadId);
+    let digest = parseDigest(await this.#state.readThreadDigest(threadId)) ?? {
+      v: 1 as const,
+      turns: {},
+    };
+    const missing = record.turns.filter(
+      (turn) => TERMINAL_TURN_STATUSES.has(turn.status) && digest.turns[turn.id] === undefined,
+    );
+    if (missing.length > 0) {
+      const found = new Map<string, TurnDigest>();
+      for (const turn of missing) {
+        const loaded = await this.#loadTurn(record, turn);
+        found.set(turn.id, digestOfTurn(loaded, loaded.messages));
+        this.#evict();
+        // Give every other request its turn between two reads.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      digest = await this.#exclusive(async () => {
+        const current = parseDigest(await this.#state.readThreadDigest(threadId)) ?? {
+          v: 1 as const,
+          turns: {},
+        };
+        const live = this.#loaded?.get(threadId);
+        if (!live) return current;
+        const kept = new Set(live.turns.map((t) => t.id));
+        let changed = false;
+        for (const [turnId, entry] of found) {
+          if (!kept.has(turnId) || current.turns[turnId] !== undefined) continue;
+          current.turns[turnId] = entry;
+          changed = true;
+        }
+        if (changed) await this.#writeDigest(threadId, current);
+        return current;
+      });
+    }
+    const out: DigestEntry[] = [];
+    for (const turn of record.turns) {
+      const entry = digest.turns[turn.id];
+      if (entry) out.push({ ...entry, turnId: turn.id });
+    }
+    return out;
+  }
+
+  /**
+   * Bumps each time [threadId]'s digest is written, so a reader holding a copy
+   * (the search's) knows to read it again. 0 until this process wrote one.
+   */
+  digestVersion(threadId: string): number {
+    return this.#digestVersions.get(threadId) ?? 0;
+  }
+
+  async #writeDigest(threadId: string, digest: ThreadDigestFile): Promise<void> {
+    await this.#state.writeThreadDigest(threadId, JSON.stringify(digest));
+    this.#digestVersions.set(threadId, this.digestVersion(threadId) + 1);
+  }
+
+  /** Runs [fn] holding the store's lock, as a transaction would, without one. */
+  #exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.#lock.then(fn);
+    this.#lock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   async startTurn(
@@ -1277,6 +1527,7 @@ export class ThreadStore {
       settleRunningSteps(turn, true);
       this.#layouts.delete(turnKey(threadId, turnId));
       const thread = tx.thread(threadId);
+      settleTransfer(thread, turn);
       thread.updatedAt = now;
       this.#bump(thread);
     });
@@ -1302,6 +1553,7 @@ export class ThreadStore {
         turn.completedAt = now;
         settleRunningSteps(turn, false);
         this.#layouts.delete(turnKey(threadId, turnId));
+        settleTransfer(tx.thread(threadId), turn);
       } else {
         header.status = status;
       }
@@ -1787,6 +2039,10 @@ export class ThreadStore {
 
   async #persist(m: Mutation, thread: ThreadRecord, written: Set<string>): Promise<void> {
     const disk = this.#threadDisk(thread.id);
+    // The digest follows the turn files: whatever rewrote a turn rewrites its
+    // entry, and a turn that goes takes its entry with it.
+    const digested = new Map<string, TurnDigest>();
+    const dropped: string[] = [];
     // A turn that ended keeps no journal, whatever ended it: its events are
     // folded into its file here, so no mutation can leave one behind.
     for (const turn of thread.turns) {
@@ -1811,6 +2067,7 @@ export class ThreadStore {
         continue;
       }
       await this.#state.writeTurnFile(thread.id, turn.id, text);
+      digested.set(turn.id, digestOfTurn(turn, messages));
       known ??= this.#turnDisk(thread.id, turn.id);
       known.digest = digest;
       known.bytes = Buffer.byteLength(text);
@@ -1834,6 +2091,16 @@ export class ThreadStore {
       if (kept.has(turnId)) continue;
       await this.#state.removeTurnFiles(thread.id, turnId);
       disk.turns.delete(turnId);
+      dropped.push(turnId);
+    }
+    if (digested.size > 0 || dropped.length > 0) {
+      const digest = parseDigest(await this.#state.readThreadDigest(thread.id)) ?? {
+        v: 1 as const,
+        turns: {},
+      };
+      for (const [turnId, entry] of digested) digest.turns[turnId] = entry;
+      for (const turnId of dropped) delete digest.turns[turnId];
+      await this.#writeDigest(thread.id, digest);
     }
   }
 
@@ -2119,8 +2386,54 @@ function toThread(thread: Frozen<ThreadRecord>): Thread {
     ...(thread.accessMode !== undefined ? { accessMode: thread.accessMode } : {}),
     ...(thread.titleSource !== undefined ? { titleSource: thread.titleSource } : {}),
     ...(thread.origin !== undefined ? { origin: { ...thread.origin } } : {}),
+    ...(thread.transfer !== undefined ? { transfer: wireTransfer(thread.transfer) } : {}),
+    ...(thread.continuations !== undefined && thread.continuations.length > 0
+      ? { continuations: thread.continuations.map((c) => ({ ...c })) }
+      : {}),
     ...(thread.rev !== undefined ? { rev: thread.rev } : {}),
   };
+}
+
+/** A stored continuation's origin as clients see it: without its private key. */
+function wireTransfer(transfer: Frozen<StoredTransfer>): ConversationTransfer {
+  const { key: _key, context, ...rest } = transfer;
+  return { ...rest, context: { ...context } };
+}
+
+/**
+ * Where a continuation's context stands once the turn that carried it ended
+ * (`ConversationTransfer.status`): `delivered` when the agent answered — it
+ * read the message — and back to `pending` when the turn failed or was
+ * stopped before it said anything, so the next message carries it. Returns
+ * whether it changed.
+ */
+function settleTransfer(thread: ThreadRecord, turn: StoredTurn): boolean {
+  const transfer = thread.transfer;
+  if (transfer?.status !== 'sent' || transfer.turnId !== turn.id) return false;
+  if (turn.status === 'completed' || turnHasReply(turn)) {
+    transfer.status = 'delivered';
+  } else {
+    transfer.status = 'pending';
+    delete transfer.turnId;
+  }
+  return true;
+}
+
+/**
+ * Whether the agent said or did anything in [turn] — text, a thought, a step.
+ * The bridge's own notes (a failure's reason, a warning: `system` blocks) are
+ * not the agent's: a turn that holds only those never reached it.
+ */
+function turnHasReply(turn: StoredTurn): boolean {
+  return turn.messages.some(
+    (m) =>
+      m.role === 'assistant' &&
+      (m.text.trim().length > 0 ||
+        (m.segments ?? []).some(
+          (segment) =>
+            !isTextSegment(segment) && (segment as { type?: unknown } | null)?.type !== 'system',
+        )),
+  );
 }
 
 /**

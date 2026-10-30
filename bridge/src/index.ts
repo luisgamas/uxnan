@@ -303,7 +303,11 @@ export {
   type StartThreadInput,
   type ThreadRuntime,
   type NativeHistoryReconcileResult,
+  type TransferThreadInput,
+  type TransferThreadResult,
 } from './conversation/thread-store.js';
+export { ThreadSearch, type ThreadSearchOptions } from './conversation/thread-search.js';
+export { buildTransferContext, type TransferContext } from './conversation/transfer-context.js';
 export {
   AgentManager,
   type AgentManagerOptions,

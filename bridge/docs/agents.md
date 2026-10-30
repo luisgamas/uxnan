@@ -690,6 +690,43 @@ deduplicated, while divergent final text becomes another response instead of
 replacing content already streamed. Mobile excludes boundary metadata from
 copy/previews and uses it only to collapse earlier responses after completion.
 
+### Continuing a conversation with another agent
+
+`thread/transfer`, `thread/fork` and `thread/start { continueFrom }`
+(architecture/02a §5.8.21) make a new conversation whose **first turn that
+runs** carries a context the bridge built from the source — prepended to the
+person's text in `AgentManager.#runTurn` (`withTransferContext`), so it reaches
+every agent through the same prompt path as any message. No adapter does
+anything of its own for it. Measured 2026-10-29 through the real adapters on a
+scratch bridge (`thread/start` + `turn/send`, cheapest model, the most
+restrictive access mode offered): a first turn carrying a ≈4 KB and a ≈60 KB
+context (the selection's ceiling is 64 000 bytes) with one planted fact, then a
+second turn asking for it again.
+
+| Agent (CLI) | Model | How the prompt reaches the CLI | 4 KB | 60 KB | 2nd turn recalls | Continue in a terminal |
+|---|---|---|---|---|---|---|
+| Claude Code 2.1.312 | `haiku` | one stream-json line on stdin | ✓ 4.3 s | ✓ 6.0 s | ✓ (a new process with `--resume`) | `--resume <id>` |
+| Codex 0.163.0 | `gpt-6-luna` | app-server `turn/start` (JSON-RPC, stdio) | ✓ 3.2 s | ✓ 3.5 s | ✓ | `codex resume <id>` |
+| OpenCode 2.2.0 | `opencode/big-pickle` | HTTP `POST /api/session/:id/prompt` | ✓ 8.8 s | ✓ 3.6 s | ✓ | `opencode --session <id>` |
+| pi 1.4.0 | OpenRouter `nemotron-3-ultra:free` | RPC `prompt` on stdin | ✓ 4.5 s | ✓ 4.0 s | ✓ | `--session <id>` |
+| Antigravity 1.4.7 | `gemini-3.8-flash` | one NDJSON `user` event on stdin | ✓ 8.5 s | ✓ 4.5 s | ✓ | `agy --conversation <id>` |
+| Grok 1.0.67 | `grok-4.7` | ACP `session/prompt` (stdio) | ✓ 8.0 s | ✓ 7.3 s | ✓ | `--resume <id>` |
+| Zero 0.10.0 | `openrouter/free` | ACP `session/prompt` (stdio) | ✓ 24.8 s | ✓ 2.6 s | ✓ | — (no interactive resume) |
+
+No prompt travels on a command line, so no length limit applies (only the
+auto-title one-shot uses argv, with its text clipped to ≤900 characters). Each
+CLI's own session store held the planted fact afterwards, so **continuing in a
+terminal** is: deliver the context with a first message through the bridge,
+then resume that session with the desktop's existing path (`agentResume.ts`) —
+for every agent but Zero. Starting the TUI with the context as its initial
+prompt is not used: up to 64 KB on argv breaks on Windows.
+
+End to end on 2026-10-29: a Claude Code (`haiku`) conversation that was told a
+codename was continued with Codex and with OpenCode by `thread/transfer`; both
+answered it from the carried context, both transfers reached `delivered`, a
+retry under the same `clientTransferId` made nothing, and `thread/search` found
+the codename in all three conversations.
+
 ### Listing an agent's sessions
 
 `agent/sessions` (architecture/02a §5.8.19) asks each adapter for its CLI's

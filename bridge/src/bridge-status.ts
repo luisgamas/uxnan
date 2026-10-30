@@ -48,6 +48,9 @@ const BRIDGE_FEATURES = {
   // Every agent's sessions in a folder, conversations that continue one, and
   // the sessions a desktop terminal holds (architecture/02a §5.8.19).
   agentSessions: true,
+  // Continuing a conversation with another agent, and searching what was said
+  // (architecture/02a §5.8.21).
+  conversations: true,
 } as const;
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {

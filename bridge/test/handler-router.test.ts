@@ -21,6 +21,7 @@ function fakeContext(): BridgeContext {
     sessionRegistry: new SessionRegistry(),
     trustStore: {} as BridgeContext['trustStore'],
     threadStore: {} as BridgeContext['threadStore'],
+    threadSearch: {} as BridgeContext['threadSearch'],
     metrics: {} as BridgeContext['metrics'],
     usage: {} as BridgeContext['usage'],
     sessionHistory: {} as BridgeContext['sessionHistory'],
