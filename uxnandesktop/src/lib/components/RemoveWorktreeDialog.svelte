@@ -23,6 +23,7 @@
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { i18n } from "$lib/i18n";
+  import { worktreeIdentity } from "$lib/worktree-label";
   import { cn } from "$lib/utils";
   import { focus, icon, panel, row as designRow, text } from "$lib/design";
   import { removalDefaults, type RemovalWarning } from "$lib/worktree-removal";
@@ -49,7 +50,9 @@
   let error = $state<string | null>(null);
   let busy = $state(false);
 
-  const label = $derived(row.branch ?? i18n.t("worktree.detached"));
+  const label = $derived(
+    worktreeIdentity({ branch: row.branch, path: row.path, head: row.head }).title,
+  );
   const status = $derived(projects.status(row.path));
   /** The workspace key for this row — the pair (machine, path), which is what
    *  terminals are filed under. */

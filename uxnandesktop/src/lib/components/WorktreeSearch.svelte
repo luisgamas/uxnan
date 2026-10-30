@@ -8,6 +8,7 @@
   import { cn } from "$lib/utils";
   import { focus, icon, overlay, row as rowStyle, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import { worktreeIdentity } from "$lib/worktree-label";
   import VirtualList from "./VirtualList.svelte";
   import DialogHints from "./DialogHints.svelte";
   import { Icon } from "$lib/components/ui/icon";
@@ -123,7 +124,7 @@
             </span>
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class={cn("truncate font-medium", text.body)}>
-                {w.branch || i18n.t("worktree.detached")}
+                {worktreeIdentity({ branch: w.branch || null, path: w.path, head: null }).title}
               </span>
               <span class={cn("truncate", text.meta)}>{w.path}</span>
             </span>

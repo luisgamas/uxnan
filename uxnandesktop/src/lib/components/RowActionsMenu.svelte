@@ -39,6 +39,8 @@
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+  import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+  import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
   import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
   import { bridges } from "$lib/bridge/client.svelte";
 
@@ -50,8 +52,10 @@
     onChangeIcon,
     onEditNote,
     onTogglePin,
+    onToggleHidden,
     onSleep,
     pinned = false,
+    hidden = false,
   }: {
     /** The worktree/project folder every action targets. */
     path: string;
@@ -72,12 +76,18 @@
     onEditNote?: () => void;
     /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
     onTogglePin?: () => void;
+    /** When provided, adds a hide / show-again item (child worktrees that can be
+     *  hidden, or that already are). Omitted for the primary worktree and for one
+     *  that is pinned or ready to close — hiding those would do nothing. */
+    onToggleHidden?: () => void;
     /** When provided, adds a "Sleep workspace" item while the workspace has
      *  live terminals (the caller owns the working-agent confirm). Waking is
      *  handled here directly — it needs no confirmation. */
     onSleep?: () => void;
     /** Whether the target is currently pinned (drives the item's label/icon). */
     pinned?: boolean;
+    /** Whether the target is currently hidden (drives the item's label/icon). */
+    hidden?: boolean;
   } = $props();
 
   const profiles = $derived(app.terminalProfiles);
@@ -209,16 +219,29 @@
     <ContextMenu.Separator />
   {/if}
 
-  {#if onTogglePin}
-    <ContextMenu.Item class={text.menu} onclick={onTogglePin}>
-      {#if pinned}
-        <Icon icon={PinOffIcon} />
-        {i18n.t("common.unpin")}
-      {:else}
-        <Icon icon={PinIcon} />
-        {i18n.t("common.pin")}
-      {/if}
-    </ContextMenu.Item>
+  {#if onTogglePin || onToggleHidden}
+    {#if onTogglePin}
+      <ContextMenu.Item class={text.menu} onclick={onTogglePin}>
+        {#if pinned}
+          <Icon icon={PinOffIcon} />
+          {i18n.t("common.unpin")}
+        {:else}
+          <Icon icon={PinIcon} />
+          {i18n.t("common.pin")}
+        {/if}
+      </ContextMenu.Item>
+    {/if}
+    {#if onToggleHidden}
+      <ContextMenu.Item class={text.menu} onclick={onToggleHidden}>
+        {#if hidden}
+          <Icon icon={ViewIcon} />
+          {i18n.t("worktree.show")}
+        {:else}
+          <Icon icon={ViewOffIcon} />
+          {i18n.t("worktree.hide")}
+        {/if}
+      </ContextMenu.Item>
+    {/if}
     <ContextMenu.Separator />
   {/if}
 

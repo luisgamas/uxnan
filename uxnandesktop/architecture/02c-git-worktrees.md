@@ -404,6 +404,39 @@ respuesta se descarta en cuanto los commits de la rama se mueven.
 
 El `RemoveOutcome` reporta el destino de cada rama (borrada / squash-merge / conservada-sin-mergear / **borrado local rechazado** / error remoto) para el toast compuesto. Los dos casos de error se avisan aparte del toast de éxito, porque el worktree sí se eliminó.
 
+### How the left panel shows a worktree: its name, its project, and hiding it
+
+Presentation only — none of this touches git or the worktree on disk. The pure
+logic is `worktree-label.ts` and `sidebar-visibility.ts` (frontend); the one
+owner of the state is the `projects` store, persisted in `AppSettings`
+(`hiddenWorktrees`, `sidebarShowHidden` → Rust `state.json`).
+
+- **Name.** `worktreeIdentity({ branch, path, head, remote })`: the branch if
+  there is one; otherwise the **folder name**, with a hint — `detached at <7-char
+  sha>`, or `branch not read` when the project lives on a host and git could not
+  answer. One function names a worktree for the row, the hover card, the palette
+  and the dialogs.
+- **Project identity.** In the views that do not group by project (by status, by
+  review) the row's second line leads with the project's icon and name, so two
+  worktrees on `main` of different projects are told apart. The tree keeps it
+  implicit.
+- **Hidden worktrees.** A reversible *view state*, not a verdict (hiding is not
+  closing). The persisted list is the user's decision; visibility is **derived**
+  from live facts on each read and never written back, so a late notification
+  cannot leave a row stuck. A hidden worktree is drawn anyway while it is
+  selected, while an agent in it is working / waiting / has an unread result
+  (attention class ≤ 3), when it is ready to close (`isClosable`), or when it is
+  pinned; a worktree an agent surfaced **lingers** after the agent goes quiet
+  (its result was read) until the user selects another worktree
+  (`nextLingering`, in-memory state kept by the `projects` store), so a row never
+  leaves under the pointer; the primary worktree cannot be hidden; a search and "show hidden" lift
+  the filter. *Hide idle* takes only worktrees `classifyCompletion` calls `inert`.
+  The panel states what it holds back (header pill, per-project line, view menu)
+  and `sidebarEmptyState` separates *no projects* / *no match* / *all hidden* /
+  *no worktrees yet*. Same behaviour in all three views, because they read the one
+  `visibleChildWorktrees`.
+
+
 ---
 
 ## 3. Capa de Ejecución Git (Backend Rust)

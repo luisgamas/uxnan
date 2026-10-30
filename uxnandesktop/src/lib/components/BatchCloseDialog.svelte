@@ -11,6 +11,7 @@
   import { Spinner } from "$lib/components/ui/spinner";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
+  import { worktreeIdentity } from "$lib/worktree-label";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { planBatchClose, type SkippedEntry } from "$lib/worktree-batch-close";
@@ -31,7 +32,7 @@
   );
 
   function rowLabel(row: WorktreeRow): string {
-    return row.branch ?? i18n.t("worktree.detached");
+    return worktreeIdentity({ branch: row.branch, path: row.path, head: row.head }).title;
   }
 
   function skipText(s: SkippedEntry<WorktreeRow>): string {

@@ -213,6 +213,10 @@ export const shell = {
   rightPanelHeader: "bg-sidebar",
   laneHeader: "flex min-h-7 min-w-0 flex-1 items-center gap-1 rounded px-1 text-left",
   laneAction: "min-h-7 shrink-0 rounded px-1.5 py-0.5",
+  /** A count pill in the sidebar's section header ("needs you", "hidden"): the
+   *  shape only — the caller picks the tone, so the two pills read as siblings. */
+  sidebarPill:
+    "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 font-medium tabular-nums transition-colors",
   sidebarBrand: "flex select-none items-center gap-2 px-3",
   /** Full-screen workspace header; its actions use the full appbar height. */
   workspaceHeader: "flex items-center gap-2 px-3",
@@ -256,6 +260,11 @@ export const row = {
   agentActiveIndicator: "absolute -left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-foreground",
   agentSpaceDetail: "ml-2 flex min-w-0 flex-col pl-1.5",
   projectSummary: "flex w-full items-center gap-2 pb-1.5 pl-8 pr-2 text-left",
+  /** A quiet one-line note at the foot of a sidebar group that doubles as its
+   *  action ("3 hidden · Show"). Muted until hovered: it must be findable, not
+   *  competitive with the rows it summarizes. */
+  sidebarNote:
+    "flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md px-2.5 text-left text-xs text-muted-foreground/80 transition-colors hover:bg-foreground/[0.05] hover:text-foreground",
   /** Virtualized worktree-switcher result; kept at the exact 52px estimate. */
   searchResult: "flex h-[52px] w-full items-center gap-3 rounded-lg px-2.5 text-left transition-colors",
   /** Settings control row: label/description left, control right on wide panes. */

@@ -13,6 +13,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   built on Apple Silicon, the Intel one cross-compiled; the minimum macOS the
   app supports is unchanged.
 
+### Added
+
+- **Hide a worktree from the left panel, and bring it back.** *Hide from the
+  list* in a worktree's right-click menu, and *Hide idle worktrees* in a
+  project's ⋯ menu (it takes only the ones the panel already calls quiet: clean,
+  nothing unpushed, no agent). It is a reversible view choice, not a removal:
+  the worktree stays on disk, in the search palette and in the agents' control
+  surface, and the panel says what it is holding back — a pill in the header
+  (*N hidden*, one press to show them dimmed, again to hide them), a
+  *3 hidden · Show* line under each project, and the same switch in the view
+  menu, with *Show all again*. It works in the tree, by status and by review. A
+  hidden worktree comes back by itself while it is **selected**, while an agent
+  in it **works, waits on you or has an unread result**, and when it is **ready
+  to close** — so the *Ready to close* lane and its count are never thinned out
+  — and goes again when that stops. One that an agent surfaced stays put after
+  its result is read, until you select another worktree, so a row never leaves
+  from under the pointer. Pinning one shows it again; searching looks
+  through hidden ones; the primary worktree can't be hidden. The list is saved
+  with the rest of the panel (`hiddenWorktrees`, `sidebarShowHidden`).
+- **The panel says why it is empty.** *Every worktree here is hidden* (with a
+  *Show N hidden* button) is no longer the same message as *No projects yet*,
+  and a project with no worktrees known yet says so.
+
+### Changed
+
+- **A worktree with no branch is named after its folder, not "(detached)".** A
+  checkout of a tag, a commit or a PR used to read *(detached)* everywhere, so
+  three of them were indistinguishable. The card, the hover card, the search
+  palette and the remove / note / batch-close dialogs now show the folder name,
+  with *detached at 9fceb02* as the second line (and *branch not read* for a
+  host git couldn't be asked on).
+- **Every card in the by-status and by-review views names its project.** The
+  second line leads with the project's own icon and its name, a notch stronger
+  than before, so two worktrees on `main` of different projects read apart at a
+  glance. The tree keeps it implicit. Below 15rem the reason a worktree has no
+  branch gives way to the project name.
+
 ## [0.0.82] - 20261022
 ### Changed
 

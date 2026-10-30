@@ -6,6 +6,8 @@
 // shared search query, the collapse state of the two sections, and the
 // currently-active worktree. All git mutations go through `$lib/api`.
 
+import { untrack } from "svelte";
+
 import {
   branchIntegrated,
   branchList,
@@ -72,6 +74,7 @@ import { agentStatus } from "$lib/state/agentStatus.svelte";
 import { resolveAgentDisplay } from "$lib/state/agentDisplay";
 import {
   applyManualOrder,
+  attentionClass,
   buildStatusGroups,
   mostUrgentStatus,
   partitionPinned,
@@ -89,6 +92,17 @@ import {
 import type { RemovalInputs } from "$lib/worktree-removal";
 import { planBatchClose } from "$lib/worktree-batch-close";
 import { buildReviewGroups, type ReviewGroup, type ReviewPr } from "$lib/sidebar-review";
+import {
+  canHide,
+  canHideIdle,
+  hidesImmediately,
+  isRowShown,
+  isSuppressed,
+  nextLingering,
+  pruneHidden,
+  SURFACING_ATTENTION,
+  type VisibilityInputs,
+} from "$lib/sidebar-visibility";
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
@@ -339,7 +353,9 @@ class ProjectsStore {
   visibleChildWorktrees(repoId: string): WorktreeEntry[] {
     const children = this.childWorktrees(repoId);
     const q = this.query.trim().toLowerCase();
-    if (!q) return children;
+    // Without a search, the hidden ones are held back; a search looks through
+    // them (see `isRowShown`), so the matching below needs no such filter.
+    if (!q) return children.filter((w) => this.isRowShown(w));
     const repo = app.repos.find((r) => r.id === repoId);
     const projectMatches =
       !!repo &&
@@ -607,12 +623,205 @@ class ProjectsStore {
     void app.persistSettings();
   }
 
-  /** Toggle a worktree's pinned state and persist. */
+  /** Toggle a worktree's pinned state and persist. Pinning a hidden worktree
+   *  shows it again: a pin says "keep this in front of me", and the two cannot
+   *  both stand. */
   toggleWorktreePin(path: string): void {
     const cur = app.settings.pinnedWorktrees ?? [];
-    app.settings.pinnedWorktrees = cur.includes(path)
-      ? cur.filter((x) => x !== path)
-      : [...cur, path];
+    const pinning = !cur.includes(path);
+    app.settings.pinnedWorktrees = pinning ? [...cur, path] : cur.filter((x) => x !== path);
+    if (pinning && this.isHidden(path)) {
+      app.settings.hiddenWorktrees = (app.settings.hiddenWorktrees ?? []).filter((x) => x !== path);
+    }
+    void app.persistSettings();
+  }
+
+  // --- Hidden worktrees (left sidebar) ---------------------------------------
+  //
+  // Hiding is a reversible **view state**, not a verdict — see
+  // `sidebar-visibility.ts` for the rules and why. This store is its one owner:
+  // the list lives in `app.settings.hiddenWorktrees` (persisted like every other
+  // panel preference), "show hidden" in `sidebarShowHidden`, and nothing else
+  // keeps a copy. Whether a hidden row is *drawn right now* is derived from live
+  // facts on every read, never written back.
+
+  /** Whether a worktree (by path) is in the hidden list — the user's decision,
+   *  regardless of whether the panel is currently holding it back. */
+  isHidden(path: string): boolean {
+    return app.settings.hiddenWorktrees?.includes(path) ?? false;
+  }
+
+  /** Whether the panel draws hidden worktrees (dimmed) instead of holding them
+   *  back. Persisted. */
+  get showHidden(): boolean {
+    return app.settings.sidebarShowHidden ?? false;
+  }
+
+  /** Show or stop showing the hidden worktrees, and persist. */
+  setShowHidden(on: boolean): void {
+    if (this.showHidden === on) return;
+    app.settings.sidebarShowHidden = on;
+    void app.persistSettings();
+  }
+
+  /** The facts `sidebar-visibility.ts` decides from, read for one worktree. */
+  #visibilityInputs(row: { path: string; branch: string | null; isMain?: boolean }): VisibilityInputs {
+    const meta = this.workspaceMeta(row.path, row.branch ?? baseName(row.path));
+    return {
+      hidden: this.isHidden(row.path),
+      isMain: row.isMain === true,
+      pinned: this.isWorktreePinned(row.path),
+      active: this.activeWorktreePath === row.path,
+      attention: attentionClass(meta.status, meta.unread),
+      closable: isClosable(this.completion(row)),
+      lingering: this.#lingering.includes(row.path),
+    };
+  }
+
+  /** Hidden worktrees an agent surfaced and that stay shown until the user
+   *  selects another worktree (see `nextLingering`). In memory only: it is the
+   *  panel's courtesy to a result being read, not something to restore. */
+  #lingering = $state<string[]>([]);
+  /** The selected worktree as of the last [`syncLingering`], to tell "the user
+   *  moved on" from "something else changed". */
+  #lingerActive: string | null = null;
+
+  /** Keep the linger list in step with the world. Called from an effect in the
+   *  sidebar — it must run *while* an agent is surfacing a hidden worktree, so
+   *  the row is already lingering when the agent goes quiet. Reads are tracked
+   *  (so the effect reruns on any change that matters); the list itself is
+   *  compared untracked so writing it cannot re-trigger the effect. */
+  syncLingering(): void {
+    const hidden = app.settings.hiddenWorktrees ?? [];
+    const activePath = this.activeWorktreePath;
+    const attentive = hidden.filter((path) => {
+      const meta = this.workspaceMeta(path, baseName(path));
+      return attentionClass(meta.status, meta.unread) <= SURFACING_ATTENTION;
+    });
+    untrack(() => {
+      const next = nextLingering(this.#lingering, {
+        activePath,
+        previousActivePath: this.#lingerActive,
+        hidden,
+        attentive,
+      });
+      this.#lingerActive = activePath;
+      const same =
+        next.length === this.#lingering.length && next.every((p, i) => p === this.#lingering[i]);
+      if (!same) this.#lingering = next;
+    });
+  }
+
+  /** Whether the panel draws this worktree under the current search and
+   *  "show hidden" setting. Cheap for the common case — nothing hidden. */
+  isRowShown(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
+    if (!this.isHidden(row.path)) return true;
+    return isRowShown(this.#visibilityInputs(row), {
+      showHidden: this.showHidden,
+      searching: this.query.trim().length > 0,
+    });
+  }
+
+  /** Whether the panel is holding this worktree back right now: hidden, and
+   *  nothing (selection, an agent at work, a finished PR…) surfaces it. */
+  isHeldBack(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
+    return this.isHidden(row.path) && isSuppressed(this.#visibilityInputs(row));
+  }
+
+  /** Whether the menus may offer "Hide" for this worktree. */
+  canHideWorktree(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
+    return canHide(this.#visibilityInputs(row));
+  }
+
+  /** Worktrees the panel is holding back in one project. Independent of "show
+   *  hidden" and of the search: it is the number a "N hidden" label reports. */
+  hiddenCountOf(repoId: string): number {
+    if (!(app.settings.hiddenWorktrees?.length ?? 0)) return 0;
+    return this.childWorktrees(repoId).filter((w) => this.isHeldBack(w)).length;
+  }
+
+  /** Worktrees the panel is holding back across every project — the count in the
+   *  header. */
+  get hiddenCount(): number {
+    if (!(app.settings.hiddenWorktrees?.length ?? 0)) return 0;
+    let n = 0;
+    for (const repo of app.repos) n += this.hiddenCountOf(repo.id);
+    return n;
+  }
+
+  /** Hide one worktree and persist. Returns whether it left the list at once
+   *  (false: it is selected or an agent is at work, so it leaves when that
+   *  stops), or null when it cannot be hidden. */
+  hideWorktree(row: { path: string; branch: string | null; isMain?: boolean }): boolean | null {
+    const inputs = this.#visibilityInputs(row);
+    if (!canHide(inputs)) return null;
+    app.settings.hiddenWorktrees = [...(app.settings.hiddenWorktrees ?? []), row.path];
+    void app.persistSettings();
+    return hidesImmediately(inputs);
+  }
+
+  /** Show a hidden worktree again and persist. */
+  showWorktree(path: string): void {
+    if (!this.isHidden(path)) return;
+    app.settings.hiddenWorktrees = (app.settings.hiddenWorktrees ?? []).filter((x) => x !== path);
+    void app.persistSettings();
+  }
+
+  /** The worktrees of a project that "hide idle" would take: quiet by the same
+   *  verdict the rest of the panel uses (clean, nothing unpushed, no live
+   *  agent), not selected, not pinned, not already hidden. */
+  idleHideable(repoId: string): WorktreeEntry[] {
+    return this.childWorktrees(repoId).filter((w) =>
+      canHideIdle(this.#visibilityInputs(w), this.completion(w)),
+    );
+  }
+
+  /** Hide every idle worktree of a project at once. Returns how many. */
+  hideIdle(repoId: string): number {
+    const take = this.idleHideable(repoId);
+    if (take.length === 0) return 0;
+    app.settings.hiddenWorktrees = [
+      ...(app.settings.hiddenWorktrees ?? []),
+      ...take.map((w) => w.path),
+    ];
+    void app.persistSettings();
+    return take.length;
+  }
+
+  /** Show every hidden worktree again — of one project, or of all. Also stops
+   *  showing hidden ones, which has nothing left to show. */
+  showAllHidden(repoId?: string): void {
+    const cur = app.settings.hiddenWorktrees ?? [];
+    if (cur.length === 0) return;
+    const scope = repoId
+      ? new Set(this.childWorktrees(repoId).map((w) => w.path))
+      : null;
+    app.settings.hiddenWorktrees = scope ? cur.filter((p) => !scope.has(p)) : [];
+    if (!app.settings.hiddenWorktrees.length) app.settings.sidebarShowHidden = false;
+    void app.persistSettings();
+  }
+
+  /** Forget a removed worktree's hidden mark, so the list doesn't keep paths that
+   *  no longer exist. Called from the removal path. */
+  dropHidden(path: string): void {
+    this.showWorktree(path);
+  }
+
+  /** Drop hidden marks whose worktree is gone from every project (a folder
+   *  removed outside the app). Only once the worktrees are loaded: an empty list
+   *  read before the first load would otherwise wipe the lot. */
+  pruneHiddenWorktrees(): void {
+    const cur = app.settings.hiddenWorktrees ?? [];
+    if (cur.length === 0) return;
+    const existing = new Set<string>();
+    for (const repo of app.repos) {
+      const list = this.worktreesByRepo[repo.id];
+      if (!list) return; // not loaded yet — pruning now would forget real marks
+      for (const w of list) existing.add(w.path);
+    }
+    const kept = pruneHidden(cur, existing);
+    if (kept === cur) return;
+    app.settings.hiddenWorktrees = kept;
     void app.persistSettings();
   }
 
@@ -745,6 +954,7 @@ class ProjectsStore {
           await this.loadWorktrees(r.id);
         }),
       );
+      this.pruneHiddenWorktrees();
     })();
     return this.initPromise;
   }
@@ -1433,6 +1643,7 @@ class ProjectsStore {
       // Drop any quick commands scoped to the now-removed worktree.
       app.pruneWorktreeCommands(row.path);
       this.dropNote(row.path);
+      this.dropHidden(row.path);
       // The worktree is always gone; compose a message from what the opt-in
       // branch cleanup did (deleted / cleaned up / kept unmerged / remote).
       const parts = [i18n.t("toast.worktreeRemoved")];

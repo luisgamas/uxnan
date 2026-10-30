@@ -71,6 +71,58 @@ disconnected. The cleanup below works on a host too: with a host connected,
 Settings → Git → Cleanup offers a machine picker, and that host's engine scans
 and cleans its own managed folders by the same rules.
 
+## The left panel: names, projects and hidden worktrees
+
+Three rules about how a worktree is *shown* (not where it lives). The pure logic
+is `src/lib/worktree-label.ts` and `src/lib/sidebar-visibility.ts`; the store
+that owns the state is `src/lib/state/projects.svelte.ts`.
+
+**What a worktree is called.** Its branch. A worktree with no branch — a checkout
+of a tag, a commit, a PR — is named after its **folder** (git refuses two
+worktrees on one path, so the folder is what tells them apart), with
+*detached at 9fceb02* (the short commit HEAD stands on) as the second line and in
+the hover card. On a host git could not be asked on, the hint reads *branch not
+read* instead — "detached" would be a claim about a repository nobody read. The
+same name is used by the card, the hover card, the search palette and the remove,
+note and batch-close dialogs: `worktreeIdentity` is the one place that decides.
+
+**Which project a card belongs to.** The tree groups by project, so a row there
+leaves it implicit. The two flat views (**by status**, **by review**) lift rows
+out of their project, and two projects can both be on `main`: their second line
+therefore leads with the project's own icon and name, and keeps the *detached*
+hint beside it (below 15rem of sidebar width the hint gives way to the name).
+
+**Hiding a worktree.** *Hide from the list* (a worktree's right-click menu) and
+*Hide idle worktrees* (a project's ⋯ menu) put worktrees out of the panel without
+touching them: they stay on disk, in the search palette (Ctrl/Cmd+P) and in the
+agents' control surface (`worktree/list`). It is a *view state*, kept in
+`app.settings` (`hiddenWorktrees`, a list of paths, and `sidebarShowHidden`) and
+saved with the rest of the panel; whether a hidden row is drawn *right now* is
+derived on every read from live facts, never written back:
+
+| A hidden worktree is shown again while… | Why |
+|---|---|
+| it is **selected** | hiding what you are looking at pulls the floor out from under the pointer |
+| an agent in it **works, waits on you, or left an unread result** | the panel must never sit on something that needs you |
+| it is **ready to close** (merged, closed, integrated) | the *Ready to close* lane and its count are a decision the panel is asking for; hiding is not closing |
+| it is **pinned** (pinning one also shows it again) | a pin says "keep this in front of me" |
+| an agent **surfaced it and has since gone quiet**, until you select another worktree | reading a result (the window regaining focus clears every unread dot) must not make the row leave under the pointer; selecting something else is the signal you have moved on (`nextLingering`; in memory only) |
+
+and the primary worktree can't be hidden at all. When the reason stops, the row
+goes again — which is what "hide it for later" means. *Hide idle worktrees* is
+stricter than the single hide: it takes only worktrees the panel already calls
+**inert** (clean, nothing unpushed, no live agent) that nothing above would show.
+A search looks through hidden worktrees, so a name you type is never "missing".
+
+What is held back is always said: a pill in the panel header (*N hidden*, with
+the eye glyph — one press shows them dimmed, another hides them again), a
+*N hidden · Show* line under each expanded project, the same switch and *Show all
+again* in the view menu, and a count beside the branch glyph of a collapsed
+project. When a flat view has nothing to draw, the empty state says *Every
+worktree here is hidden* with a *Show N hidden* button, which is not the same
+message as *No projects yet*. Removing a worktree forgets its mark, and a mark
+whose worktree is gone is pruned once every project has loaded.
+
 ## Cleanup
 
 Settings → **Git** → *Cleanup* is what keeps the managed folder from growing

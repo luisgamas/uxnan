@@ -308,6 +308,14 @@ export interface AppSettings {
   pinnedProjects?: string[];
   /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
   pinnedWorktrees?: string[];
+  /** Worktrees (paths) the user hid from the left panel — a **view state, not a
+   *  verdict**: they stay on disk and in the palette, and whether a hidden one is
+   *  drawn *right now* (selected, an agent at work, ready to close…) is derived
+   *  from live facts (`sidebar-visibility.ts`), never written back. Self-healing:
+   *  pruned when a worktree is removed, ignored when its path is gone. */
+  hiddenWorktrees?: string[];
+  /** Draw the hidden worktrees (dimmed) instead of holding them back. */
+  sidebarShowHidden?: boolean;
   /** Free-text note per worktree path — *why this space exists*. Seeded from the
    *  name typed when it was created, which survives here in full: the branch only
    *  keeps a slug of it, truncated and accent-folded. Read in the row's hover
@@ -1987,6 +1995,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   workspaceLastActive: {},
   pinnedProjects: [],
   pinnedWorktrees: [],
+  hiddenWorktrees: [],
+  sidebarShowHidden: false,
   worktreeNotes: {},
   sidebarGroupBy: "none",
   sidebarCollapsedLanes: [],

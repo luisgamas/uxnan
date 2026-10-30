@@ -523,6 +523,28 @@
         "linux": "CI-compiled only"
       },
       "gaps": "No E2E journey exercises the budget through the packaged app. The per-agent memory ceiling is advisory — measured and then stopped, never enforced by the OS; real enforcement (Job Objects, cgroups) is owed and belongs with the platform matrix. The preset memory numbers are provisional rather than measured against the low-consumption baselines."
+    },
+    {
+      "id": "sidebar-hidden-worktrees",
+      "flow": "Hide a worktree from the left panel, see what is held back, and bring it back",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/sidebar-visibility.test.ts (what surfaces a hidden worktree — selected, an agent at work, unread, ready to close, lingering after a read — and what never can be hidden; the empty-state gate), src/lib/worktree-label.test.ts (a branchless worktree is named by its folder, with the commit as a hint)",
+        "L2": "src/lib/state/projects.svelte.test.ts (hide / show / hide idle / show all / pruning, in the tree and both flat views, persisted through the settings), src/lib/components/LeftSidebar.svelte.test.ts (the header pill and the empty states in every view), src/lib/components/WorktreeRow.svelte.test.ts (the project leads a flat row; a detached row's name)"
+      },
+      "platforms": {
+        "windows": "untested",
+        "macos": "verified by hand on a browser-rendered panel with fixture data (2026-10-29)",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey drives the context menu or the project menu against a real profile, and the lingering row (a surfaced worktree staying until another is selected) is covered in the store and the pure rules but was not watched on a live window with a real agent finishing. The hidden list is keyed by path, like pins and notes, so the same absolute path on two machines would share a mark."
     }
   ]
 }

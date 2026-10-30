@@ -18,6 +18,7 @@
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder } from "$lib/state/dragReorder.svelte";
   import { CLOSABLE_LANE, isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
+  import { sidebarEmptyState, type SidebarEmptyState } from "$lib/sidebar-visibility";
   import type { ReviewGroup } from "$lib/sidebar-review";
   import type { SidebarGroupBy, SortMode } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
@@ -32,6 +33,8 @@
   import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+  import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
   import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
   // A bell: this pill is the general notification for the tree, counting both
   // `waiting` and `blocked` worktrees (see `projects.needsYouCount`). Neither
@@ -96,6 +99,11 @@
     };
   });
 
+  // A hidden worktree an agent surfaced stays until you select another one — the
+  // store compares against the previous selection, so it must run on every change
+  // of an agent's state, not only when the row is drawn.
+  $effect(() => projects.syncLingering());
+
   // The rendered project order — frozen against jumping for the drifting modes
   // (recent/attention) — plus the pointer-drag reorder that feeds "manual".
   const stableRepos = createStableOrder({
@@ -134,6 +142,23 @@
     }
   }
 
+  /** What the body should say when it has nothing to draw — "nothing here" and
+   *  "everything is hidden" are different situations with different ways out
+   *  (see `sidebarEmptyState`). `rowCount` is what the flat views would draw. */
+  function emptyKind(view: "tree" | "flat", rowCount: number): SidebarEmptyState {
+    return sidebarEmptyState({
+      view,
+      projectCount: app.repos.length,
+      matchedProjectCount: projects.filteredRepos.length,
+      rowCount,
+      query: projects.query,
+      hiddenCount: projects.hiddenCount,
+      showHidden: projects.showHidden,
+    });
+  }
+  const countRows = (lanes: { items: unknown[] }[]) =>
+    lanes.reduce((n, lane) => n + lane.items.length, 0);
+
   function laneLabel(c: AttentionClass): string {
     switch (c) {
       case 1:
@@ -150,7 +175,9 @@
   }
 </script>
 
-<div class={cn("scrollbar-sleek-parent flex h-full min-h-0 flex-col", shell.sidebar)}>
+<!-- `@container/sidebar`: the panel's own width, not the window's, decides what
+     its header and rows can afford (it is resizable from 200px up). -->
+<div class={cn("@container/sidebar scrollbar-sleek-parent flex h-full min-h-0 flex-col", shell.sidebar)}>
   <!-- Region: Brand header — app identity; also the window's drag handle (there
        is no title bar). -->
   <div
@@ -209,9 +236,23 @@
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->
   <header class={shell.sidebarSectionHeader}>
-    <span class={cn("flex-1 truncate", text.section)}>
-      {i18n.t("sidebar.projects")}
-      <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
+    <!-- The label yields before it is cut mid-word, by the panel's own width
+         (`@container/sidebar`): first the count, which the pills beside it make
+         the most expendable thing here, then the whole label, which leaves the
+         pills and the buttons — what the header is for at 200px — the room.
+         The outer span stays so the pills keep their place at the right edge. -->
+    <span class={cn("min-w-0 flex-1 truncate", text.section)}>
+      <span class="@max-[16rem]/sidebar:hidden">
+        {i18n.t("sidebar.projects")}
+        <span
+          class={cn(
+            "text-muted-foreground/60",
+            projects.hiddenCount > 0 || projects.needsYouCount > 0
+              ? "@max-[22rem]/sidebar:hidden"
+              : "@max-[16rem]/sidebar:hidden",
+          )}>({projects.filteredRepos.length})</span
+        >
+      </span>
     </span>
     <!-- Attention pill — the one signal that must escape the tree: an agent
          waiting on you inside a collapsed project is otherwise invisible. Click
@@ -222,7 +263,8 @@
           <button
             {...props}
             class={cn(
-              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 px-1.5 py-0.5 font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
+              shell.sidebarPill,
+              "bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 dark:text-orange-400",
               focus.ring,
               text.indicator,
             )}
@@ -230,6 +272,47 @@
           >
             <Icon icon={BellIcon} class={icon.decorative} />
             {projects.needsYouCount}
+          </button>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
+    <!-- Hidden worktrees — the panel's one filter, said where it can be seen: how
+         many are held back, and a switch to look at them. Never appears without
+         something hidden, so a panel nobody filtered stays as it was. -->
+    {#if projects.hiddenCount > 0}
+      {@const hiddenLabel = projects.showHidden
+        ? i18n.plural(projects.hiddenCount, "sidebar.hiddenShownTooltipOne", "sidebar.hiddenShownTooltipOther")
+        : i18n.plural(projects.hiddenCount, "sidebar.hiddenTooltipOne", "sidebar.hiddenTooltipOther")}
+      <TooltipSimple title={hiddenLabel}>
+        {#snippet children(props)}
+          <button
+            {...props}
+            aria-label={hiddenLabel}
+            aria-pressed={projects.showHidden}
+            class={cn(
+              shell.sidebarPill,
+              projects.showHidden
+                ? "bg-foreground/[0.12] text-foreground hover:bg-foreground/[0.16]"
+                : "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.1] hover:text-foreground",
+              focus.ring,
+              text.indicator,
+            )}
+            onclick={() => projects.setShowHidden(!projects.showHidden)}
+          >
+            <!-- At the narrowest the header has no room for a glyph in each pill;
+                 the count stays, and the tooltip says what it counts. -->
+            <Icon
+              icon={projects.showHidden ? ViewIcon : ViewOffIcon}
+              class={cn(
+                icon.decorative,
+                // Beside the attention pill the header has room for one glyph,
+                // not two; alone it keeps its own until the narrowest.
+                projects.needsYouCount > 0
+                  ? "@max-[22rem]/sidebar:hidden"
+                  : "@max-[15rem]/sidebar:hidden",
+              )}
+            />
+            {projects.hiddenCount}
           </button>
         {/snippet}
       </TooltipSimple>
@@ -286,6 +369,23 @@
           <DropdownMenu.RadioItem class={text.menu} value="status">{i18n.t("sidebar.viewStatus")}</DropdownMenu.RadioItem>
           <DropdownMenu.RadioItem class={text.menu} value="review">{i18n.t("sidebar.viewReview")}</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
+        {#if (app.settings.hiddenWorktrees?.length ?? 0) > 0}
+          <!-- Only once something is hidden, and right under the view it
+               filters: at the foot of this long menu it would sit below the
+               scroll fold, where nobody looks for it. -->
+          <DropdownMenu.Separator />
+          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.hiddenSection")}</DropdownMenu.Label>
+          <DropdownMenu.CheckboxItem
+            class={text.menu}
+            checked={projects.showHidden}
+            onCheckedChange={(on) => projects.setShowHidden(on)}
+          >
+            {i18n.t("sidebar.showHiddenWorktrees")}
+          </DropdownMenu.CheckboxItem>
+          <DropdownMenu.Item class={text.menu} onclick={() => projects.showAllHidden()}>
+            {i18n.t("sidebar.unhideAll")}
+          </DropdownMenu.Item>
+        {/if}
         <DropdownMenu.Separator />
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup
@@ -344,12 +444,22 @@
   <!-- Project rows: either the project → worktree tree, or (group by status) every
        worktree flattened into attention lanes. -->
   <div class="scrollbar-sleek worktree-sidebar-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1">
-    {#snippet emptyState()}
+    {#snippet emptyState(kind: SidebarEmptyState)}
       <div class="flex flex-col items-center gap-2 px-2 py-6 text-center">
-        <p class="text-xs text-muted-foreground">
-          {projects.query ? i18n.t("sidebar.noMatch") : i18n.t("sidebar.empty")}
-        </p>
-        {#if !projects.query}
+        {#if kind === "all-hidden"}
+          <!-- Not "nothing here": there is plenty, and it is all set aside. -->
+          <Icon icon={ViewOffIcon} class={cn(icon.empty, "text-muted-foreground/40")} />
+          <p class="text-xs text-muted-foreground">{i18n.t("sidebar.allHidden")}</p>
+          <Button variant="outline" size="sm" onclick={() => projects.setShowHidden(true)}>
+            <Icon icon={ViewIcon} data-icon="inline-start" />
+            {i18n.plural(projects.hiddenCount, "sidebar.showHiddenCountOne", "sidebar.showHiddenCountOther")}
+          </Button>
+        {:else if kind === "no-match"}
+          <p class="text-xs text-muted-foreground">{i18n.t("sidebar.noMatch")}</p>
+        {:else if kind === "no-worktrees"}
+          <p class="text-xs text-muted-foreground">{i18n.t("sidebar.noWorktrees")}</p>
+        {:else}
+          <p class="text-xs text-muted-foreground">{i18n.t("sidebar.empty")}</p>
           <Button variant="outline" size="sm" onclick={() => (projects.pickerOpen = true)}>
             <Icon icon={FolderPlusIcon} data-icon="inline-start" />
             {i18n.t("sidebar.addRepo")}
@@ -361,12 +471,11 @@
       </div>
     {/snippet}
 
-    {#if projects.filteredRepos.length === 0}
-      {@render emptyState()}
-    {:else if projects.groupBy === "status"}
+    {#if projects.groupBy === "status"}
       {@const lanes = projects.statusGroups()}
-      {#if lanes.length === 0}
-        {@render emptyState()}
+      {@const empty = emptyKind("flat", countRows(lanes))}
+      {#if empty !== "none"}
+        {@render emptyState(empty)}
       {:else}
         <div class="flex flex-col gap-3">
           {#each lanes as lane (lane.attention)}
@@ -423,8 +532,9 @@
            workspaces that "who needs me" and "what belongs to what" both leave
            a branch waiting on a reviewer unaccounted for. -->
       {@const lanes = projects.reviewGroups()}
-      {#if lanes.length === 0}
-        {@render emptyState()}
+      {@const empty = emptyKind("flat", countRows(lanes))}
+      {#if empty !== "none"}
+        {@render emptyState(empty)}
       {:else}
         <div class="flex flex-col gap-3">
           {#each lanes as lane (lane.group)}
@@ -455,15 +565,20 @@
         </div>
       {/if}
     {:else}
-      <div class="flex flex-col gap-2">
-        {#each stableRepos.items as repo, i (repo.id)}
-          <ProjectCard {repo} index={i} drag={cardDrag} />
-        {/each}
-        <!-- Insertion marker for a drop appended at the very end. -->
-        {#if cardDrag.isDropAt(stableRepos.items.length)}
-          <div class="mx-2 h-0.5 rounded-full bg-primary/70"></div>
-        {/if}
-      </div>
+      {@const empty = emptyKind("tree", 0)}
+      {#if empty !== "none"}
+        {@render emptyState(empty)}
+      {:else}
+        <div class="flex flex-col gap-2">
+          {#each stableRepos.items as repo, i (repo.id)}
+            <ProjectCard {repo} index={i} drag={cardDrag} />
+          {/each}
+          <!-- Insertion marker for a drop appended at the very end. -->
+          {#if cardDrag.isDropAt(stableRepos.items.length)}
+            <div class="mx-2 h-0.5 rounded-full bg-primary/70"></div>
+          {/if}
+        </div>
+      {/if}
     {/if}
   </div>
 

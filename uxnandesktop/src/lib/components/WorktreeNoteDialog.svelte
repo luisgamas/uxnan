@@ -8,6 +8,7 @@
   import { Textarea } from "$lib/components/ui/textarea";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
+  import { worktreeIdentity } from "$lib/worktree-label";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
 
@@ -33,7 +34,7 @@
     <Dialog.Header>
       <Dialog.Title>{i18n.t("worktree.noteTitle")}</Dialog.Title>
       <Dialog.Description class="break-words">
-        {row.branch ?? i18n.t("worktree.detached")}
+        {worktreeIdentity({ branch: row.branch, path: row.path, head: row.head }).title}
       </Dialog.Description>
     </Dialog.Header>
 
