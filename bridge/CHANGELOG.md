@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.54-alpha.20261030] - 20261030
 ### Added
 
 - **Continue a conversation with another agent** (architecture/02a §5.8.21).
