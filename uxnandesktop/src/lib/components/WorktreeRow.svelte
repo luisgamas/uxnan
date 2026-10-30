@@ -23,6 +23,8 @@
   import { focus, icon, row as rowStyle, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
+  import { toast } from "$lib/toast";
+  import { formatWorktreeHint, worktreeIdentity } from "$lib/worktree-label";
   import AgentSpace from "./AgentSpace.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
@@ -38,6 +40,9 @@
   import CircleSlashIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
   import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
   // Unread is one signal drawn one way: keep this glyph and `ProjectCard`'s in
   // step — a project row and a worktree row report the same thing.
   import MessageNotificationIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
@@ -62,9 +67,10 @@
     drag?: DragReorder;
     /** This child's index among the reorderable worktrees (for the drop marker). */
     dragIndex?: number;
-    /** In the "group by status" view, show the owning project as the meta line
-     *  (rows there are flattened out of their project, so the branch alone is
-     *  ambiguous). */
+    /** In the flat views (by status, by review), lead the second line with the
+     *  owning project — its icon and name. Rows there are lifted out of their
+     *  project, so a branch alone is ambiguous: two projects can both be on
+     *  `main`. The tree leaves it implicit; the project card above says it. */
     showRepo?: boolean;
   } = $props();
 
@@ -73,15 +79,22 @@
    *  it, so a project on a host keys its shells separately from a folder of the
    *  same name here. */
   const wsKey = $derived(projects.workspaceFor(row.path));
+  /** The project this row belongs to — its icon and name lead the second line in
+   *  the flat views. */
+  const repo = $derived(app.repos.find((r) => r.id === row.repoId));
   /** Whether this row's project lives on another machine — where git is not read
    *  read on the machine it lives on, and may not have been readable at all. */
-  const remote = $derived(!isLocalTarget(app.repos.find((r) => r.id === row.repoId)?.target));
-  // A branch when git said so — and on a host git *is* asked now, on that
-  // machine. The remote wording therefore only appears when it could not answer
-  // (no git there, not a repository, a shell that could not be named), where
-  // "(detached)" would be a claim about a repository nobody read.
-  const label = $derived(
-    row.branch ?? i18n.t(remote ? "remote.branchNotRead" : "worktree.detached"),
+  const remote = $derived(!isLocalTarget(repo?.target));
+  // What the worktree is called: its branch, else its folder, with "detached at
+  // a1b2c3d" (or, on a host git could not read, "branch not read") as a hint —
+  // see `worktree-label.ts`. A bare "(detached)" named nothing, and three of them
+  // under one project were indistinguishable.
+  const identity = $derived(
+    worktreeIdentity({ branch: row.branch, path: row.path, head: row.head, remote }),
+  );
+  const label = $derived(identity.title);
+  const hintText = $derived(
+    identity.hint ? formatWorktreeHint(identity.hint, (k, p) => i18n.t(k, p)) : "",
   );
   // The cached GitHub PR for this worktree's branch (for the sidebar-card badge),
   // colored by its CI checks. Cheap: read from the store's per-path cache.
@@ -101,18 +114,25 @@
   const dirName = $derived(
     row.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? row.path,
   );
-  // Second line, in priority order:
-  //   1. the status view flattens rows out of their project, so the project name
-  //      is the context that's missing there;
-  //   2. else the linked PR's title — the folder name is usually just the branch
-  //      name with the slashes swapped ("feat/login" → "feat-login"), so it spent
-  //      a whole line repeating the line above it; the PR title says what the
+  // Second line of a **tree** row, in priority order:
+  //   1. the linked PR's title — the folder name is usually just the branch name
+  //      with the slashes swapped ("feat/login" → "feat-login"), so it spent a
+  //      whole line repeating the line above it; the PR title says what the
   //      branch is actually *for*;
+  //   2. the reason there is no branch ("detached at a1b2c3d"), when there isn't
+  //      one — the folder already is the title then, so repeating it says nothing;
   //   3. else the folder name, which does carry information when it differs.
-  // The line always renders, so rows keep a uniform height in the list.
-  const meta = $derived(
-    showRepo ? row.repoName : (prBadge?.title?.trim() || dirName),
-  );
+  // The flat views lead the line with the project instead (see `showRepo`), and
+  // keep the hint beside it. The line always renders, so rows keep a uniform
+  // height in the list.
+  const meta = $derived(prBadge?.title?.trim() || hintText || dirName);
+
+  // Hidden: in the list the user hid. It is drawn here only because "show hidden"
+  // is on, a search matched it, or something surfaces it (selected, an agent at
+  // work, ready to close) — and says so, so a row that is "hidden" is never
+  // mistaken for one that is merely quiet.
+  const hiddenMark = $derived(!row.isMain && projects.isHidden(row.path));
+  const heldBack = $derived(hiddenMark && projects.isHeldBack(row));
 
   // Tooltip: the full absolute path in the tree, but a short **relative** path in
   // the flattened status view (relative to the project root, else the folder
@@ -207,10 +227,36 @@
   function openRemove() {
     removeOpen = true;
   }
+
+  /** Hide this worktree from the list, with an Undo — hiding is reversible, and
+   *  the row vanishing from under the pointer is exactly when you want it. */
+  function hide() {
+    const now = projects.hideWorktree(row);
+    if (now === null) return;
+    toast(i18n.t(now ? "worktree.hiddenToast" : "worktree.hiddenLaterToast", { name: label }), {
+      action: { label: i18n.t("common.undo"), onClick: () => projects.showWorktree(row.path) },
+    });
+  }
+  const onToggleHidden = $derived(
+    row.isMain
+      ? undefined
+      : hiddenMark
+        ? () => projects.showWorktree(row.path)
+        : projects.canHideWorktree(row)
+          ? hide
+          : undefined,
+  );
 </script>
 
 {#snippet branchGlyph()}
   <Icon icon={GitBranchIcon} class={cn(icon.decorative, "text-muted-foreground")} />
+{/snippet}
+
+{#snippet projectGlyph()}
+  <Icon
+    icon={repo?.isGit === false ? FolderIcon : FolderGitIcon}
+    class={cn(icon.status, "text-muted-foreground")}
+  />
 {/snippet}
 
 <!-- The row's full story, on hover. Everything here already exists in the stores;
@@ -222,6 +268,9 @@
       <div class="flex items-center gap-1.5">
         <Icon icon={GitBranchIcon} class={cn(icon.status, "shrink-0 text-muted-foreground")} />
         <span class={cn("min-w-0 flex-1 truncate", text.bodyStrong)}>{label}</span>
+        {#if hintText}
+          <span class={cn("shrink-0 text-muted-foreground", text.indicator)}>{hintText}</span>
+        {/if}
         {#if row.isMain}
           <span
             class={cn(
@@ -234,6 +283,12 @@
         {/if}
       </div>
       <span class={cn("break-all font-mono", text.meta)}>{tipText}</span>
+      {#if showRepo}
+        <span class={cn("flex items-center gap-1", text.meta)}>
+          <EntityIcon value={repo?.icon} class={cn(icon.status, "rounded-[2px]")} fallback={projectGlyph} />
+          <span class="truncate">{row.repoName}</span>
+        </span>
+      {/if}
     </div>
 
     <!-- Why this space exists, in the words it was created with. Sits right under
@@ -337,7 +392,7 @@
                 // A finished space steps back so the work still in flight reads
                 // first. Full opacity returns on hover and while it's selected —
                 // it is quieter, not disabled.
-                completion === "done" || completion === "abandoned"
+                completion === "done" || completion === "abandoned" || heldBack
                   ? "opacity-60 hover:opacity-100"
                   : "",
                 active && "opacity-100",
@@ -405,6 +460,19 @@
                   {/if}
                   {#if !row.isMain && projects.isWorktreePinned(row.path)}
                     <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
+                  {/if}
+                  {#if hiddenMark}
+                    <TooltipSimple
+                      title={heldBack
+                        ? i18n.t("worktree.hiddenTooltip")
+                        : i18n.t("worktree.hiddenSurfacedTooltip")}
+                    >
+                      {#snippet children(tp2)}
+                        <span {...tp2} class="inline-flex shrink-0 text-muted-foreground/70">
+                          <Icon icon={ViewOffIcon} class={icon.decorative} />
+                        </span>
+                      {/snippet}
+                    </TooltipSimple>
                   {/if}
                   {#if hasUnread}
                     <TooltipSimple title={i18n.t("monitor.unread")}>
@@ -495,7 +563,28 @@
                   {/if}
             </div>
             <div class="flex items-baseline gap-1.5">
-              <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{meta}</span>
+              {#if showRepo}
+                <!-- The project, as an icon and a name that read before the
+                     branch's own detail does — the one thing a lifted-out row
+                     lost. A project's own icon is the fastest tell between two
+                     of them; the name is the one that is certain. -->
+                <span class="flex min-w-0 shrink items-center gap-1 self-center">
+                  <EntityIcon
+                    value={repo?.icon}
+                    class={cn(icon.status, "rounded-[2px]")}
+                    fallback={projectGlyph}
+                  />
+                  <span class={cn("truncate font-medium text-foreground/70", text.meta)}>{row.repoName}</span>
+                </span>
+                {#if hintText}
+                  <!-- The reason is a detail: below 15rem the project name needs
+                       the room more, and the hover card still says it. -->
+                  <span class={cn("min-w-0 shrink-[4] truncate @max-[15rem]/sidebar:hidden", text.meta)}>· {hintText}</span>
+                {/if}
+                <span class="flex-1"></span>
+              {:else}
+                <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{meta}</span>
+              {/if}
               {#if lastActivityText}
                 <TooltipSimple title={i18n.t("worktree.lastActivityTooltip")}>
                   {#snippet children(tp2)}
@@ -525,6 +614,8 @@
       onChangeIcon={() => (iconPickerOpen = true)}
       onEditNote={() => (noteOpen = true)}
       onTogglePin={row.isMain ? undefined : () => projects.toggleWorktreePin(row.path)}
+      {onToggleHidden}
+      hidden={hiddenMark}
       onSleep={requestSleep}
       pinned={projects.isWorktreePinned(row.path)}
     />

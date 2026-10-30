@@ -22,11 +22,13 @@
   import { control, focus, icon, row, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
+  import { worktreeIdentity } from "$lib/worktree-label";
   import { HOST_STATE_TONE, hosts } from "$lib/state/hosts.svelte";
   import { sshHostId, targetOf } from "$lib/target";
   import { sessions } from "$lib/state/sessions.svelte";
   import StatusDot from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { toast } from "$lib/toast";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
   import AgentAvatar from "./AgentAvatar.svelte";
@@ -61,6 +63,8 @@
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+  import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+  import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
   // A message with a notification dot: unread is *new output waiting to be
   // read*, distinct from the waiting glyph, which is *a question for you*.
   import MessageNotificationIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
@@ -144,7 +148,29 @@
     }
     return out;
   });
-  const worktreeCount = $derived(projects.worktreesOf(repo.id).length);
+  /** Worktrees the panel draws for this project: the primary one plus the
+   *  children not held back as hidden. The collapsed summary counts these, and
+   *  says how many it is holding back beside it. */
+  const worktreeCount = $derived(
+    projects.worktreesOf(repo.id).length - projects.hiddenCountOf(repo.id),
+  );
+  /** Worktrees of this project held back as hidden. */
+  const hiddenCount = $derived(projects.hiddenCountOf(repo.id));
+  /** Worktrees "hide idle" would take right now. */
+  const idleCount = $derived(projects.idleHideable(repo.id).length);
+
+  /** Hide every idle worktree, with an Undo for the whole batch. */
+  function hideIdle() {
+    const paths = projects.idleHideable(repo.id).map((w) => w.path);
+    const n = projects.hideIdle(repo.id);
+    if (n === 0) return;
+    toast(i18n.plural(n, "project.hideIdleToastOne", "project.hideIdleToastOther"), {
+      action: {
+        label: i18n.t("common.undo"),
+        onClick: () => paths.forEach((p) => projects.showWorktree(p)),
+      },
+    });
+  }
   /** Avatars shown in the collapsed strip before overflowing into a "+N". */
   const MAX_AVATARS = 3;
 
@@ -225,7 +251,7 @@
   /** The collapsed summary only earns its line when there's real signal: a lone
    *  worktree with no agents keeps the card a single row. */
   const showCollapsedSummary = $derived(
-    isGit && !isExpanded && (projectAgents.length > 0 || worktreeCount > 1),
+    isGit && !isExpanded && (projectAgents.length > 0 || worktreeCount > 1 || hiddenCount > 0),
   );
 
   const hoverReveal = "opacity-0 group-hover-header:opacity-100 group-focus-within-header:opacity-100 focus-visible:opacity-100";
@@ -417,6 +443,24 @@
               {i18n.t("common.pin")}
             {/if}
           </DropdownMenu.Item>
+          {#if isGit}
+            <!-- Putting idle worktrees out of view is a view choice, not a
+                 cleanup: nothing is removed, and the count in the panel's header
+                 says how many are held back. -->
+            <DropdownMenu.Item class={text.menu} disabled={idleCount === 0} onclick={hideIdle}>
+              <Icon icon={ViewOffIcon} class={icon.button} />
+              {i18n.t("project.hideIdle")}
+              {#if idleCount > 0}
+                <span class={cn("ml-auto pl-2 tabular-nums text-muted-foreground", text.indicator)}>{idleCount}</span>
+              {/if}
+            </DropdownMenu.Item>
+            {#if hiddenCount > 0}
+              <DropdownMenu.Item class={text.menu} onclick={() => projects.showAllHidden(repo.id)}>
+                <Icon icon={ViewIcon} class={icon.button} />
+                {i18n.t("project.showHidden", { n: hiddenCount })}
+              </DropdownMenu.Item>
+            {/if}
+          {/if}
           <DropdownMenu.Separator />
           <!-- Defer each dialog open until this menu has fully closed, so its
                teardown releases the body pointer-lock before the dialog captures
@@ -530,6 +574,21 @@
           </span>
         {/snippet}
       </TooltipSimple>
+      {#if hiddenCount > 0}
+        <TooltipSimple title={i18n.plural(hiddenCount, "sidebar.hiddenTooltipOne", "sidebar.hiddenTooltipOther")}>
+          {#snippet children(tp)}
+            <span
+              {...tp}
+              class={cn(
+                "inline-flex shrink-0 items-center gap-0.5 text-muted-foreground/60",
+                text.indicator,
+              )}
+            >
+              <Icon icon={ViewOffIcon} class={icon.status} />{hiddenCount}
+            </span>
+          {/snippet}
+        </TooltipSimple>
+      {/if}
       {#if projectAgents.length > 0}
         <!-- No `overflow-hidden`: each avatar's status ring is a box-shadow drawn
              outside the circle and would be clipped. Overflow is bounded by the
@@ -571,6 +630,23 @@
         {#if wtDrag.isDropAt(stableChildren.items.length)}
           <div class="ml-6 mr-2 h-0.5 rounded-full bg-primary/70"></div>
         {/if}
+        <!-- What the list is not showing, and the way back. The same switch as
+             the panel header's pill — there is one "show hidden", not one per
+             project. -->
+        {#if hiddenCount > 0}
+          <button
+            type="button"
+            class={cn(row.sidebarNote, focus.ring, "mt-0.5 pl-6")}
+            onclick={() => projects.setShowHidden(!projects.showHidden)}
+          >
+            <Icon icon={ViewOffIcon} class={cn(icon.status, "shrink-0")} />
+            <span class="min-w-0 truncate">
+              {i18n.plural(hiddenCount, "sidebar.hiddenInProjectOne", "sidebar.hiddenInProjectOther")}
+              <span class="text-muted-foreground/60">·</span>
+              {projects.showHidden ? i18n.t("sidebar.hideAgain") : i18n.t("sidebar.showThem")}
+            </span>
+          </button>
+        {/if}
       </div>
     {/if}
   {:else}
@@ -606,6 +682,6 @@
     class="pointer-events-none fixed z-50 max-w-48 truncate rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md"
     style="left: {wtDrag.x + 12}px; top: {wtDrag.y + 8}px;"
   >
-    {draggedWorktree.branch ?? draggedWorktree.path}
+    {worktreeIdentity({ branch: draggedWorktree.branch, path: draggedWorktree.path, head: draggedWorktree.head }).title}
   </div>
 {/if}

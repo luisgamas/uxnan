@@ -7,6 +7,7 @@ import { app } from '$lib/state/app.svelte';
 import { hosts } from '$lib/state/hosts.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
 import { fileTree } from '$lib/state/fileTree.svelte';
+import { unread } from '$lib/state/unread.svelte';
 import { sessions } from '$lib/state/sessions.svelte';
 import { LOCAL_TARGET } from '$lib/target';
 import type { WorktreeEntry } from '$lib/types';
@@ -595,5 +596,304 @@ describe('a project that lives on a host', () => {
 
     projects.setActiveWorktree(MAIN.path);
     expect(projects.activeRepo?.id).toBe(REPO_ID);
+  });
+});
+
+describe('hidden worktrees', () => {
+  const A = 'repo-a';
+  const B = 'repo-b';
+  const wt = (path: string, branch: string | null, isMain = false): WorktreeEntry => ({
+    path,
+    branch,
+    head: 'abcdef0123456789',
+    isMain,
+  });
+  const A_MAIN = wt('/p/a', 'main', true);
+  const A_QUIET = wt('/p/a--quiet', 'quiet');
+  const A_BUSY = wt('/p/a--busy', 'busy');
+  const B_MAIN = wt('/p/b', 'main', true);
+  const B_OLD = wt('/p/b--old', null); // a detached checkout
+
+  const names = (list: { path: string }[]) => list.map((w) => w.path);
+
+  beforeEach(() => {
+    installFakeBackend({ update_settings: () => ({}) });
+    app.repos = [
+      { id: A, name: 'alpha', path: A_MAIN.path, worktrees: [], isGit: true },
+      { id: B, name: 'beta', path: B_MAIN.path, worktrees: [], isGit: true },
+    ];
+    projects.worktreesByRepo = { [A]: [A_MAIN, A_QUIET, A_BUSY], [B]: [B_MAIN, B_OLD] };
+    // A quiet, clean tree: nothing in the store says anything is happening.
+    projects.statusByPath = {};
+    projects.query = '';
+    projects.activeWorktreePath = null;
+    app.settings.hiddenWorktrees = [];
+    app.settings.sidebarShowHidden = false;
+    app.settings.pinnedWorktrees = [];
+    // The PR cache outlives a test; a MERGED one would make the worktree closable.
+    for (const w of [A_MAIN, A_QUIET, A_BUSY, B_MAIN, B_OLD]) projects.notePr(w.path, null);
+    projects.syncLingering(); // nothing hidden: forgets any linger a test left
+  });
+
+  it('hides a worktree from its project, from both flat views, and counts it', () => {
+    projects.hideWorktree({ ...A_QUIET });
+
+    expect(projects.isHidden(A_QUIET.path)).toBe(true);
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_BUSY.path]);
+    expect(names(projects.orderedChildWorktrees(A))).toEqual([A_BUSY.path]);
+    const inStatus = projects.statusGroups().flatMap((lane) => names(lane.items));
+    const inReview = projects.reviewGroups().flatMap((lane) => names(lane.items));
+    expect(inStatus).not.toContain(A_QUIET.path);
+    expect(inReview).not.toContain(A_QUIET.path);
+    expect(inStatus).toContain(A_BUSY.path);
+    expect(projects.hiddenCountOf(A)).toBe(1);
+    expect(projects.hiddenCount).toBe(1);
+    // The worktree itself is untouched: still known, still in the palette.
+    expect(projects.worktreesOf(A)).toContainEqual(A_QUIET);
+    expect(projects.allWorktrees().map((w) => w.path)).toContain(A_QUIET.path);
+  });
+
+  it('persists the list through the settings, and nowhere else', () => {
+    const backend = installFakeBackend({ update_settings: () => ({}) });
+    projects.hideWorktree({ ...A_QUIET });
+
+    expect(app.settings.hiddenWorktrees).toEqual([A_QUIET.path]);
+    const saved = backend.lastCallTo('update_settings')?.args.settings as { hiddenWorktrees: string[] };
+    expect(saved.hiddenWorktrees).toEqual([A_QUIET.path]);
+  });
+
+  it('never hides the primary worktree', () => {
+    expect(projects.hideWorktree({ ...A_MAIN })).toBeNull();
+    expect(projects.isHidden(A_MAIN.path)).toBe(false);
+    expect(projects.canHideWorktree({ ...A_MAIN })).toBe(false);
+  });
+
+  it('shows it again, and a second hide is not stacked', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    expect(projects.hideWorktree({ ...A_QUIET })).toBeNull(); // already hidden
+    expect(app.settings.hiddenWorktrees).toEqual([A_QUIET.path]);
+
+    projects.showWorktree(A_QUIET.path);
+    expect(projects.isHidden(A_QUIET.path)).toBe(false);
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_QUIET.path, A_BUSY.path]);
+    expect(projects.hiddenCount).toBe(0);
+  });
+
+  it("'show hidden' draws them without forgetting they are hidden", () => {
+    projects.hideWorktree({ ...A_QUIET });
+    projects.setShowHidden(true);
+
+    expect(projects.showHidden).toBe(true);
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_QUIET.path, A_BUSY.path]);
+    expect(projects.isHidden(A_QUIET.path)).toBe(true);
+    expect(projects.hiddenCount).toBe(1); // still the number held aside
+    expect(app.settings.sidebarShowHidden).toBe(true);
+  });
+
+  it('looks through hidden worktrees when searching', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    projects.query = 'quiet';
+
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_QUIET.path]);
+  });
+
+  it('brings a hidden worktree back while it is selected, and lets it go after', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    projects.activeWorktreePath = A_QUIET.path;
+
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+    expect(projects.hiddenCount).toBe(0); // shown, so not "held back"
+    expect(projects.isHeldBack(A_QUIET)).toBe(false);
+
+    projects.activeWorktreePath = A_MAIN.path;
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_QUIET.path);
+    expect(projects.hiddenCount).toBe(1);
+  });
+
+  it('says whether a hide takes effect now or once the worktree goes quiet', () => {
+    projects.activeWorktreePath = A_QUIET.path;
+    expect(projects.hideWorktree({ ...A_QUIET })).toBe(false);
+    expect(projects.hideWorktree({ ...A_BUSY })).toBe(true);
+  });
+
+  it('brings a hidden worktree back when it holds an unread result', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    unread.mark(A_QUIET.path);
+    try {
+      expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+    } finally {
+      unread.clear(A_QUIET.path);
+    }
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_QUIET.path);
+  });
+
+  it('does not let a worktree vanish when its result is read — it lingers until another is selected', () => {
+    projects.activeWorktreePath = A_MAIN.path;
+    projects.hideWorktree({ ...A_QUIET });
+    projects.syncLingering();
+
+    // An agent finishes there: the row comes back.
+    unread.mark(A_QUIET.path);
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+
+    // The result is read (window focus clears every unread dot) without the user
+    // selecting it: the row stays put rather than leaving under the pointer.
+    unread.clear(A_QUIET.path);
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+    expect(projects.isHeldBack(A_QUIET)).toBe(false);
+    expect(projects.hiddenCount).toBe(0);
+
+    // Selecting another worktree is the user moving on.
+    projects.activeWorktreePath = B_MAIN.path;
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_QUIET.path);
+    expect(projects.hiddenCount).toBe(1);
+  });
+
+  it('lingers through selecting the worktree itself, and ends when the next one is selected', () => {
+    projects.activeWorktreePath = A_MAIN.path;
+    projects.hideWorktree({ ...A_QUIET });
+    unread.mark(A_QUIET.path);
+    projects.syncLingering();
+    unread.clear(A_QUIET.path);
+
+    projects.activeWorktreePath = A_QUIET.path; // clicked it to read
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+
+    projects.activeWorktreePath = A_MAIN.path;
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_QUIET.path);
+  });
+
+  it('never lingers a worktree that was not surfaced by an agent', () => {
+    projects.activeWorktreePath = A_MAIN.path;
+    projects.hideWorktree({ ...A_QUIET });
+    projects.syncLingering();
+
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_QUIET.path);
+  });
+
+  it('never hides what is ready to close — the lane keeps its count', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    projects.notePr(A_QUIET.path, { state: 'MERGED', isDraft: false, checks: null });
+
+    expect(projects.completion(A_QUIET)).toBe('done');
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_QUIET.path);
+    const closable = projects.statusGroups().find((lane) => lane.attention === 5);
+    expect(names(closable?.items ?? [])).toContain(A_QUIET.path);
+    // …and a closable worktree is not offered "Hide" in the first place.
+    expect(projects.canHideWorktree(A_BUSY)).toBe(true);
+    projects.notePr(A_BUSY.path, { state: 'CLOSED', isDraft: false, checks: null });
+    expect(projects.canHideWorktree(A_BUSY)).toBe(false);
+    expect(projects.hideWorktree({ ...A_BUSY })).toBeNull();
+  });
+
+  it('keeps the attention pill counting, hidden or not', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    // Nothing waits on the user here, hidden or not — and the count must not read
+    // the hidden list at all.
+    expect(projects.needsYouCount).toBe(0);
+  });
+
+  it('pinning a hidden worktree shows it again', () => {
+    projects.hideWorktree({ ...A_QUIET });
+    projects.toggleWorktreePin(A_QUIET.path);
+
+    expect(projects.isWorktreePinned(A_QUIET.path)).toBe(true);
+    expect(projects.isHidden(A_QUIET.path)).toBe(false);
+    expect(projects.canHideWorktree(A_QUIET)).toBe(false); // pinned: not offered
+  });
+
+  describe('hide idle', () => {
+    it('hides the worktrees the panel already calls inert, and only those', () => {
+      // alpha--quiet: clean and nothing unpushed (inert). alpha--busy: dirty.
+      projects.statusByPath = {
+        [A_QUIET.path]: { dirty: 0, ahead: 0, behind: 0 },
+        [A_BUSY.path]: { dirty: 3, ahead: 0, behind: 0 },
+      };
+
+      expect(projects.idleHideable(A).map((w) => w.path)).toEqual([A_QUIET.path]);
+      expect(projects.hideIdle(A)).toBe(1);
+      expect(projects.isHidden(A_QUIET.path)).toBe(true);
+      expect(projects.isHidden(A_BUSY.path)).toBe(false);
+    });
+
+    it('takes nothing when nothing is idle, or when the status is not known yet', () => {
+      expect(projects.idleHideable(A)).toEqual([]); // status unknown ≠ clean
+      expect(projects.hideIdle(A)).toBe(0);
+      expect(app.settings.hiddenWorktrees).toEqual([]);
+    });
+
+    it('leaves pinned, selected and already-hidden worktrees alone', () => {
+      projects.statusByPath = {
+        [A_QUIET.path]: { dirty: 0, ahead: 0, behind: 0 },
+        [A_BUSY.path]: { dirty: 0, ahead: 0, behind: 0 },
+      };
+      projects.toggleWorktreePin(A_QUIET.path);
+      projects.activeWorktreePath = A_BUSY.path;
+
+      expect(projects.idleHideable(A)).toEqual([]);
+    });
+
+    it('is scoped to its project', () => {
+      projects.statusByPath = {
+        [A_QUIET.path]: { dirty: 0, ahead: 0, behind: 0 },
+        [B_OLD.path]: { dirty: 0, ahead: 0, behind: 0 },
+      };
+      projects.hideIdle(A);
+
+      expect(projects.isHidden(A_QUIET.path)).toBe(true);
+      expect(projects.isHidden(B_OLD.path)).toBe(false);
+    });
+  });
+
+  describe('showing them all again', () => {
+    beforeEach(() => {
+      projects.hideWorktree({ ...A_QUIET });
+      projects.hideWorktree({ ...B_OLD });
+      projects.setShowHidden(true);
+    });
+
+    it("clears one project's and keeps the other's", () => {
+      projects.showAllHidden(A);
+
+      expect(app.settings.hiddenWorktrees).toEqual([B_OLD.path]);
+      expect(projects.showHidden).toBe(true); // something is still hidden
+    });
+
+    it('clears everything and stops showing hidden when there is nothing left to show', () => {
+      projects.showAllHidden();
+
+      expect(app.settings.hiddenWorktrees).toEqual([]);
+      expect(projects.showHidden).toBe(false);
+    });
+  });
+
+  describe('self-healing', () => {
+    it('forgets a removed worktree', () => {
+      projects.hideWorktree({ ...A_QUIET });
+      projects.dropHidden(A_QUIET.path);
+
+      expect(app.settings.hiddenWorktrees).toEqual([]);
+    });
+
+    it('prunes marks whose worktree is gone once every project is loaded', () => {
+      app.settings.hiddenWorktrees = [A_QUIET.path, '/gone/forever'];
+      projects.pruneHiddenWorktrees();
+
+      expect(app.settings.hiddenWorktrees).toEqual([A_QUIET.path]);
+    });
+
+    it('prunes nothing while a project has not loaded — an empty read is not "gone"', () => {
+      app.settings.hiddenWorktrees = [A_QUIET.path, B_OLD.path];
+      projects.worktreesByRepo = { [A]: [A_MAIN, A_QUIET, A_BUSY] }; // B not loaded
+
+      projects.pruneHiddenWorktrees();
+
+      expect(app.settings.hiddenWorktrees).toEqual([A_QUIET.path, B_OLD.path]);
+    });
   });
 });

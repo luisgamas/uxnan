@@ -254,7 +254,8 @@ status-bar control a `rounded` or a height other than the bar's.
 
 `shell.root`, `shell.sidebar`,
 `shell.terminalStrip`, `shell.rightPanelHeader`, `shell.laneHeader`,
-`shell.laneAction`, and `shell.titlebar` remain the region-specific roles; they
+`shell.laneAction`, `shell.sidebarPill` (the shape of the header's count pills —
+*needs you*, *hidden*; the caller picks the tone), and `shell.titlebar` remain the region-specific roles; they
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
 config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
 keeps left-aligned content clear of them.
@@ -327,6 +328,7 @@ on top of the base.
 | `row.searchResult` | Worktree palette result (exact 52px virtual-list row) |
 | `row.agentModel` / `row.agentSpaceHeader` / `row.agentAvatarStrip` / `row.agentOverflow` / `row.agentLeading` / `row.agentActiveIndicator` / `row.agentDetail` / `row.agentSpaceDetail` | Agent model truncation, responsive single-line agent-space strip with measured avatar capacity and stable +N footprint, centered leading glyphs, active-agent marker, subagent relationship rail, and borderless expanded-agent inset |
 | `row.projectSummary` | Collapsed project summary insets |
+| `row.sidebarNote` | A quiet one-line note at the foot of a sidebar group that is also its action (*3 hidden · Show*) — muted until hovered |
 | `row.settings` / `row.settingsNav` | Responsive settings control row and settings navigation item |
 | `row.settingsList` / `row.settingsListLabel` | Settings selection row and its left-aligned, truncating primary action |
 | `row.editorDisclosure` | Text-bearing disclosure in a profile/editor row |

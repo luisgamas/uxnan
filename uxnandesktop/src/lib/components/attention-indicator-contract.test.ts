@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { shell } from "$lib/design";
 
 const source = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
 
@@ -89,6 +90,9 @@ describe("attention indicators", () => {
     // `control.dense` is a 28px control height; on an 11px counter it paints a
     // pill far bigger than the text inside it.
     expect(pill).not.toContain("control.dense");
-    expect(pill).toContain("px-1.5 py-0.5");
+    // The badge's shape lives in one recipe, shared with the hidden-worktrees
+    // pill beside it so the two read as siblings.
+    expect(pill).toContain("shell.sidebarPill");
+    expect(shell.sidebarPill).toContain("px-1.5 py-0.5");
   });
 });

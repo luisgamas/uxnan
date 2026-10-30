@@ -686,6 +686,18 @@ pub struct AppSettings {
     /// of the active sort. Unknown paths are ignored (self-healing).
     #[serde(default)]
     pub pinned_worktrees: Vec<String>,
+    /// Worktrees (paths) the user hid from the left panel. A **view state, not a
+    /// verdict**: the worktree stays on disk and in the palette, and the frontend
+    /// derives whether a hidden one is shown right now (selected, an agent at
+    /// work, ready to close…) from live facts rather than writing that back. The
+    /// list is only ever edited by the user's own hide/show. Unknown paths are
+    /// ignored and pruned when a worktree is removed (self-healing).
+    #[serde(default)]
+    pub hidden_worktrees: Vec<String>,
+    /// Whether the left panel draws the hidden worktrees (dimmed) instead of
+    /// holding them back. Persisted with the rest of the panel's view state.
+    #[serde(default)]
+    pub sidebar_show_hidden: bool,
     /// How the left sidebar groups its rows (frontend-owned enum):
     /// `"none"` = the project → worktree tree (default); `"status"` = every
     /// worktree flattened into lanes by agent attention. Unknown values fall back
@@ -1452,6 +1464,8 @@ impl Default for AppSettings {
             workspace_last_active: std::collections::HashMap::new(),
             pinned_projects: Vec::new(),
             pinned_worktrees: Vec::new(),
+            hidden_worktrees: Vec::new(),
+            sidebar_show_hidden: false,
             sidebar_group_by: default_group_by(),
             sidebar_collapsed_lanes: Vec::new(),
             github: GithubSettings::default(),
@@ -2164,6 +2178,35 @@ mod tests {
             "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.resource_mode, ResourceModeSettings::default());
+    }
+
+    #[test]
+    fn settings_deserialize_without_hidden_worktrees_defaults_to_none_hidden() {
+        // State written before the panel could hide a worktree must still load,
+        // with nothing hidden and hidden ones not shown.
+        let json = r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+            "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(settings.hidden_worktrees.is_empty());
+        assert!(!settings.sidebar_show_hidden);
+    }
+
+    #[test]
+    fn hidden_worktrees_round_trip_camel_case() {
+        let settings = AppSettings {
+            hidden_worktrees: vec!["/w/a".into(), "C:\\w\\b".into()],
+            sidebar_show_hidden: true,
+            ..AppSettings::default()
+        };
+        let value = serde_json::to_value(&settings).unwrap();
+        assert_eq!(
+            value["hiddenWorktrees"],
+            serde_json::json!(["/w/a", "C:\\w\\b"])
+        );
+        assert_eq!(value["sidebarShowHidden"], serde_json::json!(true));
+        let back: AppSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(back.hidden_worktrees, settings.hidden_worktrees);
+        assert!(back.sidebar_show_hidden);
     }
 
     #[test]
