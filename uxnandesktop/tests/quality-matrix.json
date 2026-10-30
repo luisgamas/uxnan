@@ -193,7 +193,7 @@
         "L2"
       ],
       "evidence": {
-        "L1": "src/lib/agentSessionId.test.ts, src/lib/agentLogoCache.test.ts",
+        "L1": "src/lib/agentSessionId.test.ts, src/lib/agentCatalog.test.ts",
         "L3": "src-tauri/src/hooks.rs, src-tauri/src/agent_hooks.rs #[cfg(test)]",
         "L4": "tests/e2e/specs/agent.e2e.mjs"
       },

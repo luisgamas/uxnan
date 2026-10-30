@@ -36,7 +36,6 @@
   import { statusMeta } from "$lib/usageFormat";
   import { detectAgents, revealPath } from "$lib/api";
   import { diagnostics } from "$lib/state/diagnostics.svelte";
-  import { clearRemoteLogoCache } from "$lib/agentLogoCache";
   import { usage } from "$lib/state/usage.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
   import type { UsageProvider } from "$lib/types";
@@ -264,10 +263,8 @@
   }
   /** Re-check what's on PATH now. Detection is a live filesystem walk, so this is
    *  all it takes for an agent installed (or uninstalled) since the app started to
-   *  appear or disappear. Also drops the fetched-logo cache, since a machine that
-   *  was offline earlier is exactly when a logo failed to load. */
+   *  appear or disappear. */
   function refreshAgents() {
-    clearRemoteLogoCache();
     void detectInstalled();
   }
   // Re-check every time the Agents pane is opened — not just once per app run, or

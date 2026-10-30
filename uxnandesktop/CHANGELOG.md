@@ -50,6 +50,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   glance. The tree keeps it implicit. Below 15rem the reason a worktree has no
   branch gives way to the project name.
 
+### Changed
+- **Agent logos ship with the app and render offline.** Every catalog agent's
+  mark comes from the repository's single set in `assets/agents/` (four drawn
+  SVGs and the vendored vendor favicons — the files the site and the READMEs
+  show), copied into `static/agents/` by `scripts/sync-agent-marks.mjs` before
+  dev and build. The app no longer asks Google's favicon service for a logo:
+  the backend-fetched logo path (`agentLogoCache.ts`) is gone, in Settings →
+  Agents, the welcome tour and everywhere `AgentLogo` draws.
+
 ## [0.0.82] - 20261022
 ### Changed
 

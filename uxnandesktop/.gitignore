@@ -2,6 +2,8 @@
 .DS_Store
 node_modules
 /build
+# Agent marks, synced from the repository's assets/agents/ (scripts/sync-agent-marks.mjs)
+/static/agents/
 /.svelte-kit
 /package
 .env
