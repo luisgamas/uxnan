@@ -78,8 +78,8 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,135 backend tests**
-in total — 717 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,137 backend tests**
+in total — 719 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
 in `uxnan-control-client`, 10 in `uxnan-cli`, 297 in `uxnan-workspace-engine` (its git, libgit2 fast path, worktree placement and cleanup, and the headless runner and an automation's gate among them), 5 in `uxnan-host-protocol`, 39 in
 `uxnan-host` (29 against the real daemon over its socket — a headless agent run answering from its folder and cancelled by name, and an automation's gate run in its folder, among them — among them the bridge it keeps running and its agents reaching the app's tools but never a hook, started again when it dies and let go when asked, a project's
 files listed, saved and searched on the host, its git read, staged and
@@ -94,7 +94,7 @@ an agent closed in a terminal whose shell stays, and a transcript read on the
 host only when it is an agent's own, an MCP call from a terminal answered by the
 app watching it (and failed, not left hanging, when that app goes), a URL a
 terminal opens, and the tools' facts naming the daemon's endpoint), and 45 integration tests in
-`tests/` — 1,079 of which run everywhere; the other 56 are ignored probes that need something real to talk to
+`tests/` — 1,081 of which run everywhere; the other 56 are ignored probes that need something real to talk to
 (one copies a built bridge runtime to a scratch folder and runs it — `live_the_built_runtime_installs_verified_and_runs_from_its_copy`; 48 live SSH probes — 45 against a real `sshd` (one of them runs an agent installed on the host, headless, and an automation's gate there: `a_headless_run_and_a_gate_happen_on_the_host`, armed by `UXNAN_SSH_TEST_HEADLESS=<agent>`; two reach it through the system `ssh` instead, sharing one login and not — `the_system_ssh_carries_every_channel_the_app_uses` and `…_without_sharing_a_login`), one of which idles for five
 minutes to prove the keepalive and two of which (`ssh::dial::tests::live`, armed
 by `UXNAN_SSH_TEST_ALIAS`) take the route your own `~/.ssh/config` and agent
