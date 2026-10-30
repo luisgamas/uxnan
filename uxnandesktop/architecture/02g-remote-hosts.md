@@ -1618,7 +1618,7 @@ recursos `host-engine/<triple>/uxnan-host`: una laptop Windows maneja un servido
 Linux, asi que la plataforma del host no es la de la app. Nada que bajar ni que
 verificar dos veces, y funciona sin Internet en ninguno de los dos lados. La
 release las compila en un job propio (`release-desktop.yml` → `host-engine`: Linux
-con zig en Ubuntu, el par Apple en `macos-14`) con la version de la release, y cada
+con zig en Ubuntu, el par Apple en `macos-15`) con la version de la release, y cada
 instalador falla si falta alguna (`scripts/build-host-engine.mjs --require`). La app
 las busca en su carpeta de recursos, luego en `$UXNAN_HOST_BINARIES` y, en debug,
 en `src-tauri/host-engine/` y `target/<triple>/release/`.

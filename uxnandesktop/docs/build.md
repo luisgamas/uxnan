@@ -83,7 +83,7 @@ whose platform has none keeps its terminals on plain SSH channels.
 
 **In CI and in the release** no single runner can build all six, so one
 reusable workflow, `build-host-engine.yml`, builds them (Linux on Ubuntu with
-zig, the Apple pair on `macos-14`, the Windows pair on `windows-latest`) and each installer leg downloads them and
+zig, the Apple pair on `macos-15`, the Windows pair on `windows-latest`) and each installer leg downloads them and
 runs `--require` before packaging. The release calls it with its tag, so the
 engines carry the release's version — the app accepts an engine on a host only
 when its version is the app's own. CI calls it whenever a change shapes an
@@ -178,7 +178,7 @@ signs the updater artifacts with a key made for that run, and then uses them:
 |---|---|
 | `ubuntu-22.04` | `.deb`, `.rpm`, AppImage built and signed; the `.deb` carries the AppStream file; `linux-appimage.sh check` |
 | `windows-latest` | NSIS installs (with `uxnan-cli.exe`), the app opens, the installer runs **again over the open app** and closes it — what the in-app updater does — then uninstalls; the MSI installs with its sidecar and uninstalls |
-| `macos-14` | the `.app` with its sidecar passes `codesign --verify --deep --strict` (ad-hoc), the DMG mounts with the app, the updater archive is signed, the app launches |
+| `macos-15` | the `.app` with its sidecar passes `codesign --verify --deep --strict` (ad-hoc), the DMG mounts with the app, the updater archive is signed, the app launches |
 
 It runs when something that shapes an installer changed — `tauri*.conf.json`,
 `src-tauri/linux/`, `linux-appimage.sh`, the two desktop workflows, or the

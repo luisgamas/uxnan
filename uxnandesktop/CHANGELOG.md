@@ -4,6 +4,14 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **macOS builds move to GitHub's `macos-15` runners.** CI, the platform smoke
+  run, the host-engine build and the release DMGs ran on `macos-14`, whose
+  images GitHub retires on 2026-11-02 (with scheduled brownouts before that,
+  which already failed every pull request's macOS leg). Both DMGs are still
+  built on Apple Silicon, the Intel one cross-compiled; the minimum macOS the
+  app supports is unchanged.
 
 ## [0.0.82] - 20261022
 ### Changed

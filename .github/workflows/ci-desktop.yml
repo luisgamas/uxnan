@@ -38,14 +38,14 @@ jobs:
   verify:
     if: ${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/')) }}
     uses: ./.github/workflows/verify-desktop.yml
-    # CI also verifies the EXPERIMENTAL macOS build on Apple Silicon (macos-14),
+    # CI also verifies the EXPERIMENTAL macOS build on Apple Silicon (macos-15),
     # so a Mac-only regression surfaces on the PR. One mac leg is enough — the code
     # paths are identical across architectures, and GitHub's Intel (macos-13)
     # runners are being retired / queue unpredictably, so the Intel DMG is
     # cross-compiled in the release rather than verified on its own runner. The
     # release workflow keeps its gate on the default Linux + Windows pair.
     with:
-      os-list: '["ubuntu-latest", "windows-latest", "macos-14"]'
+      os-list: '["ubuntu-latest", "windows-latest", "macos-15"]'
 
   # The remote-hosts feature is driven by a real `sshd` in a container, on Linux.
   # Every other live SSH test runs against the `sshd` of the machine doing the
@@ -287,7 +287,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-14]
+        os: [ubuntu-22.04, windows-latest, macos-15]
     defaults:
       run:
         shell: bash
