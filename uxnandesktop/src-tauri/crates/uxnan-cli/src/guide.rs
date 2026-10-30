@@ -378,6 +378,14 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
                 "the terminal's agent is working; `agent wait --for idle` first",
             ));
         }
+        "chat/forward" | "chat/start" => out.push((
+            ErrorCode::InvalidParams,
+            "`agent` names no agent the bridge drives, or `strategy` is not `selection`, `reference` or `fork`",
+        )),
+        "chat/search" => out.push((
+            ErrorCode::InvalidParams,
+            "`query` is shorter than 2 characters or has no words, or `cursor` is not one this search returned",
+        )),
         "agent/send" => out.push((
             ErrorCode::NotFound,
             "the terminal has no live agent to receive the message",
@@ -456,7 +464,10 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "chat/list" => "uxnan-cli chat ls [--worktree <worktree>] [--archived]",
         "chat/open" => "uxnan-cli chat open <chat>",
         "chat/send" => "uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]",
-        "chat/start" => "uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--idempotency-key <key>]",
+        "chat/start" => "uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--continue-from <chat> [--strategy selection|reference|fork]] [--idempotency-key <key>]",
+        "chat/fork" => "uxnan-cli chat fork <chat> [--no-open] [--idempotency-key <key>]",
+        "chat/forward" => "uxnan-cli chat forward <chat> --agent <agent> [--model <model>] [--title <t>] [--strategy selection|reference|fork] [--message-file <file> | --message <text>] [--no-open] [--idempotency-key <key>]",
+        "chat/search" => "uxnan-cli chat search <query> [--worktree <worktree> | --all] [--archived] [--limit <n>] [--cursor <cursor>]",
         "chat/read" => "uxnan-cli chat read <chat> [--turns <n>] [--answer-from <byte>]",
         "chat/wait" => "uxnan-cli chat wait <chat> [--for idle|waiting] [--timeout <seconds>]",
         "run/list" => "uxnan-cli run ls",
@@ -504,7 +515,7 @@ fn group_blurb(group: Group) -> &'static str {
     match group {
         Group::Read => "reads with no effect",
         Group::Ui => "actions on the window that change nothing on disk or in a process",
-        Group::Create => "create a worktree or a terminal, start a saved run or automation",
+        Group::Create => "create a worktree, a terminal or a chat (a fork, a hand-off to another agent), start a saved run or automation",
         Group::Converse => "talk to a running agent, or to a chat",
         Group::Orchestrate => "drive a run as its coordinator: tasks, workers, an inbox, questions; a worker reports back",
     }
@@ -611,6 +622,10 @@ uxnan-cli agent ls
 uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
+uxnan-cli chat ls [--worktree <worktree>] [--archived] | open <chat> | search <query> [--worktree <worktree> | --all]
+uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--message-file <file>] [--continue-from <chat>]
+uxnan-cli chat send --to <chat> --message-file <file> | read <chat> | wait <chat> [--for idle|waiting]
+uxnan-cli chat fork <chat> | forward <chat> --agent <agent> [--strategy selection|reference|fork] [--message-file <file>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]

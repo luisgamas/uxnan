@@ -17,6 +17,10 @@ uxnan-cli agent ls
 uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
+uxnan-cli chat ls [--worktree <worktree>] [--archived] | open <chat> | search <query> [--worktree <worktree> | --all]
+uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--message-file <file>] [--continue-from <chat>]
+uxnan-cli chat send --to <chat> --message-file <file> | read <chat> | wait <chat> [--for idle|waiting]
+uxnan-cli chat fork <chat> | forward <chat> --agent <agent> [--strategy selection|reference|fork] [--message-file <file>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
@@ -63,6 +67,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `terminal/show` (MCP tool `terminal_show`) — Describe one terminal tab, including the agent state Uxnan knows for it.
 - `agent/list` (MCP tool `agent_list`) — List the agents Uxnan is currently tracking: terminal id, agent kind, state (working, waiting, blocked, done), the prompt and tool last reported, and the worktree they run in.
 - `chat/list` (MCP tool `chat_list`) — List the chats — conversations the Uxnan bridge drives, shown in chat tabs and on the phone alike — in your scope, newest first: id, title, agent, model, folder and whether a turn is running.
+- `chat/search` (MCP tool `chat_search`) — Search the chats in your scope by their titles and by what was said in them — the person's messages and the agents' answers (not the commands, outputs and edits of their steps).
 - `run/list` (MCP tool `run_list`) — List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.
 - `run/show` (MCP tool `run_show`) — Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.
 - `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether its schedule is active, the schedule itself, its working folder and its steps.
@@ -92,12 +97,14 @@ Global: --json (stable machine output), --timeout <seconds>
 - `browser/press` (MCP tool `browser_press`) — Press a key in your workspace's browser page, on the element that has focus: `Enter` (submits a form field's form — which the person approves — or activates a focused button), `Tab` (`shift` for back), `Escape`, arrows, `PageUp`/`PageDown`, `Home`/`End`, `Backspace`, `Delete`, `Space`.
 - `browser/scroll` (MCP tool `browser_scroll`) — Scroll your workspace's browser page — or one scrollable element, by its `ref` — by a fraction of its visible height or width, to reach content a snapshot left out.
 
-### `create` (v1) — create a worktree or a terminal, start a saved run or automation
+### `create` (v1) — create a worktree, a terminal or a chat (a fork, a hand-off to another agent), start a saved run or automation
 
 - `host/connect` (MCP tool `host_connect`) — Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing.
 - `worktree/create` (MCP tool `worktree_create`) — Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message.
 - `terminal/create` (MCP tool `terminal_create`) — Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message.
 - `chat/start` (MCP tool `chat_start`) — Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client.
+- `chat/fork` (MCP tool `chat_fork`) — Fork a chat: a new chat with the same agent and a copy of the whole history, to try another direction without touching the original.
+- `chat/forward` (MCP tool `chat_forward`) — Hand a chat to another agent: a new chat in the same folder, driven by `agent`, whose first message carries the source's context — no CLI can continue another's session, and a chat never changes agent, so this is how work moves between agents without copying text by hand.
 - `terminal/close` (MCP tool `terminal_close`) — Close a terminal tab: one the surface opened (`terminal/create`, `worktree/create`, `worker/start`) once its agent is no longer working, or any terminal whose shell has exited — the way a coordinator collects the workers it started.
 - `run/start` (MCP tool `run_start`) — Start (or re-run) a saved orchestration run by id: every step is reset and the engine begins dispatching.
 - `automation/run` (MCP tool `automation_run`) — Run a saved automation now, as a manual run of the same headless runner its schedule uses.
@@ -803,6 +810,62 @@ List the chats — conversations the Uxnan bridge drives, shown in chat tabs and
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+
+### `chat/search`
+
+Search the chats in your scope by their titles and by what was said in them — the person's messages and the agents' answers (not the commands, outputs and edits of their steps). Every word must appear in the same message; case and accents are ignored. Answered by the bridge, which holds every chat's history, newest chats first: each hit names the chat and up to three matching messages with the words around them. One answer covers at most `limit` chats and a short time budget; pass `nextCursor` back as `cursor` for more. Needs Uxnan connected to the bridge; otherwise *unavailable*.
+
+- **Group:** `read` · read-only
+- **MCP:** `chat_search`
+- **CLI:** `uxnan-cli chat search <query> [--worktree <worktree> | --all] [--archived] [--limit <n>] [--cursor <cursor>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `query` | string | yes | What to look for: at least 2 characters. |
+| `worktree` | string | no | Which worktree: `current` (the one your terminal runs in), `path:<absolute folder>`, or `branch:<branch name>`. |
+| `archived` | boolean | no | Include archived chats. Default false. |
+| `limit` | integer | no | Most matching chats in one answer. Default and ceiling 50. |
+| `cursor` | string | no | The `nextCursor` of the previous answer. |
+
+**Result**
+
+- `hits` (array of object) — The matching chats in your scope, newest first.
+  - `chat` (string) — The chat's id, as `id:<id>` takes it.
+  - `title` (string) — Its title.
+  - `agent` (string | null) — The bridge agent that drives it.
+  - `folder` (string | null) — The folder it runs in.
+  - `archived` (boolean) — Whether it is archived.
+  - `titleMatch` (boolean) — Whether its title matched.
+  - `matchCount` (integer) — How many of its messages matched.
+  - `matches` (array of object) — Its newest matching messages, at most three.
+    - `turnId` (string) — The turn the message is in.
+    - `role` (string) — `user` (the person) or `assistant` (the agent).
+    - `snippet` (string) — The words around the match, on one line, secrets redacted.
+- `nextCursor` (string | null) — Pass as `cursor` for more; null when every chat was searched.
+- `searched` (integer) — Chats the bridge searched in this answer.
+- `total` (integer) — Chats the search covers in all.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/search",
+  "params": {
+    "query": "retry policy",
+    "worktree": "current"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — the selector named no project, worktree or terminal
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+- `-32602` invalid params — `query` is shorter than 2 characters or has no words, or `cursor` is not one this search returned
 
 ### `run/list`
 
@@ -2039,11 +2102,11 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 
 ### `chat/start`
 
-Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client. Unlike a terminal it needs no screen to read: `chat/read` returns what it answered and the steps it took, `chat/wait` waits for its turn to end. The agent is fixed for the chat's life, and it acts without asking, as a chat started in the tab does. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.
+Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client. Unlike a terminal it needs no screen to read: `chat/read` returns what it answered and the steps it took, `chat/wait` waits for its turn to end. The agent is fixed for the chat's life, and it acts without asking, as a chat started in the tab does. With `continueFrom` it starts as the continuation of another chat: the bridge prepares that chat's context and the first message sent carries it to this agent (the same as `chat/forward`, in the worktree and with the agent chosen here). Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `chat_start`
-- **CLI:** `uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--idempotency-key <key>]`
+- **CLI:** `uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>] [--message-file <file>] [--no-open] [--continue-from <chat> [--strategy selection|reference|fork]] [--idempotency-key <key>]`
 
 **Params**
 
@@ -2055,6 +2118,8 @@ Start a chat with an agent in a worktree — a conversation the Uxnan bridge dri
 | `title` | string | no | A title. Default: the bridge names it from the first message. |
 | `message` | string | no | A first message, sent at once. At most 64 KiB. |
 | `open` | boolean | no | Show it in a chat tab, brought to the front as `chat/open` does. Default true; false leaves it to be found in the chat list, on the phone and in `chat/list`. |
+| `continueFrom` | string | no | Start it as the continuation of this chat (`id:<id>` from `chat/list` or `chat/search`): its first message carries that chat's context. The source stays as it is. |
+| `strategy` | string | no | What the new chat's agent gets from the source: `selection` (default — a budgeted selection the bridge makes from the source's history: the opening request, the newest exchanges whole, older ones shortened, at most 64 000 bytes; never an invented summary), `reference` (only a pointer: the source's title, opening request and last exchange, shortened) or `fork` (the source's whole history copied into the new chat, and a selection for its agent). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -2066,6 +2131,7 @@ Start a chat with an agent in a worktree — a conversation the Uxnan bridge dri
 - `folder` (string) — The worktree folder it runs in.
 - `turnId` (string | null) — The turn the first message started, when one was sent.
 - `opened` (boolean) — Whether a chat tab was asked to show it.
+- `continuedFrom` (string | null) — The chat it continues, when `continueFrom` was given.
 
 **Request**
 
@@ -2087,6 +2153,115 @@ Start a chat with an agent in a worktree — a conversation the Uxnan bridge dri
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+- `-32602` invalid params — `agent` names no agent the bridge drives, or `strategy` is not `selection`, `reference` or `fork`
+
+### `chat/fork`
+
+Fork a chat: a new chat with the same agent and a copy of the whole history, to try another direction without touching the original. A CLI cannot copy its own session, so the fork's agent starts a session of its own and its first message carries a selection of the history the bridge prepared — the agent knows what happened; nothing is invented. Then `chat/send` it. Needs Uxnan connected to the bridge; otherwise *unavailable*.
+
+- **Group:** `create` · mutates (receipted, audited)
+- **MCP:** `chat_fork`
+- **CLI:** `uxnan-cli chat fork <chat> [--no-open] [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `chat` | string | yes | The chat to fork, as `id:<id>` from `chat/list`. |
+| `open` | boolean | no | Show the fork in a chat tab. Default true. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `chat` (string) — The new chat's id, as `id:<id>` takes it.
+- `agent` (string) — The bridge agent that drives it.
+- `folder` (string) — The folder it runs in — the source's.
+- `sourceChat` (string) — The chat it continues; it stays as it was and names this one.
+- `strategy` (string) — `selection`, `reference` or `fork`.
+- `status` (string) — Where the carried-over context stands, as the bridge proves it: `pending` (waits for the first message), `sent` (went with a turn still running), `delivered` (the agent answered that turn) or `unverifiable` (the bridge restarted mid-turn; the next message carries it again).
+- `contextTokens` (integer) — Rough size of the carried-over context, in tokens.
+- `turns` (integer) — Turns the new chat shows: the copied history for a fork, else 0.
+- `turnId` (string | null) — The turn the first message started, when one was sent.
+- `opened` (boolean) — Whether a chat tab was asked to show it.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/fork",
+  "params": {
+    "chat": "id:7be2af67…",
+    "idempotencyKey": "5d1e…"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no chat has that id (`chat ls` lists them)
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+
+### `chat/forward`
+
+Hand a chat to another agent: a new chat in the same folder, driven by `agent`, whose first message carries the source's context — no CLI can continue another's session, and a chat never changes agent, so this is how work moves between agents without copying text by hand. The source stays as it is and names its continuation, on every client. With `message` the first message (your brief: the goal and what to do next) is sent at once and the context goes with it, never shortening your words; otherwise the context waits for the first `chat/send`. The receipt's `status` is the bridge's proof, not a promise: `delivered` only once the new agent answered. It acts without asking, as `chat/start` does. Needs Uxnan connected to the bridge; otherwise *unavailable*.
+
+- **Group:** `create` · mutates (receipted, audited)
+- **MCP:** `chat_forward`
+- **CLI:** `uxnan-cli chat forward <chat> --agent <agent> [--model <model>] [--title <t>] [--strategy selection|reference|fork] [--message-file <file> | --message <text>] [--no-open] [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `chat` | string | yes | The chat to continue, as `id:<id>` from `chat/list` or `chat/search`. |
+| `agent` | string | yes | The bridge agent to continue with: `claude-code` (or `claude`), `codex`, `opencode`, `pi-agent` (or `pi`), `antigravity-cli` (or `agy`), `zero` or `grok` — the source's own agent too. |
+| `model` | string | no | A model for it, as the agent names it. Default: the agent's own. |
+| `title` | string | no | A title. Default: the source's, until the bridge names it from the first exchange. |
+| `strategy` | string | no | What the new chat's agent gets from the source: `selection` (default — a budgeted selection the bridge makes from the source's history: the opening request, the newest exchanges whole, older ones shortened, at most 64 000 bytes; never an invented summary), `reference` (only a pointer: the source's title, opening request and last exchange, shortened) or `fork` (the source's whole history copied into the new chat, and a selection for its agent). |
+| `message` | string | no | A first message, sent at once with the context. At most 64 KiB. |
+| `open` | boolean | no | Show the new chat in a chat tab. Default true. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `chat` (string) — The new chat's id, as `id:<id>` takes it.
+- `agent` (string) — The bridge agent that drives it.
+- `folder` (string) — The folder it runs in — the source's.
+- `sourceChat` (string) — The chat it continues; it stays as it was and names this one.
+- `strategy` (string) — `selection`, `reference` or `fork`.
+- `status` (string) — Where the carried-over context stands, as the bridge proves it: `pending` (waits for the first message), `sent` (went with a turn still running), `delivered` (the agent answered that turn) or `unverifiable` (the bridge restarted mid-turn; the next message carries it again).
+- `contextTokens` (integer) — Rough size of the carried-over context, in tokens.
+- `turns` (integer) — Turns the new chat shows: the copied history for a fork, else 0.
+- `turnId` (string | null) — The turn the first message started, when one was sent.
+- `opened` (boolean) — Whether a chat tab was asked to show it.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/forward",
+  "params": {
+    "chat": "id:7be2af67…",
+    "agent": "claude",
+    "message": "Review the retry policy you see above and finish the tests.",
+    "idempotencyKey": "8f3a…"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no chat has that id (`chat ls` lists them)
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+- `-32602` invalid params — `agent` names no agent the bridge drives, or `strategy` is not `selection`, `reference` or `fork`
 
 ### `terminal/close`
 

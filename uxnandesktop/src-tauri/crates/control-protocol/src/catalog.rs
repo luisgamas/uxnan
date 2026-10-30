@@ -732,6 +732,43 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "worktree": "current" }),
         },
         Entry {
+            method: "chat/search",
+            tool: "chat_search",
+            group: Group::Read,
+            summary: "Search the chats in your scope by their titles and by what was said in them — the person's messages and the agents' answers (not the commands, outputs and edits of their steps). Every word must appear in the same message; case and accents are ignored. Answered by the bridge, which holds every chat's history, newest chats first: each hit names the chat and up to three matching messages with the words around them. One answer covers at most `limit` chats and a short time budget; pass `nextCursor` back as `cursor` for more. Needs Uxnan connected to the bridge; otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "query": { "type": "string", "description": "What to look for: at least 2 characters." },
+                    "worktree": worktree_selector(),
+                    "archived": { "type": "boolean", "description": "Include archived chats. Default false." },
+                    "limit": { "type": "integer", "description": "Most matching chats in one answer. Default and ceiling 50." },
+                    "cursor": { "type": "string", "description": "The `nextCursor` of the previous answer." }
+                }),
+                &["query"],
+            ),
+            mutates: false,
+            result: result(json!({
+                "hits": list_of(result(json!({
+                    "chat": field("string", "The chat's id, as `id:<id>` takes it."),
+                    "title": field("string", "Its title."),
+                    "agent": nullable("string", "The bridge agent that drives it."),
+                    "folder": nullable("string", "The folder it runs in."),
+                    "archived": field("boolean", "Whether it is archived."),
+                    "titleMatch": field("boolean", "Whether its title matched."),
+                    "matchCount": field("integer", "How many of its messages matched."),
+                    "matches": list_of(result(json!({
+                        "turnId": field("string", "The turn the message is in."),
+                        "role": field("string", "`user` (the person) or `assistant` (the agent)."),
+                        "snippet": field("string", "The words around the match, on one line, secrets redacted."),
+                    })), "Its newest matching messages, at most three."),
+                })), "The matching chats in your scope, newest first."),
+                "nextCursor": nullable("string", "Pass as `cursor` for more; null when every chat was searched."),
+                "searched": field("integer", "Chats the bridge searched in this answer."),
+                "total": field("integer", "Chats the search covers in all."),
+            })),
+            example: json!({ "query": "retry policy", "worktree": "current" }),
+        },
+        Entry {
             method: "run/list",
             tool: "run_list",
             group: Group::Read,
@@ -1267,7 +1304,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "chat/start",
             tool: "chat_start",
             group: Group::Create,
-            summary: "Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client. Unlike a terminal it needs no screen to read: `chat/read` returns what it answered and the steps it took, `chat/wait` waits for its turn to end. The agent is fixed for the chat's life, and it acts without asking, as a chat started in the tab does. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.",
+            summary: "Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client. Unlike a terminal it needs no screen to read: `chat/read` returns what it answered and the steps it took, `chat/wait` waits for its turn to end. The agent is fixed for the chat's life, and it acts without asking, as a chat started in the tab does. With `continueFrom` it starts as the continuation of another chat: the bridge prepares that chat's context and the first message sent carries it to this agent (the same as `chat/forward`, in the worktree and with the agent chosen here). Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.",
             params: object(
                 json!({
                     "worktree": worktree_selector(),
@@ -1276,6 +1313,8 @@ pub fn catalog() -> Vec<Entry> {
                     "title": { "type": "string", "description": "A title. Default: the bridge names it from the first message." },
                     "message": { "type": "string", "description": "A first message, sent at once. At most 64 KiB." },
                     "open": { "type": "boolean", "description": "Show it in a chat tab, brought to the front as `chat/open` does. Default true; false leaves it to be found in the chat list, on the phone and in `chat/list`." },
+                    "continueFrom": { "type": "string", "description": "Start it as the continuation of this chat (`id:<id>` from `chat/list` or `chat/search`): its first message carries that chat's context. The source stays as it is." },
+                    "strategy": { "type": "string", "description": "What the new chat's agent gets from the source: `selection` (default — a budgeted selection the bridge makes from the source's history: the opening request, the newest exchanges whole, older ones shortened, at most 64 000 bytes; never an invented summary), `reference` (only a pointer: the source's title, opening request and last exchange, shortened) or `fork` (the source's whole history copied into the new chat, and a selection for its agent)." },
                     "idempotencyKey": idempotency_key()
                 }),
                 &["worktree", "agent"],
@@ -1287,8 +1326,70 @@ pub fn catalog() -> Vec<Entry> {
                 "folder": field("string", "The worktree folder it runs in."),
                 "turnId": nullable("string", "The turn the first message started, when one was sent."),
                 "opened": field("boolean", "Whether a chat tab was asked to show it."),
+                "continuedFrom": nullable("string", "The chat it continues, when `continueFrom` was given."),
             })),
             example: json!({ "worktree": "branch:feat/parser", "agent": "codex", "message": "Write tests for src/parser.ts.", "idempotencyKey": "4a7c…" }),
+        },
+        Entry {
+            method: "chat/fork",
+            tool: "chat_fork",
+            group: Group::Create,
+            summary: "Fork a chat: a new chat with the same agent and a copy of the whole history, to try another direction without touching the original. A CLI cannot copy its own session, so the fork's agent starts a session of its own and its first message carries a selection of the history the bridge prepared — the agent knows what happened; nothing is invented. Then `chat/send` it. Needs Uxnan connected to the bridge; otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat to fork, as `id:<id>` from `chat/list`." },
+                    "open": { "type": "boolean", "description": "Show the fork in a chat tab. Default true." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["chat"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "chat": field("string", "The new chat's id, as `id:<id>` takes it."),
+                "agent": field("string", "The bridge agent that drives it."),
+                "folder": field("string", "The folder it runs in — the source's."),
+                "sourceChat": field("string", "The chat it continues; it stays as it was and names this one."),
+                "strategy": field("string", "`selection`, `reference` or `fork`."),
+                "status": field("string", "Where the carried-over context stands, as the bridge proves it: `pending` (waits for the first message), `sent` (went with a turn still running), `delivered` (the agent answered that turn) or `unverifiable` (the bridge restarted mid-turn; the next message carries it again)."),
+                "contextTokens": field("integer", "Rough size of the carried-over context, in tokens."),
+                "turns": field("integer", "Turns the new chat shows: the copied history for a fork, else 0."),
+                "turnId": nullable("string", "The turn the first message started, when one was sent."),
+                "opened": field("boolean", "Whether a chat tab was asked to show it."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "idempotencyKey": "5d1e…" }),
+        },
+        Entry {
+            method: "chat/forward",
+            tool: "chat_forward",
+            group: Group::Create,
+            summary: "Hand a chat to another agent: a new chat in the same folder, driven by `agent`, whose first message carries the source's context — no CLI can continue another's session, and a chat never changes agent, so this is how work moves between agents without copying text by hand. The source stays as it is and names its continuation, on every client. With `message` the first message (your brief: the goal and what to do next) is sent at once and the context goes with it, never shortening your words; otherwise the context waits for the first `chat/send`. The receipt's `status` is the bridge's proof, not a promise: `delivered` only once the new agent answered. It acts without asking, as `chat/start` does. Needs Uxnan connected to the bridge; otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat to continue, as `id:<id>` from `chat/list` or `chat/search`." },
+                    "agent": { "type": "string", "description": "The bridge agent to continue with: `claude-code` (or `claude`), `codex`, `opencode`, `pi-agent` (or `pi`), `antigravity-cli` (or `agy`), `zero` or `grok` — the source's own agent too." },
+                    "model": { "type": "string", "description": "A model for it, as the agent names it. Default: the agent's own." },
+                    "title": { "type": "string", "description": "A title. Default: the source's, until the bridge names it from the first exchange." },
+                    "strategy": { "type": "string", "description": "What the new chat's agent gets from the source: `selection` (default — a budgeted selection the bridge makes from the source's history: the opening request, the newest exchanges whole, older ones shortened, at most 64 000 bytes; never an invented summary), `reference` (only a pointer: the source's title, opening request and last exchange, shortened) or `fork` (the source's whole history copied into the new chat, and a selection for its agent)." },
+                    "message": { "type": "string", "description": "A first message, sent at once with the context. At most 64 KiB." },
+                    "open": { "type": "boolean", "description": "Show the new chat in a chat tab. Default true." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["chat", "agent"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "chat": field("string", "The new chat's id, as `id:<id>` takes it."),
+                "agent": field("string", "The bridge agent that drives it."),
+                "folder": field("string", "The folder it runs in — the source's."),
+                "sourceChat": field("string", "The chat it continues; it stays as it was and names this one."),
+                "strategy": field("string", "`selection`, `reference` or `fork`."),
+                "status": field("string", "Where the carried-over context stands, as the bridge proves it: `pending` (waits for the first message), `sent` (went with a turn still running), `delivered` (the agent answered that turn) or `unverifiable` (the bridge restarted mid-turn; the next message carries it again)."),
+                "contextTokens": field("integer", "Rough size of the carried-over context, in tokens."),
+                "turns": field("integer", "Turns the new chat shows: the copied history for a fork, else 0."),
+                "turnId": nullable("string", "The turn the first message started, when one was sent."),
+                "opened": field("boolean", "Whether a chat tab was asked to show it."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "agent": "claude", "message": "Review the retry policy you see above and finish the tests.", "idempotencyKey": "8f3a…" }),
         },
         Entry {
             method: "terminal/close",

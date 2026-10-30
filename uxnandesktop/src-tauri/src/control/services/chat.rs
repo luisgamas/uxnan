@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 use uxnan_control_protocol::rpc::{ErrorCode, RpcError};
 
+use crate::bridgeclient::connection::CallError;
 use crate::bridgeclient::BridgeCallError;
 use crate::control::bridge::Bridge;
 use crate::control::receipts;
@@ -47,9 +48,27 @@ async fn call<R: tauri::Runtime>(
                 ErrorCode::Unavailable,
                 "Uxnan is not connected to the bridge: turn it on in Settings → Bridge & mobile",
             ),
+            // The bridge's own refusals keep their meaning: a bad argument it
+            // checked (an unknown agent, a short query) and a conversation it
+            // does not have.
+            BridgeCallError::Call(CallError::Rpc { code, message })
+                if code == BRIDGE_INVALID_PARAMS =>
+            {
+                RpcError::new(ErrorCode::InvalidParams, message)
+            }
+            BridgeCallError::Call(CallError::Rpc { code, message }) if code == BRIDGE_NOT_FOUND => {
+                RpcError::new(ErrorCode::NotFound, message)
+            }
             other => RpcError::new(ErrorCode::Internal, other.to_string()),
         })
 }
+
+/// The bridge's JSON-RPC code for invalid params (`JsonRpcErrorCode.InvalidParams`).
+const BRIDGE_INVALID_PARAMS: i64 = -32602;
+/// The bridge's code for an unknown thread or turn (`JsonRpcErrorCode.ResourceNotFound`).
+const BRIDGE_NOT_FOUND: i64 = -32008;
+/// The longest idempotency key the bridge keeps as a `clientTransferId`.
+const TRANSFER_KEY_MAX: usize = 128;
 
 /// The thread id a `chat` selector names (`id:<threadId>`, or the bare id).
 fn thread_id(params: &Value) -> Result<String, RpcError> {
@@ -254,6 +273,26 @@ pub async fn start<R: tauri::Runtime>(
     let agent = bridge_agent(params.get("agent").and_then(Value::as_str).unwrap_or(""))?;
     let message = message_of(params, "message")?;
     let mut start = json!({ "agentId": agent, "cwd": folder });
+    // Continuing another chat: the bridge prepares its context and the first
+    // message carries it (architecture/02a §5.8.21). The source must be one
+    // the caller may name.
+    let source = match params.get("continueFrom").and_then(Value::as_str) {
+        Some(raw) if !raw.trim().is_empty() => {
+            let id = thread_id(&json!({ "chat": raw }))?;
+            admitted(app, caller, &id).await?;
+            start["continueFrom"] = continue_from(&id, params)?;
+            Some(id)
+        }
+        _ => {
+            if params.get("strategy").and_then(Value::as_str).is_some() {
+                return Err(RpcError::new(
+                    ErrorCode::InvalidParams,
+                    "`strategy` goes with `continueFrom`",
+                ));
+            }
+            None
+        }
+    };
     for key in ["model", "title"] {
         if let Some(v) = params.get(key).and_then(Value::as_str).map(str::trim) {
             if !v.is_empty() {
@@ -292,7 +331,298 @@ pub async fn start<R: tauri::Runtime>(
             "folder": folder,
             "turnId": turn,
             "opened": open,
+            "continuedFrom": source,
         }),
+    ))
+}
+
+/// The strategy a caller asked for: `selection`, `reference` or `fork`; absent
+/// → none (the bridge's default, `selection`).
+fn strategy_of(params: &Value) -> Result<Option<&'static str>, RpcError> {
+    match params
+        .get("strategy")
+        .and_then(Value::as_str)
+        .map(str::trim)
+    {
+        None | Some("") => Ok(None),
+        Some("selection") => Ok(Some("selection")),
+        Some("reference") => Ok(Some("reference")),
+        Some("fork") => Ok(Some("fork")),
+        Some(other) => Err(RpcError::new(
+            ErrorCode::InvalidParams,
+            format!("unknown strategy `{other}`: selection, reference or fork"),
+        )),
+    }
+}
+
+/// The caller's idempotency key as the bridge's `clientTransferId`, when it
+/// fits: the bridge then makes one continuation per key even across restarts
+/// of this app, which keeps its receipts in memory only.
+fn transfer_key(params: &Value) -> Option<String> {
+    receipts::key_of(params).filter(|k| k.len() <= TRANSFER_KEY_MAX)
+}
+
+/// `thread/start`'s `continueFrom` for a source chat.
+fn continue_from(source: &str, params: &Value) -> Result<Value, RpcError> {
+    let mut from = json!({ "threadId": source, "createdBy": "agent" });
+    if let Some(strategy) = strategy_of(params)? {
+        from["strategy"] = json!(strategy);
+    }
+    if let Some(key) = transfer_key(params) {
+        from["clientTransferId"] = json!(key);
+    }
+    Ok(from)
+}
+
+/// What a continuation is, as `chat/fork` and `chat/forward` report it: the
+/// new chat and what it carries from its source. `status` is the bridge's,
+/// proven against the real turn: `pending` until a message runs, `sent` while
+/// it does, `delivered` once the agent answered it.
+fn continuation_view(thread: &Value, source: &str, turn: Value, opened: bool) -> Value {
+    let transfer = thread.get("transfer");
+    let at = |pointer: &str| {
+        transfer
+            .and_then(|t| t.pointer(pointer))
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    json!({
+        "chat": thread.get("id").cloned().unwrap_or(Value::Null),
+        "agent": thread.get("agentId").cloned().unwrap_or(Value::Null),
+        "folder": thread.get("cwd").cloned().unwrap_or(Value::Null),
+        "sourceChat": source,
+        "strategy": at("/strategy"),
+        "status": at("/status"),
+        "contextTokens": at("/context/approxTokens"),
+        "turns": thread.get("turnCount").cloned().unwrap_or(json!(0)),
+        "turnId": turn,
+        "opened": opened,
+    })
+}
+
+/// The new conversation's id in a bridge answer.
+fn new_id(thread: &Value) -> Result<String, RpcError> {
+    thread
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| RpcError::new(ErrorCode::Internal, "the bridge made no conversation"))
+}
+
+/// What a continuation does after the bridge made it, the same as `chat/start`:
+/// it may act without asking (best-effort), sends the first message when one
+/// was given — the context goes with it — and is shown unless `open` is
+/// false. Answers the turn started and the conversation as it now stands.
+async fn settle_continuation<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    thread: Value,
+    created: bool,
+    message: Option<String>,
+    open: bool,
+) -> Result<(Value, Value), RpcError> {
+    let id = new_id(&thread)?;
+    let mut turn = Value::Null;
+    let mut thread = thread;
+    // A retry the bridge recognised made nothing new, so it sends nothing.
+    if created {
+        let _ = call(
+            app,
+            "thread/setAccessMode",
+            json!({ "threadId": id, "mode": "fullAccess" }),
+        )
+        .await;
+        if let Some(text) = message {
+            let sent = call(app, "turn/send", json!({ "threadId": id, "text": text })).await?;
+            turn = sent.get("turnId").cloned().unwrap_or(Value::Null);
+            // Its status moved with the turn (`sent`): report the real one.
+            if let Ok(now) = call(app, "thread/read", json!({ "threadId": id })).await {
+                thread = now;
+            }
+        }
+    }
+    if open {
+        let cwd = thread.get("cwd").cloned().unwrap_or(Value::Null);
+        let _ = Bridge::ask(app, "chat/open", json!({ "threadId": id, "cwd": cwd })).await;
+    }
+    Ok((thread, turn))
+}
+
+/// `chat/fork`: a copy of a chat with the same agent — its history copied, and
+/// its first message carrying a selection of it, since the copy's agent
+/// session starts empty. The source stays as it is.
+pub async fn fork<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let source = thread_id(params)?;
+    admitted(app, caller, &source).await?;
+    let mut ask = json!({ "threadId": source, "createdBy": "agent" });
+    if let Some(key) = transfer_key(params) {
+        ask["clientTransferId"] = json!(key);
+    }
+    let thread = call(app, "thread/fork", ask).await?;
+    let open = params.get("open").and_then(Value::as_bool) != Some(false);
+    let (thread, turn) = settle_continuation(app, thread, true, None, open).await?;
+    Ok(receipts::receipt(
+        receipts::key_of(params).as_deref(),
+        continuation_view(&thread, &source, turn, open),
+    ))
+}
+
+/// `chat/forward`: continue a chat with another agent, as a new chat in the
+/// same folder. No agent can continue another CLI's own session, so the new
+/// chat's first message carries the context the bridge prepared from the
+/// source; the source stays as it is and names its continuation.
+pub async fn forward<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let source = thread_id(params)?;
+    let agent = bridge_agent(params.get("agent").and_then(Value::as_str).unwrap_or(""))?;
+    let strategy = strategy_of(params)?;
+    let message = message_of(params, "message")?;
+    admitted(app, caller, &source).await?;
+    let mut ask = json!({ "sourceThreadId": source, "agentId": agent, "createdBy": "agent" });
+    for key in ["model", "title"] {
+        if let Some(v) = params.get(key).and_then(Value::as_str).map(str::trim) {
+            if !v.is_empty() {
+                ask[key] = json!(v);
+            }
+        }
+    }
+    if let Some(strategy) = strategy {
+        ask["strategy"] = json!(strategy);
+    }
+    if let Some(key) = transfer_key(params) {
+        ask["clientTransferId"] = json!(key);
+    }
+    // The message is sent here, not by `thread/transfer`, so the chat takes
+    // its access mode first — the order `chat/start` keeps.
+    let made = call(app, "thread/transfer", ask).await?;
+    let created = made.get("created").and_then(Value::as_bool) != Some(false);
+    let thread = made.get("thread").cloned().unwrap_or(Value::Null);
+    let open = params.get("open").and_then(Value::as_bool) != Some(false);
+    let (thread, turn) = settle_continuation(app, thread, created, message, open).await?;
+    Ok(receipts::receipt(
+        receipts::key_of(params).as_deref(),
+        continuation_view(&thread, &source, turn, open),
+    ))
+}
+
+/// One `thread/search` answer as `chat/search` returns it: only the chats the
+/// caller may name (and, with `folder`, only that worktree's), each with its
+/// title, agent and folder from `threads`, and every snippet redacted.
+fn search_view(
+    found: &Value,
+    threads: &std::collections::HashMap<String, Value>,
+    admits: impl Fn(Option<&str>) -> bool,
+    folder: Option<&str>,
+) -> Value {
+    let hits: Vec<Value> = found
+        .get("hits")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|hit| {
+            let id = hit.get("threadId").and_then(Value::as_str)?;
+            let thread = threads.get(id)?;
+            let cwd = thread.get("cwd").and_then(Value::as_str);
+            if !admits(cwd) {
+                return None;
+            }
+            if let Some(f) = folder {
+                if !cwd.is_some_and(|c| path_key(c) == path_key(f)) {
+                    return None;
+                }
+            }
+            let matches: Vec<Value> = hit
+                .get("matches")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|m| {
+                    json!({
+                        "turnId": m.get("turnId").cloned().unwrap_or(Value::Null),
+                        "role": m.get("role").cloned().unwrap_or(Value::Null),
+                        "snippet": redact(m.get("snippet").and_then(Value::as_str).unwrap_or("")),
+                    })
+                })
+                .collect();
+            Some(json!({
+                "chat": id,
+                "title": thread.get("title").cloned().unwrap_or(Value::Null),
+                "agent": thread.get("agentId").cloned().unwrap_or(Value::Null),
+                "folder": cwd,
+                "archived": thread.get("status").and_then(Value::as_str) == Some("archived"),
+                "titleMatch": hit.get("titleMatch").and_then(Value::as_bool).unwrap_or(false),
+                "matchCount": hit.get("matchCount").cloned().unwrap_or(json!(0)),
+                "matches": matches,
+            }))
+        })
+        .collect();
+    json!({
+        "hits": hits,
+        "nextCursor": found.get("nextCursor").cloned().unwrap_or(Value::Null),
+        "searched": found.get("searched").cloned().unwrap_or(json!(0)),
+        "total": found.get("total").cloned().unwrap_or(json!(0)),
+    })
+}
+
+/// `chat/search`: the chats whose title or words match `query` — what the
+/// person and the agents said, searched by the bridge, which holds every
+/// conversation's history. `worktree` narrows it to one worktree's chats.
+pub async fn search<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let resolver = Resolver::new(app, caller);
+    let query = params
+        .get("query")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let mut ask = json!({ "query": query });
+    let folder = match params.get("worktree").and_then(Value::as_str) {
+        Some(sel) => {
+            let path = resolver.worktree(sel).await?.1.path;
+            // The bridge searches only that folder's project.
+            let project = call(app, "project/resolve", json!({ "cwd": path })).await?;
+            if let Some(id) = project.get("id").and_then(Value::as_str) {
+                ask["projectId"] = json!(id);
+            }
+            Some(path)
+        }
+        None => None,
+    };
+    if params.get("archived").and_then(Value::as_bool) == Some(true) {
+        ask["includeArchived"] = json!(true);
+    }
+    for key in ["limit", "cursor"] {
+        if let Some(v) = params.get(key).filter(|v| !v.is_null()) {
+            ask[key] = match key {
+                "cursor" => json!(v.as_str().unwrap_or_default()),
+                _ => v.clone(),
+            };
+        }
+    }
+    let found = call(app, "thread/search", ask).await?;
+    let list = call(app, "thread/list", json!({})).await?;
+    let threads: std::collections::HashMap<String, Value> = list
+        .get("threads")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|t| Some((t.get("id")?.as_str()?.to_string(), t.clone())))
+        .collect();
+    let scope = resolver.scope().await;
+    Ok(search_view(
+        &found,
+        &threads,
+        |cwd| scope.admits_folder(cwd),
+        folder.as_deref(),
     ))
 }
 
@@ -935,5 +1265,111 @@ mod tests {
         assert_eq!(chat_state(true, Some(&folded)), "working");
         assert_eq!(chat_state(false, Some(&asking)), "idle");
         assert_eq!(chat_state(true, None), "working");
+    }
+
+    #[test]
+    fn a_strategy_is_one_of_three_and_absent_is_the_bridges_default() {
+        assert_eq!(strategy_of(&json!({})).unwrap(), None);
+        assert_eq!(strategy_of(&json!({ "strategy": " " })).unwrap(), None);
+        for s in ["selection", "reference", "fork"] {
+            assert_eq!(strategy_of(&json!({ "strategy": s })).unwrap(), Some(s));
+        }
+        let err = strategy_of(&json!({ "strategy": "summary" })).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidParams);
+    }
+
+    /// The caller's key becomes the bridge's `clientTransferId` when it fits,
+    /// so a retry finds the continuation already made even after a restart.
+    #[test]
+    fn continue_from_carries_the_source_strategy_and_key() {
+        let from = continue_from(
+            "th-1",
+            &json!({ "strategy": "reference", "idempotencyKey": " k1 " }),
+        )
+        .unwrap();
+        assert_eq!(
+            from,
+            json!({ "threadId": "th-1", "createdBy": "agent", "strategy": "reference", "clientTransferId": "k1" })
+        );
+        let long = "k".repeat(TRANSFER_KEY_MAX + 1);
+        let from = continue_from("th-1", &json!({ "idempotencyKey": long })).unwrap();
+        assert!(from.get("clientTransferId").is_none());
+        assert!(from.get("strategy").is_none());
+    }
+
+    /// The receipt reads the bridge's `Thread` as `shared/` shapes it
+    /// (`Thread.transfer: ConversationTransfer`).
+    #[test]
+    fn a_continuation_reports_what_it_carries_and_its_real_status() {
+        let thread = json!({
+            "id": "th-2", "projectId": "p", "title": "T", "status": "active",
+            "turnCount": 0, "createdAt": 1, "updatedAt": 1,
+            "agentId": "codex", "cwd": "/w/app",
+            "transfer": {
+                "id": "tr-1", "strategy": "selection", "sourceThreadId": "th-1",
+                "sourceTitle": "T", "sourceAgentId": "claude-code", "createdBy": "agent",
+                "status": "sent", "turnId": "tu-1",
+                "context": { "turns": 3, "omittedTurns": 0, "bytes": 4000, "approxTokens": 1000 }
+            }
+        });
+        let v = continuation_view(&thread, "th-1", json!("tu-1"), true);
+        assert_eq!(
+            v,
+            json!({
+                "chat": "th-2", "agent": "codex", "folder": "/w/app", "sourceChat": "th-1",
+                "strategy": "selection", "status": "sent", "contextTokens": 1000,
+                "turns": 0, "turnId": "tu-1", "opened": true
+            })
+        );
+        assert_eq!(new_id(&thread).unwrap(), "th-2");
+        assert_eq!(new_id(&json!({})).unwrap_err().code, ErrorCode::Internal);
+    }
+
+    /// Hits outside the caller's scope (or the worktree asked for) are dropped,
+    /// and a snippet is redacted like everything else read through the surface.
+    #[test]
+    fn a_search_answers_only_the_chats_in_scope_with_redacted_snippets() {
+        let found = json!({
+            "hits": [
+                { "threadId": "a", "titleMatch": false, "matchCount": 2, "matches": [
+                    { "turnId": "t1", "seq": 1, "role": "user",
+                      "snippet": "use token=ghp_abcdefghijklmnopqrstuvwxyz0123456789 here",
+                      "matchStart": 4, "matchLength": 5 }
+                ] },
+                { "threadId": "b", "titleMatch": true, "matchCount": 0, "matches": [] },
+                { "threadId": "gone", "titleMatch": true, "matchCount": 0, "matches": [] }
+            ],
+            "nextCursor": "7", "searched": 7, "total": 9
+        });
+        let threads: std::collections::HashMap<String, Value> = [
+            ("a".to_string(), json!({ "id": "a", "title": "Deploy", "agentId": "codex", "cwd": "/w/app", "status": "active" })),
+            ("b".to_string(), json!({ "id": "b", "title": "Other", "agentId": "zero", "cwd": "/w/secret", "status": "archived" })),
+        ]
+        .into_iter()
+        .collect();
+        let v = search_view(&found, &threads, |cwd| cwd == Some("/w/app"), None);
+        assert_eq!(v["hits"].as_array().unwrap().len(), 1);
+        let hit = &v["hits"][0];
+        assert_eq!(hit["chat"], "a");
+        assert_eq!(hit["title"], "Deploy");
+        assert_eq!(hit["matchCount"], 2);
+        assert_eq!(hit["matches"][0]["role"], "user");
+        assert!(!hit["matches"][0]["snippet"]
+            .as_str()
+            .unwrap()
+            .contains("ghp_abc"));
+        assert_eq!(v["nextCursor"], "7");
+        assert_eq!(v["total"], 9);
+        let all = search_view(&found, &threads, |_| true, Some("/w/secret"));
+        assert_eq!(all["hits"][0]["chat"], "b");
+        assert_eq!(all["hits"][0]["archived"], true);
+        assert_eq!(all["hits"].as_array().unwrap().len(), 1);
+        let done = search_view(
+            &json!({ "hits": [], "searched": 0, "total": 0 }),
+            &threads,
+            |_| true,
+            None,
+        );
+        assert_eq!(done["nextCursor"], Value::Null);
     }
 }
