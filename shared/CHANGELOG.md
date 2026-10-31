@@ -15,23 +15,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`GenerateTitleOptions.model`**: the conversation's own model, used by an agent
   with no cheaper one to name with (`IAgentAdapter.generateTitle` now documents one
   model rule for every agent).
-
-### Changed
-
-- **Approvals and questions never expire** (architecture/02a §5.8.16, 02b
-  1.7.0). `ApprovalResolvedParams.timedOut` / `QuestionResolvedParams.timedOut`
-  become `withdrawn` — no person answered: the agent settled the request itself,
-  or the run that asked ended. `ApprovalRequestBlock.outcome`
-  (`ApprovalOutcome { decision, withdrawn? }`) and `QuestionRequestBlock.outcome`
-  (`QuestionOutcome { answers, withdrawn? }`) carry the same record on the
-  stored card, so `turn/list` converges a client that missed the notification.
-
-### Added
-
-- `NotificationPreferences.needsInput?` (absent = on): push when an agent starts
-  waiting on the person, once per approval or question.
-
-### Added
 - **Provider usage: Antigravity and OpenCode.** `UsageProvider` gains
   `antigravity` and `opencode`, and `USAGE_PROVIDERS` lists every provider in
   the order clients show them.
@@ -43,11 +26,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and balance `period`s clients localize are documented as a fixed vocabulary.
 
 ### Changed
+
+- **Approvals and questions never expire** (architecture/02a §5.8.16, 02b
+  1.7.0). `ApprovalResolvedParams.timedOut` / `QuestionResolvedParams.timedOut`
+  become `withdrawn` — no person answered: the agent settled the request itself,
+  or the run that asked ended. `ApprovalRequestBlock.outcome`
+  (`ApprovalOutcome { decision, withdrawn? }`) and `QuestionRequestBlock.outcome`
+  (`QuestionOutcome { answers, withdrawn? }`) carry the same record on the
+  stored card, so `turn/list` converges a client that missed the notification.
 - **`ProviderUsage.credit` is now `credits: CreditBalance[]`**, so a provider
   with several balances (Grok on-demand and prepaid, every OpenCode Console
   budget) reports them all.
 - **`UsageSource` is `'cli'` only.** Every provider's limits are now asked of
   its own CLI, so no snapshot comes from a stored token any more.
+
+### Added
+
+- `NotificationPreferences.needsInput?` (absent = on): push when an agent starts
+  waiting on the person, once per approval or question.
 
 ## [0.0.36-alpha.20261030] - 20261030
 ### Added

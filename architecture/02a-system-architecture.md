@@ -1,11 +1,23 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.12.0
+> **Version:** 1.13.0
 > **Fecha:** 2026-10-31
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.13.0):** provider usage (§5.8.10) is read for **six
+> providers** — Codex, Claude Code, GitHub Copilot, Grok, Antigravity and
+> OpenCode — and **every one is asked of its own CLI** (Copilot through `gh api`,
+> Grok over `_x.ai/billing`, Antigravity through `agy -p /usage` and `/credits`,
+> OpenCode through `opencode api --standalone`): the bridge reads no credential.
+> Reads run side by side and are coalesced per provider. Banked resets: Codex's
+> are seen, listed and used (behind a confirmation); Claude Code's are seen and
+> listed, used only with its interactive `/limit-reset`. Spend (`usage/summary`)
+> adds Antigravity (its per-conversation SQLite stores) and prices Codex at
+> OpenAI's published rates (`CODEX_PRICES`, by model id and service tier) beside
+> `CLAUDE_PRICES`.
+>
 > **Executive summary (1.12.0):** the agents' own sessions are listed in **one
 > place**, the conversation catalog (§5.8.19, §5.8.21): the desktop's
 > Conversations tab and the phone's catalog both have an *Agent sessions* view,

@@ -24,6 +24,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a small record in the worktree's own git folder, which lives and dies with the
   worktree. `WorktreeEntry` gains `createdByUxnan`; settings gain
   `knownWorktrees` and `worktreeBaselineProjects`.
+- **Antigravity and OpenCode in Settings → Providers** and the status-bar
+  usage popover — every provider the bridge reads can be pinned, six today.
 
 ### Changed
 
@@ -43,55 +45,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   menu closed; each project's *N hidden · Show* line is unchanged. With fewer
   buttons the *PROJECTS (N)* label keeps its count until 15rem of panel width with
   the attention pill showing (13rem without) instead of 22rem/16rem.
-
-### Changed
-
-- **A chat's approval or question stays pinned until a person answers it.**
-  Nothing closes it on a clock any more (the bridge no longer auto-rejects
-  after five minutes). One the agent withdrew, or whose run ended, reads *No
-  longer waiting for an answer* — never "Denied" or "No answer in time"
-  (`chat.approvalTimedOut` / `chat.questionTimedOut` are gone).
-- **A card answered elsewhere while this window was closed or offline settles
-  from the bridge's stored outcome** (`Conversation.approvalOutcome` /
-  `questionOutcome`) instead of offering its buttons again.
-
-### Added
-
-- **"Needs you" alerts for chats.** When an agent in a bridge chat asks for an
-  approval or a question and that chat is not on screen, the desktop says so
-  once per request: a toast while the window has the focus, an OS notification
-  when it does not (`src/lib/state/chatAlerts.ts`, behind Settings → *Idle
-  notifications*, whose description now says so).
-
-### Changed
-
-- **The new-chat screen is composer-first and never grows with the history.** The
-  hero and the composer sit at a fixed anchor of the pane, and below them the
-  history has a box of its own with at most the three newest conversations of the
-  folder and *See all conversations (N)*. Nothing expands in place any more, and
-  the history arriving from the bridge — or not at all — no longer moves the
-  composer (it used to be pushed up and scrolled out of view by a long list of
-  sessions).
-- **Agent sessions moved to the Conversations tab.** The agents' own sessions in a
-  folder that no conversation continues (started in a terminal or the agent's own
-  app) are no longer listed on the new-chat screen: one quiet line, *N agent
-  sessions in this folder outside Uxnan*, opens the Conversations tab on a new
-  **Agent sessions** view — searchable by title, filterable by agent, with the
-  same pick-up (asking the terminal that holds a session to let it go first) and
-  the same note for agents that cannot list theirs. A session nothing could name
-  reads *Untitled {agent} session*. The replica keeps one list per folder
-  (`ChatStore.agentSessions`) that the line's count and the view both read.
-- **Sessions with no title get one.** The bridge now names an agent session its CLI
-  keeps no title for (OpenCode's, Codex's with no name or preview) from its first
-  exchange; the view shows *Naming…* on those rows and asks again every five
-  seconds (at most 18 times) until the names arrive. The sessions that were Uxnan's
-  own naming runs are no longer listed.
-
-### Added
-- **Antigravity and OpenCode in Settings → Providers** and the status-bar
-  usage popover — every provider the bridge reads can be pinned, six today.
-
-### Changed
 - **Codex spend shows its cost** in Settings → Providers — an estimate at
   OpenAI's API prices, the bridge's new Codex price table — instead of "No
   price"; Claude Sonnet 5.5's estimate reads its cache at the published 0.05x.
@@ -116,6 +69,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   "Fable (semanal)", "120 créditos disponibles"), from the ids the bridge sends,
   through one formatter (`usageLabels.ts`); every balance a provider reports is
   listed, not just one.
+
+### Changed
+
+- **A chat's approval or question stays pinned until a person answers it.**
+  Nothing closes it on a clock any more (the bridge no longer auto-rejects
+  after five minutes). One the agent withdrew, or whose run ended, reads *No
+  longer waiting for an answer* — never "Denied" or "No answer in time"
+  (`chat.approvalTimedOut` / `chat.questionTimedOut` are gone).
+- **A card answered elsewhere while this window was closed or offline settles
+  from the bridge's stored outcome** (`Conversation.approvalOutcome` /
+  `questionOutcome`) instead of offering its buttons again.
+
+
+### Added
+
+- **"Needs you" alerts for chats.** When an agent in a bridge chat asks for an
+  approval or a question and that chat is not on screen, the desktop says so
+  once per request: a toast while the window has the focus, an OS notification
+  when it does not (`src/lib/state/chatAlerts.ts`, behind Settings → *Idle
+  notifications*, whose description now says so).
+
+
+### Changed
+
+- **The new-chat screen is composer-first and never grows with the history.** The
+  hero and the composer sit at a fixed anchor of the pane, and below them the
+  history has a box of its own with at most the three newest conversations of the
+  folder and *See all conversations (N)*. Nothing expands in place any more, and
+  the history arriving from the bridge — or not at all — no longer moves the
+  composer (it used to be pushed up and scrolled out of view by a long list of
+  sessions).
+- **Agent sessions moved to the Conversations tab.** The agents' own sessions in a
+  folder that no conversation continues (started in a terminal or the agent's own
+  app) are no longer listed on the new-chat screen: one quiet line, *N agent
+  sessions in this folder outside Uxnan*, opens the Conversations tab on a new
+  **Agent sessions** view — searchable by title, filterable by agent, with the
+  same pick-up (asking the terminal that holds a session to let it go first) and
+  the same note for agents that cannot list theirs. A session nothing could name
+  reads *Untitled {agent} session*. The replica keeps one list per folder
+  (`ChatStore.agentSessions`) that the line's count and the view both read.
+- **Sessions with no title get one.** The bridge now names an agent session its CLI
+  keeps no title for (OpenCode's, Codex's with no name or preview) from its first
+  exchange; the view shows *Naming…* on those rows and asks again every five
+  seconds (at most 18 times) until the names arrive. The sessions that were Uxnan's
+  own naming runs are no longer listed.
 
 ## [0.0.84] - 20261030
 ### Fixed

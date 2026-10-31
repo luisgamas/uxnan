@@ -12,6 +12,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   so the desktop's left panel — which sets aside worktrees that appeared outside
   Uxnan while they are untouched — does not hide a checkout made from the phone.
   Best-effort: a failure to write it never fails the creation.
+- **Codex spend is priced** at OpenAI's published API rates (`CODEX_PRICES`,
+  read 2026-10-31, pinned by tests): one row per exact model id and service
+  tier (standard, flex, fast, ultrafast — from the rollout's
+  `thread_settings_applied`), with long-context prices past 272K input tokens.
+  Cached input is priced at its own rate, reasoning once as output; a request
+  with cache writes, an unknown id or tier stays unpriced, never guessed.
+- **Antigravity and OpenCode plan limits** in `agent/usageStats`. Antigravity
+  is asked through `agy -p /usage` and `agy -p /credits` (agy 1.1.11 and later
+  answer them without an agent turn; the version is checked first, and an
+  answer that ran a turn stops further asks for the life of the process): a
+  weekly window per model group and the AI credits once above zero. OpenCode 2
+  is asked through `opencode api --standalone GET /api/experimental/usage/limits`:
+  the OpenCode Go meters and the OpenCode Console budget.
+- **Antigravity in `usage/summary`.** Its spend is read from the conversation
+  databases `agy` keeps (`~/.gemini/antigravity-cli/conversations/*.db`), whose
+  per-call usage matches what the driven stream-json surface reports; tokens
+  only, as Antigravity bills by plan quota. Every wired agent with a store that
+  records tokens is now charted.
+- **Claude Code's limit resets** are listed from `get_usage`
+  (`rate_limits.cedar_ember`) with `resetCredits.redeemCommand: "/limit-reset"`:
+  the CLI spends one only interactively, so `usage/redeemReset` answers with that
+  instruction instead of redeeming.
+- **Provider reads are coalesced and parallel.** Every provider is read side by
+  side, and one already being read answers a second client from that read.
 
 ### Changed
 
@@ -32,6 +56,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (`ThreadStore.settleStep`, by `blockId`) before it announces
   `stream/approval|question/resolved`, so a client that missed the notification
   reads the same outcome from `turn/list`.
+- **No provider is read from a credential any more.** Grok is asked over the
+  ACP surface it is driven on (`grok agent stdio` → `_x.ai/billing`), and
+  GitHub Copilot through `gh api /copilot_internal/user`, where `gh` sends its
+  own sign-in. The bridge no longer reads `~/.grok/auth.json` or runs
+  `gh auth token`; every snapshot is `source: "cli"`.
+- **Balances are a list** (`credits`): Grok reports on-demand and prepaid
+  together, OpenCode every Console budget (a per-model one names its models in
+  `scope`). Claude's model-scoped weekly window carries its `model`, and Grok's
+  window id is its period (`weekly`, `monthly`, `daily`), so clients name every
+  window in their own language.
+- **An unknown provider id is skipped, not refused**, so a newer client asking
+  for a provider this bridge does not know still gets the rest.
+- **Codex** reports a seat's spend limit (`individualLimit`) as a window and
+  names its plans as Codex does (`ent26` → Enterprise, `prolite` → Pro Lite, …).
 
 ### Added
 
@@ -60,6 +98,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   fail. Measured on all seven real CLIs (`docs/agents.md` → *Naming a
   conversation*).
 
+
 ### Fixed
 
 - **"Untitled session" rows that were Uxnan's own naming runs.** An OpenCode
@@ -71,50 +110,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **OpenCode 1's `New session - <time>` placeholder** counts as untitled, so the
   bridge names it.
 - **Zero's naming run is read-only** (`zero exec --plan`).
-
-### Added
-- **Codex spend is priced** at OpenAI's published API rates (`CODEX_PRICES`,
-  read 2026-10-31, pinned by tests): one row per exact model id and service
-  tier (standard, flex, fast, ultrafast — from the rollout's
-  `thread_settings_applied`), with long-context prices past 272K input tokens.
-  Cached input is priced at its own rate, reasoning once as output; a request
-  with cache writes, an unknown id or tier stays unpriced, never guessed.
-- **Antigravity and OpenCode plan limits** in `agent/usageStats`. Antigravity
-  is asked through `agy -p /usage` and `agy -p /credits` (agy 1.1.11 and later
-  answer them without an agent turn; the version is checked first, and an
-  answer that ran a turn stops further asks for the life of the process): a
-  weekly window per model group and the AI credits once above zero. OpenCode 2
-  is asked through `opencode api --standalone GET /api/experimental/usage/limits`:
-  the OpenCode Go meters and the OpenCode Console budget.
-- **Antigravity in `usage/summary`.** Its spend is read from the conversation
-  databases `agy` keeps (`~/.gemini/antigravity-cli/conversations/*.db`), whose
-  per-call usage matches what the driven stream-json surface reports; tokens
-  only, as Antigravity bills by plan quota. Every wired agent with a store that
-  records tokens is now charted.
-- **Claude Code's limit resets** are listed from `get_usage`
-  (`rate_limits.cedar_ember`) with `resetCredits.redeemCommand: "/limit-reset"`:
-  the CLI spends one only interactively, so `usage/redeemReset` answers with that
-  instruction instead of redeeming.
-- **Provider reads are coalesced and parallel.** Every provider is read side by
-  side, and one already being read answers a second client from that read.
-
-### Changed
-- **No provider is read from a credential any more.** Grok is asked over the
-  ACP surface it is driven on (`grok agent stdio` → `_x.ai/billing`), and
-  GitHub Copilot through `gh api /copilot_internal/user`, where `gh` sends its
-  own sign-in. The bridge no longer reads `~/.grok/auth.json` or runs
-  `gh auth token`; every snapshot is `source: "cli"`.
-- **Balances are a list** (`credits`): Grok reports on-demand and prepaid
-  together, OpenCode every Console budget (a per-model one names its models in
-  `scope`). Claude's model-scoped weekly window carries its `model`, and Grok's
-  window id is its period (`weekly`, `monthly`, `daily`), so clients name every
-  window in their own language.
-- **An unknown provider id is skipped, not refused**, so a newer client asking
-  for a provider this bridge does not know still gets the rest.
-- **Codex** reports a seat's spend limit (`individualLimit`) as a window and
-  names its plans as Codex does (`ent26` → Enterprise, `prolite` → Pro Lite, …).
-
-### Fixed
 - **Claude Sonnet 5.5 cache reads cost 0.05x** ($0.10 per million), as
   Anthropic's table now publishes, not $0.20.
 - The spend cache is versioned, so a price change re-reads every transcript

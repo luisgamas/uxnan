@@ -1,6 +1,16 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.8.0 | **Fecha:** 2026-10-31 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.9.0 | **Fecha:** 2026-10-31 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.9.0):** `UsageProvider` gains `antigravity` and
+> `opencode` (`USAGE_PROVIDERS` lists all six); `UsageSource` is `'cli'` only;
+> `ProviderUsage.credit` becomes `credits: CreditBalance[]` (with
+> `CreditBalance.scope`); `UsageWindow.model` names a model-scoped window; window
+> ids and balance periods are a vocabulary clients localize;
+> `ResetCredits.redeemCommand` marks resets only the CLI spends (Claude Code's
+> `/limit-reset`), which `usage/redeemReset` refuses with that instruction. An
+> unknown provider id in `agent/usageStats` is skipped, not refused. No method
+> or notification count changes.
 >
 > **Executive summary (1.8.0):** `AgentSessionSummary` gains `titlePending?` (the
 > bridge is naming an untitled agent session; the title arrives on a later
