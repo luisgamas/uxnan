@@ -22,6 +22,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   approval or a question outside the conversation on screen, the phone shows
   one local notification for it and removes it once the request is answered
   anywhere. A foreground "needs you" push is keyed the same way.
+- **The new-conversation screen stays short, however much history there is.**
+  It keeps the folder's three latest conversations and *See all*; the agents'
+  own sessions in that folder (the ones started in a terminal on the PC or in
+  the agent's app) no longer expand in place down the screen. One quiet row —
+  *N agent sessions in this folder outside Uxnan* — opens them instead, and
+  holds its place while the PC answers so nothing jumps.
+- **Agent sessions live in the conversation catalog.** A new *Agent sessions*
+  view next to *Conversations* lists the folder's sessions grouped by today,
+  this week and earlier, with an agent filter and a title search. Picking one
+  works as before: a session open in a terminal on the PC is asked to let go
+  first, then the session continues as a conversation with its history.
+- **Untitled agent sessions get a name.** When a session has no title of its
+  own, the PC names it in the background: the row reads *Naming…* and the title
+  appears by itself a few seconds later (the phone asks again every 5 seconds,
+  18 times at most, only while the screen is open). Sessions that cannot be
+  named keep *Untitled session*.
 
 ## [0.0.46-alpha.20261030+20261030] - 20261030
 ### Added

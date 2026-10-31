@@ -5,6 +5,7 @@ import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/thread_origin.dart';
+import 'package:uxnan/presentation/screens/threads/catalog_age.dart';
 import 'package:uxnan/presentation/screens/threads/conversation_catalog_screen.dart';
 
 /// The conversation catalog's filters and age groups (architecture/02a

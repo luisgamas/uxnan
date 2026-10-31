@@ -38,9 +38,19 @@ pass.
   `thread/fork`, both from the list's long-press sheet and the conversation's
   menu; `TransferOriginCard` / `ContinuationsCard` show both ends with the
   delivery status the bridge proved, and `thread/transferContext` shows what
-  the agent received. The new-conversation screen shows the folder's three
-  latest conversations, *See all* and *Continue from…*
-  (`thread/start { continueFrom }`). Conversations whose project left the
+  the agent received. The new-conversation screen stays a short form: the
+  folder's three latest conversations, *See all* and *Continue from…*
+  (`thread/start { continueFrom }`), plus one quiet row counting the agents'
+  own sessions in the folder outside Uxnan (`agentSessionsProvider`, a
+  reserved slot while the PC answers). Those sessions are listed in one place,
+  the catalog's *Agent sessions* view (`AgentSessionsView`, opened by that row
+  or by the view switch): grouped by age, filtered by agent and by title,
+  with the *in a terminal* label and the pick-up action (`agent/requestHandoff`
+  when a terminal holds it, then `thread/start { agentSessionId }`). While the
+  PC names an untitled session (`titlePending`) the row reads *Naming…* and
+  `agentSessionsProvider` asks again (`followSessionTitles`: every 5 s, 18 times
+  at most, the count restarting whenever the provider is invalidated and ending
+  with its last listener). Conversations whose project left the
   registry list under *Other conversations* (`groupThreadsByWorkspace`,
   `registryLoaded`). Continuity is persisted in `threads_table`
   (`continuity_json`, schema v14). Gated on `features.conversations`. Covered

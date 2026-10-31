@@ -1,18 +1,86 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/project.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/threads/conversation_catalog_screen.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
+
+List<Override> _baseOverrides({
+  bool requiresLogin = false,
+  List<AgentDescriptor>? agents,
+  List<AgentModel> models = const [],
+  String? home,
+  List<Thread> threads = const [],
+}) {
+  return [
+    bridgeHomeProvider.overrideWith((ref) => Stream.value(home)),
+    threadsProvider.overrideWith((ref) => Stream.value(threads)),
+    connectedDeviceProvider.overrideWith((ref) => Stream.value(_pc)),
+    projectsProvider.overrideWith(
+      (ref, deviceId) => Stream.value(
+        const [
+          Project(id: 'p1', name: 'App', cwd: '/app'),
+          Project(id: 'p2', name: 'Site', cwd: '/site'),
+        ],
+      ),
+    ),
+    agentsProvider.overrideWith(
+      (ref) async =>
+          agents ??
+          const [
+            AgentDescriptor(
+              agentId: 'codex',
+              displayName: 'Codex',
+              available: true,
+              capabilities: AgentCapabilities(
+                accessModes: [ApprovalMode.plan],
+                streaming: true,
+                approvals: true,
+                images: true,
+              ),
+            ),
+            AgentDescriptor(
+              agentId: 'claude-code',
+              displayName: 'Claude Code',
+              available: true,
+              capabilities: AgentCapabilities(
+                accessModes: [ApprovalMode.plan],
+                forking: true,
+              ),
+            ),
+          ],
+    ),
+    agentModelsProvider.overrideWith((ref, id) async => models),
+    authStatusProvider.overrideWith(
+      (ref, agentId) async => AuthStatus(
+        agentId: agentId,
+        requiresLogin: requiresLogin && agentId == 'codex',
+        loginInProgress: false,
+      ),
+    ),
+  ];
+}
+
+Widget _app(Widget home) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: home,
+    );
 
 Widget _wrap({
   required bool requiresLogin,
@@ -21,63 +89,24 @@ Widget _wrap({
   String? home,
   String? initialCwd,
   AgentSessionList? sessions,
+  List<Thread> threads = const [],
 }) {
   return ProviderScope(
     overrides: [
-      bridgeHomeProvider.overrideWith((ref) => Stream.value(home)),
+      ..._baseOverrides(
+        requiresLogin: requiresLogin,
+        agents: agents,
+        models: models,
+        home: home,
+        threads: threads,
+      ),
       if (sessions != null) ...[
-        agentSessionsProvider.overrideWith((ref, cwd) async => sessions),
+        agentSessionsProvider
+            .overrideWith((ref, cwd) => Stream.value(sessions)),
         agentSessionHoldsProvider.overrideWith((ref) => Stream.value(const {})),
       ],
-      connectedDeviceProvider.overrideWith((ref) => Stream.value(_pc)),
-      projectsProvider.overrideWith(
-        (ref, deviceId) => Stream.value(
-          const [
-            Project(id: 'p1', name: 'App', cwd: '/app'),
-            Project(id: 'p2', name: 'Site', cwd: '/site'),
-          ],
-        ),
-      ),
-      agentsProvider.overrideWith(
-        (ref) async =>
-            agents ??
-            const [
-              AgentDescriptor(
-                agentId: 'codex',
-                displayName: 'Codex',
-                available: true,
-                capabilities: AgentCapabilities(
-                  accessModes: [ApprovalMode.plan],
-                  streaming: true,
-                  approvals: true,
-                  images: true,
-                ),
-              ),
-              AgentDescriptor(
-                agentId: 'claude-code',
-                displayName: 'Claude Code',
-                available: true,
-                capabilities: AgentCapabilities(
-                  accessModes: [ApprovalMode.plan],
-                  forking: true,
-                ),
-              ),
-            ],
-      ),
-      agentModelsProvider.overrideWith((ref, id) async => models),
-      authStatusProvider.overrideWith(
-        (ref, agentId) async => AuthStatus(
-          agentId: agentId,
-          requiresLogin: requiresLogin && agentId == 'codex',
-          loginInProgress: false,
-        ),
-      ),
     ],
-    child: MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: NewConversationScreen(initialCwd: initialCwd),
-    ),
+    child: _app(NewConversationScreen(initialCwd: initialCwd)),
   );
 }
 
@@ -401,48 +430,220 @@ void main() {
     });
   });
 
-  // A session a person had in a terminal on the PC (or the agent's app) that
-  // no conversation continues yet can be picked up here; one open in a
-  // terminal says where (architecture/02a §5.8.19).
-  testWidgets("offers the folder's agent sessions to continue", (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _wrap(
-        requiresLogin: false,
-        sessions: const AgentSessionList(
-          sessions: [
-            AgentSessionSummary(
-              agentId: 'claude-code',
-              sessionId: 's-1',
-              cwd: '/app',
-              updatedAgo: Duration(minutes: 5),
-              title: 'Payment flow refactor',
-              hold: AgentSessionHold(
-                agentId: 'claude-code',
-                sessionId: 's-1',
-                holderName: 'Studio',
-                busy: false,
-              ),
-            ),
-            AgentSessionSummary(
-              agentId: 'codex',
-              sessionId: 'c-1',
-              cwd: '/app',
-              updatedAgo: Duration(days: 2),
-            ),
-          ],
-          unlisted: ['antigravity-cli'],
+  group('a folder with a lot of history stays a short form', () {
+    // The screen is for starting: at most the three newest conversations and
+    // one quiet row that counts the agents' own sessions here — the lists
+    // themselves live in the catalog (architecture/02a §5.8.19, §5.8.21).
+    final threads = [
+      for (var i = 0; i < 30; i++)
+        Thread(
+          id: 't$i',
+          title: 'Conversation $i',
+          agentId: 'codex',
+          syncState: ThreadSyncState.synced,
+          status: ThreadStatus.active,
+          projectId: 'p1',
+          deviceId: 'mac-1',
+          cwd: '/app',
+          lastActivity: DateTime(2026, 10, 30).subtract(Duration(hours: i)),
         ),
-      ),
+    ];
+    final sessions = AgentSessionList(
+      sessions: [
+        for (var i = 0; i < 15; i++)
+          AgentSessionSummary(
+            agentId: 'claude-code',
+            sessionId: 's-$i',
+            cwd: '/app',
+            updatedAgo: Duration(hours: i + 1),
+            title: i.isEven ? 'Native session $i' : null,
+          ),
+      ],
+      unlisted: const ['antigravity-cli'],
     );
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Payment flow refactor'), 200);
-    expect(find.text('Or continue a session in this folder'), findsOneWidget);
-    expect(find.text('Payment flow refactor'), findsOneWidget);
-    expect(find.text('In a terminal on Studio'), findsOneWidget);
-    expect(find.text('Untitled session'), findsOneWidget);
-    expect(find.textContaining("can't list its sessions"), findsOneWidget);
+
+    testWidgets('shows three recent conversations and one sessions link', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrap(
+          requiresLogin: false,
+          initialCwd: '/app',
+          threads: threads,
+          sessions: sessions,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CatalogRow), findsNWidgets(3));
+      expect(find.text('See all conversations (30)'), findsOneWidget);
+      expect(
+        find.text('15 agent sessions in this folder outside Uxnan'),
+        findsOneWidget,
+      );
+      // None of the sessions is listed here, nor expandable in place.
+      expect(find.text('Native session 0'), findsNothing);
+      expect(find.text('Untitled session'), findsNothing);
+      expect(find.textContaining('Show all'), findsNothing);
+      expect(find.textContaining("can't list its sessions"), findsNothing);
+    });
+
+    testWidgets('counts sessions, named or not, and not their titles', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrap(
+          requiresLogin: false,
+          initialCwd: '/app',
+          sessions: const AgentSessionList(
+            sessions: [
+              AgentSessionSummary(
+                agentId: 'opencode',
+                sessionId: 'o-1',
+                cwd: '/app',
+                updatedAgo: Duration(hours: 1),
+                titlePending: true,
+              ),
+              AgentSessionSummary(
+                agentId: 'opencode',
+                sessionId: 'o-2',
+                cwd: '/app',
+                updatedAgo: Duration(hours: 2),
+                titlePending: true,
+              ),
+              AgentSessionSummary(
+                agentId: 'codex',
+                sessionId: 'c-1',
+                cwd: '/app',
+                updatedAgo: Duration(hours: 3),
+                title: 'Named already',
+              ),
+            ],
+            unlisted: [],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('3 agent sessions in this folder outside Uxnan'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('has no sessions row when the folder has none', (tester) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrap(
+          requiresLogin: false,
+          initialCwd: '/app',
+          threads: threads,
+          sessions: const AgentSessionList(sessions: [], unlisted: []),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('agent session'), findsNothing);
+      expect(find.byType(CatalogRow), findsNWidgets(3));
+    });
+
+    testWidgets('an empty folder is just the form', (tester) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrap(
+          requiresLogin: false,
+          initialCwd: '/app',
+          sessions: const AgentSessionList(sessions: [], unlisted: []),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CatalogRow), findsNothing);
+      expect(find.textContaining('See all conversations'), findsNothing);
+      expect(find.textContaining('agent session'), findsNothing);
+    });
+
+    testWidgets('the sessions row opens the catalog on its sessions view', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrap(
+          requiresLogin: false,
+          initialCwd: '/app',
+          threads: threads,
+          sessions: sessions,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text('15 agent sessions in this folder outside Uxnan'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ConversationCatalogScreen), findsOneWidget);
+      expect(find.text('Search agent sessions by title'), findsOneWidget);
+      expect(find.text('Native session 0'), findsOneWidget);
+      expect(
+        find.text(
+          "Antigravity can't list its sessions: continue one "
+          'from the terminal it runs in.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('holds the slot while the PC answers', (tester) async {
+      tester.view.physicalSize = const Size(900, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final answer = Completer<AgentSessionList>();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ..._baseOverrides(threads: threads),
+            agentSessionsProvider
+                .overrideWith((ref, cwd) => Stream.fromFuture(answer.future)),
+            agentSessionHoldsProvider
+                .overrideWith((ref) => Stream.value(const {})),
+          ],
+          child: _app(const NewConversationScreen(initialCwd: '/app')),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      final before = tester.getTopLeft(find.text('See all conversations (30)'));
+
+      answer.complete(sessions);
+      await tester.pumpAndSettle();
+
+      // What is above the slot did not move when it filled in.
+      expect(
+        tester.getTopLeft(find.text('See all conversations (30)')),
+        before,
+      );
+      expect(
+        find.text('15 agent sessions in this folder outside Uxnan'),
+        findsOneWidget,
+      );
+    });
   });
 }
 

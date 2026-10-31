@@ -2444,12 +2444,6 @@ abstract class AppLocalizations {
   /// **'Couldn\'t start the conversation'**
   String get newThreadFailed;
 
-  /// No description provided for @sessionsSection.
-  ///
-  /// In en, this message translates to:
-  /// **'Or continue a session in this folder'**
-  String get sessionsSection;
-
   /// No description provided for @sessionsSectionHint.
   ///
   /// In en, this message translates to:
@@ -2468,17 +2462,11 @@ abstract class AppLocalizations {
   /// **'Untitled session'**
   String get sessionsUntitled;
 
-  /// No description provided for @sessionsShowFewer.
+  /// Title of an agent session the PC is naming in the background; the name shows on a later listing.
   ///
   /// In en, this message translates to:
-  /// **'Show fewer'**
-  String get sessionsShowFewer;
-
-  /// No description provided for @sessionsShowAll.
-  ///
-  /// In en, this message translates to:
-  /// **'Show all {count}'**
-  String sessionsShowAll(int count);
+  /// **'Naming…'**
+  String get sessionsNaming;
 
   /// No description provided for @sessionsUnlisted.
   ///
@@ -6745,6 +6733,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing matches'**
   String get catalogNoResults;
+
+  /// Catalog view switch: the conversations Uxnan holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get catalogViewConversations;
+
+  /// Catalog view switch: the agents' own sessions in the folder, outside Uxnan.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent sessions'**
+  String get catalogViewSessions;
+
+  /// Hint of the catalog's search field while it lists agent sessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Search agent sessions by title'**
+  String get catalogSessionsSearchHint;
+
+  /// Empty state of the catalog's agent-sessions view.
+  ///
+  /// In en, this message translates to:
+  /// **'No agent sessions outside Uxnan in this folder'**
+  String get catalogSessionsEmpty;
+
+  /// The PC did not answer the agent-sessions listing.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t list this folder\'s agent sessions'**
+  String get catalogSessionsLoadFailed;
+
+  /// Quiet row on the new-conversation screen that opens the catalog's agent-sessions view for the chosen folder.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 agent session in this folder outside Uxnan} other{{count} agent sessions in this folder outside Uxnan}}'**
+  String newThreadSessionsLink(int count);
 
   /// The bridge predates content search.
   ///

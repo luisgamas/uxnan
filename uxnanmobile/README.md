@@ -92,10 +92,10 @@ this app:
   Mobile stores both the external prompt and its answer without duplicating its
   own messages. Antigravity is excluded because `agy` has no reliable readable
   transcript; cross-client token streaming is not claimed.
-- **Pick up any session, even one open in a terminal.** A new conversation lists
-  the agents' own sessions in the chosen folder under *Or continue a session in
-  this folder* (started in a terminal on the PC or in the agent's app) and
-  continues one with its history. A conversation whose session is open in a
+- **Pick up any session, even one open in a terminal.** A new conversation
+  counts the agents' own sessions in the chosen folder (started in a terminal
+  on the PC or in the agent's app) and opens the catalog's *Agent sessions*
+  view, where you continue one with its history. A conversation whose session is open in a
   terminal on the PC says so, and *Continue here* asks the PC to let it go.
 - **Every conversation, searchable — and continued by any agent.** Search
   titles and what was said (the PC answers that part), filter by project,
