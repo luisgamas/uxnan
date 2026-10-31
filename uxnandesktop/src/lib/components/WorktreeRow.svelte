@@ -127,12 +127,15 @@
   // height in the list.
   const meta = $derived(prBadge?.title?.trim() || hintText || dirName);
 
-  // Hidden: in the list the user hid. It is drawn here only because "show hidden"
-  // is on, a search matched it, or something surfaces it (selected, an agent at
-  // work, ready to close) — and says so, so a row that is "hidden" is never
-  // mistaken for one that is merely quiet.
-  const hiddenMark = $derived(!row.isMain && projects.isHidden(row.path));
+  // Set aside: in the list the user hid, or created outside Uxnan and untouched.
+  // It is drawn here only because "show hidden" is on, a search matched it, or
+  // something surfaces it (selected, an agent at work, ready to close) — and says
+  // so, so a row that is "hidden" is never mistaken for one that is merely quiet.
+  const hiddenMark = $derived(!row.isMain && projects.isSetAside(row));
   const heldBack = $derived(hiddenMark && projects.isHeldBack(row));
+  // Which of the two it is, for what the mark says: a worktree the user hid is
+  // theirs to show; an external one was never theirs to begin with.
+  const externalMark = $derived(hiddenMark && !projects.isHidden(row.path));
 
   // Tooltip: the full absolute path in the tree, but a short **relative** path in
   // the flattened status view (relative to the project root, else the folder
@@ -463,9 +466,13 @@
                   {/if}
                   {#if hiddenMark}
                     <TooltipSimple
-                      title={heldBack
-                        ? i18n.t("worktree.hiddenTooltip")
-                        : i18n.t("worktree.hiddenSurfacedTooltip")}
+                      title={externalMark
+                        ? heldBack
+                          ? i18n.t("worktree.externalTooltip")
+                          : i18n.t("worktree.externalSurfacedTooltip")
+                        : heldBack
+                          ? i18n.t("worktree.hiddenTooltip")
+                          : i18n.t("worktree.hiddenSurfacedTooltip")}
                     >
                       {#snippet children(tp2)}
                         <span {...tp2} class="inline-flex shrink-0 text-muted-foreground/70">

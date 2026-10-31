@@ -123,6 +123,40 @@ worktree here is hidden* with a *Show N hidden* button, which is not the same
 message as *No projects yet*. Removing a worktree forgets its mark, and a mark
 whose worktree is gone is pruned once every project has loaded.
 
+**Worktrees created outside Uxnan start out set aside.** A worktree an agent's
+CLI or a `git worktree add` made on its own — a scratch checkout, a throwaway
+experiment — is held back the same way a hidden one is, **while it is
+untouched**: clean, nothing unpushed, no live agent, no open pull request (the
+completion verdict `inert`). The rule is the hidden one plus two inputs
+(`sidebar-visibility.ts`: `external` and `quiet`), so it is *counted* in the same
+badge and *N hidden · Show* line, *surfaced* by the same reasons in the table
+above, *lifted* by *View hidden worktrees* and by a search, and recoverable by the
+same *Show*. The moment there is work in it — a change, a commit, an agent, a PR
+— it is an ordinary row; when it goes quiet again it is set aside again, unless
+you showed it. (A merged or closed one lands in *Ready to close*, never hidden.)
+
+Who made a worktree is a **fact**, kept where the worktree is. Whoever creates
+one for Uxnan — the dialog, `worktree/create`, the PR and issue checkouts, a
+host's engine, the bridge for the phone — leaves an empty file `uxnan-created` in
+the worktree's own git admin directory (`<common dir>/worktrees/<name>/`,
+`crates/workspace-engine/src/git.rs` → `mark_created`; the bridge's twin is
+`markWorktreeCreated`). It has the worktree's lifetime — `git worktree remove` and
+`prune` delete it, `git worktree move` keeps it — git ignores it, and listing
+reads it into `WorktreeEntry.createdByUxnan`. *Taking it in* is a **decision**,
+kept with the panel's other view state in `app.settings.knownWorktrees` (and
+which projects were taken in in `worktreeBaselineProjects`):
+
+| A worktree becomes known when… | Why |
+|---|---|
+| it was **already there** the first time its project was listed — this feature arriving, or the project being added | nothing that existed before may vanish; only what *appears afterwards* is new (`baselineKnown`) |
+| you **show** it (its menu, *Show* in the project line), **pin** it, or choose **Stop hiding worktrees** | "I looked at it once" is a decision: it stays, even when it goes quiet again |
+
+The first listing only counts when git answered: the one-entry stand-in a project
+gets while its host cannot be asked takes nothing in and does not use up the
+project's first listing (`isAuthoritativeList`), or its real worktrees would all
+arrive "new". *Stop hiding worktrees* ends **both** kinds of set-aside: every
+hidden mark goes and every external worktree becomes known.
+
 ## Cleanup
 
 Settings → **Git** → *Cleanup* is what keeps the managed folder from growing

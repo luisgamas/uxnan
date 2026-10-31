@@ -10,6 +10,15 @@
 //     *visible right now* is derived from live facts, never written back. A late
 //     notification can therefore never leave a row stuck hidden, and an agent
 //     finishing can never leave one stuck shown;
+//   * a worktree **created outside Uxnan** (plain `git worktree add`, a CLI
+//     agent's scratch checkout) starts out *set aside* the same way a hidden one
+//     is — but only while it is untouched (`quiet`). Nobody decided to hide it,
+//     so the rule is derived too: provenance is a fact the engine records when it
+//     creates a worktree (`createdByUxnan`), and the user's acknowledgement
+//     ("show it" once, or "it was already here when this arrived") is a persisted
+//     decision (`known`). One notion — *set aside* — serves both, so the count,
+//     the "N hidden · Show" line, the surface reasons and "show all" cannot
+//     disagree about either kind;
 //   * the panel's three views and the "Ready to close" lane read the same
 //     answer, so none of them can disagree about what exists.
 //
@@ -23,6 +32,12 @@ import type { CompletionState } from "$lib/worktree-completion";
 export interface VisibilityInputs {
   /** The user hid it (it is in the persisted list). */
   hidden: boolean;
+  /** Created outside Uxnan and not yet acknowledged (`isExternalWorktree`). */
+  external: boolean;
+  /** Untouched: clean, nothing unpushed, no live agent, no open pull request
+   *  (the completion verdict `inert`). An external worktree is only set aside
+   *  while it is quiet — one with work in it is somebody's work. */
+  quiet: boolean;
   /** The project's primary worktree — the project's own context. */
   isMain: boolean;
   /** Pinned: the user said "keep this in front of me", which is the opposite of
@@ -89,22 +104,39 @@ export function nextLingering(
   return [...next].filter((p) => ctx.hidden.includes(p));
 }
 
-/** In the hidden list **and** nothing surfaces it: the rows the panel is
- *  currently holding back, which is what the "N hidden" count counts. */
+/** Whether a worktree was created outside Uxnan and nobody has taken it in:
+ *  not the primary one, not made by Uxnan (`createdByUxnan`, the engine's
+ *  record), and not acknowledged (`known`). */
+export function isExternalWorktree(w: {
+  isMain: boolean;
+  createdByUxnan: boolean;
+  known: boolean;
+}): boolean {
+  return !w.isMain && !w.createdByUxnan && !w.known;
+}
+
+/** Marked to be out of the list: hidden by the user, or external and untouched.
+ *  Whether it is *drawn* still depends on the surface reasons. */
+export function isSetAside(input: VisibilityInputs): boolean {
+  return input.hidden || (input.external && input.quiet);
+}
+
+/** Set aside **and** nothing surfaces it: the rows the panel is currently
+ *  holding back, which is what the "N hidden" count counts. */
 export function isSuppressed(input: VisibilityInputs): boolean {
-  return input.hidden && surfaceReason(input) === null;
+  return isSetAside(input) && surfaceReason(input) === null;
 }
 
 /** Whether the menus may offer "Hide" for this worktree. Never for the primary
  *  worktree, a pinned one (pin says "keep it in front of me") or one that is
  *  ready to close (that decision is not the user's to bury); and not for one
- *  already hidden — that is "Show".
+ *  already set aside — that is "Show".
  *
  *  A worktree that is selected or has an agent at work *can* be hidden: the
  *  request is kept, and the row leaves the list the moment nothing surfaces it —
  *  which is what "hide this one for later" means. */
 export function canHide(input: VisibilityInputs): boolean {
-  return !input.hidden && !input.isMain && !input.pinned && !input.closable;
+  return !isSetAside(input) && !input.isMain && !input.pinned && !input.closable;
 }
 
 /** Whether hiding takes effect now, or waits for the worktree to go quiet
@@ -134,11 +166,50 @@ export function isRowShown(
   return !isSuppressed(input);
 }
 
-/** Drop hidden entries whose worktree is gone, so the list cannot accumulate
- *  paths that no longer exist. Returns the same array when nothing changed. */
-export function pruneHidden(hidden: readonly string[], existing: ReadonlySet<string>): string[] {
-  const kept = hidden.filter((p) => existing.has(p));
-  return kept.length === hidden.length ? (hidden as string[]) : kept;
+/** Drop marks (hidden or known) whose worktree is gone, so a list cannot
+ *  accumulate paths that no longer exist. Returns the same array when nothing
+ *  changed. */
+export function pruneMarks(marks: readonly string[], existing: ReadonlySet<string>): string[] {
+  const kept = marks.filter((p) => existing.has(p));
+  return kept.length === marks.length ? (marks as string[]) : kept;
+}
+
+// --- Taking in what was already there -----------------------------------------
+
+/** Whether a project's worktree list is the answer of its git, rather than the
+ *  one-entry stand-in a project gets while its host cannot be asked (a lone
+ *  primary entry with no branch). Taking in the existing worktrees on a stand-in
+ *  would file the project as done before its real worktrees were ever listed —
+ *  and they would all arrive as "new" and vanish. A folder that is not a
+ *  repository answers the same way, which is harmless: it has nothing to take. */
+export function isAuthoritativeList(list: readonly { branch: string | null }[]): boolean {
+  return list.length > 1 || (list.length === 1 && list[0].branch !== null);
+}
+
+/** The first time a project's worktrees are listed (after this arrived, or when
+ *  the project was added), every worktree already there is *known*: they were
+ *  not "created outside Uxnan while it looked", and nobody asked for them to
+ *  vanish. Returns the new known list — the very same array when there is
+ *  nothing to add. Worktrees Uxnan made carry their own record and need no
+ *  entry; the primary one is never external. */
+export function baselineKnown(
+  known: readonly string[],
+  list: readonly { path: string; isMain: boolean; createdByUxnan: boolean }[],
+): string[] {
+  const have = new Set(known);
+  const add = [
+    ...new Set(
+      list.filter((w) => !w.isMain && !w.createdByUxnan && !have.has(w.path)).map((w) => w.path),
+    ),
+  ];
+  return add.length === 0 ? (known as string[]) : [...known, ...add];
+}
+
+/** Make worktrees known — what showing one, pinning one, or "stop hiding" does
+ *  to the external ones among them. Same array when nothing is new. */
+export function addKnown(known: readonly string[], paths: readonly string[]): string[] {
+  const add = [...new Set(paths)].filter((p) => !known.includes(p));
+  return add.length === 0 ? (known as string[]) : [...known, ...add];
 }
 
 // --- The empty state --------------------------------------------------------

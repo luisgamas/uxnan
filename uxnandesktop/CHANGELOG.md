@@ -4,6 +4,26 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Worktrees created outside Uxnan start out hidden — until you touch them.** A
+  scratch checkout an agent's CLI made, or any `git worktree add` run in a
+  terminal, no longer lands in the left panel as one more row. It is set aside
+  exactly like a worktree you hid yourself: counted in the same badge on the
+  options button and in the project's *N hidden · Show* line, drawn again by
+  *View hidden worktrees* or a search, and brought back on its own while it is
+  selected, an agent works in it, it has changes or unpushed commits, an open
+  pull request, or it is ready to close. *Show* it, pin it, or choose *Stop hiding
+  worktrees* and it stays — showing one once makes it known. **Nothing that
+  existed before disappears**: the first time a project is listed (this arriving,
+  or the project being added) every worktree already there is taken in, and only
+  worktrees that appear afterwards are new. Uxnan knows who made a worktree
+  because whoever creates one for it — the new-worktree dialog, `worktree/create`
+  (so an agent creating one through the control catalog), the pull-request and
+  issue checkouts, a remote host's engine, and the bridge for the phone — leaves
+  a small record in the worktree's own git folder, which lives and dies with the
+  worktree. `WorktreeEntry` gains `createdByUxnan`; settings gain
+  `knownWorktrees` and `worktreeBaselineProjects`.
 
 ## [0.0.84] - 20261030
 ### Fixed

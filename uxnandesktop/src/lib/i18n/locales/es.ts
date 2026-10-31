@@ -346,6 +346,8 @@ export const es: Record<MessageKey, string> = {
   "worktree.show": "Volver a mostrar",
   "worktree.hiddenTooltip": "Oculto — se ve porque los worktrees ocultos están visibles",
   "worktree.hiddenSurfacedTooltip": "Oculto, pero visible por ahora: está seleccionado, un agente te necesita o acaba de terminar en él, o está listo para cerrar",
+  "worktree.externalTooltip": "Creado fuera de Uxnan — apartado mientras no lo toques; se ve porque los worktrees ocultos están visibles",
+  "worktree.externalSurfacedTooltip": "Creado fuera de Uxnan — apartado mientras no lo toques, pero visible por ahora: está seleccionado, un agente te necesita o acaba de terminar en él, o está listo para cerrar",
   "worktree.hiddenToast": "{name} quedó oculto.",
   "worktree.hiddenLaterToast": "{name} se ocultará en cuanto quede en reposo.",
   "project.hideIdle": "Ocultar worktrees inactivos",

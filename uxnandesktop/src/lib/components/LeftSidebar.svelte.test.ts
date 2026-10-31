@@ -39,6 +39,9 @@ function setup(groupBy: SidebarGroupBy, hidden: string[], showHidden = false) {
   app.settings.sidebarGroupBy = groupBy;
   app.settings.sidebarExpandedProjects = ['a', 'b'];
   app.settings.hiddenWorktrees = hidden;
+  // Already there when the panel first listed them: taken in, not "created outside".
+  app.settings.knownWorktrees = [A_OLD.path, B_OLD.path];
+  app.settings.worktreeBaselineProjects = ['a', 'b'];
   app.settings.sidebarShowHidden = showHidden;
   app.settings.pinnedWorktrees = [];
 }

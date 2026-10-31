@@ -708,6 +708,18 @@ pub struct AppSettings {
     /// ignored and pruned when a worktree is removed (self-healing).
     #[serde(default)]
     pub hidden_worktrees: Vec<String>,
+    /// Worktrees (paths) the left panel has taken in, so it never sets them
+    /// aside as "created outside Uxnan": the ones already there when a project
+    /// was first listed (this arriving, or the project being added), and any the
+    /// user later showed. Uxnan's own creations need no entry — the engine
+    /// records those itself. A user decision persisted with the panel's other
+    /// view state; unknown paths are ignored and pruned (self-healing).
+    #[serde(default)]
+    pub known_worktrees: Vec<String>,
+    /// Projects (repo ids) whose worktrees were taken in once (see
+    /// `known_worktrees`), so a worktree that appears afterwards is "new".
+    #[serde(default)]
+    pub worktree_baseline_projects: Vec<String>,
     /// Whether the left panel draws the hidden worktrees (dimmed) instead of
     /// holding them back. Persisted with the rest of the panel's view state.
     #[serde(default)]
@@ -1480,6 +1492,8 @@ impl Default for AppSettings {
             pinned_projects: Vec::new(),
             pinned_worktrees: Vec::new(),
             hidden_worktrees: Vec::new(),
+            known_worktrees: Vec::new(),
+            worktree_baseline_projects: Vec::new(),
             sidebar_show_hidden: false,
             sidebar_group_by: default_group_by(),
             sidebar_collapsed_lanes: Vec::new(),
@@ -2204,6 +2218,35 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.hidden_worktrees.is_empty());
         assert!(!settings.sidebar_show_hidden);
+    }
+
+    #[test]
+    fn settings_deserialize_without_provenance_lists_defaults_to_nothing_taken_in() {
+        // State written before the panel tracked who created a worktree: no
+        // project is baselined yet, so the first listing takes every worktree in.
+        let json = r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+            "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(settings.known_worktrees.is_empty());
+        assert!(settings.worktree_baseline_projects.is_empty());
+    }
+
+    #[test]
+    fn provenance_lists_round_trip_camel_case() {
+        let settings = AppSettings {
+            known_worktrees: vec!["/w/a".into()],
+            worktree_baseline_projects: vec!["r1".into()],
+            ..AppSettings::default()
+        };
+        let value = serde_json::to_value(&settings).unwrap();
+        assert_eq!(value["knownWorktrees"], serde_json::json!(["/w/a"]));
+        assert_eq!(value["worktreeBaselineProjects"], serde_json::json!(["r1"]));
+        let back: AppSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(back.known_worktrees, settings.known_worktrees);
+        assert_eq!(
+            back.worktree_baseline_projects,
+            settings.worktree_baseline_projects
+        );
     }
 
     #[test]

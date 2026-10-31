@@ -349,6 +349,8 @@ export const en = {
   "worktree.show": "Show again",
   "worktree.hiddenTooltip": "Hidden — shown because hidden worktrees are visible",
   "worktree.hiddenSurfacedTooltip": "Hidden, but shown for now: it is selected, an agent needs you or just finished in it, or it is ready to close",
+  "worktree.externalTooltip": "Created outside Uxnan — set aside while untouched; shown because hidden worktrees are visible",
+  "worktree.externalSurfacedTooltip": "Created outside Uxnan — set aside while untouched, but shown for now: it is selected, an agent needs you or just finished in it, or it is ready to close",
   "worktree.hiddenToast": "{name} is hidden.",
   "worktree.hiddenLaterToast": "{name} will hide as soon as it goes quiet.",
   "project.hideIdle": "Hide idle worktrees",
