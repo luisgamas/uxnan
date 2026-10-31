@@ -2446,7 +2446,7 @@ class ThreadManager {
       case ApprovalResolvedEvent(
           :final approvalId,
           :final decision,
-          :final timedOut,
+          :final withdrawn,
         ):
         // Answered on some client (maybe this one) or timed out: the thread is
         // no longer waiting on it, and every copy of the card retires.
@@ -2455,20 +2455,20 @@ class ThreadManager {
           ApprovalResolution(
             approvalId: approvalId,
             decision: ApprovalDecision.fromWire(decision),
-            timedOut: timedOut,
+            withdrawn: withdrawn,
           ),
         );
       case QuestionResolvedEvent(
           :final questionId,
           :final answers,
-          :final timedOut,
+          :final withdrawn,
         ):
         _clearAwaitingInput(threadId, questionId);
         _resolutions.add(
           QuestionResolution(
             questionId: questionId,
             answers: answers,
-            timedOut: timedOut,
+            withdrawn: withdrawn,
           ),
         );
       case GitProgressEvent() ||

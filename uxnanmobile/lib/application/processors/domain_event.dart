@@ -488,13 +488,14 @@ class HistoryChangedEvent extends DomainEvent {
 }
 
 /// A pending approval stopped being pending (`stream/approval/resolved`):
-/// answered on some client, or timed out to a reject.
+/// answered on some client, or withdrawn — nobody answered it: the agent
+/// settled it itself, or the run that asked ended. Never on a clock.
 class ApprovalResolvedEvent extends DomainEvent {
   /// Creates an [ApprovalResolvedEvent].
   const ApprovalResolvedEvent({
     required this.approvalId,
     required this.decision,
-    this.timedOut = false,
+    this.withdrawn = false,
     this.threadId,
   });
 
@@ -505,25 +506,26 @@ class ApprovalResolvedEvent extends DomainEvent {
   /// `approveSession`).
   final String decision;
 
-  /// True when nobody answered and it defaulted to reject.
-  final bool timedOut;
+  /// True when no person answered it ([decision] is then what the bridge
+  /// told the agent, not anyone's choice).
+  final bool withdrawn;
 
   /// The owning thread, if provided.
   final String? threadId;
 
   @override
-  List<Object?> get props => [approvalId, decision, timedOut, threadId];
+  List<Object?> get props => [approvalId, decision, withdrawn, threadId];
 }
 
 /// A pending question stopped being pending (`stream/question/resolved`):
-/// answered on some client, skipped, or timed out.
+/// answered on some client, skipped, or withdrawn (nobody answered it).
 class QuestionResolvedEvent extends DomainEvent {
   /// Creates a [QuestionResolvedEvent].
   const QuestionResolvedEvent({
     required this.questionId,
     required this.answers,
     required this.skipped,
-    this.timedOut = false,
+    this.withdrawn = false,
     this.threadId,
   });
 
@@ -536,14 +538,15 @@ class QuestionResolvedEvent extends DomainEvent {
   /// True when no option was chosen.
   final bool skipped;
 
-  /// True when nobody answered in time.
-  final bool timedOut;
+  /// True when no person answered it.
+  final bool withdrawn;
 
   /// The owning thread, if provided.
   final String? threadId;
 
   @override
-  List<Object?> get props => [questionId, answers, skipped, timedOut, threadId];
+  List<Object?> get props =>
+      [questionId, answers, skipped, withdrawn, threadId];
 }
 
 class ModelResolvedEvent extends DomainEvent {

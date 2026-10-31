@@ -868,6 +868,14 @@
   "@questionSkipped": {
     "description": "Shown in place of the chosen labels on a resolved question card when the user skipped that question."
   },
+  "requestNotAnswered": "Not answered",
+  "@requestNotAnswered": {
+    "description": "Header of an approval or question card nobody answered: the agent settled it itself, or its run ended."
+  },
+  "requestWithdrawn": "No longer waiting for an answer",
+  "@requestWithdrawn": {
+    "description": "Settled row of an approval or question card nobody answered (the agent went on, or its run was stopped or failed)."
+  },
   "questionFailed": "Couldn't send your answer — try again",
   "@questionFailed": {
     "description": "Inline error shown on a question card when the bridge rejected the answer; the options re-enable so the user can retry."
@@ -1097,7 +1105,7 @@
   "@pushChannelName": {
     "description": "Name of the Android notification channel for agent activity."
   },
-  "pushChannelDescription": "Turn completions and errors from your coding agents.",
+  "pushChannelDescription": "Replies, errors and requests for you from your coding agents.",
   "@pushChannelDescription": {
     "description": "Description of the Android notification channel."
   },
@@ -1113,6 +1121,16 @@
   "pushTurnErrorBody": "{agent} reported an error",
   "@pushTurnErrorBody": {
     "description": "Body of the turn-error notification.",
+    "placeholders": { "agent": { "type": "String" } }
+  },
+  "pushApprovalNeededBody": "{agent} needs your approval",
+  "@pushApprovalNeededBody": {
+    "description": "Body of the notification raised when an agent asks for an approval and waits (titled with the thread name).",
+    "placeholders": { "agent": { "type": "String" } }
+  },
+  "pushQuestionBody": "{agent} has a question for you",
+  "@pushQuestionBody": {
+    "description": "Body of the notification raised when an agent asks the user a question and waits.",
     "placeholders": { "agent": { "type": "String" } }
   },
 
@@ -1143,6 +1161,14 @@
   "settingsTurnErrorSubtitle": "Notify me when an agent run fails.",
   "@settingsTurnErrorSubtitle": {
     "description": "Subtitle of the turn-error notification toggle."
+  },
+  "settingsNeedsInputTitle": "Needs you",
+  "@settingsNeedsInputTitle": {
+    "description": "Title of the toggle for notifications when an agent asks for an approval or a question."
+  },
+  "settingsNeedsInputSubtitle": "Notify me when an agent asks for approval or asks me a question.",
+  "@settingsNeedsInputSubtitle": {
+    "description": "Subtitle of the needs-you notification toggle."
   },
   "settingsConversationSection": "Conversation",
   "@settingsConversationSection": {

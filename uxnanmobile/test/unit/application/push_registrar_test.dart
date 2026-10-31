@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
@@ -15,7 +17,9 @@ class _FakePushService extends PushNotificationService {
   final StreamController<String> _refresh =
       StreamController<String>.broadcast();
   final StreamController<String> _taps = StreamController<String>.broadcast();
-  final List<({String title, String body, String? payload})> shown = [];
+  final List<({String title, String body, String? payload, String? key})>
+      shown = [];
+  final List<String> cancelled = [];
 
   void emitTokenRefresh(String value) => _refresh.add(value);
 
@@ -38,9 +42,13 @@ class _FakePushService extends PushNotificationService {
     required String title,
     required String body,
     String? payload,
+    String? key,
   }) async {
-    shown.add((title: title, body: body, payload: payload));
+    shown.add((title: title, body: body, payload: payload, key: key));
   }
+
+  @override
+  Future<void> cancelLocalNotification(String key) async => cancelled.add(key);
 
   Future<void> close() async {
     await _refresh.close();
@@ -91,7 +99,11 @@ void main() {
     expect(sent.single.params, {
       'pushToken': 'tok-1',
       'platform': 'android',
-      'preferences': {'turnCompleted': true, 'turnError': true},
+      'preferences': {
+        'turnCompleted': true,
+        'turnError': true,
+        'needsInput': true,
+      },
     });
   });
 
@@ -156,6 +168,8 @@ void main() {
       strings: PushNotificationStrings(
         turnCompletedBody: (agent) => '$agent te respondió',
         turnErrorBody: (agent) => '$agent reportó un error',
+        approvalNeededBody: (agent) => '$agent necesita tu aprobación',
+        questionBody: (agent) => '$agent tiene una pregunta para ti',
         fallbackTitle: 'Uxnan',
       ),
       isAndroid: true,
@@ -209,6 +223,98 @@ void main() {
     await localEvents.close();
   });
 
+  group('an agent waiting on the person', () {
+    const approval = ContentBlockEvent(
+      turnId: 't1',
+      threadId: 'th1',
+      content: ApprovalContent(
+        ApprovalRequest(approvalId: 'appr-1', action: 'Allow Bash: ls'),
+      ),
+    );
+    const question = ContentBlockEvent(
+      turnId: 't1',
+      threadId: 'th1',
+      content: QuestionContent(QuestionRequest(questionId: 'qst-1')),
+    );
+
+    test('raises one notification per request, keyed by its id', () async {
+      events
+        ..add(approval)
+        ..add(question);
+      await _settle();
+      expect(push.shown.map((n) => (n.key, n.body, n.payload)), [
+        ('appr-1', ' needs your approval', 'th1'),
+        ('qst-1', ' has a question for you', 'th1'),
+      ]);
+    });
+
+    test('takes it back once the request is answered anywhere', () async {
+      events
+        ..add(
+          const ApprovalResolvedEvent(
+            approvalId: 'appr-1',
+            decision: 'approve',
+          ),
+        )
+        ..add(
+          const QuestionResolvedEvent(
+            questionId: 'qst-1',
+            answers: [],
+            skipped: true,
+            withdrawn: true,
+          ),
+        );
+      await _settle();
+      expect(push.cancelled, ['appr-1', 'qst-1']);
+    });
+
+    test('says nothing for a settled card, the chat on screen, or when off',
+        () async {
+      events.add(
+        const ContentBlockEvent(
+          turnId: 't1',
+          threadId: 'th1',
+          content: ApprovalContent(
+            ApprovalRequest(
+              approvalId: 'appr-2',
+              action: 'x',
+              outcome: ApprovalOutcome(decision: ApprovalDecision.approve),
+            ),
+          ),
+        ),
+      );
+      await _settle();
+      expect(push.shown, isEmpty);
+
+      final localPush = _FakePushService();
+      final localEvents = StreamController<DomainEvent>.broadcast();
+      var viewing = 'th1';
+      var prefs = const NotificationPreferences();
+      final local = PushRegistrar(
+        pushService: localPush,
+        sendRequest: (method, [params]) async =>
+            RpcMessage.response(id: 'r1', result: const {'ok': true}),
+        connectionPhases: phases.stream,
+        domainEvents: localEvents.stream,
+        foregroundThreadId: () => viewing,
+        preferences: () => prefs,
+        isAndroid: true,
+      );
+      localEvents.add(approval);
+      await _settle();
+      expect(localPush.shown, isEmpty);
+      viewing = 'other';
+      prefs = const NotificationPreferences(needsInput: false);
+      localEvents.add(question);
+      await _settle();
+      expect(localPush.shown, isEmpty);
+
+      await local.dispose();
+      await localPush.close();
+      await localEvents.close();
+    });
+  });
+
   test('ignores other domain events', () async {
     events
       ..add(const TurnStartedEvent(turnId: 't1'))
@@ -257,6 +363,7 @@ void main() {
       expect(localSent.single.params!['preferences'], {
         'turnCompleted': true,
         'turnError': false,
+        'needsInput': true,
       });
 
       await local.dispose();

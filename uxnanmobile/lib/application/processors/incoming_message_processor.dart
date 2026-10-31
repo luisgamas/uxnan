@@ -133,7 +133,7 @@ class IncomingMessageProcessor {
           decision: params['decision'] is String
               ? params['decision'] as String
               : 'reject',
-          timedOut: params['timedOut'] == true,
+          withdrawn: params['withdrawn'] == true,
           threadId: threadId,
         ),
       'stream/question/resolved' => QuestionResolvedEvent(
@@ -142,7 +142,7 @@ class IncomingMessageProcessor {
               : '',
           answers: _answers(params['answers']),
           skipped: params['skipped'] == true,
-          timedOut: params['timedOut'] == true,
+          withdrawn: params['withdrawn'] == true,
           threadId: threadId,
         ),
       'stream/model/resolved' => ModelResolvedEvent(

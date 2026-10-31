@@ -50,4 +50,16 @@ void main() {
       isNot(const NotificationPreferences()),
     );
   });
+
+  test('carries the needs-you channel on the wire, on by default', () {
+    const prefs = NotificationPreferences(needsInput: false);
+    expect(prefs.toJson()['needsInput'], isFalse);
+    expect(NotificationPreferences.fromJson(prefs.toJson()), prefs);
+    expect(const NotificationPreferences().needsInput, isTrue);
+    expect(
+      NotificationPreferences.fromJson(const {'turnError': false}).needsInput,
+      isTrue,
+    );
+    expect(prefs.copyWith(needsInput: true), const NotificationPreferences());
+  });
 }

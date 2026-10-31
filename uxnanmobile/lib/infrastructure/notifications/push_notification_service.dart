@@ -80,7 +80,8 @@ class PushNotificationService {
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
     'uxnan_turns',
     'Agent activity',
-    description: 'Turn completions and errors from your coding agents.',
+    description:
+        'Replies, errors and requests for you from your coding agents.',
     importance: Importance.high,
   );
 
@@ -167,15 +168,20 @@ class PushNotificationService {
 
   /// Displays a local notification for a turn-completed (or similar) event,
   /// e.g. driven by a bridge `stream/turn/completed` notification while the app
-  /// is foregrounded. Never throws.
+  /// is foregrounded. A [key] names the thing it is about (an approval's or
+  /// question's id) so [cancelLocalNotification] can take it back once that is
+  /// settled; without one every notification is its own. Never throws.
   Future<void> showLocalNotification({
     required String title,
     required String body,
     String? payload,
+    String? key,
   }) async {
     try {
       await _localNotifications.show(
-        DateTime.now().millisecondsSinceEpoch.remainder(1 << 31),
+        key != null
+            ? notificationIdFor(key)
+            : DateTime.now().millisecondsSinceEpoch.remainder(1 << 31),
         title,
         body,
         const NotificationDetails(
@@ -183,7 +189,7 @@ class PushNotificationService {
             'uxnan_turns',
             'Agent activity',
             channelDescription:
-                'Turn completions and errors from your coding agents.',
+                'Replies, errors and requests for you from your coding agents.',
             importance: Importance.high,
             priority: Priority.high,
             icon: _kNotificationIcon,
@@ -195,6 +201,21 @@ class PushNotificationService {
       );
     } on Object catch (error, stackTrace) {
       AppLogger.warn('Failed to show local notification', error, stackTrace);
+    }
+  }
+
+  /// Removes the local notification shown for [key], if it is still up (the
+  /// request it announced was answered here or on another client). Never
+  /// throws.
+  Future<void> cancelLocalNotification(String key) async {
+    try {
+      await _localNotifications.cancel(notificationIdFor(key));
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'Failed to cancel a local notification',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -281,11 +302,14 @@ class PushNotificationService {
     final title = notification?.title ?? message.data['title'] as String?;
     final body = notification?.body ?? message.data['body'] as String?;
     if (title == null && body == null) return;
+    // A "needs you" push names its request, so its resolution takes it back.
+    final requestId = message.data['requestId'] as String?;
     unawaited(
       showLocalNotification(
         title: title ?? '',
         body: body ?? '',
         payload: threadId,
+        key: requestId != null && requestId.isNotEmpty ? requestId : null,
       ),
     );
   }
@@ -306,4 +330,16 @@ bool shouldSuppressForegroundPush({
   if (threadId != null && foregroundThreadId == threadId) return true;
   if (connected) return true;
   return false;
+}
+
+/// A notification id for [key] that is the same on every run (FNV-1a, 31
+/// bits): `String.hashCode` is not promised to be stable, and a notification
+/// shown before a restart must still be the one cancelled after it.
+int notificationIdFor(String key) {
+  var hash = 0x811c9dc5;
+  for (final unit in key.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xffffffff;
+  }
+  return hash & 0x7fffffff;
 }

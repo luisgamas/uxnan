@@ -1656,6 +1656,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get questionSkipped => 'Omitida';
 
   @override
+  String get requestNotAnswered => 'Sin respuesta';
+
+  @override
+  String get requestWithdrawn => 'Ya no espera respuesta';
+
+  @override
   String get questionFailed => 'No se pudo enviar tu respuesta; reintenta';
 
   @override
@@ -2121,7 +2127,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get pushChannelDescription =>
-      'Turnos completados y errores de tus agentes de código.';
+      'Respuestas, errores y peticiones de tus agentes de código.';
 
   @override
   String get pushFallbackTitle => 'Uxnan';
@@ -2134,6 +2140,16 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String pushTurnErrorBody(String agent) {
     return '$agent reportó un error';
+  }
+
+  @override
+  String pushApprovalNeededBody(String agent) {
+    return '$agent necesita tu aprobación';
+  }
+
+  @override
+  String pushQuestionBody(String agent) {
+    return '$agent tiene una pregunta para ti';
   }
 
   @override
@@ -2159,6 +2175,13 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get settingsTurnErrorSubtitle =>
       'Notificarme cuando falla la ejecución de un agente.';
+
+  @override
+  String get settingsNeedsInputTitle => 'Te necesita';
+
+  @override
+  String get settingsNeedsInputSubtitle =>
+      'Notificarme cuando un agente pide aprobación o me hace una pregunta.';
 
   @override
   String get settingsConversationSection => 'Conversación';

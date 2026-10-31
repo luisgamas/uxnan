@@ -244,14 +244,22 @@ class _ApprovalCard extends ConsumerWidget {
     final riskColor = _riskColor(request.risk);
 
     final canRespond = threadId != null && request.approvalId.isNotEmpty;
-    final response = canRespond
-        ? ref.watch(
-            approvalResponsesProvider.select((m) => m[request.approvalId]),
-          )
-        : null;
+    // The bridge's stored outcome wins: a card answered on another client
+    // while this phone was away is settled from the next history read.
+    final response = ApprovalResponseState.settled(
+      request.outcome,
+      canRespond
+          ? ref.watch(
+              approvalResponsesProvider.select((m) => m[request.approvalId]),
+            )
+          : null,
+    );
     final phase = response?.phase ?? ApprovalResponsePhase.idle;
     final resolved = phase == ApprovalResponsePhase.resolved;
     final sending = phase == ApprovalResponsePhase.sending;
+    // Nobody answered it: a neutral settled card, not the risk's alarm.
+    final tint =
+        resolved && response!.withdrawn ? colors.onSurfaceVariant : riskColor;
 
     void respond(ApprovalDecision decision) {
       if (!canRespond || sending || resolved) return;
@@ -266,13 +274,12 @@ class _ApprovalCard extends ConsumerWidget {
         // "already answered" state reads as a settled status row, not a
         // pending prompt that the user might tap again.
         color: resolved
-            ? riskColor.withValues(alpha: 0.08)
+            ? tint.withValues(alpha: 0.08)
             : colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         border: Border.all(
-          color: resolved
-              ? riskColor.withValues(alpha: 0.32)
-              : colors.outlineVariant,
+          color:
+              resolved ? tint.withValues(alpha: 0.32) : colors.outlineVariant,
         ),
       ),
       child: Padding(
@@ -284,17 +291,21 @@ class _ApprovalCard extends ConsumerWidget {
               children: [
                 UxIcon(
                   resolved
-                      ? (response!.decision == ApprovalDecision.reject
-                          ? UxIcons.cancel
-                          : UxIcons.verifiedUser)
+                      ? (response!.withdrawn
+                          ? UxIcons.info
+                          : response.decision == ApprovalDecision.reject
+                              ? UxIcons.cancel
+                              : UxIcons.verifiedUser)
                       : UxIcons.shield,
                   size: 16,
-                  color: riskColor,
+                  color: tint,
                 ),
                 const SizedBox(width: UxnanSpacing.sm),
                 Text(
                   resolved
-                      ? l10n.approvalDecidedTitle
+                      ? (response!.withdrawn
+                          ? l10n.requestNotAnswered
+                          : l10n.approvalDecidedTitle)
                       : l10n.approvalNeedsApproval,
                   style: textTheme.labelMedium,
                 ),
@@ -324,6 +335,7 @@ class _ApprovalCard extends ConsumerWidget {
                   ? _ApprovalResolved(
                       decision: response!.decision!,
                       decidedAtMs: response.decidedAtMs,
+                      withdrawn: response.withdrawn,
                     )
                   : _ApprovalActions(
                       sending: sending,
@@ -430,15 +442,23 @@ class _ApprovalActions extends StatelessWidget {
 /// can tell, at a glance, that the card is no longer actionable — even after
 /// a scroll, an app restart, or a thread re-open.
 class _ApprovalResolved extends StatelessWidget {
-  const _ApprovalResolved({required this.decision, this.decidedAtMs});
+  const _ApprovalResolved({
+    required this.decision,
+    this.decidedAtMs,
+    this.withdrawn = false,
+  });
 
   final ApprovalDecision decision;
   final int? decidedAtMs;
+
+  /// No person answered it: say so, not the decision the agent was sent.
+  final bool withdrawn;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
+    if (withdrawn) return const _RequestWithdrawn();
     final approved = decision != ApprovalDecision.reject;
     final color = approved ? UxnanColors.success : UxnanColors.error;
     final label = switch (decision) {
@@ -598,11 +618,15 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
     final questions = _questions;
 
     final canRespond = widget.threadId != null && request.questionId.isNotEmpty;
-    final response = canRespond
-        ? ref.watch(
-            questionResponsesProvider.select((m) => m[request.questionId]),
-          )
-        : null;
+    // The bridge's stored outcome wins, as on the approval card.
+    final response = QuestionResponseState.settled(
+      request.outcome,
+      canRespond
+          ? ref.watch(
+              questionResponsesProvider.select((m) => m[request.questionId]),
+            )
+          : null,
+    );
     final phase = response?.phase ?? QuestionResponsePhase.idle;
     final resolved = phase == QuestionResponsePhase.resolved;
     final sending = phase == QuestionResponsePhase.sending;
@@ -610,7 +634,12 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
 
     // The accent tints the card outline/fill: neutral primary while pending,
     // a settled green once answered (mirrors the approval card).
-    final accent = resolved ? UxnanColors.success : colors.primary;
+    final withdrawn = resolved && response!.withdrawn;
+    final accent = withdrawn
+        ? colors.onSurfaceVariant
+        : resolved
+            ? UxnanColors.success
+            : colors.primary;
 
     final canSubmit = interactive &&
         questions.isNotEmpty &&
@@ -702,13 +731,21 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
             Row(
               children: [
                 UxIcon(
-                  resolved ? UxIcons.checkCircle : UxIcons.quiz,
+                  withdrawn
+                      ? UxIcons.info
+                      : resolved
+                          ? UxIcons.checkCircle
+                          : UxIcons.quiz,
                   size: 16,
                   color: accent,
                 ),
                 const SizedBox(width: UxnanSpacing.sm),
                 Text(
-                  resolved ? l10n.questionAnswered : l10n.questionNeedsAnswer,
+                  withdrawn
+                      ? l10n.requestNotAnswered
+                      : resolved
+                          ? l10n.questionAnswered
+                          : l10n.questionNeedsAnswer,
                   style: textTheme.labelMedium,
                 ),
                 const Spacer(),
@@ -730,6 +767,7 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
                   question: questions[i],
                   selected: _selected[i],
                   resolved: resolved,
+                  withdrawn: withdrawn,
                   chosen: chosenFor(i),
                   enabled: interactive,
                   onToggle: (label) => toggle(i, label),
@@ -751,7 +789,9 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
               curve: Curves.easeOutCubic,
               alignment: Alignment.topLeft,
               child: resolved
-                  ? _QuestionResolved(answeredAtMs: response!.answeredAtMs)
+                  ? (response!.withdrawn
+                      ? const _RequestWithdrawn()
+                      : _QuestionResolved(answeredAtMs: response.answeredAtMs))
                   : _QuestionActions(
                       canSubmit: canSubmit,
                       sending: sending,
@@ -789,11 +829,15 @@ class _QuestionBlock extends StatelessWidget {
     required this.typed,
     required this.onTyped,
     required this.onTypedDone,
+    this.withdrawn = false,
   });
 
   final QuestionItem question;
   final Set<String> selected;
   final bool resolved;
+
+  /// Settled with nobody's answer: no choice to summarize.
+  final bool withdrawn;
   final List<String> chosen;
   final bool enabled;
   final ValueChanged<String> onToggle;
@@ -841,7 +885,9 @@ class _QuestionBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: UxnanSpacing.sm),
-        if (resolved)
+        if (withdrawn)
+          const SizedBox.shrink()
+        else if (resolved)
           _QuestionChosenSummary(labels: chosen)
         else
           Column(
@@ -1116,6 +1162,33 @@ class _QuestionActions extends StatelessWidget {
                     ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The settled row of an approval or question no person answered: the agent
+/// settled it itself, or the run that asked ended. It says the request is no
+/// longer waiting — never a decision nobody made.
+class _RequestWithdrawn extends StatelessWidget {
+  const _RequestWithdrawn();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      children: [
+        UxIcon(UxIcons.info, size: 16, color: colors.onSurfaceVariant),
+        const SizedBox(width: UxnanSpacing.sm),
+        Expanded(
+          child: Text(
+            l10n.requestWithdrawn,
+            style:
+                textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
         ),
       ],
     );

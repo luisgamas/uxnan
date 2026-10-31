@@ -630,7 +630,7 @@ void main() {
       final resolved = event as ApprovalResolvedEvent;
       expect(resolved.approvalId, 'appr-1');
       expect(resolved.decision, 'approveSession');
-      expect(resolved.timedOut, isFalse);
+      expect(resolved.withdrawn, isFalse);
     });
 
     test('stream/question/resolved decodes the chosen answers', () {
@@ -643,7 +643,7 @@ void main() {
             <String>[],
           ],
           'skipped': false,
-          'timedOut': true,
+          'withdrawn': true,
         }),
       );
       expect(event, isA<QuestionResolvedEvent>());
@@ -652,7 +652,7 @@ void main() {
         ['B'],
         <String>[],
       ]);
-      expect(resolved.timedOut, isTrue);
+      expect(resolved.withdrawn, isTrue);
     });
 
     test('unhandled stream methods become UnknownDomainEvent', () {

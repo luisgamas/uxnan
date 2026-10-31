@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
@@ -1006,6 +1007,7 @@ class ApprovalRequest extends Equatable {
     required this.action,
     this.risk = ApprovalRisk.unknown,
     this.detail,
+    this.outcome,
   });
 
   /// Decodes an [ApprovalRequest].
@@ -1015,7 +1017,13 @@ class ApprovalRequest extends Equatable {
         action: json['action'] as String? ?? '',
         risk: _riskFromName(json['risk'] as String?),
         detail: json['detail'] as String?,
+        outcome: ApprovalOutcome.tryParse(json['outcome']),
       );
+
+  /// How the request ended, as the bridge stored it on the card (absent while
+  /// it is pending) — so a card answered elsewhere while this phone was away
+  /// settles from the next history read, whatever notification it missed.
+  final ApprovalOutcome? outcome;
 
   /// Bridge id used to respond to this request.
   final String approvalId;
@@ -1035,10 +1043,45 @@ class ApprovalRequest extends Equatable {
         'action': action,
         'risk': risk.name,
         if (detail != null) 'detail': detail,
+        if (outcome != null) 'outcome': outcome!.toJson(),
       };
 
   @override
-  List<Object?> get props => [approvalId, action, risk, detail];
+  List<Object?> get props => [approvalId, action, risk, detail, outcome];
+}
+
+/// How an approval ended (`ApprovalOutcome` in `shared/`). [withdrawn]: no
+/// person answered — the agent settled it itself, or the run that asked ended;
+/// [decision] is then what the bridge told the agent, not anyone's choice.
+class ApprovalOutcome extends Equatable {
+  /// Creates an [ApprovalOutcome].
+  const ApprovalOutcome({required this.decision, this.withdrawn = false});
+
+  /// Decodes a stored outcome; null when [json] is not one.
+  static ApprovalOutcome? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final decision = ApprovalDecision.fromWire(json['decision'] as String?);
+    if (decision == null) return null;
+    return ApprovalOutcome(
+      decision: decision,
+      withdrawn: json['withdrawn'] == true,
+    );
+  }
+
+  /// What the agent got.
+  final ApprovalDecision decision;
+
+  /// True when no person answered it.
+  final bool withdrawn;
+
+  /// Serializes this outcome.
+  Map<String, dynamic> toJson() => {
+        'decision': decision.wireName,
+        if (withdrawn) 'withdrawn': true,
+      };
+
+  @override
+  List<Object?> get props => [decision, withdrawn];
 }
 
 /// One selectable option within a [QuestionItem].
@@ -1132,7 +1175,11 @@ class QuestionItem extends Equatable {
 /// skip that question).
 class QuestionRequest extends Equatable {
   /// Creates a [QuestionRequest].
-  const QuestionRequest({required this.questionId, this.questions = const []});
+  const QuestionRequest({
+    required this.questionId,
+    this.questions = const [],
+    this.outcome,
+  });
 
   /// Decodes a [QuestionRequest].
   factory QuestionRequest.fromJson(Map<String, dynamic> json) =>
@@ -1142,7 +1189,12 @@ class QuestionRequest extends Equatable {
           for (final raw in (json['questions'] as List? ?? const []))
             if (raw is Map) QuestionItem.fromJson(raw.cast<String, dynamic>()),
         ],
+        outcome: QuestionOutcome.tryParse(json['outcome']),
       );
+
+  /// How the questions ended, as the bridge stored it on the card (absent
+  /// while pending) — see [ApprovalRequest.outcome].
+  final QuestionOutcome? outcome;
 
   /// Bridge id used to answer this question set.
   final String questionId;
@@ -1154,10 +1206,52 @@ class QuestionRequest extends Equatable {
   Map<String, dynamic> toJson() => {
         'questionId': questionId,
         'questions': [for (final question in questions) question.toJson()],
+        if (outcome != null) 'outcome': outcome!.toJson(),
       };
 
   @override
-  List<Object?> get props => [questionId, questions];
+  List<Object?> get props => [questionId, questions, outcome];
+}
+
+/// How a question set ended (`QuestionOutcome` in `shared/`): the answers the
+/// agent got, one list per question (empty when skipped). [withdrawn]: no
+/// person answered it.
+class QuestionOutcome extends Equatable {
+  /// Creates a [QuestionOutcome].
+  const QuestionOutcome({required this.answers, this.withdrawn = false});
+
+  /// Decodes a stored outcome; null when [json] is not one.
+  static QuestionOutcome? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final raw = json['answers'];
+    if (raw is! List) return null;
+    return QuestionOutcome(
+      answers: [
+        for (final answer in raw)
+          [
+            if (answer is List)
+              for (final label in answer)
+                if (label is String) label,
+          ],
+      ],
+      withdrawn: json['withdrawn'] == true,
+    );
+  }
+
+  /// The chosen labels per question.
+  final List<List<String>> answers;
+
+  /// True when no person answered it.
+  final bool withdrawn;
+
+  /// Serializes this outcome.
+  Map<String, dynamic> toJson() => {
+        'answers': answers,
+        if (withdrawn) 'withdrawn': true,
+      };
+
+  @override
+  List<Object?> get props => [answers, withdrawn];
 }
 
 /// One step of an agent plan (plan mode).

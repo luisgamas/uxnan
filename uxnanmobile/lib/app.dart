@@ -277,6 +277,8 @@ class _PushHostState extends ConsumerState<_PushHost>
     registrar.strings = PushNotificationStrings(
       turnCompletedBody: l10n.pushTurnCompletedBody,
       turnErrorBody: l10n.pushTurnErrorBody,
+      approvalNeededBody: l10n.pushApprovalNeededBody,
+      questionBody: l10n.pushQuestionBody,
       fallbackTitle: l10n.pushFallbackTitle,
     );
     return widget.child;

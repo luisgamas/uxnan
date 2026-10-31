@@ -2,6 +2,14 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// One persisted answer set: the labels per question, when (epoch ms), and
+/// whether no person answered it.
+typedef StoredQuestionAnswer = ({
+  List<List<String>> answers,
+  int answeredAtMs,
+  bool withdrawn
+});
+
 /// On-device store for the user's answers to agent question prompts.
 ///
 /// Every time the user answers (or skips) a question card, the chosen answers
@@ -15,8 +23,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// so SharedPreferences is a clean fit and no SQLite migration is needed.
 ///
 /// Key: `uxnan.question.responses` → a JSON map of
-/// `{ questionId: { answers, answeredAtMs } }`, where `answers` is a list of
-/// per-question chosen-label lists (empty for a skipped question).
+/// `{ questionId: { answers, answeredAtMs, withdrawn? } }`, where `answers` is
+/// a list of per-question chosen-label lists (empty for a skipped question) and
+/// `withdrawn` marks a question no person answered.
 class QuestionResponseStore {
   /// Creates a store, optionally injecting a [SharedPreferences] future
   /// (for tests).
@@ -31,7 +40,7 @@ class QuestionResponseStore {
   /// answered it on this device yet. Resolves to `null` on the first read (the
   /// key is absent) and on any decode error (a corrupt blob is treated as "no
   /// history" rather than crashing the card).
-  Future<({List<List<String>> answers, int answeredAtMs})?> read(
+  Future<StoredQuestionAnswer?> read(
     String questionId,
   ) async {
     final all = await readAll();
@@ -42,19 +51,18 @@ class QuestionResponseStore {
   /// hydrate its in-memory map at startup. Always returns a fresh, mutable map
   /// so callers can `addAll`/`remove` without crashing on a shared
   /// unmodifiable view.
-  Future<Map<String, ({List<List<String>> answers, int answeredAtMs})>>
-      readAll() async {
+  Future<Map<String, StoredQuestionAnswer>> readAll() async {
     final prefs = await _prefs;
     final raw = prefs.getString(_key);
     if (raw == null || raw.isEmpty) {
-      return <String, ({List<List<String>> answers, int answeredAtMs})>{};
+      return <String, StoredQuestionAnswer>{};
     }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) {
-        return <String, ({List<List<String>> answers, int answeredAtMs})>{};
+        return <String, StoredQuestionAnswer>{};
       }
-      final out = <String, ({List<List<String>> answers, int answeredAtMs})>{};
+      final out = <String, StoredQuestionAnswer>{};
       for (final entry in decoded.entries) {
         if (entry.key is! String) continue;
         final v = entry.value;
@@ -73,11 +81,12 @@ class QuestionResponseStore {
         out[entry.key as String] = (
           answers: answers,
           answeredAtMs: answeredAtMs,
+          withdrawn: v['withdrawn'] == true,
         );
       }
       return out;
     } on Object {
-      return <String, ({List<List<String>> answers, int answeredAtMs})>{};
+      return <String, StoredQuestionAnswer>{};
     }
   }
 
@@ -88,9 +97,14 @@ class QuestionResponseStore {
     required String questionId,
     required List<List<String>> answers,
     required int answeredAtMs,
+    bool withdrawn = false,
   }) async {
     final all = await readAll();
-    all[questionId] = (answers: answers, answeredAtMs: answeredAtMs);
+    all[questionId] = (
+      answers: answers,
+      answeredAtMs: answeredAtMs,
+      withdrawn: withdrawn,
+    );
     await _writeAll(all);
   }
 
@@ -104,7 +118,7 @@ class QuestionResponseStore {
   }
 
   Future<void> _writeAll(
-    Map<String, ({List<List<String>> answers, int answeredAtMs})> all,
+    Map<String, StoredQuestionAnswer> all,
   ) async {
     final prefs = await _prefs;
     if (all.isEmpty) {
@@ -116,6 +130,7 @@ class QuestionResponseStore {
         entry.key: {
           'answers': entry.value.answers,
           'answeredAtMs': entry.value.answeredAtMs,
+          if (entry.value.withdrawn) 'withdrawn': true,
         },
     });
     await prefs.setString(_key, encoded);

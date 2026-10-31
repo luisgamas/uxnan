@@ -2,6 +2,10 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// One persisted decision: the wire decision, when it was made (epoch ms), and
+/// whether no person answered it.
+typedef StoredApproval = ({String decision, int decidedAtMs, bool withdrawn});
+
 /// On-device store for the user's decisions on agent approval prompts.
 ///
 /// Every time the user approves / rejects / "allow for this session" an
@@ -16,7 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// needed.
 ///
 /// Key: `uxnan.approval.responses` → a JSON map of
-/// `{ approvalId: { decision, decidedAtMs } }`.
+/// `{ approvalId: { decision, decidedAtMs, withdrawn? } }` — `withdrawn` when
+/// no person answered it (the agent settled it, or its run ended).
 class ApprovalResponseStore {
   /// Creates a store, optionally injecting a [SharedPreferences] future
   /// (for tests).
@@ -31,7 +36,7 @@ class ApprovalResponseStore {
   /// answered it on this device yet. Resolves to `null` on the first read
   /// (the key is absent) and on any decode error (we treat a corrupt blob as
   /// "no history" rather than crashing the card).
-  Future<({String decision, int decidedAtMs})?> read(String approvalId) async {
+  Future<StoredApproval?> read(String approvalId) async {
     final all = await readAll();
     return all[approvalId];
   }
@@ -40,18 +45,18 @@ class ApprovalResponseStore {
   /// hydrate its in-memory map at startup. Always returns a fresh, mutable
   /// map so callers can `addAll`/`remove` without crashing on a shared
   /// unmodifiable view.
-  Future<Map<String, ({String decision, int decidedAtMs})>> readAll() async {
+  Future<Map<String, StoredApproval>> readAll() async {
     final prefs = await _prefs;
     final raw = prefs.getString(_key);
     if (raw == null || raw.isEmpty) {
-      return <String, ({String decision, int decidedAtMs})>{};
+      return <String, StoredApproval>{};
     }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) {
-        return <String, ({String decision, int decidedAtMs})>{};
+        return <String, StoredApproval>{};
       }
-      final out = <String, ({String decision, int decidedAtMs})>{};
+      final out = <String, StoredApproval>{};
       for (final entry in decoded.entries) {
         if (entry.key is! String) continue;
         final v = entry.value;
@@ -62,11 +67,12 @@ class ApprovalResponseStore {
         out[entry.key as String] = (
           decision: decision,
           decidedAtMs: decidedAtMs,
+          withdrawn: v['withdrawn'] == true,
         );
       }
       return out;
     } on Object {
-      return <String, ({String decision, int decidedAtMs})>{};
+      return <String, StoredApproval>{};
     }
   }
 
@@ -77,11 +83,20 @@ class ApprovalResponseStore {
     required String approvalId,
     required String decision,
     required int decidedAtMs,
+    bool withdrawn = false,
   }) async {
     final all = await readAll();
     final existing = all[approvalId];
-    if (existing != null && existing.decision == decision) return;
-    all[approvalId] = (decision: decision, decidedAtMs: decidedAtMs);
+    if (existing != null &&
+        existing.decision == decision &&
+        existing.withdrawn == withdrawn) {
+      return;
+    }
+    all[approvalId] = (
+      decision: decision,
+      decidedAtMs: decidedAtMs,
+      withdrawn: withdrawn,
+    );
     await _writeAll(all);
   }
 
@@ -95,7 +110,7 @@ class ApprovalResponseStore {
   }
 
   Future<void> _writeAll(
-    Map<String, ({String decision, int decidedAtMs})> all,
+    Map<String, StoredApproval> all,
   ) async {
     final prefs = await _prefs;
     if (all.isEmpty) {
@@ -107,6 +122,7 @@ class ApprovalResponseStore {
         entry.key: {
           'decision': entry.value.decision,
           'decidedAtMs': entry.value.decidedAtMs,
+          if (entry.value.withdrawn) 'withdrawn': true,
         },
     });
     await prefs.setString(_key, encoded);

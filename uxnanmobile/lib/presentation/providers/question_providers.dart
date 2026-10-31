@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 
@@ -31,7 +32,25 @@ class QuestionResponseState {
     required this.phase,
     this.answers,
     this.answeredAtMs,
+    this.withdrawn = false,
   });
+
+  /// What the card shows: the bridge's stored record on the card when it has
+  /// one, else this phone's own state (see `ApprovalResponseState.settled`).
+  static QuestionResponseState? settled(
+    QuestionOutcome? stored,
+    QuestionResponseState? local,
+  ) {
+    if (stored == null) return local;
+    return QuestionResponseState(
+      phase: QuestionResponsePhase.resolved,
+      answers: stored.answers,
+      answeredAtMs: local?.phase == QuestionResponsePhase.resolved
+          ? local?.answeredAtMs
+          : null,
+      withdrawn: stored.withdrawn,
+    );
+  }
 
   /// Where the response is in its lifecycle.
   final QuestionResponsePhase phase;
@@ -44,6 +63,9 @@ class QuestionResponseState {
   /// When the user answered (epoch ms); null while [phase] is idle.
   final int? answeredAtMs;
 
+  /// True when no person answered it: the card says it is no longer waiting.
+  final bool withdrawn;
+
   /// Creates a copy with the given fields replaced.
   QuestionResponseState copyWith({
     QuestionResponsePhase? phase,
@@ -54,6 +76,7 @@ class QuestionResponseState {
         phase: phase ?? this.phase,
         answers: answers ?? this.answers,
         answeredAtMs: answeredAtMs ?? this.answeredAtMs,
+        withdrawn: withdrawn,
       );
 }
 
@@ -76,7 +99,7 @@ class QuestionResponses extends Notifier<Map<String, QuestionResponseState>> {
   }
 
   /// Settles the card for a question the bridge says is no longer pending —
-  /// answered on any client (showing what was chosen), skipped or timed out.
+  /// answered on any client (showing what was chosen), skipped or withdrawn.
   /// A card this phone already resolved keeps its own record. Fed from
   /// `ThreadManager.resolutionsStream` by the app root.
   void adoptResolution(QuestionResolution resolution) {
@@ -88,12 +111,14 @@ class QuestionResponses extends Notifier<Map<String, QuestionResponseState>> {
       QuestionResponsePhase.resolved,
       resolution.answers,
       now,
+      withdrawn: resolution.withdrawn,
     );
     unawaited(
       ref.read(questionResponseStoreProvider).record(
             questionId: resolution.questionId,
             answers: resolution.answers,
             answeredAtMs: now,
+            withdrawn: resolution.withdrawn,
           ),
     );
   }
@@ -116,6 +141,7 @@ class QuestionResponses extends Notifier<Map<String, QuestionResponseState>> {
         phase: QuestionResponsePhase.resolved,
         answers: entry.value.answers,
         answeredAtMs: entry.value.answeredAtMs,
+        withdrawn: entry.value.withdrawn,
       );
       changed = true;
     }
@@ -169,14 +195,16 @@ class QuestionResponses extends Notifier<Map<String, QuestionResponseState>> {
     String questionId,
     QuestionResponsePhase phase,
     List<List<String>> answers,
-    int answeredAtMs,
-  ) {
+    int answeredAtMs, {
+    bool withdrawn = false,
+  }) {
     state = {
       ...state,
       questionId: QuestionResponseState(
         phase: phase,
         answers: answers,
         answeredAtMs: answeredAtMs,
+        withdrawn: withdrawn,
       ),
     };
   }

@@ -2621,7 +2621,7 @@ void main() {
               ['A'],
             ],
             skipped: false,
-            timedOut: true,
+            withdrawn: true,
           ),
         );
       await _settle();
@@ -2629,14 +2629,14 @@ void main() {
         const ApprovalResolution(
           approvalId: 'appr-1',
           decision: ApprovalDecision.approveSession,
-          timedOut: false,
+          withdrawn: false,
         ),
         const QuestionResolution(
           questionId: 'q-1',
           answers: [
             ['A'],
           ],
-          timedOut: true,
+          withdrawn: true,
         ),
       ]);
       await sub.cancel();

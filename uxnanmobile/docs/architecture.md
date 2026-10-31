@@ -50,7 +50,8 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
 - `application/managers/` — `ThreadManager` (threads + active timeline),
   `GitActionManager` (status/commit/push), `FileBrowserManager` (lazy workspace
   tree, search, guarded file/image reads, writes and Git diffs), and
-  `PushRegistrar` (FCM token + notification taps).
+  `PushRegistrar` (FCM token, notification taps, and the local notifications
+  for replies, errors and an agent waiting on the user).
   `application/processors/incoming_message_processor.dart` turns bridge
   notifications into `DomainEvent`s.
 - `infrastructure/transport/` — `WebSocketTransport`, `SecureTransportLayer`
@@ -502,6 +503,20 @@ The pending-question set is the piece that makes it useful in a list:
 arrive **for every thread**, not just the open one, and clears them when the user
 answers or the turn ends. It is in-memory only, and rebuilt on resync because
 `turn/list` serves those blocks as stored (only steps are summarized).
+
+An approval or question **never closes on a clock**: the bridge keeps it
+pending until a person answers it here or on another client, the agent
+withdraws it, or the run that asked ends. A card's settled state is, in order,
+the outcome the bridge stored on the block (`ApprovalRequest.outcome` /
+`QuestionRequest.outcome`, read through `ApprovalResponseState.settled` /
+`QuestionResponseState.settled`) — so a card answered on the desktop while the
+phone was asleep settles from the next history read — then this phone's own
+record (`ApprovalResponses` / `QuestionResponses`, persisted). A withdrawn one
+(`withdrawn`: no person answered) reads *No longer waiting for an answer*,
+never a decision nobody made. When a card arrives, `PushRegistrar` raises one
+local notification for it (keyed by the request id, behind the *Needs you*
+preference) unless that conversation is on screen, and removes it when the
+request is resolved anywhere.
 
 ## Dependency injection / provider graph
 

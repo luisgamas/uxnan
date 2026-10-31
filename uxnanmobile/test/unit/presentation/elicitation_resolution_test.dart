@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/infrastructure/storage/approval_response_store.dart';
 import 'package:uxnan/infrastructure/storage/question_response_store.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
@@ -21,7 +22,7 @@ void main() {
           const ApprovalResolution(
             approvalId: 'appr-1',
             decision: ApprovalDecision.approveSession,
-            timedOut: false,
+            withdrawn: false,
           ),
         );
     final state = container.read(approvalResponsesProvider)['appr-1'];
@@ -32,14 +33,14 @@ void main() {
     expect(stored?.decision, 'approveSession');
   });
 
-  test('a timed-out approval of an unknown decision settles as a reject', () {
+  test('a withdrawn approval of an unknown decision settles as a reject', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(approvalResponsesProvider.notifier).adoptResolution(
           const ApprovalResolution(
             approvalId: 'appr-2',
             decision: null,
-            timedOut: true,
+            withdrawn: true,
           ),
         );
     expect(
@@ -56,14 +57,14 @@ void main() {
         const ApprovalResolution(
           approvalId: 'appr-3',
           decision: ApprovalDecision.approve,
-          timedOut: false,
+          withdrawn: false,
         ),
       )
       ..adoptResolution(
         const ApprovalResolution(
           approvalId: 'appr-3',
           decision: ApprovalDecision.reject,
-          timedOut: true,
+          withdrawn: true,
         ),
       );
     expect(notifier, isNotNull);
@@ -82,7 +83,7 @@ void main() {
             answers: [
               ['B'],
             ],
-            timedOut: false,
+            withdrawn: false,
           ),
         );
     final state = container.read(questionResponsesProvider)['q-1'];
@@ -95,5 +96,59 @@ void main() {
     expect(stored?.answers, [
       ['B'],
     ]);
+  });
+
+  test('a withdrawn approval is kept as withdrawn, across a restart', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(approvalResponsesProvider.notifier).adoptResolution(
+          const ApprovalResolution(
+            approvalId: 'appr-w',
+            decision: ApprovalDecision.reject,
+            withdrawn: true,
+          ),
+        );
+    final state = container.read(approvalResponsesProvider)['appr-w'];
+    expect(state?.withdrawn, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect((await ApprovalResponseStore().read('appr-w'))?.withdrawn, isTrue);
+  });
+
+  test('the stored outcome on the card is what it shows', () {
+    const local = ApprovalResponseState(
+      phase: ApprovalResponsePhase.resolved,
+      decision: ApprovalDecision.approve,
+      decidedAtMs: 7,
+    );
+    // Nothing stored: this phone's own state.
+    expect(ApprovalResponseState.settled(null, local), same(local));
+    expect(ApprovalResponseState.settled(null, null), isNull);
+    // Stored: the bridge's record, keeping when this phone answered.
+    final settled = ApprovalResponseState.settled(
+      const ApprovalOutcome(decision: ApprovalDecision.approve),
+      local,
+    );
+    expect(settled?.phase, ApprovalResponsePhase.resolved);
+    expect(settled?.decidedAtMs, 7);
+    final withdrawn = ApprovalResponseState.settled(
+      const ApprovalOutcome(decision: ApprovalDecision.reject, withdrawn: true),
+      null,
+    );
+    expect(withdrawn?.withdrawn, isTrue);
+    expect(withdrawn?.decidedAtMs, isNull);
+
+    final question = QuestionResponseState.settled(
+      const QuestionOutcome(
+        answers: [
+          ['A'],
+        ],
+      ),
+      null,
+    );
+    expect(question?.phase, QuestionResponsePhase.resolved);
+    expect(question?.answers, [
+      ['A'],
+    ]);
+    expect(QuestionResponseState.settled(null, null), isNull);
   });
 }
