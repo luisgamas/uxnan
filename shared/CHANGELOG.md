@@ -31,6 +31,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - `NotificationPreferences.needsInput?` (absent = on): push when an agent starts
   waiting on the person, once per approval or question.
 
+### Added
+- **Provider usage: Antigravity and OpenCode.** `UsageProvider` gains
+  `antigravity` and `opencode`, and `USAGE_PROVIDERS` lists every provider in
+  the order clients show them.
+- `ResetCredits.redeemCommand`: set when a provider's resets are spent only
+  inside its CLI (Claude Code's `/limit-reset`), so clients say how instead of
+  offering to redeem.
+- `UsageWindow.model` (the model a window is scoped to) and
+  `CreditBalance.scope` (what a narrower balance covers), and the window ids
+  and balance `period`s clients localize are documented as a fixed vocabulary.
+
+### Changed
+- **`ProviderUsage.credit` is now `credits: CreditBalance[]`**, so a provider
+  with several balances (Grok on-demand and prepaid, every OpenCode Console
+  budget) reports them all.
+- **`UsageSource` is `'cli'` only.** Every provider's limits are now asked of
+  its own CLI, so no snapshot comes from a stored token any more.
+
 ## [0.0.36-alpha.20261030] - 20261030
 ### Added
 

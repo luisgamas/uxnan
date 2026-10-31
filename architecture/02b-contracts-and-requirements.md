@@ -446,8 +446,8 @@ agent/list              -> agentes registrados (IAgentAdapter.agentId, displayNa
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?, isLegacy?)
 agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom'|'skill', headlessSupported?). Params { agentId, cwd? } (cwd: la carpeta del hilo). El bridge se los **pregunta al agente** en esa carpeta, por la superficie que maneja: Claude (`initialize` por stream-json), Codex (`skills/list` del app-server + `compact` nativo + prompts de `~/.codex/prompts`), OpenCode (su servidor, v1 y v2), pi (`get_commands`), Antigravity (sus skills, `agy -p /skills`), Grok (ACP `available_commands_update`; para una carpeta sin sesión, una sesión corta sin prompt), Zero (sus propias skills, `zero skills list --json`, solo las que su herramienta de skills puede cargar). Invocacion via `turn/send` `command`, nativa salvo los prompts de Codex y las skills de Zero (el bridge los expande a un prompt). Para cualquier agente `deprecated`, devuelve `[]`. Detalle: `bridge/docs/agents.md` → *Agent commands*.
 agent/doctor            -> { agents: AgentDiagnosis[] } — por agente: `available`, el comando que se ejecuta y cada ubicacion revisada (tabla compartida `shared/agent-locations.json` + PATH del shell de login)
-agent/usageStats        -> limites del plan por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo, reinicios canjeables). El bridge es el unico lector y todo cliente le pregunta; Claude Code y Codex se preguntan a si mismos (sin leer credenciales), Copilot y Grok por su token guardado → API oficial. Solo los proveedores solicitados (02a §5.8.10).
-usage/redeemReset       -> canjear un reinicio de limite (Codex). Params: { provider, idempotencyKey, creditId? }. Result: ProviderUsage actualizado.
+agent/usageStats        -> limites del plan por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo, reinicios canjeables). El bridge es el unico lector y todo cliente le pregunta; cada proveedor (Claude Code, Codex, Copilot via `gh`, Grok, Antigravity, OpenCode) se pregunta a su propio CLI, sin leer credenciales. Solo los proveedores solicitados; un id desconocido se omite (02a §5.8.10).
+usage/redeemReset       -> canjear un reinicio de limite (Codex; los de Claude Code se usan en el CLI con /limit-reset y aqui se rechazan con esa indicacion). Params: { provider, idempotencyKey, creditId? }. Result: ProviderUsage actualizado.
 usage/summary           -> gasto por dia local de la PC, agente y modelo, de las transcripciones de cada CLI. Params: { days: 1..366 }. Result: UsageSummary { days: UsageDay[{ day, buckets: UsageBucket[] }], agents: UsageAgentSource[] }; cada bucket con tokens (input/cachedInput/cacheWrite/output/reasoning), costUsd, estimatedCostUsd, unpricedTokens, responses (02a §5.8.10).
 ```
 
@@ -1089,45 +1089,52 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
-type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok';
+type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok' | 'antigravity' | 'opencode';
+// USAGE_PROVIDERS: la lista en ese orden (shared). Un id desconocido se omite.
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
 type AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise';
 
 interface UsageWindow {
-  id: string; label: string;
+  id: string;                   // id estable: cada cliente traduce los conocidos (session, weekly, monthly, chat, ...)
+  label: string;                // respaldo en ingles para un id desconocido
+  model?: string;               // modelo al que se limita la ventana (semanal por modelo de Claude)
   usedPercent: number;          // 0-100 consumido de la ventana
   windowMinutes?: number;       // 300=5h, 10080=7d, 43200=30d
   resetsAt?: number;            // epoch ms
 }
 interface CreditBalance {
-  used: number; limit?: number; currency: string; period: string;
+  used: number; limit?: number; currency: string;
+  period: string;               // vocabulario fijo que cada cliente traduce: Monthly credits, Credits, On-demand, Prepaid, AI credits, Budget
+  scope?: string;               // lo que cubre si es menos que la cuenta (modelos de un presupuesto de OpenCode)
   resetsAt?: number;            // epoch ms
   available?: number;           // saldo restante cuando el proveedor lo da directo (Grok on-demand/prepaid)
 }
 interface ResetCreditEntry { id?: string; title?: string; expiresAt?: number }  // detalle por-reinicio (id: para usage/redeemReset)
-interface ResetCredits {        // "reinicios" que el proveedor otorga (Codex)
+interface ResetCredits {        // "reinicios" que el proveedor otorga (Codex, Claude Code)
   available: number;            // redimibles ahora
   totalEarned?: number;
   nextExpiresAt?: number;       // epoch ms
   entries?: ResetCreditEntry[]; // cada reinicio disponible, el que vence primero primero
+  redeemCommand?: string;       // si solo el CLI lo gasta (Claude Code: /limit-reset); ausente = el bridge lo canjea
 }
 
 interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
-  source?: 'cli' | 'token';     // cli: preguntado al CLI (Claude, Codex); token: su token guardado → API oficial
+  source?: 'cli';               // siempre preguntado al CLI del proveedor (ninguna credencial leida)
   account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   windows: UsageWindow[];       // ventanas de cuota (%)
-  credit?: CreditBalance;       // saldo $ cuando el proveedor lo expone (Codex/Claude/Grok)
-  resetCredits?: ResetCredits;  // reinicios de rate-limit redimibles (Codex)
+  credits?: CreditBalance[];    // saldos $ / creditos, el mas relevante primero (Codex/Claude/Grok/Antigravity/OpenCode); ausente si no hay
+  resetCredits?: ResetCredits;  // reinicios de rate-limit guardados (Codex: canjeables; Claude Code: via /limit-reset)
   updatedAt: number;            // epoch ms
   message?: string;             // hint/error para estados != ok
 }
-// Postura: Claude Code y Codex responden por su propia cuenta (el bridge no lee
-// credenciales ni pide permisos del SO); Copilot y Grok: solo el token que el CLI
-// guardo + su API oficial de uso — nunca el refresh token, cookies ni keys
-// pegadas. Cada proveedor degrada a un `status`; uno lento/roto no tumba a los demas.
+// Postura: cada proveedor responde por su propia cuenta a traves de su CLI
+// (claude, codex app-server, gh api, grok agent stdio, agy -p /usage, opencode api):
+// el bridge no lee credenciales ni pide permisos del SO — nunca un token, el
+// refresh token, cookies ni keys pegadas. Cada proveedor degrada a un `status`;
+// uno lento/roto no tumba a los demas.
 ```
 
 **`UsageSummary`** (resultado de `usage/summary`, `shared/src/models/usage.ts`):
