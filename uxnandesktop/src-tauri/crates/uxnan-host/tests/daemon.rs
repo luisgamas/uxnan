@@ -1566,9 +1566,20 @@ async fn a_projects_worktrees_are_listed_made_and_removed_on_the_host() {
     .await;
     assert_eq!(created["path"], preview, "{created}");
     assert_eq!(created["branch"], "feature/x");
+    // A host's engine records who made the worktree, on the host's own disk, so
+    // the left panel can tell it from one that appeared on its own.
+    assert_eq!(created["createdByUxnan"], true, "{created}");
 
     let listed = git_call(&mut client, GitCall::Worktrees { path: root.clone() }).await;
     assert_eq!(listed.as_array().unwrap().len(), 2, "{listed}");
+    let made = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["path"] == preview)
+        .expect("the new worktree is listed");
+    assert_eq!(made["createdByUxnan"], true, "{listed}");
+    assert_eq!(listed[0]["createdByUxnan"], false, "{listed}");
     // A branch that never moved has not landed anywhere.
     let finished = git_call(
         &mut client,

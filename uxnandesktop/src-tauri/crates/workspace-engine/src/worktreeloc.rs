@@ -474,6 +474,9 @@ pub async fn create(
         };
         git::add_worktree(repo_path, &branch, &worktree_path, Some(&base)).await?;
     }
+    // Say who made it, on the machine it is on (this engine runs on a host too):
+    // the left panel sets aside what appeared without this record.
+    git::mark_created(&worktree_path, repo_path).await;
 
     // Prefer git's own listing of the new worktree (canonical path/branch/head);
     // fall back to a hand-built entry if the re-list misses it for any reason.
@@ -484,6 +487,7 @@ pub async fn create(
             branch: Some(branch),
             head: None,
             is_main: false,
+            created_by_uxnan: true,
         }))
 }
 
@@ -765,6 +769,36 @@ mod tests {
         // And the group is claimed, so a same-named project lands elsewhere.
         let marker = std::fs::read_to_string(format!("{root}/{name}/{MARKER_FILE}")).unwrap();
         assert!(marker_matches(&marker, &repo_path));
+    }
+
+    /// Every creation through the engine — the dialog, `worktree/create`, a
+    /// host's engine — says Uxnan made it, in the listing git itself gives back.
+    #[tokio::test]
+    async fn creating_a_worktree_records_that_uxnan_made_it() {
+        let home = tempfile::tempdir().unwrap();
+        let root = canonical_temp(home.path());
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+
+        let created = create(
+            &repo_path,
+            CreateSpec {
+                branch: "feature/x".into(),
+                base: Some("main".into()),
+                from_existing: false,
+                path: None,
+            },
+            WorktreeLocationMode::Custom,
+            Some(&root),
+        )
+        .await
+        .unwrap();
+        assert!(created.created_by_uxnan);
+
+        let listed = crate::git::list_worktrees(&repo_path).await.unwrap();
+        let entry = listed.iter().find(|e| e.path == created.path).unwrap();
+        assert!(entry.created_by_uxnan, "{listed:?}");
     }
 
     #[tokio::test]
