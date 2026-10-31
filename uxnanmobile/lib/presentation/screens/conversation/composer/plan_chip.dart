@@ -31,7 +31,11 @@ class PlanChip extends StatelessWidget {
     final hot = runsOut != null;
     final reset = window.resetsAt;
     final lines = [
-      l10n.composerPlanLine(name, window.label, window.usedPercent.round()),
+      l10n.composerPlanLine(
+        name,
+        windowLabel(l10n, window),
+        window.usedPercent.round(),
+      ),
       if (reset != null && reset.isAfter(DateTime.now()))
         l10n.usageResetsIn(shortDuration(reset.difference(DateTime.now()))),
       if (runsOut != null) l10n.usagePaceRunsOut(shortDuration(runsOut)),
@@ -70,11 +74,3 @@ class PlanChip extends StatelessWidget {
     );
   }
 }
-
-/// A plan's name, as the chip says it.
-String planDisplayName(UsageProvider provider) => switch (provider) {
-      UsageProvider.claude => 'Claude',
-      UsageProvider.codex => 'Codex',
-      UsageProvider.grok => 'Grok',
-      UsageProvider.copilot => 'GitHub Copilot',
-    };

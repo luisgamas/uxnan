@@ -15,6 +15,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`GenerateTitleOptions.model`**: the conversation's own model, used by an agent
   with no cheaper one to name with (`IAgentAdapter.generateTitle` now documents one
   model rule for every agent).
+- **Provider usage: Antigravity and OpenCode.** `UsageProvider` gains
+  `antigravity` and `opencode`, and `USAGE_PROVIDERS` lists every provider in
+  the order clients show them.
+- `ResetCredits.redeemCommand`: set when a provider's resets are spent only
+  inside its CLI (Claude Code's `/limit-reset`), so clients say how instead of
+  offering to redeem.
+- `UsageWindow.model` (the model a window is scoped to) and
+  `CreditBalance.scope` (what a narrower balance covers), and the window ids
+  and balance `period`s clients localize are documented as a fixed vocabulary.
 
 ### Changed
 
@@ -25,6 +34,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (`ApprovalOutcome { decision, withdrawn? }`) and `QuestionRequestBlock.outcome`
   (`QuestionOutcome { answers, withdrawn? }`) carry the same record on the
   stored card, so `turn/list` converges a client that missed the notification.
+- **`ProviderUsage.credit` is now `credits: CreditBalance[]`**, so a provider
+  with several balances (Grok on-demand and prepaid, every OpenCode Console
+  budget) reports them all.
+- **`UsageSource` is `'cli'` only.** Every provider's limits are now asked of
+  its own CLI, so no snapshot comes from a stored token any more.
 
 ### Added
 

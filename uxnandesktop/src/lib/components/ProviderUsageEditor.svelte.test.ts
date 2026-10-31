@@ -54,6 +54,41 @@ describe("ProviderUsageEditor — resets", () => {
     expect(typeof sent.idempotencyKey).toBe("string");
   });
 
+  // Claude Code spends its resets only through its own interactive command:
+  // listed, with how to use them, and never a button that would call the bridge.
+  it("lists Claude Code's resets and says to use them with /limit-reset", async () => {
+    const calls: string[] = [];
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: { provider: "claude", refreshMinutes: null, statusBar: { show: true, windows: ["*"] } },
+        snapshot: {
+          provider: "claude",
+          status: "ok",
+          windows: [],
+          updatedAt: 1,
+          resetCredits: {
+            available: 1,
+            entries: [{ id: "g-1", title: "Full reset", expiresAt: Date.now() + 3 * 86_400_000 }],
+            redeemCommand: "/limit-reset",
+          },
+        },
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+      commands: {
+        bridge_call: (args: Record<string, unknown>) => {
+          calls.push(String(args.method));
+          return {};
+        },
+      },
+    });
+    expect(await screen.findByText("Full reset")).toBeTruthy();
+    expect(screen.getByText("Use one in Claude Code with /limit-reset.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Redeem/ })).toBeNull();
+    expect(calls).not.toContain("usage/redeemReset");
+  });
+
   it("shows no OS grant flow for any state: the bridge needs none", async () => {
     for (const status of ["authRequired", "notInstalled", "error"] as const) {
       const { screen } = mountWithProviders(ProviderUsageEditor, {
@@ -105,6 +140,24 @@ describe("ProviderUsageEditor — account", () => {
     });
     expect(screen.getByText("Asked of Claude Code itself")).toBeTruthy();
   });
+
+  it("names the CLI each provider is asked through, and shows the plan", () => {
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: { provider: "copilot", refreshMinutes: null, statusBar: { show: false, windows: [] } },
+        snapshot: {
+          ...snapshot({ source: "cli", windows: [] }),
+          provider: "copilot",
+          account: { plan: "Copilot Free" },
+        },
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    expect(screen.getByText("Asked of GitHub CLI (gh) itself")).toBeTruthy();
+    expect(screen.getAllByText("Copilot Free").length).toBeGreaterThan(0);
+  });
 });
 
 
@@ -146,5 +199,22 @@ describe("ProviderUsageEditor — status-bar windows", () => {
     await user.click(screen.getByRole("checkbox", { name: "Weekly" }));
     expect(onchange).toHaveBeenCalled();
     expect(cfg.statusBar.windows).toEqual(["monthly", "weekly"]);
+  });
+
+  it("says the plan once — no account-type badge repeating it", () => {
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: { provider: "grok", refreshMinutes: null, statusBar: { show: false, windows: [] } },
+        snapshot: {
+          ...snapshot({ source: "cli", windows: [] }),
+          provider: "grok",
+          account: { plan: "Free", accountType: "free" },
+        },
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    expect(screen.getAllByText("Free")).toHaveLength(1);
   });
 });

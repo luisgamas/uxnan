@@ -17,7 +17,9 @@ void main() {
           'resetsAt': 1700000600000,
         },
       ],
-      'credit': {'used': 12.5, 'currency': 'USD', 'period': 'Credits'},
+      'credits': [
+        {'used': 12.5, 'currency': 'USD', 'period': 'Credits'},
+      ],
       'updatedAt': 1700000000000,
     });
     expect(u, isNotNull);
@@ -30,7 +32,7 @@ void main() {
       u.windows.single.resetsAt,
       DateTime.fromMillisecondsSinceEpoch(1700000600000),
     );
-    expect(u.credit?.used, 12.5);
+    expect(u.credits.single.used, 12.5);
   });
 
   test('an unknown provider id yields null', () {
@@ -96,5 +98,64 @@ void main() {
     });
     expect(credit.available, 25);
     expect(credit.limit, isNull);
+  });
+
+  test('parses the providers the bridge asks of agy and OpenCode', () {
+    final agy = ProviderUsage.fromJson({
+      'provider': 'antigravity',
+      'status': 'ok',
+      'source': 'cli',
+      'windows': [
+        {
+          'id': 'gemini-weekly',
+          'label': 'Gemini Models',
+          'usedPercent': 9,
+          'windowMinutes': 10080,
+          'model': 'Gemini',
+        },
+      ],
+      'credits': [
+        {
+          'used': 0,
+          'available': 120,
+          'currency': 'credits',
+          'period': 'AI credits',
+        },
+        {
+          'used': 1,
+          'limit': 5,
+          'currency': 'USD',
+          'period': 'Budget',
+          'scope': 'Model One',
+        },
+      ],
+      'updatedAt': 1,
+    });
+    expect(agy!.provider, UsageProvider.antigravity);
+    expect(agy.windows.single.model, 'Gemini');
+    expect(agy.credits.first.available, 120);
+    expect(agy.credits.last.scope, 'Model One');
+    final oc = ProviderUsage.fromJson({
+      'provider': 'opencode',
+      'status': 'authRequired',
+      'windows': <Object>[],
+      'updatedAt': 1,
+    });
+    expect(oc!.provider, UsageProvider.opencode);
+    expect(oc.status, UsageStatus.authRequired);
+  });
+
+  test('reset credits carry the command the CLI spends them with', () {
+    final resets = ResetCredits.fromJson(const {
+      'available': 1,
+      'entries': [
+        {'id': 'g-1', 'title': 'Full reset', 'expiresAt': 1793430000000},
+      ],
+      'redeemCommand': '/limit-reset',
+    });
+    expect(resets.redeemCommand, '/limit-reset');
+    expect(resets.entries.single.title, 'Full reset');
+    expect(UsageProvider.claude.cliName, 'Claude Code');
+    expect(ResetCredits.fromJson(const {'available': 2}).redeemCommand, isNull);
   });
 }

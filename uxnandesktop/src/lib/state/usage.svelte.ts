@@ -1,7 +1,7 @@
 // Usage store: the plan limits of the providers the user activated (Settings →
 // Providers, the status-bar popover) and what the agents on this PC spent.
-// Both come from the bridge — the one reader, which asks Claude Code and Codex
-// themselves and reads every agent CLI's transcripts (`agent/usageStats`,
+// Both come from the bridge — the one reader, which asks each provider's own
+// CLI and reads every agent CLI's transcripts (`agent/usageStats`,
 // `usage/summary`) — so this app reads no credential and needs no OS grant.
 // Only activated providers are ever polled; with the bridge off there is
 // nothing to read, and the last snapshots stay as they were.

@@ -1046,11 +1046,119 @@ abstract class AppLocalizations {
   /// **'Couldn\'t load'**
   String get usageLoadError;
 
-  /// No description provided for @usageCreditLabel.
+  /// A quota window's name, by the stable id the bridge sends.
   ///
   /// In en, this message translates to:
-  /// **'Credit'**
-  String get usageCreditLabel;
+  /// **'Session (5h)'**
+  String get usageWindowSession;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily'**
+  String get usageWindowDaily;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly'**
+  String get usageWindowWeekly;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get usageWindowMonthly;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get usageWindowChat;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Completions'**
+  String get usageWindowCompletions;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Premium requests'**
+  String get usageWindowPremium;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend limit'**
+  String get usageWindowSpendLimit;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Gemini models'**
+  String get usageWindowGeminiModels;
+
+  /// A quota window's name, by the stable id the bridge sends.
+  ///
+  /// In en, this message translates to:
+  /// **'Claude and GPT models'**
+  String get usageWindowClaudeGptModels;
+
+  /// A weekly window scoped to one model.
+  ///
+  /// In en, this message translates to:
+  /// **'{model} (weekly)'**
+  String usageWindowModelWeekly(String model);
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly credits'**
+  String get usageBalanceMonthlyCredits;
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'Credits'**
+  String get usageBalanceCredits;
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'On-demand'**
+  String get usageBalanceOnDemand;
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'Prepaid'**
+  String get usageBalancePrepaid;
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'AI credits'**
+  String get usageBalanceAiCredits;
+
+  /// What a money or credit balance is.
+  ///
+  /// In en, this message translates to:
+  /// **'Budget'**
+  String get usageBalanceBudget;
+
+  /// A count of provider credits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 credit} other{{count} credits}}'**
+  String usageCredits(int count);
+
+  /// Provider credits left.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 credit available} other{{count} credits available}}'**
+  String usageCreditsAvailable(int count);
 
   /// A remaining balance with no cap (e.g. a prepaid credit).
   ///
@@ -5809,6 +5917,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'next expires {date}'**
   String usageResetExpires(String date);
+
+  /// A rate-limit reset with no title of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get usageResetEntry;
+
+  /// When one listed reset expires.
+  ///
+  /// In en, this message translates to:
+  /// **'expires {date}'**
+  String usageResetEntryExpires(String date);
+
+  /// How to use a reset only the CLI itself can spend.
+  ///
+  /// In en, this message translates to:
+  /// **'Use one in {cli} with {command}.'**
+  String usageRedeemInCli(String cli, String command);
 
   /// Redeem a rate-limit reset.
   ///

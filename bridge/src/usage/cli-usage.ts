@@ -2,11 +2,12 @@
  * Plan limits asked of the agent CLIs themselves.
  *
  * Each CLI already holds its own sign-in — Claude Code in the macOS Keychain
- * or its credentials file, Codex in `~/.codex/auth.json` or the OS keyring —
- * and answers for its own account over the headless surface the bridge drives
- * it on. Asking it means the bridge never reads a credential: no token file,
- * no Keychain item, no OS permission prompt (the problem that kept Claude's
- * limits off the phone on macOS).
+ * or its credentials file, Codex in `~/.codex/auth.json` or the OS keyring,
+ * Antigravity in the OS keyring, `gh` in its own store — and answers for its
+ * own account over a headless surface. Asking it means the bridge never reads
+ * a credential: no token file, no Keychain item, no OS permission prompt (the
+ * problem that kept Claude's limits off the phone on macOS). Every provider is
+ * read this way; none is read from a token.
  *
  * - **Claude Code**: `claude --input-format stream-json --output-format
  *   stream-json`, then the control requests `initialize` (the account: email,
@@ -17,10 +18,28 @@
  *   `account/rateLimits/read` (`primary`/`secondary` windows with
  *   `usedPercent`, `windowDurationMins`, `resetsAt`; credits; reset credits).
  *
- * Both processes are short-lived and killed as soon as they answered, or after
+ * - **Grok**: `grok agent stdio` (the ACP surface the bridge drives it on),
+ *   then `initialize` and the `_x.ai/billing` extension request — the billing
+ *   config (`currentPeriod`, `creditUsagePercent`, the `{val}` USD amounts) and
+ *   the account's `subscription_tier`, fetched by Grok with its own sign-in.
+ * - **GitHub Copilot**: `gh api /copilot_internal/user` — GitHub's CLI calls
+ *   the Copilot user endpoint with the sign-in it keeps, and the bridge reads
+ *   only the answer (`quota_snapshots`, `copilot_plan`, `access_type_sku`,
+ *   `login`); the token never leaves `gh`.
+ * - **Antigravity**: `agy -p /usage --output-format json` and `agy -p /credits
+ *   --output-format json` — print-mode answers for read-only slash commands
+ *   (agy 1.1.11 and later) that start no agent turn, spend no quota and leave
+ *   no conversation behind. Each answer is checked for exactly that before it
+ *   is believed (see {@link askAntigravityUsage}).
+ * - **OpenCode 2**: `opencode api --standalone GET /api/experimental/usage/limits`
+ *   — its own server's answer for the OpenCode Console workspace it is signed
+ *   in to (OpenCode Go meters and Console budgets), on a private server that
+ *   exits with the request.
+ *
+ * Every process is short-lived and killed as soon as it answered, or after
  * {@link PROBE_TIMEOUT_MS}.
  */
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { agentLocation, locateAgent, type AgentId } from '@uxnan/shared';
 
@@ -244,4 +263,345 @@ export async function redeemCodexReset(idempotencyKey: string, creditId?: string
     },
     process.env,
   );
+}
+
+// ── One-shot CLIs (Antigravity, OpenCode) ───────────────────────────────────
+
+/** The most a one-shot answer may print before it is cut off (bytes). */
+const ONE_SHOT_MAX_OUTPUT = 512 * 1024;
+
+/** What a one-shot CLI printed, and how it ended. */
+export interface OneShotResult {
+  stdout: string;
+  stderr: string;
+  /** The exit code; `null` when it was killed (timeout) or never ran. */
+  code: number | null;
+  /** The binary was not found at all. */
+  missing?: boolean;
+}
+
+/** Runs [binary] once with [args] (no stdin) and collects what it prints. */
+export type RunOnce = (
+  binary: CliBinary,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+) => Promise<OneShotResult>;
+
+/** The default {@link RunOnce}: `execFile` from the home folder, capped and timed out. */
+export const runOnce: RunOnce = (binary, args, env) =>
+  new Promise((resolve) => {
+    execFile(
+      binary.path,
+      [...binary.prependArgs, ...args],
+      {
+        cwd: homedir(),
+        env,
+        timeout: PROBE_TIMEOUT_MS,
+        maxBuffer: ONE_SHOT_MAX_OUTPUT,
+        windowsHide: true,
+        encoding: 'utf8',
+      },
+      (error, stdout, stderr) => {
+        const code =
+          error === null ? 0 : typeof error.code === 'number' && !error.killed ? error.code : null;
+        resolve({
+          stdout: String(stdout ?? ''),
+          stderr: String(stderr ?? ''),
+          code,
+          ...(error?.code === 'ENOENT' ? { missing: true } : {}),
+        });
+      },
+    );
+  });
+
+/** The JSON objects among [output]'s lines (anything else is skipped). */
+export function jsonLines(output: string): Json[] {
+  const out: Json[] = [];
+  for (const raw of output.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('{')) continue;
+    try {
+      const value = asObj(JSON.parse(line));
+      if (value) out.push(value);
+    } catch {
+      // Not JSON: a progress line, a banner.
+    }
+  }
+  return out;
+}
+
+/** What Antigravity says about its limits and AI credits. */
+export interface AntigravityUsageAnswer {
+  /** `/usage`'s `command.data` (`groups[].buckets[]`). */
+  usage?: Json;
+  /** `/credits`'s `command.data` (`remaining_credits`). */
+  credits?: Json;
+  /** Why the limits could not be read, when they could not. */
+  failure?: AntigravityFailure;
+}
+
+/** Why Antigravity did not answer with its limits. */
+export type AntigravityFailure =
+  /** It is not signed in. */
+  | { kind: 'signedOut' }
+  /** Too old for headless slash commands (`version` is what it reported). */
+  | { kind: 'tooOld'; version: string }
+  /** It ran the command as a model turn, so it is never asked again. */
+  | { kind: 'ranTurn' }
+  /** Anything else (`message` is safe to show: no output is quoted). */
+  | { kind: 'error'; message: string };
+
+/** The first agy whose print mode answers read-only slash commands headless. */
+export const ANTIGRAVITY_MIN_VERSION: readonly [number, number, number] = [1, 1, 11];
+
+/** The `X.Y.Z` an `agy --version` printed, or undefined. */
+export function parseSemver(output: string): [number, number, number] | undefined {
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(output);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
+}
+
+function atLeast(
+  version: [number, number, number],
+  min: readonly [number, number, number],
+): boolean {
+  for (let i = 0; i < 3; i++) {
+    const have = version[i] ?? 0;
+    const need = min[i] ?? 0;
+    if (have !== need) return have > need;
+  }
+  return true;
+}
+
+/**
+ * Set once an agy answered a usage command with a model turn: from then on this
+ * process never asks it again, whatever it is upgraded to, because each ask
+ * would spend the user's quota. A bridge restart clears it.
+ */
+let antigravityRanTurn = false;
+
+/** Test seam: forget that an agy ran a turn. */
+export function resetAntigravityLatch(): void {
+  antigravityRanTurn = false;
+}
+
+/** The environment agy runs with: its own, without an update check mid-probe. */
+function antigravityEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, AGY_CLI_DISABLE_AUTO_UPDATE: 'true' };
+}
+
+/**
+ * The `command.data` of agy's answer to the read-only slash command [name], or
+ * the reason there is none. An answer is believed only when it says it ran the
+ * command (`status: SUCCESS`, `command.name`) **and** that no turn ran
+ * (`num_turns` 0, no conversation id): anything else latches
+ * {@link antigravityRanTurn} if a turn ran, and fails.
+ */
+export function readAntigravityAnswer(
+  result: OneShotResult,
+  name: string,
+): { data: Json } | { failure: AntigravityFailure } {
+  const lines = jsonLines(result.stdout);
+  const answer = lines.find((line) => asObj(line['command']) !== undefined) ?? lines[0];
+  if (answer) {
+    const turns = typeof answer['num_turns'] === 'number' ? answer['num_turns'] : 0;
+    const conversation = answer['conversation_id'];
+    if (turns > 0 || (typeof conversation === 'string' && conversation.length > 0)) {
+      antigravityRanTurn = true;
+      return { failure: { kind: 'ranTurn' } };
+    }
+    const command = asObj(answer['command']);
+    const data = asObj(command?.['data']);
+    if (answer['status'] === 'SUCCESS' && command?.['name'] === name && data) return { data };
+  }
+  const printed = `${result.stdout}\n${result.stderr}`;
+  if (
+    /UNAUTHENTICATED|Authentication required|not (?:logged|signed) in|please (?:log|sign) in/i.test(
+      printed,
+    )
+  ) {
+    return { failure: { kind: 'signedOut' } };
+  }
+  if (/RESOURCE_EXHAUSTED/.test(printed)) {
+    return {
+      failure: { kind: 'error', message: 'Antigravity is rate-limited right now; try again later' },
+    };
+  }
+  return {
+    failure: {
+      kind: 'error',
+      message:
+        result.code === null
+          ? 'Antigravity did not answer in time'
+          : 'Antigravity did not answer its usage request',
+    },
+  };
+}
+
+/**
+ * Ask Antigravity for its limits (`/usage`) and AI credits (`/credits`). Its
+ * version is checked first: a build older than {@link ANTIGRAVITY_MIN_VERSION}
+ * sends slash text to the model as a prompt, so it is never asked. The two
+ * commands run side by side; a credits failure only drops the credits.
+ */
+export async function askAntigravityUsage(
+  binary: CliBinary | undefined = cliBinary('antigravity-cli'),
+  run: RunOnce = runOnce,
+): Promise<AntigravityUsageAnswer | undefined> {
+  if (!binary) return undefined;
+  if (antigravityRanTurn) return { failure: { kind: 'ranTurn' } };
+  const env = antigravityEnv();
+  const versionOut = await run(binary, ['--version'], env);
+  const version = parseSemver(versionOut.stdout);
+  if (!version) {
+    return { failure: { kind: 'error', message: 'Antigravity did not report its version' } };
+  }
+  if (!atLeast(version, ANTIGRAVITY_MIN_VERSION)) {
+    return { failure: { kind: 'tooOld', version: version.join('.') } };
+  }
+  // Never `--disable-slash-commands`: with it, the command is sent as a prompt.
+  const ask = (command: string) =>
+    run(binary, ['-p', command, '--output-format', 'json', '--print-timeout', '20s'], env);
+  const [usageOut, creditsOut] = await Promise.all([ask('/usage'), ask('/credits')]);
+  const usage = readAntigravityAnswer(usageOut, 'usage');
+  if ('failure' in usage) return { failure: usage.failure };
+  const credits = readAntigravityAnswer(creditsOut, 'credits');
+  if ('failure' in credits && credits.failure.kind === 'ranTurn') {
+    return { usage: usage.data, failure: credits.failure };
+  }
+  return { usage: usage.data, ...('data' in credits ? { credits: credits.data } : {}) };
+}
+
+/** What OpenCode's server says about its Console workspace's limits. */
+export interface OpenCodeUsageAnswer {
+  /** The response's `data`: `null` when not signed in to a Console workspace. */
+  data?: Json | null;
+  /** Why it could not be read, when it could not. */
+  failure?: string;
+}
+
+/**
+ * Ask OpenCode 2 for the usage limits of the Console workspace it is signed in
+ * to, on a private (`--standalone`) server that exits with the request — the
+ * background service a person may run is never started or touched.
+ */
+export async function askOpenCodeUsage(
+  binary: CliBinary | undefined = cliBinary('opencode'),
+  run: RunOnce = runOnce,
+): Promise<OpenCodeUsageAnswer | undefined> {
+  if (!binary) return undefined;
+  const result = await run(
+    binary,
+    ['api', '--standalone', 'GET', '/api/experimental/usage/limits'],
+    process.env,
+  );
+  return readOpenCodeAnswer(result);
+}
+
+/** The `{location, data}` an `opencode api` call printed, or why there is none. */
+export function readOpenCodeAnswer(result: OneShotResult): OpenCodeUsageAnswer {
+  let body: Json | undefined;
+  try {
+    body = asObj(JSON.parse(result.stdout.trim()));
+  } catch {
+    body = jsonLines(result.stdout).at(-1);
+  }
+  if (body && 'data' in body && 'location' in body) {
+    const data = body['data'];
+    return { data: data === null ? null : (asObj(data) ?? null) };
+  }
+  const tag = typeof body?.['_tag'] === 'string' ? body['_tag'] : undefined;
+  if (tag === 'ServiceUnavailableError') {
+    return { failure: 'the OpenCode Console did not answer; try again later' };
+  }
+  if (result.code === null) return { failure: 'OpenCode did not answer in time' };
+  return {
+    failure:
+      'OpenCode did not answer its usage-limits request (it needs OpenCode 2 signed in to an OpenCode Console workspace)',
+  };
+}
+
+/** What Grok says about its billing. */
+export interface GrokUsageAnswer {
+  /** `_x.ai/billing`'s result: `{ config, subscription_tier }`. */
+  billing?: Json;
+  /** The error Grok answered with instead (its message is shown as is). */
+  error?: string;
+}
+
+/** Ask Grok for its billing over its own ACP surface (`_x.ai/billing`). */
+export async function askGrokUsage(
+  binary: CliBinary | undefined = cliBinary('grok'),
+): Promise<GrokUsageAnswer | undefined> {
+  if (!binary) return undefined;
+  return converse<GrokUsageAnswer>(
+    binary,
+    ['agent', 'stdio'],
+    [
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: 1, clientCapabilities: {} },
+      },
+    ],
+    (message, done, _fail, send) => {
+      if (message['id'] === 1) {
+        send({ jsonrpc: '2.0', id: 2, method: '_x.ai/billing', params: {} });
+        return;
+      }
+      if (message['id'] !== 2) return;
+      const error = asObj(message['error']);
+      if (error) done({ error: String(error['message'] ?? 'Grok refused the billing request') });
+      else done({ billing: asObj(message['result']) ?? {} });
+    },
+    process.env,
+  );
+}
+
+/** What GitHub says about the signed-in account's Copilot. */
+export interface CopilotUsageAnswer {
+  /** `/copilot_internal/user`'s body. */
+  user?: Json;
+  /** `gh` is installed but not signed in. */
+  signedOut?: boolean;
+  /** Why it could not be read otherwise. */
+  failure?: string;
+}
+
+/** The `gh` to ask: the one on PATH. */
+const GH: CliBinary = { path: 'gh', prependArgs: [] };
+
+/** Ask `gh` for the Copilot user record; undefined when `gh` is not installed. */
+export async function askCopilotUsage(
+  binary: CliBinary = GH,
+  run: RunOnce = runOnce,
+): Promise<CopilotUsageAnswer | undefined> {
+  const result = await run(
+    binary,
+    ['api', '/copilot_internal/user', '-H', 'X-GitHub-Api-Version: 2025-04-01'],
+    process.env,
+  );
+  if (result.missing) return undefined;
+  return readCopilotAnswer(result);
+}
+
+/** What a `gh api /copilot_internal/user` run printed, read. */
+export function readCopilotAnswer(result: OneShotResult): CopilotUsageAnswer {
+  let body: Json | undefined;
+  try {
+    body = asObj(JSON.parse(result.stdout));
+  } catch {
+    body = undefined;
+  }
+  if (result.code === 0 && body) return { user: body };
+  if (/gh auth login|not logged in|authentication/i.test(result.stderr)) return { signedOut: true };
+  const message = typeof body?.['message'] === 'string' ? body['message'] : undefined;
+  if (message === 'Not Found') {
+    return { failure: 'this GitHub account has no Copilot access' };
+  }
+  if (message === 'Bad credentials' || message === 'Requires authentication') {
+    return { signedOut: true };
+  }
+  if (result.code === null) return { failure: 'GitHub did not answer in time' };
+  return { failure: message ? `GitHub answered: ${message}` : 'gh could not read Copilot usage' };
 }

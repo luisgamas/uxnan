@@ -1433,9 +1433,10 @@ shows concrete ids rather than aliases, since a commit message names the model
 that wrote it: what each alias runs today, under its label, then the older ids,
 folded the same way.
 
-**The one table left is the price** (`src/usage/usage-prices.ts` →
+**Prices are the only tables left** (`src/usage/usage-prices.ts` →
 `CLAUDE_PRICES`, pinned to Anthropic's published rates by
-`test/usage/transcript-usage.test.ts`). Spend is read from the transcripts
+`test/usage/transcript-usage.test.ts`; Codex's `CODEX_PRICES` beside it — see
+*Spend*). Spend is read from the transcripts
 (`src/usage/transcript-usage.ts`, architecture `02a` §5.8.10), which record
 tokens per response but cost only per CLI process (`cost-state`), so a new generation still needs an entry there, keyed
 on the model id rather than its family. A model without one is shown as
@@ -1448,32 +1449,125 @@ The bridge is the one reader of each provider's plan limits
 Desktop only render what it returns (`ProviderUsage` in
 `shared/src/models/usage.ts`).
 
+**Every provider is asked of its own CLI** (`src/usage/cli-usage.ts`). Each one
+answers for the account it is signed in to, from wherever it keeps that
+sign-in (the macOS Keychain, the OS keyring, its own file), so the bridge reads
+**no credential at all** — no token file, no keychain item, no OS permission
+prompt — and every snapshot is `source: "cli"`. Reading a stored token to call
+an API directly is the last resort and is used for **no** provider today; one
+that needed it would have to go behind an explicit user permission first. All
+providers are read side by side, and a provider already being read when
+another client asks is answered from that read (`CoalescedUsageReads` in
+`src/handlers/usage-handler.ts`), so a phone and a desktop polling together do
+not start each CLI twice. An id the bridge does not know is skipped, not
+refused, so a newer client still gets the others.
+
 | Provider | Asked | Fills |
 |---|---|---|
-| Claude Code | `claude` itself (`initialize` + `get_usage`, `src/usage/cli-usage.ts`) | windows, plan, email/organization, `credit` from `extra_usage` once it is enabled |
-| Codex | `codex app-server` itself (`account/read` + `account/rateLimits/read`) | windows, plan, email, `credit` once the account has credits, `resetCredits` |
-| GitHub Copilot | `gh auth token` → GitHub's `copilot_internal/user` | quotas, plan, login |
-| Grok | the `key` in `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1`: `billing?format=credits` and `user?include=subscription` (5 s) | the `creditUsagePercent` window when there is one; `credit` in USD from the `{val}` amounts; plan from `subscriptionTier` |
+| Claude Code | `claude --input-format stream-json` → control requests `initialize` + `get_usage` | windows (`rate_limits.limits[]`), plan, email/organization; a balance in `credits` once usage credits are enabled — `spend` (`{amount_minor, currency, exponent}`), else the older `extra_usage` (minor units at `decimal_places`) |
+| Codex | `codex app-server` → `account/read` + `account/rateLimits/read` | windows by length, a seat's spend limit (`individualLimit` → `Spend limit`), plan (named as Codex's `PlanType`), email, a balance once the account has credits, `resetCredits` |
+| GitHub Copilot | `gh api /copilot_internal/user` — `gh` sends its own sign-in; the bridge only reads the answer | `quota_snapshots` (a quota the plan does not include — `has_quota: false`, entitlement 0 — is skipped, not shown as 100% used), plan (`Copilot Free` from the `access_type_sku`, else `Copilot <copilot_plan>`), login |
+| Grok | `grok agent stdio` (the ACP surface it is driven on) → `initialize` + the `_x.ai/billing` extension request | the period window (`creditUsagePercent`; absent with a current period means 0% — the answer is protobuf JSON, which leaves zeros out), balances in USD from the `{val}` amounts, plan from `subscription_tier` |
+| Antigravity | `agy -p /usage --output-format json` + `agy -p /credits --output-format json` (agy ≥ 1.1.11) | one window per `groups[].buckets[]` (used = 1 − `remaining_fraction`, `window` `5h`/`weekly`, `reset_time`; `disabled` buckets skipped), `credit` = AI credits once above 0 (in `credits`). No plan: agy does not report one |
+| OpenCode 2 | `opencode api --standalone GET /api/experimental/usage/limits` (a private server that exits with the request) | OpenCode Go `rolling`/`weekly`/`monthly` meters, every Console budget as a USD balance (`combined`/`all` first; one for some models names them in `scope`), workspace name as organization; `data: null` → not signed in |
+| pi, Zero | — | nothing: pi and Zero run on the user's own provider keys and expose no plan limits (`zero usage report` is local token spend, already counted by `usage/summary`) |
+
+**Antigravity's guard.** Before agy 1.1.11 a print-mode slash command was sent
+to the model as a prompt (its own changelog), so the bridge checks
+`agy --version` first and never asks an older one. It never passes
+`--disable-slash-commands` (which turns the command into a prompt), and it
+believes an answer only when it says it ran the command (`status: SUCCESS`,
+`command.name`) **and** that no turn ran (`num_turns: 0`, empty
+`conversation_id`). An answer that ran a turn latches: that bridge process
+never asks agy again. `AGY_CLI_DISABLE_AUTO_UPDATE=true` keeps an update check
+out of the probe.
 
 **Grok's money.** On-demand spend of its cap (`onDemandUsed` / `onDemandCap`,
 `period: "On-demand"`, `limit`, `available = cap − used`, resetting at
-`billingPeriodEnd`) once a cap is set or anything was spent; otherwise a
-`prepaidBalance` above zero (`period: "Prepaid"`, `available`); otherwise no
-`credit`. A free account answers every amount as `{val: 0}` and has no
-`creditUsagePercent`, so it reads `ok` with no window, no credit and the
-"no quota window" message. The contract carries one balance, so when an account
-has both, on-demand (what it is spending now) is the one shown.
+`billingPeriodEnd`) once a cap is set or anything was spent, and a
+`prepaidBalance` above zero (`period: "Prepaid"`, `available`) — both when the
+account has both, on-demand (what it is spending now) first. Its window's id
+is its period (`daily` / `weekly` / `monthly`).
 
-**Grok's plan.** The billing answer carries no tier: the Grok CLI takes it from
-the signed-in user, and so does the bridge. A tier is labelled as xAI writes it
-(`supergrok_heavy` → `SuperGrok Heavy`); `null` on a personal account (no
-`teamId` / `organizationId`) reads `Free`, as the CLI calls it; a team or
-organization member without a tier of their own claims no plan. The user
-request failing only drops the plan — never the rest.
+**Ids, not words.** Each window carries a stable `id` (and `model` for a
+model-scoped one) and each balance a `period` from a fixed vocabulary; the
+English `label` / `period` are fallbacks. The phone and the desktop translate
+the ones they know through one formatter each (`usage_format.dart`,
+`usageLabels.ts`) — so a label is never written in two languages at once.
 
-Verified live (grok 1.0.41, a free account): `ok`, plan `Free`, no window, no
-credit. The paid shapes (`{val}` amounts above zero, a non-null tier) are taken
-from the CLI's own billing and subscription code, not yet from a paid account.
+### Banked resets
+
+| Provider | See + list | Use |
+|---|---|---|
+| Codex | `account/rateLimits/read` → `rateLimitResetCredits` (count, each credit's id, title, expiry) | `usage/redeemReset` → `account/rateLimitResetCredit/consume` with an idempotency key — clients call it only after the user confirms |
+| Claude Code | `get_usage` → `rate_limits.cedar_ember` (`grants[]` with `resets_left`, `ends_at`, `paused`, `label`) | **not headless**: the CLI spends one only through its interactive `/limit-reset`; `resetCredits.redeemCommand` says so, the clients show it instead of a button, and `usage/redeemReset` refuses with that instruction. Using its token to redeem directly is the credential path this reader never takes |
+| Grok, Antigravity, OpenCode, Copilot, pi, Zero | — | none of these CLIs exposes banked resets (searched each binary on this machine) |
+
+The `cedar_ember` key is in every `get_usage` answer; on the maintainer's
+account it is `null` (no resets held), so the populated shape is pinned by the
+test from the CLI's own parser, not from a live grant.
+
+## Spend (`usage/summary`)
+
+What each agent's CLI records on disk, the bridge's turns and a person's own
+terminal sessions alike (`src/usage/transcript-usage.ts`,
+`src/usage/antigravity-usage.ts`, `src/usage/usage-scan.ts`):
+
+| Agent | Store | Cost |
+|---|---|---|
+| Claude Code | `~/.claude/projects/**.jsonl` | estimated at Anthropic's published prices (`CLAUDE_PRICES`) |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | estimated at OpenAI's published prices (`CODEX_PRICES`) |
+| pi | `~/.pi/agent/sessions/**.jsonl` | billed, as pi records it |
+| Grok | `~/.grok/sessions/**/updates.jsonl` | billed (`costUsdTicks`) |
+| OpenCode 2 | `opencode.db` | billed, as OpenCode records it |
+| Zero | `~/.local/share/zero/sessions/*/events.jsonl` | tokens only — and only for `zero exec` sessions: an ACP-driven one records no `provider_usage` (see *Drive surface*), so the bridge's own Zero turns are not counted |
+| Antigravity | `~/.gemini/antigravity-cli/conversations/<id>.db` | tokens only: billed against its plan quota |
+| GitHub Copilot | — | not an agent the bridge drives; nothing on disk to read |
+
+**Codex's price.** `CODEX_PRICES` holds OpenAI's published rates (read
+2026-10-31) per **exact model id** and **service tier** — standard, flex,
+fast (formerly priority), ultrafast — each with its long-context prices for a
+request over 272K input tokens. The tier is `thread_settings.service_tier` of
+the rollout's `thread_settings_applied` (absent = standard). Codex's
+`input_tokens` include the cached part, which is taken out and priced at the
+cached rate; `output_tokens` include the reasoning, priced once as output. A
+request with cache writes stays unpriced: Codex does not record whether they
+were 30-minute or 12-hour writes, which OpenAI prices differently. An id or
+tier with no row (`codex-auto-review`, say) is unpriced. Live 30-day read:
+2,684 responses, 270M tokens, about $4.27 at API prices; 164K tokens unpriced.
+
+The scan cache (`~/.uxnan/usage-scan.json`) carries a version that is bumped
+whenever a price or a parser changes what a record is worth, so every file is
+read again rather than keeping sums made the old way.
+
+**Antigravity's store, verified against the driven surface** (agy 1.4.12): a
+turn driven over `--input-format stream-json` streamed `input_tokens 10069,
+output_tokens 33, thinking_tokens 32, cache_read_tokens 0` on its
+`agent_response` `step_update`, and its conversation database stored exactly
+those in its `gen_metadata` row (fields documented in
+`antigravity-usage.ts`). Across the 227 calls on this machine every row decoded,
+and each call's single attempt repeats its usage (counted once). Live 30-day
+read: 90 responses, 1.17M tokens.
+
+### Live matrix
+
+Run read-only on the maintainer's Mac (2026-10-30) through `readUsage` with
+every real CLI, identities redacted; all six together answered in 4.6 s.
+
+| Provider | CLI | Status | What came back |
+|---|---|---|---|
+| Claude Code | 2.1.312 | `ok` | plan Claude Max; session 16%, weekly 35%, a model-scoped weekly 0%, each with its reset; usage credits disabled → no balance |
+| Codex | 0.163.0 | `ok` | plan Free; one 30-day window 88% with its reset; no credits, no resets |
+| GitHub Copilot | gh 2.102.0 | `ok` | plan Copilot Free; chat 0%, completions 0% (monthly reset); premium requests not in the plan → skipped |
+| Grok | 1.0.70 | `ok` | plan Free; weekly window 0% with its reset; no money on the account |
+| Antigravity | 1.4.12 | `ok` | two weekly windows (Gemini models 9%, Claude and GPT models 0%) with resets; 0 AI credits → no balance; `num_turns: 0` |
+| OpenCode | 2.2.0 | `ok` | signed in to a Console workspace with no Go plan and no budget → no window, the "no OpenCode Go plan or budget" message |
+
+Not exercised live (no such account here; the shapes come from each CLI's own
+schema — Codex's `generate-json-schema`, OpenCode's `/api` OpenAPI document —
+and are pinned by `test/usage/usage-reader.test.ts`): Codex resets and
+`individualLimit`, Claude's enabled usage credits, Grok's paid tiers and
+money, OpenCode Go meters and budgets, Antigravity AI credits above 0.
 
 ## Adding a new agent
 

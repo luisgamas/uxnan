@@ -4,18 +4,26 @@
  *
  * The bridge is the one reader; every client — the phone, Uxnan Desktop's
  * Providers panel — asks it (`agent/usageStats`, `usage/summary`,
- * `usage/redeemReset`). Claude Code and Codex are asked themselves: each CLI
- * answers for the account it is signed in to, so no credential is read and no
- * OS permission is needed. Copilot and Grok have no such surface: only the
- * token each CLI stored is read (`gh auth token`, `~/.grok/auth.json`) and sent
- * to the provider's own usage API. Spend comes from the transcripts every
- * agent CLI keeps on disk. Never browser cookies, never a pasted key, never a
- * refresh token. The Dart equivalents live in uxnanmobile and are kept in sync
- * manually.
+ * `usage/redeemReset`). Every provider is asked of its own CLI — Claude Code,
+ * Codex, Grok, Antigravity and OpenCode over their headless surfaces, GitHub
+ * Copilot through `gh api` — so no credential is read and no OS permission is
+ * needed. Spend comes from the transcripts every agent CLI keeps on disk.
+ * Never browser cookies, never a pasted key, never a refresh token. The Dart
+ * equivalents live in uxnanmobile and are kept in sync manually.
  */
 
-/** A coding CLI whose usage we read from its own stored token. */
-export type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok';
+/** A provider whose plan limits the bridge reads, by asking its CLI. */
+export type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok' | 'antigravity' | 'opencode';
+
+/** Every {@link UsageProvider}, in the order clients list them. */
+export const USAGE_PROVIDERS: readonly UsageProvider[] = [
+  'codex',
+  'claude',
+  'copilot',
+  'grok',
+  'antigravity',
+  'opencode',
+];
 
 /** Outcome of reading one provider's usage. */
 export type UsageStatus =
@@ -28,9 +36,9 @@ export type UsageStatus =
   /** Read/network/parse failure — see {@link ProviderUsage.message}. */
   | 'error';
 
-/** How the data was obtained: asked of the CLI itself (`cli`, Claude Code and
- *  Codex), or its stored token sent to the provider's usage API (`token`). */
-export type UsageSource = 'cli' | 'token';
+/** How the data was obtained: asked of the provider's own CLI — the only way
+ *  the bridge reads limits. */
+export type UsageSource = 'cli';
 
 /**
  * The kind of billing relationship, so the UI can label an account beyond its
@@ -55,14 +63,23 @@ export type AccountType =
  * weekly cap, or a model-specific window).
  */
 export interface UsageWindow {
-  /** Window id (e.g. `session5h`, `weekly`, `monthly`, `opusWeekly`) — used by
-   *  the status-bar picker to remember which windows to surface. Ids follow
-   *  what the provider reports (Codex's are named by the window's length), so
-   *  they can change when the plan or the reader changes: clients must tolerate
-   *  saved picks that no longer match any window. */
+  /** Window id — what clients name a window by and the status-bar picker
+   *  remembers. Ids follow what the provider reports (Codex's are named by the
+   *  window's length), so they can change when the plan or the reader changes:
+   *  clients must tolerate saved picks that no longer match any window.
+   *
+   *  Clients localize the ids they know and show {@link label} for any other:
+   *  `session` / `session5h` / `five_hour` (5-hour session), `daily`, `weekly` /
+   *  `weekly_all` / `seven_day`, `monthly`, `chat`, `completions`,
+   *  `premium_interactions`, `individual` (a seat's spend limit),
+   *  `gemini-weekly` and `3p-weekly` (Antigravity's model groups), and a
+   *  model-scoped weekly window (any id with {@link model}). */
   id: string;
-  /** Human label (English; the UI localizes known ids, else shows this). */
+  /** English fallback label, shown as is for an id a client does not know. */
   label: string;
+  /** The model this window is scoped to (Claude's model-scoped weekly limit),
+   *  as the provider names it — clients write it into their own label. */
+  model?: string;
   /** Consumed fraction of this window, clamped to 0–100. */
   usedPercent: number;
   /** Window length in minutes (300 = 5h, 10080 = 7d, 1440 = 24h), when known. */
@@ -82,19 +99,26 @@ export interface CreditBalance {
    *  as `$1,234.56` in every UI language — through one formatter each
    *  (the desktop's `formatMoney`, the phone's `fmtMoney`). */
   currency: string;
-  /** Period label (English; e.g. `Monthly`, `Credits`). */
+  /** What the balance is — a fixed vocabulary clients localize, shown as is
+   *  when unknown: `Monthly credits` (Claude's usage credits), `Credits`
+   *  (Codex), `On-demand` and `Prepaid` (Grok), `AI credits` (Antigravity),
+   *  `Budget` (an OpenCode Console budget). */
   period: string;
+  /** What the balance covers when it is narrower than the whole account (an
+   *  OpenCode budget for some models: their names), as the provider names it. */
+  scope?: string;
   /** When the balance resets (epoch ms), when known. */
   resetsAt?: number;
   /** Amount still available this period, in `currency`, when the provider
-   *  reports a remaining balance directly (e.g. Grok on-demand / prepaid). */
+   *  reports a remaining balance directly (Grok on-demand / prepaid,
+   *  Antigravity AI credits, an OpenCode Console budget). */
   available?: number;
 }
 
 /**
- * "Reset credits" a provider grants to roll a hit rate-limit back early — Codex's
- * rate-limit reset-credit system. Distinct from `credit` (money): these are
- * redeemable reset tokens, not a balance.
+ * "Reset credits" a provider grants to roll a hit rate-limit back early: Codex's
+ * rate-limit resets, Claude Code's limit resets. Distinct from `credits`
+ * (money): these are redeemable resets, not a balance.
  */
 /** One redeemable reset — for the per-credit detail (which one, when it expires). */
 export interface ResetCreditEntry {
@@ -116,18 +140,25 @@ export interface ResetCredits {
   /** The individual available resets, soonest-expiring first, when the provider
    *  details them. */
   entries?: ResetCreditEntry[];
+  /** Set when a reset can only be used inside the CLI itself, by this command
+   *  (Claude Code's `/limit-reset`): clients say so instead of offering to
+   *  redeem it. Absent when the bridge can redeem it (`usage/redeemReset`). */
+  redeemCommand?: string;
 }
 
 /** One provider's usage snapshot. */
 export interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
-  /** How `windows`/`credit` were obtained (absent for states with no data). */
+  /** How `windows`/`credits` were obtained (absent for states with no data). */
   source?: UsageSource;
   account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   /** Quota/rate windows (percentage-based). Empty when none apply. */
   windows: UsageWindow[];
-  credit?: CreditBalance;
+  /** Money and credit balances, the one that matters most first; absent when
+   *  the account has none (a balance is listed once it is non-zero or
+   *  enabled). */
+  credits?: CreditBalance[];
   /** Redeemable rate-limit resets (Codex), when the provider grants them. */
   resetCredits?: ResetCredits;
   /** When this snapshot was produced (epoch ms). */

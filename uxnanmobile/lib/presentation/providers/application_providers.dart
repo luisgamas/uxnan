@@ -620,6 +620,8 @@ const List<String> _usageProviderIds = [
   'claude',
   'copilot',
   'grok',
+  'antigravity',
+  'opencode',
 ];
 
 /// The usage auto-refresh interval (persisted; default every 5 min). Only
@@ -739,8 +741,9 @@ class UsageStatsController extends AsyncNotifier<List<ProviderUsage>> {
   void refresh() => ref.invalidateSelf();
 
   /// Redeems one of [provider]'s rate-limit resets on the connected PC
-  /// (`usage/redeemReset`; Codex only today) — [creditId], or the
-  /// soonest-expiring one — and takes the fresh usage it answers with.
+  /// (`usage/redeemReset`; the resets the bridge can spend — Codex's) —
+  /// [creditId], or the soonest-expiring one — and takes the fresh usage it
+  /// answers with.
   /// [attempt] names this try, so a retry after a lost answer never spends a
   /// second reset. Throws [UsageRedeemException] with the bridge's reason.
   Future<void> redeemReset(

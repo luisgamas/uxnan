@@ -1,9 +1,30 @@
 import 'package:equatable/equatable.dart';
 
-/// A provider whose plan limits the bridge reads — asking Claude Code and
-/// Codex themselves, reading Copilot's and Grok's own stored token. Mirrors
+/// A provider whose plan limits the bridge reads — every one asked of its own
+/// CLI (Copilot through GitHub's `gh`), so no credential is read. Mirrors
 /// `shared` `UsageProvider`.
-enum UsageProvider { codex, claude, copilot, grok }
+enum UsageProvider { codex, claude, copilot, grok, antigravity, opencode }
+
+/// The name a provider's plan goes by, wherever the app says it.
+extension UsageProviderName on UsageProvider {
+  /// The CLI the bridge asks for this provider, as a person runs it.
+  String get cliName => switch (this) {
+        UsageProvider.claude => 'Claude Code',
+        UsageProvider.copilot => 'GitHub CLI (gh)',
+        UsageProvider.antigravity => 'Antigravity (agy)',
+        _ => displayName,
+      };
+
+  /// The display name ("Claude", "GitHub Copilot", …).
+  String get displayName => switch (this) {
+        UsageProvider.claude => 'Claude',
+        UsageProvider.codex => 'Codex',
+        UsageProvider.grok => 'Grok',
+        UsageProvider.copilot => 'GitHub Copilot',
+        UsageProvider.antigravity => 'Antigravity',
+        UsageProvider.opencode => 'OpenCode',
+      };
+}
 
 /// Outcome of reading one provider's usage. Mirrors `shared` `UsageStatus`.
 enum UsageStatus { ok, authRequired, notInstalled, error }
@@ -44,6 +65,7 @@ class UsageWindow extends Equatable {
     required this.usedPercent,
     this.windowMinutes,
     this.resetsAt,
+    this.model,
   });
 
   /// Reconstructs a [UsageWindow] from its wire map.
@@ -53,15 +75,19 @@ class UsageWindow extends Equatable {
         usedPercent: (json['usedPercent'] as num?)?.toDouble() ?? 0,
         windowMinutes: (json['windowMinutes'] as num?)?.toInt(),
         resetsAt: _epoch(json['resetsAt']),
+        model: json['model'] as String?,
       );
 
   /// Window id (e.g. `session5h`, `weekly`, `monthly`): what the provider
   /// reports, so it can change with the plan or the reader (see the shared
-  /// `UsageWindow`).
+  /// `UsageWindow`). The UI names the ids it knows (`windowLabel`).
   final String id;
 
-  /// Human label (English; the UI shows it verbatim).
+  /// English fallback label, shown as is for an id the UI does not know.
   final String label;
+
+  /// The model this window is scoped to (Claude's model-scoped weekly limit).
+  final String? model;
 
   /// Consumed fraction of this window, clamped 0–100.
   final double usedPercent;
@@ -73,7 +99,8 @@ class UsageWindow extends Equatable {
   final DateTime? resetsAt;
 
   @override
-  List<Object?> get props => [id, label, usedPercent, windowMinutes, resetsAt];
+  List<Object?> get props =>
+      [id, label, usedPercent, windowMinutes, resetsAt, model];
 }
 
 /// A monetary / credit balance, separate from the percentage windows.
@@ -86,6 +113,7 @@ class CreditBalance extends Equatable {
     this.limit,
     this.resetsAt,
     this.available,
+    this.scope,
   });
 
   /// Reconstructs a [CreditBalance] from its wire map.
@@ -96,6 +124,7 @@ class CreditBalance extends Equatable {
         limit: (json['limit'] as num?)?.toDouble(),
         resetsAt: _epoch(json['resetsAt']),
         available: (json['available'] as num?)?.toDouble(),
+        scope: json['scope'] as String?,
       );
 
   /// Amount consumed this period, in [currency].
@@ -104,8 +133,14 @@ class CreditBalance extends Equatable {
   /// ISO-4217 code (`USD`, …) or `credits` for non-currency units.
   final String currency;
 
-  /// Period label (English; e.g. `Monthly`, `Credits`).
+  /// What the balance is — the bridge's fixed English vocabulary
+  /// (`Monthly credits`, `Credits`, `On-demand`, `Prepaid`, `AI credits`,
+  /// `Budget`), which the UI localizes (`balanceLabel`).
   final String period;
+
+  /// What the balance covers when narrower than the account (the models of
+  /// an OpenCode budget), as the provider names it.
+  final String? scope;
 
   /// Spend/credit cap, when the provider exposes one.
   final double? limit;
@@ -119,7 +154,7 @@ class CreditBalance extends Equatable {
 
   @override
   List<Object?> get props =>
-      [used, currency, period, limit, resetsAt, available];
+      [used, currency, period, limit, resetsAt, available, scope];
 }
 
 /// The account identity a provider reports (never a secret).
@@ -182,11 +217,15 @@ class ResetCreditEntry extends Equatable {
   List<Object?> get props => [id, title, expiresAt];
 }
 
-/// The rate-limit resets an account holds (Codex): each one rolls a limit
-/// back to zero early when redeemed.
+/// The rate-limit resets an account holds (Codex's, Claude Code's): each one
+/// rolls a limit back early when used.
 class ResetCredits extends Equatable {
   /// Creates a [ResetCredits].
-  const ResetCredits({required this.available, this.entries = const []});
+  const ResetCredits({
+    required this.available,
+    this.entries = const [],
+    this.redeemCommand,
+  });
 
   /// Reconstructs [ResetCredits] from its wire map.
   factory ResetCredits.fromJson(Map<String, dynamic> json) {
@@ -208,6 +247,7 @@ class ResetCredits extends Equatable {
     return ResetCredits(
       available: available is num ? available.toInt() : entries.length,
       entries: entries,
+      redeemCommand: json['redeemCommand'] as String?,
     );
   }
 
@@ -217,8 +257,12 @@ class ResetCredits extends Equatable {
   /// Each one, soonest-expiring first.
   final List<ResetCreditEntry> entries;
 
+  /// Set when the CLI spends these only itself, by this command (Claude
+  /// Code's `/limit-reset`): the app says so and offers no redeem.
+  final String? redeemCommand;
+
   @override
-  List<Object?> get props => [available, entries];
+  List<Object?> get props => [available, entries, redeemCommand];
 }
 
 /// One provider's usage snapshot. Mirrors `shared` `ProviderUsage`.
@@ -230,7 +274,7 @@ class ProviderUsage extends Equatable {
     required this.windows,
     required this.updatedAt,
     this.account,
-    this.credit,
+    this.credits = const [],
     this.resetCredits,
     this.message,
   });
@@ -242,7 +286,7 @@ class ProviderUsage extends Equatable {
     if (provider == null) return null;
     final windowsRaw = json['windows'];
     final accountRaw = json['account'];
-    final creditRaw = json['credit'];
+    final creditsRaw = json['credits'];
     final resetsRaw = json['resetCredits'];
     return ProviderUsage(
       provider: provider,
@@ -257,9 +301,12 @@ class ProviderUsage extends Equatable {
       account: accountRaw is Map
           ? UsageAccount.fromJson(accountRaw.cast<String, dynamic>())
           : null,
-      credit: creditRaw is Map
-          ? CreditBalance.fromJson(creditRaw.cast<String, dynamic>())
-          : null,
+      credits: creditsRaw is List
+          ? creditsRaw
+              .whereType<Map<dynamic, dynamic>>()
+              .map((c) => CreditBalance.fromJson(c.cast<String, dynamic>()))
+              .toList()
+          : const [],
       resetCredits: resetsRaw is Map
           ? ResetCredits.fromJson(resetsRaw.cast<String, dynamic>())
           : null,
@@ -282,8 +329,9 @@ class ProviderUsage extends Equatable {
   /// The account identity, when reported.
   final UsageAccount? account;
 
-  /// The credit balance, when reported.
-  final CreditBalance? credit;
+  /// Money and credit balances, the one that matters most first; empty when
+  /// the account has none.
+  final List<CreditBalance> credits;
 
   /// Redeemable rate-limit resets (Codex), when reported.
   final ResetCredits? resetCredits;
@@ -298,7 +346,7 @@ class ProviderUsage extends Equatable {
         windows,
         updatedAt,
         account,
-        credit,
+        credits,
         resetCredits,
         message,
       ];

@@ -66,11 +66,20 @@ describe("UsageMeter", () => {
     expect(screen.getByText(/resets in/i)).toBeInTheDocument();
   });
 
-  it("drops the absolute clock time in compact mode, keeping the countdown", () => {
-    // The popover is tight; "resets in 2h · 3:00 PM" wraps and reads badly.
+  it("row: one line with the percentage and a short countdown, the clock time on hover", () => {
+    // The popover stacks many providers: one line per window, the reset in its own column.
     const { screen } = mount(UsageMeter, {
-      props: { window: usageWindow({ resetsAt: inTwoHours() }), compact: true, showReset: true },
+      props: { window: usageWindow({ resetsAt: inTwoHours() }), variant: "row" },
     });
-    expect(screen.getByText(/resets in/i).textContent).not.toContain("·");
+    expect(screen.getByText("42%")).toBeInTheDocument();
+    const reset = screen.getByText(/^in /);
+    expect(reset.textContent).not.toContain("·");
+    expect(reset.getAttribute("title")).toContain("·");
+    expect(screen.getByRole("meter", { name: "5-hour limit" })).toHaveAttribute("aria-valuenow", "42");
+  });
+
+  it("row: no reset reported leaves the column empty", () => {
+    const { screen } = mount(UsageMeter, { props: { window: usageWindow(), variant: "row" } });
+    expect(screen.queryByText(/^in /)).not.toBeInTheDocument();
   });
 });

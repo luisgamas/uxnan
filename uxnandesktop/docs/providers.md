@@ -18,8 +18,8 @@ panel says so and offers to open the Bridge window.
 
 `usage/summary` reads the history each agent CLI keeps on disk itself — the
 sessions the bridge runs **and** the ones you run in a terminal — and counts
-each model response once. Supported: Claude Code, Codex, pi, Grok and
-OpenCode 2 (the formats and where each lives are in
+each model response once. Supported: Claude Code, Codex, pi, Grok, OpenCode 2,
+Zero and Antigravity (the formats and where each lives are in
 `bridge/src/usage/transcript-usage.ts`). The bridge keeps an incremental cache
 (`~/.uxnan/usage-scan.json`), so after the first read only what was appended
 is read again.
@@ -44,36 +44,47 @@ The panel (`src/lib/components/ProviderSpend.svelte`, view data from
 
 Cost is what the provider billed where the CLI records it (pi, Grok, OpenCode;
 a free model counts $0). Otherwise it is an **estimate at the provider's public
-API prices** (Claude Code) and the headline says so — a subscription plan pays
+API prices** (Claude Code at Anthropic's, Codex at OpenAI's — per model, service
+tier and context length) and the headline says so — a subscription plan pays
 a flat fee instead. A model with no known price is never shown as $0: it reads
 **No price**, is counted in tokens, and focusing such an agent charts it in
 tokens.
 
 ## Plan limits
 
+Every provider is **asked of its own CLI**, which answers for the account it
+is signed in to — so neither the bridge nor this app reads a credential, and
+nothing asks the OS for permission. The bridge's live matrix and the exact
+requests are in `bridge/docs/agents.md` → *Plan limits*.
+
 | Provider | How the bridge gets them | Reads |
 |---|---|---|
-| **Claude Code** | asks `claude` itself (stream-json control requests `initialize` + `get_usage`) — no Keychain, no file | session (5h) / weekly / model-scoped windows, plan, account type, email + organization |
-| **Codex** | asks `codex app-server` itself (`account/read` + `account/rateLimits/read`) | monthly/weekly windows, plan, credit, **rate-limit resets**, account type, email |
-| **GitHub Copilot** | `gh auth token` → GitHub's usage API | premium/chat/completions quotas, plan, account type, GitHub login |
-| **Grok** | `~/.grok/auth.json` → Grok's CLI API: `billing?format=credits` + `user?include=subscription` | credit-usage window + reset (when the account has one), **on-demand $ spent of its cap, or the prepaid $ balance** (shown once the account has either — a free account's are all 0), plan (`Free` for a personal account with no tier), account type (pay-as-you-go when it has money but no plan), email |
+| **Claude Code** | asks `claude` itself (stream-json control requests `initialize` + `get_usage`) | session (5h) / weekly / model-scoped windows, plan, account type, email + organization, usage credits once enabled |
+| **Codex** | asks `codex app-server` itself (`account/read` + `account/rateLimits/read`) | monthly/weekly windows, a seat's spend limit, plan, credit, **rate-limit resets**, account type, email |
+| **GitHub Copilot** | asks GitHub's CLI: `gh api /copilot_internal/user` (`gh` sends its own sign-in) | chat/completions/premium quotas the plan includes, plan (`Copilot Free`, …), account type, GitHub login |
+| **Grok** | asks `grok agent stdio` (`_x.ai/billing`) | the period window (weekly on a free account) + reset, **on-demand $ spent of its cap, or the prepaid $ balance** (once the account has either), plan, account type |
+| **Antigravity** | asks `agy -p /usage` and `agy -p /credits` (agy 1.1.11+, no agent turn) | one weekly window per model group (Gemini; Claude and GPT) + reset, AI credits once above 0 |
+| **OpenCode** | asks OpenCode 2's own server (`opencode api --standalone GET /api/experimental/usage/limits`) | OpenCode Go session/weekly/monthly meters, the OpenCode Console budget ($ spent of its limit), workspace |
 
-Asking Claude Code and Codex means each answers for the account it is signed in
-to, from wherever it keeps its sign-in (the macOS Keychain, the OS keyring, a
-file): the old macOS **Access required** / **Grant access** step and its
-per-update re-grant are gone, and Codex in `keyring` mode works like any other.
-No turn runs and no token is spent; each probe is a short-lived process.
+pi and Zero are not listed: they run on your own provider keys and report no
+plan limits (what they spent is in the panel above).
+
+**Banked resets.** Codex's rate-limit resets are listed and used from here or
+the status-bar popover — **Use…** opens a confirmation, and only its confirm
+button redeems the soonest-expiring one (`RedeemResetDialog.svelte`).
+Claude Code's limit resets are listed too, with how to use them: Claude Code
+spends one only through its own `/limit-reset`, so there is no button. No other
+provider exposes resets.
 
 A provider that isn't set up, isn't signed in, or errors shows a clear status
 (`Not set up` / `Sign in required` / `Unavailable`) instead of failing the rest —
 each provider is read independently.
 
 **A live provider can still have no meter.** Quota windows are percentages of an
-allowance, so an account billed by spend has none to report — a free or
-pay-as-you-go Grok account returns no `creditUsagePercent` (pay as you go shows
-its $ instead). That is not a failure: the
-provider reads `Live`, and the status-bar section says the account reports no
-window rather than telling you to sign in again.
+allowance, so an account with no allowance has none to report — an OpenCode
+Console workspace with no Go plan, a pay-as-you-go account (which shows its $
+instead). That is not a failure: the provider reads `Live`, and the popover says
+the account has no quota to meter rather than telling you to sign in again.
 
 ### Using it
 
@@ -87,18 +98,27 @@ window rather than telling you to sign in again.
      with **Redeem** (behind a confirmation). The bridge redeems it by asking
      Codex (`usage/redeemReset`) with a key per attempt, so a retry after a lost
      answer never spends a second one.
-   - **Credit** — a balance / $ figure when the provider exposes one.
-   - **Account** — "Authenticated as …" with an **account-type** badge; the
-     email/login is blurred until clicked.
+   - **Balances** — each $ or credit balance the provider reports (Claude's
+     usage credits, Grok on-demand and prepaid, Antigravity AI credits, every
+     OpenCode Console budget), named in the UI language.
+   - **Plan** — beside the status, said once: the plan's name, or the account
+     type when the provider names no plan.
+   - **Account** — "Authenticated as …"; the email/login is blurred until
+     clicked.
    - **Refresh interval** — per-provider override of the global interval.
-   - **Status bar** — which windows / plan / credit / reset time / resets
-     surface in the bottom status-bar popover.
+   - **Status bar** — whether the provider is in the bottom status-bar popover
+     and which of its windows; its plan, each window's reset, its money and
+     its resets come with it.
 4. The section header carries the **global refresh interval** and a master
    **status-bar indicator** toggle.
 
-The bottom status bar shows a **gauge** button whose popover lists the meters
-you pinned; it tints amber/red as usage nears a limit, and is hidden when
-nothing is pinned. Opening the popover leaves focus where the pointer is;
+The bottom status bar shows a **gauge** button whose popover lists every
+provider you pinned — all six can be — one block each: name and plan, one line
+per pinned window (name · bar · % used · "in 3d 6h", the absolute reset time on
+hover), then each of its balances and its resets when it has any; a provider that is not
+signed in or failed says so in its own block. The popover is 30rem wide (never
+wider than the window) and scrolls past the window's height. The gauge tints
+amber/red as usage nears a limit, and is hidden when nothing is pinned. Opening the popover leaves focus where the pointer is;
 closing it does not restore focus to the gauge, so its tooltip only appears
 when the control is actually hovered or keyboard-focused.
 
@@ -121,8 +141,21 @@ status-bar picks), `usageRefreshMinutes` (global, default 5; `0` = manual), and
 - `npm run check` + `npm test` — `usageSpend.test.ts` (the period series, shares,
   scale, formatting), `ProviderSpend.svelte.test.ts` (bridge-off state,
   unpriced agents, focus, measure), `usageFormat.test.ts`,
-  `usageSchedule.test.ts` and `ProviderUsageEditor.svelte.test.ts` (redeem
-  through the bridge).
+  `usageSchedule.test.ts`, `usageCatalog.test.ts`,
+  `ProviderUsageEditor.svelte.test.ts` (redeem through the bridge, the CLI each
+  provider is asked through), `UsageMeter.svelte.test.ts` (card and row) and
+  `UsageStatusButton.svelte.test.ts` (plan, money, resets, a failed provider)
+  and `usageLabels.svelte.test.ts` (window and balance names per language,
+  credits singular/plural).
 - The bridge side: `npm test -w bridge` (`test/usage/`).
 - By hand, against a running bridge: open Settings → Providers; the spend panel
   shows this PC's history; add Claude Code on a Mac — *Live*, with no dialog.
+
+## Names in the UI language
+
+The bridge sends stable ids, not words: each window an `id` (and a `model` for
+a model-scoped one), each balance a `period` from a fixed vocabulary, with the
+English text as a fallback. `src/lib/usageLabels.ts` is the one place the app
+turns them into words (`windowLabel`, `balanceLabel`, `formatBalanceFigure`,
+`formatAmount`); an id it does not know shows the bridge's English label. The
+phone's `usage_format.dart` follows the same table.

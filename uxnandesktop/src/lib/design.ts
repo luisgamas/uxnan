@@ -101,6 +101,10 @@ export const overlay = {
    *  picker): the command width plus the rail. */
   railedCommandWidth: "w-[23rem] max-w-[calc(100vw-1rem)]",
   statusWidth: "w-96 max-w-[calc(100vw-1rem)]",
+  /** A status popover that lists rows of meters side by side (provider
+   *  usage): wide enough for a label, a track, the percentage and the reset
+   *  on one line. */
+  statusWideWidth: "w-[30rem] max-w-[calc(100vw-1rem)]",
   /** Menu width roles keep labels and submenu affordances readable. */
   menuSimple: "min-w-44 max-w-[min(20rem,calc(100vw-1rem))]",
   menuStandard: "min-w-52 max-w-[min(20rem,calc(100vw-1rem))]",

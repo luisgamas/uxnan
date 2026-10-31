@@ -10,8 +10,13 @@
  * file of a resumed or forked session, so its responses are counted once
  * across files: the first file seen owns each response.
  *
+ * What a record is worth is fixed when it is read (`spendOf`), so the cache's
+ * version is bumped whenever a price table or a parser changes it.
+ *
  * OpenCode keeps its messages in a SQLite database, read directly each time
- * (`node:sqlite`, read-only) — it answers in milliseconds.
+ * (`node:sqlite`, read-only) — it answers in milliseconds. Antigravity keeps
+ * one SQLite database per conversation (`antigravity-usage.ts`): each is read
+ * whole when it or its write-ahead log changed, and cached like a transcript.
  *
  * The raw records never leave this module: a summary carries sums only.
  */
@@ -41,6 +46,11 @@ import {
   type UsageRecord,
 } from './transcript-usage.js';
 import { estimateCost } from './usage-prices.js';
+import {
+  antigravityRecords,
+  readAntigravityDb,
+  type AntigravityRows,
+} from './antigravity-usage.js';
 
 /** The cache file, in the bridge's state directory. */
 export const USAGE_SCAN_FILE = 'usage-scan.json';
@@ -52,7 +62,7 @@ const RESCAN_AFTER_MS = 30_000;
 const MAX_AGE_MS = 400 * 24 * 60 * 60 * 1000;
 
 /** The kinds of transcript file, each with its parser. */
-type FileKind = 'claude' | 'codex' | 'pi' | 'grok' | 'zero';
+type FileKind = 'claude' | 'codex' | 'pi' | 'grok' | 'zero' | 'antigravity';
 
 /** Where each CLI keeps its transcripts on this machine. */
 export interface UsageLocations {
@@ -62,6 +72,8 @@ export interface UsageLocations {
   grok: string;
   zero: string;
   openCodeDb: string;
+  /** Antigravity's conversation databases (`<conversation id>.db`). */
+  antigravity: string;
 }
 
 /** The stores' places, honouring each CLI's own override variable. */
@@ -78,6 +90,7 @@ export function usageLocations(
     grok: join(env['GROK_HOME'] || join(home, '.grok'), 'sessions'),
     zero: join(xdgData, 'zero', 'sessions'),
     openCodeDb: join(xdgData, 'opencode', 'opencode.db'),
+    antigravity: join(home, '.gemini', 'antigravity-cli', 'conversations'),
   };
 }
 
@@ -87,6 +100,7 @@ const AGENT_OF: Record<FileKind, string> = {
   pi: 'pi-agent',
   grok: 'grok',
   zero: 'zero',
+  antigravity: 'antigravity-cli',
 };
 
 /** A day's spend per `agent\tmodel`. */
@@ -105,7 +119,9 @@ interface FileEntry {
 }
 
 interface CacheFile {
-  version: 1;
+  /** Bumped whenever what a record is worth changes (a price table, a parser),
+   *  so every file is read again instead of keeping sums made the old way. */
+  version: 2;
   nextId: number;
   files: Record<string, FileEntry>;
   /** Claude response key → id of the file that owns it. */
@@ -113,7 +129,7 @@ interface CacheFile {
 }
 
 function emptyCache(): CacheFile {
-  return { version: 1, nextId: 1, files: {}, claudeOwner: {} };
+  return { version: 2, nextId: 1, files: {}, claudeOwner: {} };
 }
 
 /** A fresh spend record. */
@@ -185,6 +201,8 @@ export interface UsageScannerOptions {
   logger?: Logger;
   /** Reads OpenCode's database (injected in tests; `node:sqlite` otherwise). */
   readOpenCode?: (dbPath: string) => Promise<{ sessionId: string; data: string }[]>;
+  /** Reads one Antigravity conversation database (injected in tests). */
+  readAntigravity?: (dbPath: string) => Promise<AntigravityRows>;
 }
 
 export class UsageScanner {
@@ -276,7 +294,7 @@ export class UsageScanner {
   async #load(): Promise<CacheFile> {
     if (this.#cache) return this.#cache;
     const raw = await this.#o.state.readJson<CacheFile>(USAGE_SCAN_FILE).catch(() => null);
-    this.#cache = raw?.version === 1 && raw.files ? raw : emptyCache();
+    this.#cache = raw?.version === 2 && raw.files ? raw : emptyCache();
     return this.#cache;
   }
 
@@ -293,6 +311,7 @@ export class UsageScanner {
     await collect(this.#locations.pi, 'pi', (n) => n.endsWith('.jsonl'));
     await collect(this.#locations.grok, 'grok', (n) => n === 'updates.jsonl');
     await collect(this.#locations.zero, 'zero', (n) => n === 'events.jsonl');
+    await collect(this.#locations.antigravity, 'antigravity', (n) => n.endsWith('.db'));
 
     let changed = false;
     // Gone from disk: its spend is gone from the summary too.
@@ -304,7 +323,11 @@ export class UsageScanner {
     }
     for (const [path, kind] of found) {
       try {
-        if (await this.#readFile(cache, path, kind)) changed = true;
+        const read =
+          kind === 'antigravity'
+            ? await this.#readAntigravity(cache, path)
+            : await this.#readFile(cache, path, kind);
+        if (read) changed = true;
       } catch (err) {
         this.#o.logger?.debug(`usage: could not read ${path}: ${String(err)}`);
       }
@@ -366,6 +389,34 @@ export class UsageScanner {
     return true;
   }
 
+  /**
+   * Read an Antigravity conversation database again when it — or its
+   * write-ahead log, where new rows land first — changed since the last scan.
+   * A conversation is small and its rows can be rewritten, so it is read whole
+   * and its days replaced.
+   */
+  async #readAntigravity(cache: CacheFile, path: string): Promise<boolean> {
+    const info = await stat(path);
+    const wal = await stat(`${path}-wal`).catch(() => undefined);
+    const size = info.size + (wal?.size ?? 0);
+    const mtimeMs = Math.max(info.mtimeMs, wal?.mtimeMs ?? 0);
+    if (this.#now() - mtimeMs > MAX_AGE_MS) return false;
+    const known = cache.files[path];
+    if (known && known.size === size && known.mtimeMs === mtimeMs) return false;
+    const rows = await (this.#o.readAntigravity ?? readAntigravityDb)(path);
+    const days: Record<string, DaySpend> = {};
+    for (const r of antigravityRecords(rows, mtimeMs)) addRecord(days, r);
+    cache.files[path] = {
+      id: known?.id ?? cache.nextId++,
+      kind: 'antigravity',
+      size,
+      mtimeMs,
+      offset: 0,
+      days,
+    };
+    return true;
+  }
+
   async #openCode(
     since: string,
   ): Promise<
@@ -421,6 +472,9 @@ function parseLine(
       const r = parseZeroLine(line, zeroModel);
       return r ? [r] : [];
     }
+    case 'antigravity':
+      // A database, never read line by line (`#readAntigravity`).
+      return [];
   }
 }
 

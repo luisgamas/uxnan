@@ -195,9 +195,10 @@ available today are:
   agents spent** — every model response the agents on this PC recorded, chats
   and terminal sessions alike, per day, agent and model, in cost or tokens — and
   how much of each plan is left — session / weekly / monthly windows (with
-  resets), plan, account and credit — for **Codex, Claude, Copilot and Grok**.
-  Both come from the bridge, which asks Claude Code and Codex themselves, so the
-  app reads no credential and macOS never asks for Keychain access. A
+  resets), plan, account and credit — for **Codex, Claude, Copilot, Grok,
+  Antigravity and OpenCode**. Both come from the bridge, which asks each
+  provider's own CLI, so the app reads no credential and macOS never asks for
+  Keychain access. A
   status-bar gauge surfaces the meters you pick. See
   [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel

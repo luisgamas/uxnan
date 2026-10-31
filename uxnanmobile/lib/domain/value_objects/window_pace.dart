@@ -63,9 +63,12 @@ class WindowPace {
 }
 
 /// The plan an agent's usage counts against, when the bridge reads one.
+/// OpenCode routes through many providers, so its chats are not on its Go
+/// plan by default and none is claimed for them.
 UsageProvider? usageProviderForAgent(String? agentId) => switch (agentId) {
       'claude-code' => UsageProvider.claude,
       'codex' => UsageProvider.codex,
       'grok' => UsageProvider.grok,
+      'antigravity-cli' => UsageProvider.antigravity,
       _ => null,
     };

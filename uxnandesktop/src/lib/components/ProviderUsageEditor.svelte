@@ -14,19 +14,12 @@
   import { cn } from "$lib/utils";
   import { divider, field, focus, icon, text } from "$lib/design";
   import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
-  import {
-    accountTypeLabelKey,
-    formatMoney,
-    formatReset,
-    formatResetAbsolute,
-    statusMeta,
-  } from "$lib/usageFormat";
+  import { accountTypeLabelKey, formatReset, formatResetAbsolute, statusMeta } from "$lib/usageFormat";
+  import { balanceLabel, formatBalanceFigure, windowLabel } from "$lib/usageLabels";
   import type { ProviderUsage, UsageProviderConfig } from "$lib/types";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import { usage } from "$lib/state/usage.svelte";
-  import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import RedeemResetDialog from "./RedeemResetDialog.svelte";
   import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import StatusDot from "./StatusDot.svelte";
   import { Icon } from "$lib/components/ui/icon";
@@ -94,71 +87,33 @@
   const updatedAt = $derived(
     snapshot?.updatedAt ? formatClock(new Date(snapshot.updatedAt)) : null,
   );
-  const creditReset = $derived(formatReset(snapshot?.credit?.resetsAt));
-  const creditResetAbs = $derived(formatResetAbsolute(snapshot?.credit?.resetsAt));
-  // A prepaid balance has a remaining `available` amount but no spend/`limit`.
-  const creditIsBalance = $derived(
-    snapshot?.credit?.limit == null && snapshot?.credit?.available != null,
+  const balances = $derived(snapshot?.credits ?? []);
+  // The plan, said once: its name when the provider reports one, else the
+  // kind of account (an account type derived from that same plan would only
+  // repeat it — "Free · Free").
+  const planBadge = $derived(
+    snapshot?.account?.plan ??
+      (snapshot?.account?.accountType
+        ? i18n.t(accountTypeLabelKey(snapshot.account.accountType))
+        : null),
   );
-  const accountTypeLabel = $derived(
-    snapshot?.account?.accountType
-      ? i18n.t(accountTypeLabelKey(snapshot.account.accountType))
-      : null,
-  );
-  // Combined reset line for the credit balance ("resets in 2d · Jul 12").
-  const creditResetLine = $derived.by(() => {
+  /** A balance's reset line ("resets in 2d · Jul 12"), or null. */
+  function balanceResetLine(resetsAt: number | undefined): string | null {
     const parts: string[] = [];
-    if (creditReset) parts.push(`${i18n.t("providers.resetsIn")} ${creditReset}`);
-    if (creditResetAbs) parts.push(creditResetAbs);
+    const countdown = formatReset(resetsAt);
+    const absolute = formatResetAbsolute(resetsAt);
+    if (countdown) parts.push(`${i18n.t("providers.resetsIn")} ${countdown}`);
+    if (absolute) parts.push(absolute);
     return parts.length > 0 ? parts.join(" · ") : null;
-  });
-  // Codex "reset credits" (reinicios) — redeemable rate-limit resets.
+  }
+  // Rate-limit resets the provider granted (Codex's, Claude Code's).
   const resetEntries = $derived(snapshot?.resetCredits?.entries ?? []);
   const resetCreditsExpiry = $derived(formatReset(snapshot?.resetCredits?.nextExpiresAt));
-  // Per-credit expiry list for the card ("2d · 5d · 12d").
-  const resetExpiryList = $derived(
-    resetEntries
-      .map((e) => formatReset(e.expiresAt))
-      .filter((s): s is string => !!s)
-      .join(" · "),
-  );
-  // Confirmation body: which reset gets used (the soonest-expiring), how many
-  // remain afterward, and when each remaining one expires.
-  const redeemDescription = $derived.by(() => {
-    const first = formatReset(resetEntries[0]?.expiresAt);
-    if (resetEntries.length <= 1) {
-      return first
-        ? i18n.t("providers.redeemConfirmLast", { time: first })
-        : i18n.t("providers.redeemConfirmBody");
-    }
-    const rest = resetEntries
-      .slice(1)
-      .map((e) => formatReset(e.expiresAt))
-      .filter((s): s is string => !!s)
-      .join(", ");
-    const head = first
-      ? i18n.t("providers.redeemConfirmFirst", { time: first })
-      : i18n.t("providers.redeemConfirmBody");
-    return rest
-      ? `${head} ${i18n.t("providers.redeemConfirmRemaining", { count: resetEntries.length - 1, list: rest })}`
-      : head;
-  });
-
   // Account identity is blurred until clicked (it's a personal email).
   let accountRevealed = $state(false);
 
-  // Redeem a Codex rate-limit reset (behind a confirmation), then refresh so the
-  // count + windows update.
+  // Redeem a reset the bridge can spend (Codex), behind a confirmation.
   let confirmRedeemOpen = $state(false);
-  async function redeemReset() {
-    try {
-      // The soonest-expiring reset; one attempt per confirmation.
-      await usage.redeemReset(config.provider, crypto.randomUUID(), resetEntries[0]?.id);
-      toast.success(i18n.t("providers.redeemOk"));
-    } catch (e) {
-      toastError(e);
-    }
-  }
 
   // --- Status-bar visibility ------------------------------------------------
   // The ticked checkboxes are exactly what the status bar shows
@@ -182,7 +137,11 @@
   <!-- Toolbar: status / plan + refresh + remove -->
   <div class="flex items-center gap-2">
     <StatusDot tone={status.tone} />
-    <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{statusLabel}</span>
+    <span class={cn("min-w-0 truncate", text.meta)}>{statusLabel}</span>
+    {#if planBadge}
+      <Badge variant="outline" class="max-w-48 shrink-0 truncate text-muted-foreground">{planBadge}</Badge>
+    {/if}
+    <span class="flex-1"></span>
     <TooltipSimple title={i18n.t("providers.refreshNow")}>
       {#snippet children(tp)}
         <Button
@@ -217,7 +176,7 @@
   </div>
 
   <!-- Live data (windows / credit / account) grouped on a single soft surface. -->
-  {#if snapshot && (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits || snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization)}
+  {#if snapshot && (snapshot.windows.length > 0 || balances.length > 0 || snapshot.resetCredits || snapshot.account?.email || snapshot.account?.organization)}
     <div class="flex flex-col gap-3.5 rounded-lg bg-muted/40 px-3.5 py-3">
       {#if snapshot.windows.length > 0}
         <div class="flex flex-col gap-3">
@@ -230,32 +189,29 @@
         </div>
       {/if}
 
-      {#if snapshot.credit}
-        <div class={cn("flex items-center justify-between gap-2", snapshot.windows.length > 0 && cn(divider.top, "pt-3"))}>
-          <span class={cn("text-foreground", text.body)}>{i18n.t("providers.credit")}</span>
-          <span class="font-mono text-xs text-muted-foreground">
-            {#if creditIsBalance}
-              {formatMoney(snapshot.credit.available ?? 0, snapshot.credit.currency)}&nbsp;{i18n.t("providers.available")}
-            {:else}
-              {formatMoney(snapshot.credit.used, snapshot.credit.currency)}
-              {#if snapshot.credit.limit != null}
-                &nbsp;/&nbsp;{formatMoney(snapshot.credit.limit, snapshot.credit.currency)}
-              {/if}
-            {/if}
-            {#if creditResetLine}&nbsp;· {creditResetLine}{/if}
-          </span>
+      {#if balances.length > 0}
+        <div class={cn("flex flex-col gap-2", snapshot.windows.length > 0 && cn(divider.top, "pt-3"))}>
+          {#each balances as balance, i (i)}
+            {@const resetLine = balanceResetLine(balance.resetsAt)}
+            <div class="flex items-baseline justify-between gap-3">
+              <span class={cn("min-w-0 truncate text-foreground", text.body)}>{balanceLabel(balance)}</span>
+              <span class="shrink-0 text-right text-xs text-muted-foreground">
+                <span class="font-mono tabular-nums">{formatBalanceFigure(balance)}</span>{#if resetLine}&nbsp;· {resetLine}{/if}
+              </span>
+            </div>
+          {/each}
         </div>
       {/if}
 
       {#if snapshot.resetCredits}
-        <div class={cn("flex flex-col gap-1.5", (snapshot.windows.length > 0 || snapshot.credit) && cn(divider.top, "pt-3"))}>
+        <div class={cn("flex flex-col gap-1.5", (snapshot.windows.length > 0 || balances.length > 0) && cn(divider.top, "pt-3"))}>
           <div class="flex items-center justify-between gap-2">
             <span class={cn("text-foreground", text.body)}>{i18n.t("providers.resets")}</span>
             <div class="flex items-center gap-2">
               <span class={text.meta}>
                 {i18n.t("providers.resetsCount", { count: snapshot.resetCredits.available })}
               </span>
-              {#if config.provider === "codex" && snapshot.resetCredits.available > 0}
+              {#if !snapshot.resetCredits.redeemCommand && snapshot.resetCredits.available > 0}
                 <Button
                   variant="outline"
                   size="sm"
@@ -266,21 +222,30 @@
               {/if}
             </div>
           </div>
-          {#if resetExpiryList}
-            <span class={text.meta}>
-              {resetEntries.length <= 1
-                ? i18n.t("providers.resetsExpireOne")
-                : i18n.t("providers.resetsExpireMany")}
-              {resetExpiryList}
-            </span>
+          {#if resetEntries.length > 0}
+            <ul class="flex flex-col gap-0.5">
+              {#each resetEntries as entry, i (entry.id ?? i)}
+                {@const expires = formatReset(entry.expiresAt)}
+                <li class={cn("flex items-baseline justify-between gap-3", text.meta)}>
+                  <span class="min-w-0 truncate">{entry.title || i18n.t("providers.resetEntry")}</span>
+                  {#if expires}<span class="shrink-0">{i18n.t("providers.resetsExpiresIn", { time: expires })}</span>{/if}
+                </li>
+              {/each}
+            </ul>
           {:else if resetCreditsExpiry}
             <span class={text.meta}>{i18n.t("providers.resetsNextExpires", { time: resetCreditsExpiry })}</span>
+          {/if}
+          {#if snapshot.resetCredits.redeemCommand}
+            <!-- The CLI spends these itself, interactively: say how, offer no button. -->
+            <span class={text.meta}>
+              {i18n.t("providers.redeemInCli", { cli: meta?.cli ?? config.provider, command: snapshot.resetCredits.redeemCommand })}
+            </span>
           {/if}
         </div>
       {/if}
 
-      {#if snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization || accountTypeLabel}
-        <div class={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1", (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits) && cn(divider.top, "pt-3"), text.meta)}>
+      {#if snapshot.account?.email || snapshot.account?.organization}
+        <div class={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1", (snapshot.windows.length > 0 || balances.length > 0 || snapshot.resetCredits) && cn(divider.top, "pt-3"), text.meta)}>
           {#if snapshot.account?.email}
             <span>{i18n.t("providers.authenticatedAs")}</span>
             <Button
@@ -301,16 +266,10 @@
               </span>
             </Button>
           {/if}
-          {#if snapshot.account?.plan}
-            <span class="whitespace-nowrap">{#if snapshot.account?.email}·&nbsp;{/if}{snapshot.account.plan}</span>
-          {/if}
-          {#if accountTypeLabel}
-            <Badge variant="outline" class="text-muted-foreground">{accountTypeLabel}</Badge>
-          {/if}
           {#if snapshot.account?.organization}
             <!-- An organization is often named after its owner's email
                  ("me@x.com's Organization"): it hides and shows with it. -->
-            <span class="truncate">·&nbsp;<span
+            <span class="truncate">{#if snapshot.account?.email}·&nbsp;{/if}<span
                 class={cn("transition-[filter] duration-150", !accountRevealed && "select-none blur-[5px]")}
                 >{snapshot.account.organization}</span
               ></span>
@@ -360,11 +319,11 @@
           {#each snapshot.windows as w (w.id)}
             <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
               <Checkbox
-                aria-label={w.label}
+                aria-label={windowLabel(w)}
                 checked={isWindowPicked(w.id)}
                 onCheckedChange={(c) => toggleWindow(w.id, c === true)}
               />
-              <span class={cn("text-foreground", text.body)}>{w.label}</span>
+              <span class={cn("text-foreground", text.body)}>{windowLabel(w)}</span>
             </label>
           {/each}
         {:else}
@@ -383,54 +342,6 @@
             )}
           </span>
         {/if}
-        <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
-          <Checkbox
-            aria-label={i18n.t("providers.showPlan")}
-            checked={config.statusBar.showPlan === true}
-            onCheckedChange={(c) => {
-              config.statusBar.showPlan = c === true;
-              onchange();
-            }}
-          />
-          <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showPlan")}</span>
-        </label>
-        {#if meta?.hasCredit}
-          <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
-            <Checkbox
-              aria-label={i18n.t("providers.showCredit")}
-              checked={config.statusBar.showCredit === true}
-              onCheckedChange={(c) => {
-                config.statusBar.showCredit = c === true;
-                onchange();
-              }}
-            />
-            <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showCredit")}</span>
-          </label>
-        {/if}
-        <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
-          <Checkbox
-            aria-label={i18n.t("providers.showResetTime")}
-            checked={config.statusBar.showResetTime === true}
-            onCheckedChange={(c) => {
-              config.statusBar.showResetTime = c === true;
-              onchange();
-            }}
-          />
-          <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showResetTime")}</span>
-        </label>
-        {#if meta?.hasResetCredits}
-          <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
-            <Checkbox
-              aria-label={i18n.t("providers.showResets")}
-              checked={config.statusBar.showResetCredits === true}
-              onCheckedChange={(c) => {
-                config.statusBar.showResetCredits = c === true;
-                onchange();
-              }}
-            />
-            <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showResets")}</span>
-          </label>
-        {/if}
       </div>
     {/if}
   </div>
@@ -438,19 +349,12 @@
   <!-- Provenance + last update -->
   <div class="flex items-center justify-between {text.meta}">
     <span>
-      {#if snapshot?.source === "cli"}{i18n.t("providers.sourceCli", { cli: config.provider === "codex" ? "Codex" : "Claude Code" })}
-      {:else if snapshot?.source === "token"}{i18n.t("providers.sourceToken")}
+      {#if snapshot?.source === "cli"}{i18n.t("providers.sourceCli", { cli: meta?.cli ?? config.provider })}
       {:else}{i18n.t("providers.sourceNone")}{/if}
     </span>
     {#if updatedAt}<span>{i18n.t("providers.updated")} {updatedAt}</span>{/if}
   </div>
 </div>
 
-<!-- Confirm before redeeming a Codex reset (which one, how many remain, expiries). -->
-<ConfirmDialog
-  bind:open={confirmRedeemOpen}
-  title={i18n.t("providers.redeemConfirmTitle")}
-  description={redeemDescription}
-  confirmLabel={i18n.t("providers.redeemReset")}
-  onconfirm={redeemReset}
-/>
+<!-- Confirm before redeeming a reset (which one, how many remain, expiries). -->
+<RedeemResetDialog bind:open={confirmRedeemOpen} provider={config.provider} resets={snapshot?.resetCredits} />

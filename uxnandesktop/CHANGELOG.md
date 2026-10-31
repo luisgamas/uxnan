@@ -24,6 +24,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a small record in the worktree's own git folder, which lives and dies with the
   worktree. `WorktreeEntry` gains `createdByUxnan`; settings gain
   `knownWorktrees` and `worktreeBaselineProjects`.
+- **Antigravity and OpenCode in Settings → Providers** and the status-bar
+  usage popover — every provider the bridge reads can be pinned, six today.
 
 ### Changed
 
@@ -43,6 +45,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   menu closed; each project's *N hidden · Show* line is unchanged. With fewer
   buttons the *PROJECTS (N)* label keeps its count until 15rem of panel width with
   the attention pill showing (13rem without) instead of 22rem/16rem.
+- **Codex spend shows its cost** in Settings → Providers — an estimate at
+  OpenAI's API prices, the bridge's new Codex price table — instead of "No
+  price"; Claude Sonnet 5.5's estimate reads its cache at the published 0.05x.
+- **The status-bar usage popover is wider and denser.** 30rem (never wider than
+  the window), one block per provider: name and plan, one line per window
+  (name · bar · % used · "in 3d 6h", the clock time on hover), then its money
+  and its resets; a provider that is not signed in or failed says why in its
+  own block, and the list scrolls only past the window's height. Plan, resets,
+  money and reset times always come with a pinned provider, so their four
+  per-provider status-bar checkboxes are gone.
+- **Settings → Providers** shows each provider's plan beside its status — said
+  once, no account-type badge repeating it — and names the CLI it was asked
+  through (`GitHub CLI (gh)`, `Antigravity (agy)`, …).
+- **Banked resets from the status-bar popover**: a provider's resets show with
+  their count and next expiry, and Codex's can be used from there — **Use…**
+  opens the same confirmation Settings does (`RedeemResetDialog.svelte`), and
+  only its confirm button redeems. Settings lists each reset with its expiry.
+  Claude Code's resets are listed with how to use them (`/limit-reset` in Claude
+  Code), with no button.
+- **Antigravity in the spend chart**, now that the bridge reads its tokens.
+- **Windows and balances are named in the UI language** ("Semanal",
+  "Fable (semanal)", "120 créditos disponibles"), from the ids the bridge sends,
+  through one formatter (`usageLabels.ts`); every balance a provider reports is
+  listed, not just one.
 
 ### Changed
 
@@ -55,6 +81,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   from the bridge's stored outcome** (`Conversation.approvalOutcome` /
   `questionOutcome`) instead of offering its buttons again.
 
+
 ### Added
 
 - **"Needs you" alerts for chats.** When an agent in a bridge chat asks for an
@@ -62,6 +89,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   once per request: a toast while the window has the focus, an OS notification
   when it does not (`src/lib/state/chatAlerts.ts`, behind Settings → *Idle
   notifications*, whose description now says so).
+
 
 ### Changed
 

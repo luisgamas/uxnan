@@ -716,7 +716,8 @@ shipping.
       covered by widget tests against the `shared/` shapes and reviewed as
       rendered screenshots. Remaining: **run them on a phone against a real
       bridge** — the spend of every agent on a PC, a second PC from the cache,
-      each provider's limits (Codex / Claude / Copilot / Grok), a Codex reset
+      each provider's limits (Codex / Claude / Copilot / Grok / Antigravity /
+      OpenCode), a Codex reset
       redeemed, and the offline / not-signed-in / error states.
 
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)

@@ -19,10 +19,10 @@
  * | Grok | `$GROK_HOME|~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` `usage.modelUsage` per model, `costUsdTicks` (1 USD = 1e10) |
  * | OpenCode 2 | `$XDG_DATA_HOME|~/.local/share/opencode/opencode.db` (SQLite `message.data`) | an assistant message with `tokens` and `cost` |
  * | Zero | `$XDG_DATA_HOME|~/.local/share/zero/sessions/<session>/events.jsonl` | a `provider_usage` event (the model from the session's `metadata.json`) |
+ * | Antigravity | `~/.gemini/antigravity-cli/conversations/<conversation>.db` (SQLite, protobuf rows) | a `gen_metadata` row's usage block (`antigravity-usage.ts`) |
  *
- * Antigravity is the one wired agent missing: its transcript
- * (`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`)
- * records no token counts at all.
+ * Antigravity's text transcript records no token counts; its per-conversation
+ * SQLite stores do, and `antigravity-usage.ts` reads them.
  *
  * Verified against the CLIs on the maintainer's machine (Claude Code 2.1.283,
  * Codex 0.13x, pi 0.85, Grok 4.7, OpenCode 2.0.16, Zero), 2026-09-27.
@@ -51,6 +51,9 @@ export interface UsageRecord {
   costUsd?: number;
   /** Identity for de-duplication when a record can appear twice. */
   dedupeKey?: string;
+  /** The service tier the request ran at, where the CLI records it (Codex's
+   *  `service_tier`: `fast`, `flex`, …), which sets its price. */
+  serviceTier?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -122,15 +125,26 @@ export function parseClaudeLine(line: string): UsageRecord | undefined {
   };
 }
 
-/** Codex's per-file state: the model its token events belong to. */
+/** Codex's per-file state: the model and service tier its token events belong to. */
 export interface CodexParseState {
   model?: string;
+  /** `thread_settings.service_tier` of the latest `thread_settings_applied`. */
+  serviceTier?: string;
   /** The last usage seen, to skip a repeated event. */
   last?: string;
 }
 
 /** A Codex rollout line → a response's usage, tracking the model in [state]. */
 export function parseCodexLine(line: string, state: CodexParseState): UsageRecord | undefined {
+  if (line.includes('"thread_settings_applied"')) {
+    const settings = record(record(parse(line)?.['payload'])?.['thread_settings']);
+    if (settings) {
+      const tier = str(settings['service_tier']);
+      if (tier) state.serviceTier = tier;
+      else delete state.serviceTier;
+    }
+    return undefined;
+  }
   if (line.includes('"turn_context"')) {
     const row = parse(line);
     const payload = record(row?.['payload']);
@@ -164,6 +178,7 @@ export function parseCodexLine(line: string, state: CodexParseState): UsageRecor
     cacheWriteTokens: cacheWrite,
     outputTokens: num(last['output_tokens']),
     reasoningTokens: num(last['reasoning_output_tokens']),
+    ...(state.serviceTier ? { serviceTier: state.serviceTier } : {}),
   };
 }
 
