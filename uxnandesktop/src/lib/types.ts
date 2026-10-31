@@ -127,16 +127,12 @@ import type { UsageProvider } from "$shared/models/usage";
 
 /** What of a provider surfaces in the bottom status-bar popover. `windows` are
  *  the window ids to show; the primary %-bar is opted-in by default when a
- *  provider first activates (see `defaultStatusBarPick`). */
+ *  provider first activates (see `defaultStatusBarPick`). The plan, each
+ *  window's reset, the money and the resets a provider reports are always
+ *  shown with it. */
 export interface UsageStatusBarPick {
   show: boolean;
   windows: string[];
-  showCredit?: boolean;
-  showPlan?: boolean;
-  /** Show the absolute reset time on each window meter. */
-  showResetTime?: boolean;
-  /** Show Codex's redeemable rate-limit resets ("reset credits"). */
-  showResetCredits?: boolean;
 }
 
 /** A provider the user activated in Settings → Providers. Only activated

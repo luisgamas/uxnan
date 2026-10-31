@@ -3,6 +3,12 @@
   // providers + windows the user chose to surface (Settings → Providers → Status
   // bar). Mirrors the backend indicator's shape (icon trigger → top-aligned
   // popover). Hidden entirely when the feature is off or nothing is pinned.
+  //
+  // Each provider is one block: its name and plan, then one line per window
+  // (name · track · used-% · when it resets), then its money and its resets
+  // when it has any. Every part is optional and simply absent when the
+  // provider does not report it, so a provider with less data is a shorter
+  // block, never an empty slot.
   import * as Popover from "$lib/components/ui/popover";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -15,10 +21,16 @@
   import { divider, icon as iconSize, overlay, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
-  import { formatMoney } from "$lib/usageFormat";
-  import type { ProviderUsage, UsageProviderConfig, UsageWindow } from "$lib/types";
+  import { formatReset, statusMeta } from "$lib/usageFormat";
+  import { balanceLabel, formatBalanceFigure } from "$lib/usageLabels";
+  import type { ProviderUsage, UsageProvider, UsageProviderConfig, UsageWindow } from "$lib/types";
+  import RedeemResetDialog from "./RedeemResetDialog.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import UsageMeter from "./UsageMeter.svelte";
+  import { Badge } from "$lib/components/ui/badge";
+  import WalletIcon from "@hugeicons/core-free-icons/Wallet01Icon";
+  import ResetIcon from "@hugeicons/core-free-icons/RotateClockwiseIcon";
   import { Icon } from "$lib/components/ui/icon";
   import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
@@ -59,6 +71,10 @@
 
   // Controlled so navigating to settings can close it explicitly.
   let open = $state(false);
+  // The provider whose reset is being confirmed, if any (the dialog only asks;
+  // nothing is redeemed until its confirm button is pressed).
+  let redeemFor = $state<UsageProvider | null>(null);
+  let redeemOpen = $state(false);
   let triggerRef = $state<HTMLButtonElement | null>(null);
   let contentRef = $state<HTMLElement | null>(null);
   let statusTooltipOpen = $state(false);
@@ -120,7 +136,7 @@
       bind:ref={contentRef}
       align="end"
       side="top"
-      width="status"
+      width="statusWide"
       padding="none"
       onInteractOutside={onInteractOutside}
       onEscapeKeydown={() => (closeReason = "escape")}
@@ -138,7 +154,7 @@
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div class="min-w-0 space-y-0.5">
           <div class={cn(text.subheading, "leading-tight text-foreground")}>{i18n.t("providers.usageTitle")}</div>
-          <div class={text.meta}>{i18n.t("providers.usedCaption")}</div>
+          <div class={text.meta}>{i18n.t("providers.popoverCaption")}</div>
         </div>
         <span class="flex items-center gap-0.5">
           {#if resourceMode.freshness.usage}
@@ -168,48 +184,84 @@
         </span>
       </div>
 
-      <div class="scrollbar-sleek flex max-h-80 flex-col divide-y divide-border/50 overflow-y-auto px-3">
+      <div class="scrollbar-sleek flex max-h-[min(34rem,calc(100vh-11rem))] flex-col divide-y divide-border/50 overflow-y-auto px-3">
         {#each pinned as config (config.provider)}
           {@const meta = usageProvider(config.provider)}
           {@const snap = usage.byProvider[config.provider]}
           {@const windows = shownWindows(config, snap)}
-          <div class="flex flex-col gap-1.5 py-2.5">
-            <div class={overlay.dataRow}>
-              <span class="flex min-w-0 items-center gap-1.5">
-                <AgentLogo logo={meta?.logo ?? config.provider} class={cn(iconSize.decorative, "shrink-0")} />
-                <span class={cn("min-w-0 truncate text-foreground", text.body)}>{meta?.name ?? config.provider}</span>
-              </span>
-              {#if config.statusBar.showPlan && snap?.account?.plan}
-                <span class={cn("min-w-0 max-w-[40%] truncate whitespace-nowrap text-right text-muted-foreground", text.indicator)}>{snap.account.plan}</span>
+          {@const status = snap ? statusMeta(snap.status) : null}
+          <section class="flex flex-col gap-1 py-2.5" aria-label={meta?.name ?? config.provider}>
+            <div class="flex min-h-6 min-w-0 items-center gap-2">
+              <AgentLogo logo={meta?.logo ?? config.provider} class={cn(iconSize.decorative, "shrink-0")} />
+              <span class={cn("min-w-0 shrink truncate font-medium text-foreground", text.body)}>{meta?.name ?? config.provider}</span>
+              {#if snap?.account?.plan}
+                <Badge variant="outline" class="max-w-40 shrink-0 truncate text-muted-foreground">{snap.account.plan}</Badge>
+              {/if}
+              {#if status && snap?.status !== "ok"}
+                <span class="ml-auto flex shrink-0 items-center gap-1.5">
+                  <StatusDot tone={status.tone} />
+                  <span class={text.meta}>{i18n.t(status.labelKey)}</span>
+                </span>
               {/if}
             </div>
             {#if windows.length > 0}
-              {#each windows as w (w.id)}
-                <UsageMeter window={w} compact showReset={config.statusBar.showResetTime === true} />
-              {/each}
-            {:else}
-              <!-- Read fine, but the account has nothing to meter (a free Grok
-                   account, say): say so, as Settings does, instead of "No data". -->
-              <span class={text.meta}>
+              <div class="flex flex-col gap-0.5 pl-6">
+                {#each windows as w (w.id)}
+                  <UsageMeter window={w} variant="row" />
+                {/each}
+              </div>
+            {:else if !snap || snap.status === "ok"}
+              <!-- Read fine, but the account has nothing to meter (an OpenCode
+                   workspace with no Go plan, say): say so instead of "No data". -->
+              <span class={cn("pl-6", text.meta)}>
                 {snap?.status === "ok" ? i18n.t("providers.noQuota") : i18n.t("providers.noData")}
               </span>
+            {:else if snap.message}
+              <span class={cn("line-clamp-2 pl-6", text.meta)} title={snap.message}>{snap.message}</span>
             {/if}
-            {#if config.statusBar.showCredit && snap?.credit}
-              <span class={cn("font-mono text-muted-foreground", text.indicator)}>
-                {#if snap.credit.limit == null && snap.credit.available != null}
-                  {formatMoney(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
-                {:else}
-                  {formatMoney(snap.credit.used, snap.credit.currency)}
-                  {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatMoney(snap.credit.limit, snap.credit.currency)}{/if}
+            {#each snap?.credits ?? [] as balance, i (i)}
+              {@const balanceReset = formatReset(balance.resetsAt)}
+              <div class={cn("flex min-w-0 items-center gap-1.5 pl-6 text-muted-foreground", text.meta)}>
+                <Icon icon={WalletIcon} class={cn(iconSize.status, "shrink-0")} />
+                <span class="shrink-0 font-mono tabular-nums text-foreground">{formatBalanceFigure(balance)}</span>
+                <span class="min-w-0 truncate">
+                  · {balanceLabel(balance)}{#if balanceReset}&nbsp;· {i18n.t("providers.resetsIn")} {balanceReset}{/if}
+                </span>
+              </div>
+            {/each}
+            {#if snap?.resetCredits && snap.resetCredits.available > 0}
+              {@const resets = snap.resetCredits}
+              {@const nextExpiry = formatReset(resets.nextExpiresAt ?? resets.entries?.[0]?.expiresAt)}
+              <div class={cn("flex min-w-0 items-center gap-1.5 pl-6 text-muted-foreground", text.meta)}>
+                <Icon icon={ResetIcon} class={cn(iconSize.status, "shrink-0")} />
+                <span class="min-w-0 truncate">
+                  {i18n.t("providers.resets")}: {i18n.t("providers.resetsCount", { count: resets.available })}{#if nextExpiry}&nbsp;· {i18n.t("providers.resetsNextExpires", { time: nextExpiry })}{/if}
+                </span>
+                {#if !resets.redeemCommand}
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    class="ml-auto shrink-0"
+                    onclick={() => {
+                      // The dialog lives outside the popover; close the popover
+                      // so the confirmation is the one thing on screen.
+                      closeReason = "navigation";
+                      open = false;
+                      redeemFor = config.provider;
+                      redeemOpen = true;
+                    }}
+                  >
+                    {i18n.t("providers.useReset")}
+                  </Button>
                 {/if}
-              </span>
+              </div>
+              {#if resets.redeemCommand}
+                <span class={cn("pl-6 text-muted-foreground", text.meta)}>
+                  {i18n.t("providers.redeemInCli", { cli: meta?.cli ?? config.provider, command: resets.redeemCommand })}
+                </span>
+              {/if}
             {/if}
-            {#if config.statusBar.showResetCredits && snap?.resetCredits}
-              <span class={cn("text-muted-foreground", text.indicator)}>
-                {i18n.t("providers.resets")}: {i18n.t("providers.resetsCount", { count: snap.resetCredits.available })}
-              </span>
-            {/if}
-          </div>
+          </section>
         {/each}
       </div>
 
@@ -234,4 +286,8 @@
       </Button>
     </Popover.Content>
   </Popover.Root>
+{/if}
+
+{#if redeemFor}
+  <RedeemResetDialog bind:open={redeemOpen} provider={redeemFor} resets={usage.byProvider[redeemFor]?.resetCredits} />
 {/if}

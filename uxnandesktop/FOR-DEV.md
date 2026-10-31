@@ -327,14 +327,15 @@ Continue as chat / Open in terminal, holds and the sessions list — is built
   one reader every client asks: **what the agents spent** (`usage/summary` — per
   day, agent and model, cost or tokens, a stacked chart with agent focus and a
   models table; `ProviderSpend.svelte`) and **plan limits** (`agent/usageStats`
-  for **Codex, Claude, Copilot, Grok**; Claude Code and Codex are asked
-  themselves, so there is no Keychain grant on macOS and the app has no Rust
-  usage reader or credential code), with Codex resets redeemed through
+  for **Codex, Claude, Copilot, Grok, Antigravity, OpenCode**; every one is
+  asked of its own CLI, so there is no Keychain grant on macOS and neither the
+  app nor the bridge reads a credential), with Codex resets redeemed through
   `usage/redeemReset`. Tabbed UI with per-provider quota windows ("% used"),
-  plan/account ("Authenticated as …" with click-to-reveal blur), credit,
-  per-provider refresh interval + status-bar visibility, and a status-bar gauge
-  popover. Polling starts at boot, catches up on focus, honors each provider's
-  interval. **Antigravity** is not a provider yet (`bridge/FOR-DEV.md`).
+  plan badge, account ("Authenticated as …" with click-to-reveal blur), credit,
+  per-provider refresh interval + status-bar visibility, and a 30rem status-bar
+  gauge popover — one block per pinned provider (plan, a line per window with
+  its reset, money, resets, or why it has no data). Polling starts at boot,
+  catches up on focus, honors each provider's interval.
 - **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
   slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
   Quick commands editor. Commands are persisted flat in `AppData.quickCommands`

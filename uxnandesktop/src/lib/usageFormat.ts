@@ -1,7 +1,8 @@
 // Pure formatting helpers for the usage-stats UI (settings cards + status-bar
 // popover). Kept free of i18n so both surfaces share one implementation; the
 // human-facing prefixes ("resets in", provider status labels) come from the
-// caller's i18n.
+// caller's i18n, and the localized names of windows and balances from
+// `usageLabels.ts`.
 
 import { formatClock } from "./clock";
 
@@ -66,14 +67,13 @@ export function accountTypeLabelKey(type: AccountType): MessageKey {
 
 /**
  * Every amount of money the app shows, in one place (spend, cost, credit):
- * `$4.20`, `$9,559`, `<$0.01`, `€4.20`, `120 credits`. The same rule as the
- * phone's `fmtMoney`: amounts are written the way their currency is (US
- * dollars as `$1,234.56` in every UI language — providers bill in them), with
- * cents under 100 and whole units from 100 on, and a trace as `<$0.01`.
- * `credits` is a count, not a currency.
+ * `$4.20`, `$9,559`, `<$0.01`, `€4.20`. The same rule as the phone's
+ * `fmtMoney`: amounts are written the way their currency is (US dollars as
+ * `$1,234.56` in every UI language — providers bill in them), with cents under
+ * 100 and whole units from 100 on, and a trace as `<$0.01`. A count of
+ * `credits` is not money: `usageLabels.ts` → `formatBalanceFigure` words it.
  */
 export function formatMoney(amount: number, currency = "USD"): string {
-  if (currency.toLowerCase() === "credits") return `${Math.round(amount)} credits`;
   const code = currency.toUpperCase();
   if (amount > 0 && amount < 0.01) return `<${moneyFormat(code, 2).format(0.01)}`;
   const digits = Math.abs(amount) >= 100 ? 0 : 2;
@@ -119,3 +119,4 @@ export function statusMeta(status: UsageStatus): { tone: StatusTone; labelKey: M
       return { tone: "error", labelKey: "providers.statusError" };
   }
 }
+
