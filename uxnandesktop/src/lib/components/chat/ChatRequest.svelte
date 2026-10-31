@@ -1,8 +1,9 @@
 <script lang="ts">
   // An approval or a question the agent put to the user — the part of a turn
-  // that waits on a person. Answered here it settles at once; answered on the
-  // phone (or timed out) the bridge's `stream/approval|question/resolved`
-  // settles it here too.
+  // that waits on a person, for as long as it takes: nothing closes it on a
+  // clock. Answered here it settles at once; answered on the phone (or
+  // withdrawn by the agent) the bridge's `stream/approval|question/resolved`
+  // settles it here too, and a page loaded later carries the stored outcome.
   //
   // Two faces: the full card, pinned above the composer while it is open (the
   // chat's request dock), and a `compact` one-line record in the timeline that
@@ -59,7 +60,7 @@
 
   // --- approvals -----------------------------------------------------------
   const approvalId = $derived(str(req.approvalId));
-  const approvalOutcome = $derived(approvalId ? conversation.approvals[approvalId] : undefined);
+  const approvalOutcome = $derived(approvalId ? conversation.approvalOutcome(block) : undefined);
   /** Which action is in flight, so only its button shows the spinner. */
   let answering = $state<string | null>(null);
 
@@ -98,7 +99,7 @@
           .map((o) => ({ label: str(o.label), description: str(o.description) })),
       }));
   });
-  const questionOutcome = $derived(questionId ? conversation.questions[questionId] : undefined);
+  const questionOutcome = $derived(questionId ? conversation.questionOutcome(block) : undefined);
   let picks = $state<string[][]>([]);
   /** What the person typed per question, on a question that takes it. */
   let typed = $state<string[]>([]);
@@ -214,14 +215,12 @@
       {type === "approval" ? str(req.action) : (questions[0]?.question ?? "")}
     </span>
     <span class={cn(text.indicator, "shrink-0", !outcome && live && "text-amber-700 dark:text-amber-300")}>
-      {#if approvalOutcome}
-        {approvalOutcome.timedOut
-          ? i18n.t("chat.approvalTimedOut")
-          : i18n.t(`chat.approvalDecision.${approvalOutcome.decision}`)}
+      {#if outcome?.withdrawn}
+        {i18n.t("chat.noLongerPending")}
+      {:else if approvalOutcome}
+        {i18n.t(`chat.approvalDecision.${approvalOutcome.decision}`)}
       {:else if questionOutcome}
-        {questionOutcome.timedOut
-          ? i18n.t("chat.questionTimedOut")
-          : questionOutcome.answers.flat().join(", ") || i18n.t("chat.questionSkipped")}
+        {questionOutcome.answers.flat().join(", ") || i18n.t("chat.questionSkipped")}
       {:else if live}
         {i18n.t("chat.waitingForYou")}
       {:else}
@@ -251,7 +250,7 @@
           {/if}
         </div>
       </div>
-      {#if !approvalOutcome && !live}
+      {#if (!approvalOutcome && !live) || approvalOutcome?.withdrawn}
         <p class={text.meta}>{i18n.t("chat.noLongerPending")}</p>
       {:else if approvalOutcome}
         <p class={cn(text.meta, "flex items-center gap-1")}>
@@ -259,9 +258,7 @@
             icon={approvalOutcome.decision === "reject" ? Cancel01Icon : Tick02Icon}
             class={icon.status}
           />
-          {approvalOutcome.timedOut
-            ? i18n.t("chat.approvalTimedOut")
-            : i18n.t(`chat.approvalDecision.${approvalOutcome.decision}`)}
+          {i18n.t(`chat.approvalDecision.${approvalOutcome.decision}`)}
         </p>
       {:else}
         <div class="flex flex-wrap justify-end gap-1.5">
@@ -390,7 +387,7 @@
                 <span class={text.bodyStrong}>{q.question}</span>
               </div>
             </div>
-            {#if questionOutcome}
+            {#if questionOutcome && !questionOutcome.withdrawn}
               {@const chosen = questionOutcome.answers[qi] ?? []}
               <p class={cn(text.meta, "pl-6")}>
                 {chosen.length > 0 ? chosen.join(", ") : i18n.t("chat.questionSkipped")}
@@ -400,9 +397,6 @@
             {/if}
           </div>
         {/each}
-        {#if questionOutcome?.timedOut}
-          <p class={text.meta}>{i18n.t("chat.questionTimedOut")}</p>
-        {/if}
       {/if}
     </div>
   {/if}

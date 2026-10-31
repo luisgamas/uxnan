@@ -51,6 +51,7 @@ import type {
 } from '$shared/models/agent-session';
 import type {
   AgentsUpdatedParams,
+  ContentBlockParams,
   DevicesUpdatedParams,
   PresenceUpdatedParams,
   ProjectRemovedParams,
@@ -63,6 +64,7 @@ import { bridge, bridges, type BridgeClientStore, type BridgeNotification } from
 import { isLocalTarget, type TargetId } from '$lib/target';
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
+import { requestIdOf } from './timeline';
 import { outboxKey, writeOutbox, type SendRequest } from './outbox';
 import { hostSeenStore, ThreadActivity, type ChatActivity, type SeenStore } from './activity.svelte';
 
@@ -107,6 +109,16 @@ export type ReplicaChange =
       storeId?: string;
     };
 
+/** An agent started waiting on the person in one of this bridge's threads. */
+export interface ChatRequestRaised {
+  threadId: string;
+  /** The `approvalId` / `questionId`: one alert per request. */
+  requestId: string;
+  kind: 'approval' | 'question';
+  /** The approval's action, or the first question's text. */
+  text: string;
+}
+
 export class ChatStore {
   readonly #client: BridgeClientStore;
   /** Every thread the bridge knows, by id. */
@@ -131,6 +143,9 @@ export class ChatStore {
   #syncing: Promise<void> | undefined;
   #syncAgain = false;
   readonly #replicaListeners = new Set<(change: ReplicaChange) => void>();
+  readonly #requestListeners = new Set<(raised: ChatRequestRaised) => void>();
+  /** Requests already announced, so a card delivered twice alerts once. */
+  readonly #raised = new Set<string>();
   readonly #commands = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** What every thread is doing now (tab chips, sidebar rows). */
   readonly activity: ThreadActivity;
@@ -182,6 +197,36 @@ export class ChatStore {
     this.#client.onNotification((n) => this.apply(n));
     this.#client.onConnected(() => void this.resync());
     if (this.#client.connected) void this.resync();
+  }
+
+  /** Listen for agents starting to wait on the person (`chatAlerts`): once
+   *  per approval or question, as its card arrives. */
+  onRequest(listener: (raised: ChatRequestRaised) => void): () => void {
+    this.#requestListeners.add(listener);
+    return () => this.#requestListeners.delete(listener);
+  }
+
+  /** A card arrived: tell the listeners once, while it is still open. */
+  #raiseRequest(threadId: string, content: unknown): void {
+    const requestId = requestIdOf(content);
+    if (!requestId || this.#raised.has(requestId)) return;
+    const block = content as Record<string, unknown>;
+    if (block.outcome !== undefined) return; // already settled
+    this.#raised.add(requestId);
+    const req =
+      block.request && typeof block.request === 'object'
+        ? (block.request as Record<string, unknown>)
+        : block;
+    const first = Array.isArray(req.questions) ? (req.questions[0] as Record<string, unknown>) : {};
+    const kind = block.type === 'approval' ? 'approval' : 'question';
+    const text = kind === 'approval' ? req.action : first?.question;
+    const raised: ChatRequestRaised = {
+      threadId,
+      requestId,
+      kind,
+      text: typeof text === 'string' ? text : '',
+    };
+    for (const listener of this.#requestListeners) listener(raised);
   }
 
   /** Listen for what the replica changed (the project mirror). */
@@ -518,6 +563,18 @@ export class ChatStore {
   apply(notification: BridgeNotification): void {
     this.activity.apply(notification);
     switch (notification.method) {
+      case 'stream/content/block': {
+        const params = notification.params as ContentBlockParams | undefined;
+        if (typeof params?.threadId === 'string') this.#raiseRequest(params.threadId, params.content);
+        break;
+      }
+      case 'stream/approval/resolved':
+      case 'stream/question/resolved': {
+        const p = notification.params as { approvalId?: unknown; questionId?: unknown } | undefined;
+        const id = p?.approvalId ?? p?.questionId;
+        if (typeof id === 'string') this.#raised.delete(id);
+        break;
+      }
       case 'stream/agent/held': {
         const params = notification.params as AgentSessionHeldParams | undefined;
         if (typeof params?.agentId !== 'string' || typeof params.sessionId !== 'string') return;
@@ -834,12 +891,23 @@ export const chat = new ChatStore(bridge);
 /** A replica per host bridge, created with its store and started at once so
  *  it converges the moment that bridge connects. */
 const hostChats = new Map<string, ChatStore>();
+const storeListeners = new Set<(store: ChatStore) => void>();
 bridges.onHostStore((client) => {
   if (hostChats.has(client.target)) return;
   const store = new ChatStore(client, hostSeenStore(client.target));
   hostChats.set(client.target, store);
+  for (const listener of storeListeners) listener(store);
   store.start();
 });
+
+/** Run [listener] for every replica: this machine's and each host's, those
+ *  that exist now and those created later (a host bridge first heard from). */
+export function onChatStore(listener: (store: ChatStore) => void): () => void {
+  storeListeners.add(listener);
+  listener(chat);
+  for (const store of hostChats.values()) listener(store);
+  return () => storeListeners.delete(listener);
+}
 
 /** The conversations of the machine `target` names: this one's bridge, or a
  *  host's own (`02g` §5.18). */

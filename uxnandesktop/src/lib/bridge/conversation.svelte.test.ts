@@ -282,11 +282,19 @@ describe('Conversation', () => {
         questionId: 'q',
         answers: [['B']],
         skipped: false,
-        timedOut: true,
       }),
     );
-    expect(c.approvals.ap).toEqual({ decision: 'approveSession', timedOut: false });
-    expect(c.questions.q).toEqual({ answers: [['B']], skipped: false, timedOut: true });
+    c.apply(
+      note('stream/question/resolved', {
+        questionId: 'q2',
+        answers: [[]],
+        skipped: true,
+        withdrawn: true,
+      }),
+    );
+    expect(c.approvals.ap).toEqual({ decision: 'approveSession' });
+    expect(c.questions.q).toEqual({ answers: [['B']] });
+    expect(c.questions.q2).toEqual({ answers: [[]], withdrawn: true });
     c.settleApprovalLocally('ap2', 'reject');
     expect(c.approvals.ap2?.decision).toBe('reject');
   });
@@ -305,6 +313,38 @@ describe('Conversation', () => {
     expect(c.openRequests).toEqual([{ type: 'approval', approvalId: 'ap', action: 'Allow Bash' }]);
     c.apply(note('stream/approval/resolved', { approvalId: 'ap', decision: 'approve' }));
     expect(c.openRequests).toEqual([]);
+  });
+
+  it('reads how a request ended from the stored card when it missed the notification', () => {
+    // Answered on the phone while this window was closed: the page it loads
+    // carries the bridge's record on the card itself, and the turn still runs.
+    const { c } = conversation();
+    const approval = {
+      type: 'approval',
+      approvalId: 'ap',
+      action: 'Allow Bash',
+      outcome: { decision: 'approve' },
+    };
+    const question = {
+      type: 'question',
+      questionId: 'q',
+      questions: [{ question: 'Which?', options: [] }],
+      outcome: { answers: [], withdrawn: true },
+    };
+    const open = { type: 'approval', approvalId: 'ap2', action: 'Allow Edit' };
+    c.adoptPage({
+      turns: [turnWith('x', [approval, question, open], {})].map((t) => ({
+        ...t,
+        status: 'streaming' as const,
+      })),
+      total: 1,
+      activeTurnId: 'x',
+    });
+    expect(c.openRequests).toEqual([open]);
+    expect(c.approvalOutcome(approval)).toEqual({ decision: 'approve' });
+    expect(c.questionOutcome(question)).toEqual({ answers: [], withdrawn: true });
+    // A malformed record is not an outcome.
+    expect(c.approvalOutcome({ ...open, outcome: { decision: 'maybe' } })).toBeUndefined();
   });
 
   it("never lets a page that left before the first message's turn take it away", async () => {

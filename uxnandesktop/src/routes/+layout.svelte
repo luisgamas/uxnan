@@ -3,7 +3,12 @@
   import "../app.css";
   import { onMount, untrack } from "svelte";
   import { bridge, bridges } from "$lib/bridge/client.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chat, onChatStore } from "$lib/bridge/chat.svelte";
+  import { startChatAlerts } from "$lib/state/chatAlerts";
+  import { terminals } from "$lib/state/terminals.svelte";
+  import { toast } from "$lib/toast";
+  import { notify } from "$lib/notify";
+  import { i18n } from "$lib/i18n";
   import { relay } from "$lib/bridge/relay.svelte";
   import { terminalSessions } from "$lib/state/terminalSessions.svelte";
   import { projectMirror } from "$lib/bridge/projectMirror.svelte";
@@ -88,6 +93,16 @@
     // store that mirrors its conversations for the chat tabs.
     void bridge.start();
     chat.start();
+    // An agent in a chat asked something: say so, unless that chat is on
+    // screen — the terminal agents' alerts, for bridge conversations.
+    const stopChatAlerts = startChatAlerts(onChatStore, {
+      enabled: () => app.settings.agentNotifications !== false,
+      focused: () => document.hasFocus(),
+      viewingThread: () => terminals.activeChatThreadId(),
+      toast: (message) => toast.info(message),
+      notify: (title, body) => void notify(title, body),
+      t: (key, params) => i18n.t(key, params),
+    });
     // The own bridge of each connected host that runs one (`02g` §5.18): one
     // store and one replica per host, fed by the hosts' events.
     void bridges.start();
@@ -127,6 +142,7 @@
     );
     return () => {
       unmounted = true;
+      stopChatAlerts();
       unlistenDrops?.();
       window.removeEventListener("focus", onFocus);
       uninstallPointerLockGuard();
