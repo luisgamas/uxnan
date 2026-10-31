@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.55-alpha.20261031] - 20261031
 ### Added
 
 - **A worktree the phone creates is marked as Uxnan's own.** `git/createWorktree`
