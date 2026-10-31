@@ -144,8 +144,9 @@ available today are:
   session, so nothing else writes to it. *Continue as chat* on the tab closes the
   agent there and continues its session in a chat, *Open in terminal* on a chat
   reopens it in a terminal, and a phone can take it over with *Continue here*. A
-  new chat lists **Sessions in this folder**: the agents' own sessions, started
-  in a terminal or in the agent's app, ready to continue with their history.
+  Conversations tab lists the folder's **Agent sessions** — the agents' own,
+  started in a terminal or in the agent's app, ready to continue with their
+  history — and a new chat only says how many there are.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
   diffs, **opt-in local/remote branch cleanup on worktree removal** (worktree-only

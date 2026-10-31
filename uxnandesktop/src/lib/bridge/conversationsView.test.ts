@@ -2,7 +2,7 @@
 // title matching and the bridge's content hits, grouped by age.
 import { describe, expect, it } from 'vitest';
 import type { Thread, ThreadSearchHit } from '$shared/models/thread';
-import { ageGroupOf, conversationRows, groupByAge, titleMatches, type ConversationFilters } from './conversationsView';
+import { ageGroupOf, conversationRows, groupByAge, sessionRows, titleMatches, type ConversationFilters } from './conversationsView';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date(2026, 9, 29, 15, 0, 0).getTime();
@@ -100,5 +100,23 @@ describe('ages', () => {
     expect(titleMatches('Plan the release', 'release plan')).toBe(true);
     expect(titleMatches('Plan the release', 'release banana')).toBe(false);
     expect(titleMatches('anything', '   ')).toBe(true);
+  });
+});
+
+describe('agent sessions', () => {
+  const sessions = [
+    { agentId: 'codex', sessionId: 'a', title: 'Fix the login', updatedAt: 10 },
+    { agentId: 'opencode', sessionId: 'b', updatedAt: 30 },
+    { agentId: 'codex', sessionId: 'c', title: 'Plan the release', updatedAt: 20 },
+  ];
+
+  it('lists newest first, whatever order they arrive in', () => {
+    expect(sessionRows(sessions, { query: '' }).map((s) => s.sessionId)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('narrows by agent and by title; an untitled one matches no query', () => {
+    expect(sessionRows(sessions, { agentId: 'codex', query: '' }).map((s) => s.sessionId)).toEqual(['c', 'a']);
+    expect(sessionRows(sessions, { query: 'release plan' }).map((s) => s.sessionId)).toEqual(['c']);
+    expect(sessionRows(sessions, { query: 'untitled' })).toEqual([]);
   });
 });

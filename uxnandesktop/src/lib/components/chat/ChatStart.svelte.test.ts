@@ -4,11 +4,12 @@
  * that draft into its composer (the "text stays after the first message" bug).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mountWithProviders, until } from "../../../test/render";
 import { chat } from "$lib/bridge/chat.svelte";
 import { bridge } from "$lib/bridge/client.svelte";
-import type { ChatTab } from "$lib/state/terminals.svelte";
+import type { Thread } from "$shared/models/thread";
+import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
 import ChatStart from "./ChatStart.svelte";
 import { serialize } from "$lib/components/ui/input-group/chip-editor";
 
@@ -82,51 +83,100 @@ describe("ChatStart", () => {
     await until(() => valueOf(box) === "fix it");
   });
 
-  // The agents' own sessions here that no conversation continues yet can be
-  // picked up as this tab's chat; one open in a terminal asks it first.
-  it("lists the folder's agent sessions and continues one as the chat", async () => {
+  // The screen is composer-first: at most the three newest conversations of the
+  // folder, whatever the history, and "See all" for the rest — nothing expands
+  // in place.
+  it("shows three recent conversations at most, below the composer, with the full count", async () => {
     withAgent();
     bridge.status = { state: "connected" } as typeof bridge.status;
-    const tab = chatTab();
-    const held = {
+    chat.threadsLoaded = true;
+    // The conversations earlier tests started are not part of this folder's history.
+    chat.threads.clear();
+    for (let i = 1; i <= 7; i++) {
+      chat.threads.set(`th-${i}`, { ...started, id: `th-${i}`, title: `Chat ${i}`, updatedAt: i } as Thread);
+    }
+    const { screen } = mountWithProviders(ChatStart, {
+      props: { tab: chatTab(), active: true },
+      commands: { bridge_call: () => ({ sessions: [], unlisted: [] }) },
+    });
+    // The newest three, and the count of the rest behind "See all".
+    for (const shown of ["Chat 7", "Chat 6", "Chat 5"]) expect(screen.getByText(shown)).toBeTruthy();
+    for (const hidden of ["Chat 4", "Chat 1"]) expect(screen.queryByText(hidden)).toBeNull();
+    expect(screen.getByText("See all conversations (7)")).toBeTruthy();
+    expect(screen.queryByText(/Show all|Show fewer/)).toBeNull();
+    // The composer comes first: the history never sits above it.
+    const box = screen.getByRole("textbox");
+    const recent = screen.getByText("Recent here");
+    expect(box.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    chat.threads.clear();
+    chat.threadsLoaded = false;
+    bridge.status = { state: "off" } as typeof bridge.status;
+  });
+
+  it("keeps the composer at a fixed anchor, with its own reserved box for the history", () => {
+    withAgent();
+    const { screen } = mountWithProviders(ChatStart, {
+      props: { tab: chatTab(), active: true },
+    });
+    const grid = screen.getByRole("textbox").closest(".grid");
+    // A share of the pane above the hero, the hero itself, then a box that
+    // cannot shrink below the history: what is below never moves what is above.
+    expect(grid?.className).toContain("grid-rows-[minmax(1rem,24%)_auto_minmax(12.5rem,1fr)]");
+  });
+
+  // The agents' own sessions here no conversation continues yet are not listed:
+  // one line says how many, and opens the Conversations tab on them.
+  it("says how many agent sessions sit outside Uxnan and links to the Conversations tab", async () => {
+    withAgent();
+    bridge.status = { state: "connected" } as typeof bridge.status;
+    chat.threadsLoaded = true;
+    chat.agentSessions.clear();
+    const open = vi.spyOn(terminals, "openConversations").mockReturnValue("conv-tab");
+    const sessions = [1, 2, 3, 4].map((n) => ({
       agentId: "codex",
-      sessionId: "c-2",
-      holder: { kind: "terminal", name: "Studio" },
-      heldAgoMs: 0,
-      busy: false,
-    };
-    const { screen, user, backend } = mountWithProviders(ChatStart, {
-      props: { tab, active: true },
+      sessionId: `c-${n}`,
+      cwd: "/repo",
+      title: `Session ${n}`,
+      updatedAgoMs: n * 1000,
+    }));
+    const { screen, user } = mountWithProviders(ChatStart, {
+      props: { tab: chatTab(), active: true },
       commands: {
-        bridge_call: (args: Record<string, unknown>) => {
-          if (args.method === "agent/sessions") {
-            return {
-              sessions: [
-                { agentId: "codex", sessionId: "c-1", cwd: "/repo", title: "Fix the login", updatedAgoMs: 60_000 },
-                { agentId: "codex", sessionId: "c-2", cwd: "/repo", title: "Held one", updatedAgoMs: 1_000, hold: held },
-                { agentId: "codex", sessionId: "c-3", cwd: "/repo", title: "In a chat", updatedAgoMs: 1, threadId: "th-9" },
-              ],
-              unlisted: ["antigravity-cli"],
-            };
-          }
-          if (args.method === "agent/requestHandoff") return { outcome: "released" };
-          if (args.method === "thread/start") return { ...started, id: "th-c1" };
-          return {};
-        },
+        bridge_call: (args: Record<string, unknown>) =>
+          args.method === "agent/sessions"
+            ? {
+                // One a conversation continues is not outside them.
+                sessions: [...sessions, { ...sessions[0], sessionId: "c-9", threadId: "th-9" }],
+                unlisted: [],
+              }
+            : {},
       },
     });
-    await until(() => screen.queryByText("Fix the login") !== null);
-    // One a conversation already continues is not offered again.
-    expect(screen.queryByText("In a chat")).toBeNull();
-    expect(screen.getByText("In a terminal")).toBeTruthy();
-    expect(screen.getByText(/can't list its sessions/)).toBeTruthy();
+    const link = await screen.findByText("4 agent sessions in this folder outside Uxnan");
+    // None of them is listed on this screen.
+    expect(screen.queryByText("Session 1")).toBeNull();
+    await user.click(link);
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/repo", view: "sessions" }));
+    open.mockRestore();
+    chat.agentSessions.clear();
+    chat.threadsLoaded = false;
+    bridge.status = { state: "off" } as typeof bridge.status;
+  });
 
-    await user.click(screen.getByText("Held one"));
-    await until(() => backend.callsTo("bridge_call").some((c) => c.args.method === "thread/start"));
-    const methods = backend.callsTo("bridge_call").map((c) => c.args.method);
-    expect(methods.indexOf("agent/requestHandoff")).toBeLessThan(methods.indexOf("thread/start"));
-    const start = backend.callsTo("bridge_call").find((c) => c.args.method === "thread/start");
-    expect(start?.args.params).toMatchObject({ agentId: "codex", agentSessionId: "c-2", title: "Held one" });
+  it("shows no sessions line when there are none", async () => {
+    withAgent();
+    bridge.status = { state: "connected" } as typeof bridge.status;
+    chat.threadsLoaded = true;
+    chat.agentSessions.clear();
+    const { screen, backend } = mountWithProviders(ChatStart, {
+      props: { tab: chatTab(), active: true },
+      commands: { bridge_call: () => ({ sessions: [], unlisted: [] }) },
+    });
+    await until(() => chat.agentSessionsOf("/repo") !== undefined);
+    expect(backend.called("bridge_call")).toBe(true);
+    expect(screen.queryByText(/agent sessions? in this folder/)).toBeNull();
+    chat.agentSessions.clear();
+    chat.threadsLoaded = false;
     bridge.status = { state: "off" } as typeof bridge.status;
   });
 });

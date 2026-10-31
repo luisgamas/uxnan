@@ -7,7 +7,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Thread, TurnList } from '$shared/models/thread';
 import type { SeenMarks, SeenStore } from './activity.svelte';
 import { BridgeClientStore } from './client.svelte';
-import { ChatStore, normalizeCwd, sessionKey, type ReplicaChange } from './chat.svelte';
+import {
+  ChatStore,
+  TITLE_FOLLOW_UP_MS,
+  TITLE_FOLLOW_UP_ROUNDS,
+  normalizeCwd,
+  sessionKey,
+  type ReplicaChange,
+} from './chat.svelte';
 import type { SyncChanges } from '$shared/models/sync';
 import {
   bridgeAgentForCommand,
@@ -526,7 +533,8 @@ describe('agent sessions (architecture/02a §5.8.19)', () => {
       'agent/requestHandoff': { outcome: 'released' },
       'thread/start': thread('th-1', '/r', 1, { agentSessionId: 's-1' }),
     });
-    expect((await store.listAgentSessions('/r')).unlisted).toEqual(['antigravity-cli']);
+    await store.refreshAgentSessions('/r');
+    expect(store.agentSessionsOf('/r')?.unlisted).toEqual(['antigravity-cli']);
     expect(await store.requestHandoff({ agentId: 'claude-code', sessionId: 's-1' })).toBe('released');
     await store.startThread({ cwd: '/r', agentId: 'claude-code', agentSessionId: 's-1', title: 'Old work' });
     expect(calls.find((c) => c.method === 'thread/start')?.params).toEqual({
@@ -572,6 +580,77 @@ describe('helpers', () => {
     expect(hookAgentForBridgeAgent('zero')).toBeNull();
     expect(hookAgentForBridgeAgent(undefined)).toBeNull();
     expect(sessionKey('codex', 'abc')).toBe('codex:abc');
+  });
+
+  it('keeps a folder’s sessions no conversation continues, dated on this clock', async () => {
+    const { store, calls } = harness({
+      'agent/sessions': {
+        sessions: [
+          { agentId: 'codex', sessionId: 'c-1', cwd: '/r', title: 'Fix', updatedAgoMs: 60_000 },
+          { agentId: 'codex', sessionId: 'c-2', cwd: '/r', updatedAgoMs: 5, threadId: 'th-9' },
+        ],
+        unlisted: [],
+      },
+    });
+    expect(store.agentSessionsOf('/r')).toBeUndefined();
+    const before = Date.now();
+    // Two surfaces asking at once share the one request.
+    await Promise.all([store.refreshAgentSessions('/r/'), store.refreshAgentSessions('/r/')]);
+    expect(calls.filter((c) => c.method === 'agent/sessions')).toHaveLength(1);
+    const kept = store.agentSessionsOf('/r');
+    // The one a conversation continues is not a session outside them.
+    expect(kept?.sessions.map((s) => s.sessionId)).toEqual(['c-1']);
+    // An age travels; the moment is rebuilt here, once.
+    expect(kept?.sessions[0]?.updatedAt).toBeGreaterThanOrEqual(before - 60_000);
+    expect(kept?.sessions[0]?.updatedAt).toBeLessThanOrEqual(Date.now() - 60_000);
+  });
+
+  it('asks again while the bridge names sessions, and stops once none is pending', async () => {
+    vi.useFakeTimers();
+    try {
+      let round = 0;
+      const { store, calls } = harness({
+        'agent/sessions': () => {
+          round += 1;
+          return {
+            sessions: [
+              round < 3
+                ? { agentId: 'opencode', sessionId: 'o-1', cwd: '/r', updatedAgoMs: 5, titlePending: true }
+                : { agentId: 'opencode', sessionId: 'o-1', cwd: '/r', title: 'Plan the release', updatedAgoMs: 5 },
+            ],
+            unlisted: [],
+          };
+        },
+      });
+      await store.refreshAgentSessions('/r');
+      expect(store.agentSessionsOf('/r')?.sessions[0]?.titlePending).toBe(true);
+      await vi.advanceTimersByTimeAsync(TITLE_FOLLOW_UP_MS);
+      expect(store.agentSessionsOf('/r')?.sessions[0]?.titlePending).toBe(true);
+      await vi.advanceTimersByTimeAsync(TITLE_FOLLOW_UP_MS);
+      expect(store.agentSessionsOf('/r')?.sessions[0]?.title).toBe('Plan the release');
+      // Named: nothing is asked again.
+      await vi.advanceTimersByTimeAsync(TITLE_FOLLOW_UP_MS * 4);
+      expect(calls.filter((c) => c.method === 'agent/sessions')).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up following after a bounded number of asks', async () => {
+    vi.useFakeTimers();
+    try {
+      const { store, calls } = harness({
+        'agent/sessions': {
+          sessions: [{ agentId: 'opencode', sessionId: 'o-1', cwd: '/r', updatedAgoMs: 5, titlePending: true }],
+          unlisted: [],
+        },
+      });
+      await store.refreshAgentSessions('/r');
+      await vi.advanceTimersByTimeAsync(TITLE_FOLLOW_UP_MS * (TITLE_FOLLOW_UP_ROUNDS + 5));
+      expect(calls.filter((c) => c.method === 'agent/sessions')).toHaveLength(TITLE_FOLLOW_UP_ROUNDS + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

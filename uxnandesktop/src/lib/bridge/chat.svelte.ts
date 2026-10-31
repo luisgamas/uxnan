@@ -48,6 +48,7 @@ import type {
   AgentSessionHoldsResult,
   AgentSessionKey,
   AgentSessionListResult,
+  AgentSessionSummary,
 } from '$shared/models/agent-session';
 import type {
   AgentsUpdatedParams,
@@ -67,6 +68,23 @@ import { isUserFacingAgent } from './agents';
 import { requestIdOf } from './timeline';
 import { outboxKey, writeOutbox, type SendRequest } from './outbox';
 import { hostSeenStore, ThreadActivity, type ChatActivity, type SeenStore } from './activity.svelte';
+
+/** An agent session as the replica keeps it: the bridge's summary and the
+ *  moment it last changed on this clock. */
+export type AgentSessionRow = AgentSessionSummary & { updatedAt: number };
+
+/** A folder's agent sessions that no conversation continues. */
+export interface FolderAgentSessions {
+  /** Most recently changed first. */
+  sessions: AgentSessionRow[];
+  /** Agents installed here whose CLI cannot list its sessions. */
+  unlisted: string[];
+}
+
+/** How long to wait before asking again while the bridge names sessions. */
+export const TITLE_FOLLOW_UP_MS = 5_000;
+/** How many times to ask again (about a minute and a half), then leave it to the next visit. */
+export const TITLE_FOLLOW_UP_ROUNDS = 18;
 
 /** How a session is known across agents: `agentId:sessionId`. */
 export function sessionKey(agentId: string, sessionId: string): string {
@@ -137,6 +155,17 @@ export class ChatStore {
    *  (architecture/02a §5.8.19): no turn runs in one of those here until its
    *  terminal lets it go. Live, not revisioned: reloaded on every reconnect. */
   holds = new SvelteMap<string, AgentSessionHold>();
+  /** The agents' own sessions that no conversation continues yet, by folder
+   *  (architecture/02a §5.8.19). The one place they are loaded: the new-chat
+   *  screen reads how many there are, the Conversations tab lists them. Asked
+   *  of the bridge by whatever shows them (`refreshAgentSessions`, again after
+   *  a reconnect: nothing announces a session a terminal started), and
+   *  replaced when the answer comes, never emptied meanwhile. */
+  agentSessions = new SvelteMap<string, FolderAgentSessions>();
+  /** `agent/sessions` requests in flight, by folder. */
+  readonly #sessionRequests = new Map<string, Promise<void>>();
+  /** The re-ask scheduled while the bridge names sessions, by folder. */
+  readonly #titleFollowUps = new Map<string, ReturnType<typeof setTimeout>>();
   /** The last sync revision applied, and the store it belongs to. */
   #rev: number | undefined;
   #storeId: string | undefined;
@@ -545,9 +574,58 @@ export class ChatStore {
     return this.holds.get(sessionKey(thread.agentId, thread.agentSessionId));
   }
 
-  /** Every agent's own sessions in a folder, as the bridge lists them. */
-  listAgentSessions(cwd: string): Promise<AgentSessionListResult> {
-    return this.#client.call<AgentSessionListResult>('agent/sessions', { cwd });
+  /**
+   * Ask the bridge for a folder's agent sessions that no conversation continues
+   * and keep the answer in `agentSessions`. Calls for a folder already being
+   * asked share the one request; a failure leaves what was there.
+   */
+  refreshAgentSessions(folder: string): Promise<void> {
+    // Someone asked: the bridge naming sessions is followed afresh from here.
+    const cwd = normalizeCwd(folder);
+    clearTimeout(this.#titleFollowUps.get(cwd));
+    this.#titleFollowUps.delete(cwd);
+    return this.#loadAgentSessions(folder, 0);
+  }
+
+  /**
+   * One `agent/sessions` request. A session its CLI keeps no title for is named
+   * by the bridge in the background (`titlePending`), so the answer is asked
+   * again every `TITLE_FOLLOW_UP_MS` while any is — at most
+   * `TITLE_FOLLOW_UP_ROUNDS` times — instead of waiting for a notification no
+   * one sends: the replica converges by asking its owner.
+   */
+  #loadAgentSessions(folder: string, rounds: number): Promise<void> {
+    const cwd = normalizeCwd(folder);
+    const running = this.#sessionRequests.get(cwd);
+    if (running) return running;
+    const request = this.#client
+      .call<AgentSessionListResult>('agent/sessions', { cwd: folder })
+      .then((result) => {
+        const askedAt = Date.now();
+        this.agentSessions.set(cwd, {
+          // An age travels, not a time: the moment is rebuilt against this
+          // clock, once, so it does not slide while the list is kept.
+          sessions: result.sessions
+            .filter((s) => !s.threadId)
+            .map((s) => ({ ...s, updatedAt: askedAt - s.updatedAgoMs })),
+          unlisted: result.unlisted,
+        });
+        if (rounds < TITLE_FOLLOW_UP_ROUNDS && result.sessions.some((s) => s.titlePending)) {
+          const timer = setTimeout(() => {
+            this.#titleFollowUps.delete(cwd);
+            void this.#loadAgentSessions(folder, rounds + 1).catch(() => undefined);
+          }, TITLE_FOLLOW_UP_MS);
+          this.#titleFollowUps.set(cwd, timer);
+        }
+      })
+      .finally(() => this.#sessionRequests.delete(cwd));
+    this.#sessionRequests.set(cwd, request);
+    return request;
+  }
+
+  /** A folder's agent sessions as last loaded; `undefined` until the first answer. */
+  agentSessionsOf(cwd: string): FolderAgentSessions | undefined {
+    return this.agentSessions.get(normalizeCwd(cwd));
   }
 
   /** Ask the terminal holding a session to let it go. */

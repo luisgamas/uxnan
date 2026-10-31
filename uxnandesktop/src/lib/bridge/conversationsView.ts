@@ -7,6 +7,10 @@ import type { Thread } from '$shared/models/thread';
 import type { ThreadSearchHit } from '$shared/models/thread';
 import type { ChatActivity } from './activity.svelte';
 
+/** What the tab lists: the bridge's conversations, or the agents' own sessions
+ *  in the folder that no conversation continues (§5.8.19). */
+export type ConversationsView = 'chats' | 'sessions';
+
 /** Which conversations: the folder's project, or every one the bridge has. */
 export type ConversationScope = 'project' | 'all';
 
@@ -131,4 +135,21 @@ export function groupByAge(
     band.push(row);
   }
   return order.filter((g) => bands.has(g)).map((group) => ({ group, rows: bands.get(group)! }));
+}
+
+/**
+ * The agent sessions the tab lists, newest first: an agent's when one is
+ * picked, and — with a query — those whose title matches. A session with no
+ * title (its CLI keeps none and nothing was asked yet) is never matched by a
+ * query: there is nothing to match.
+ */
+export function sessionRows<T extends { agentId: string; title?: string; updatedAt: number }>(
+  sessions: readonly T[],
+  filters: { agentId?: string; query: string },
+): T[] {
+  const query = filters.query.trim();
+  return sessions
+    .filter((s) => filters.agentId === undefined || s.agentId === filters.agentId)
+    .filter((s) => query.length === 0 || (s.title !== undefined && titleMatches(s.title, query)))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
