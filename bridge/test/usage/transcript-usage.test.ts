@@ -13,7 +13,7 @@ import {
   type CodexParseState,
 } from '../../src/usage/transcript-usage.js';
 import type { UsageRecord } from '../../src/usage/transcript-usage.js';
-import { estimateCost } from '../../src/usage/usage-prices.js';
+import { estimateCost, openAiTier } from '../../src/usage/usage-prices.js';
 import { UsageScanner, localDay, type UsageLocations } from '../../src/usage/usage-scan.js';
 import { DaemonState } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
@@ -96,8 +96,9 @@ test('Codex: the model from its turn context, cached input taken out, a repeat s
   assert.equal(r?.cachedInputTokens, 8960);
   assert.equal(r?.reasoningTokens, 186);
   assert.equal(parseCodexLine(tokens, state), undefined, 'the same event again spends nothing');
-  // No price is known for Codex models: never guessed.
-  assert.equal(estimateCost(r!), undefined);
+  // At OpenAI's published GPT-5.6 Luna rates: fresh, cached and output
+  // (reasoning included, once).
+  assert.ok(Math.abs(estimateCost(r!)! - (8605 * 0.2 + 8960 * 0.02 + 582 * 1.2) / 1e6) < 1e-12);
 });
 
 test('pi, Grok and OpenCode: the cost they recorded, a free model at $0', () => {
@@ -203,7 +204,7 @@ test('Zero: a provider_usage event, at the session model, never priced', () => {
 });
 
 // --- Claude price table: pinned to Anthropic's published rates ----------------
-// These are a transcription of the model-pricing table read 2026-10-07
+// These are a transcription of the model-pricing table read 2026-10-31
 // (platform.claude.com/docs/en/about-claude/pricing), one million tokens of a
 // single kind so the answer IS that kind's rate. They exist because the table
 // is hand-kept: Opus 5.5 once carried Fable's $10/$50, Fable 5.1 carried
@@ -237,7 +238,7 @@ const RATES_PER_MTOK: readonly (readonly [string, [number, number, number, numbe
   ['claude-opus-4-5', [5, 25, 0.5, 6.25, 10]],
   ['claude-opus-4-1', [15, 75, 1.5, 18.75, 30]],
   ['claude-opus-4', [15, 75, 1.5, 18.75, 30]],
-  ['claude-sonnet-5-5', [2, 10, 0.2, 2.5, 4]],
+  ['claude-sonnet-5-5', [2, 10, 0.1, 2.5, 4]],
   ['claude-sonnet-5', [2, 10, 0.2, 2.5, 4]],
   ['claude-sonnet-4-6', [3, 15, 0.3, 3.75, 6]],
   ['claude-sonnet-4-5', [3, 15, 0.3, 3.75, 6]],
@@ -327,6 +328,134 @@ test('a model outside the table is left unpriced rather than guessed', () => {
     estimateCost({ ...record('claude-opus-5-5', { inputTokens: 1e6 }), agentId: 'codex' }),
     undefined,
   );
+});
+
+// --- Codex price table: pinned to OpenAI's published rates -------------------
+// A transcription of developers.openai.com/api/docs/pricing read 2026-10-31,
+// one million tokens of a single kind so the answer IS that kind's rate. Re-read
+// the page and update these when a model is added or a price moves — do not
+// adjust them to make a code change pass.
+const codex = (model: string, tokens: Partial<UsageRecord>, serviceTier?: string): UsageRecord => ({
+  ...record(model, tokens),
+  agentId: 'codex',
+  ...(serviceTier ? { serviceTier } : {}),
+});
+
+type OpenAiRow = [number, number, number];
+const OPENAI_RATES: readonly (readonly [string, string, OpenAiRow, OpenAiRow | null])[] = [
+  // model, tier, short [input, output, cached], long (>272K) [input, output, cached]
+  ['gpt-6-astra', 'standard', [10, 50, 1], [20, 75, 2]],
+  ['gpt-6-astra', 'flex', [5, 25, 0.5], [10, 37.5, 1]],
+  ['gpt-6-astra', 'fast', [20, 100, 2], [40, 150, 4]],
+  ['gpt-6-astra', 'ultrafast', [60, 300, 6], [120, 450, 12]],
+  ['gpt-6.1-sol', 'standard', [2, 10, 0.1], [4, 15, 0.2]],
+  ['gpt-6.1-sol', 'flex', [1, 5, 0.05], [2, 7.5, 0.1]],
+  ['gpt-6.1-sol', 'fast', [4, 20, 0.2], [8, 30, 0.4]],
+  ['gpt-6.1-sol', 'ultrafast', [12, 60, 0.6], [24, 90, 1.2]],
+  ['gpt-6.1-terra', 'standard', [1, 5, 0.05], [2, 7.5, 0.1]],
+  ['gpt-6.1-terra', 'flex', [0.5, 2.5, 0.025], [1, 3.75, 0.05]],
+  ['gpt-6.1-terra', 'fast', [2, 10, 0.1], [4, 15, 0.2]],
+  ['gpt-6-sol', 'standard', [2, 10, 0.2], [4, 15, 0.4]],
+  ['gpt-6-sol', 'flex', [1, 5, 0.1], [2, 7.5, 0.2]],
+  ['gpt-6-sol', 'fast', [4, 20, 0.4], [8, 30, 0.8]],
+  ['gpt-6-luna', 'standard', [0.1, 0.5, 0.01], [0.2, 0.75, 0.02]],
+  ['gpt-6-luna', 'flex', [0.05, 0.25, 0.005], [0.1, 0.375, 0.01]],
+  ['gpt-6-luna', 'fast', [0.2, 1, 0.02], [0.4, 1.5, 0.04]],
+  ['gpt-5.6-sol', 'standard', [4, 20, 0.4], [8, 30, 0.8]],
+  ['gpt-5.6-sol', 'flex', [2, 10, 0.2], [4, 15, 0.4]],
+  ['gpt-5.6-sol', 'fast', [8, 40, 0.8], [16, 60, 1.6]],
+  ['gpt-5.6-terra', 'standard', [2, 12, 0.2], [4, 18, 0.4]],
+  ['gpt-5.6-terra', 'flex', [1, 6, 0.1], [2, 9, 0.2]],
+  ['gpt-5.6-terra', 'fast', [4, 24, 0.4], [8, 36, 0.8]],
+  ['gpt-5.6-luna', 'standard', [0.2, 1.2, 0.02], [0.4, 1.8, 0.04]],
+  ['gpt-5.6-luna', 'flex', [0.1, 0.6, 0.01], [0.2, 0.9, 0.02]],
+  ['gpt-5.6-luna', 'fast', [0.4, 2.4, 0.04], [0.8, 3.6, 0.08]],
+  ['gpt-5.3-codex', 'standard', [1.75, 14, 0.175], null],
+  ['gpt-5.3-codex', 'fast', [3.5, 28, 0.35], null],
+];
+
+test("every Codex model is priced at OpenAI's published rates, per tier and context length", () => {
+  const worth = (got: number | undefined, want: number): boolean =>
+    got !== undefined && Math.abs(got - want) < 1e-9;
+  // A short request is one million tokens of a kind (the rate); a long one is
+  // that kind past the 272K line, read per million the same way.
+  const long = 400_000;
+  for (const [model, tier, [input, output, cached], longRow] of OPENAI_RATES) {
+    const at = (tokens: Partial<UsageRecord>) => estimateCost(codex(model, tokens, tier));
+    const label = `${model} ${tier}`;
+    assert.ok(worth(at({ inputTokens: 200_000 }), input / 5), `${label} input`);
+    assert.ok(worth(at({ cachedInputTokens: 200_000 }), cached / 5), `${label} cached input`);
+    assert.ok(worth(at({ outputTokens: 1e6 }), output), `${label} output`);
+    if (longRow) {
+      const [li, lo, lc] = longRow;
+      assert.ok(worth(at({ inputTokens: long }), (long * li) / 1e6), `${label} long input`);
+      assert.ok(
+        worth(at({ cachedInputTokens: long }), (long * lc) / 1e6),
+        `${label} long cached input`,
+      );
+      assert.ok(
+        worth(at({ inputTokens: long, outputTokens: 1e6 }), (long * li) / 1e6 + lo),
+        `${label} long output`,
+      );
+    } else {
+      assert.equal(at({ inputTokens: long }), undefined, `${label}: no long-context price`);
+    }
+  }
+});
+
+test('Codex: reasoning is output, priced once; a cache write, an unknown id or tier is unpriced', () => {
+  // `output_tokens` already holds the reasoning: adding it again would double it.
+  assert.equal(
+    estimateCost(codex('gpt-6-luna', { outputTokens: 1e6, reasoningTokens: 900_000 })),
+    0.5,
+  );
+  // Written tokens carry no lifetime, and a 30-minute and a 12-hour write differ.
+  assert.equal(estimateCost(codex('gpt-6-luna', { cacheWriteTokens: 10 })), undefined);
+  assert.equal(estimateCost(codex('codex-auto-review', { inputTokens: 1e6 })), undefined);
+  assert.equal(estimateCost(codex('gpt-6-luna-preview', { inputTokens: 1e6 })), undefined);
+  assert.equal(estimateCost(codex('gpt-6-luna', { inputTokens: 1e6 }, 'ultrafast')), undefined);
+  assert.equal(openAiTier('priority'), 'fast');
+  assert.equal(openAiTier(undefined), 'standard');
+  assert.equal(openAiTier('default'), 'standard');
+});
+
+test('Codex: the service tier comes from the thread settings it ran with', () => {
+  const state: CodexParseState = {};
+  const settings = (tier?: string) =>
+    JSON.stringify({
+      type: 'event_msg',
+      payload: {
+        type: 'thread_settings_applied',
+        thread_settings: { model: 'gpt-6-luna', ...(tier ? { service_tier: tier } : {}) },
+      },
+    });
+  const tokens = (n: number) =>
+    JSON.stringify({
+      timestamp: '2026-10-30T10:00:00Z',
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          last_token_usage: {
+            input_tokens: n,
+            cached_input_tokens: 0,
+            cache_write_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+          },
+        },
+      },
+    });
+  parseCodexLine(JSON.stringify({ type: 'turn_context', payload: { model: 'gpt-6-luna' } }), state);
+  parseCodexLine(settings('fast'), state);
+  // Both under the 272K line: fast at $0.20, standard at $0.10 per million.
+  const fast = parseCodexLine(tokens(100_000), state)!;
+  assert.equal(fast.serviceTier, 'fast');
+  assert.ok(Math.abs(estimateCost(fast)! - 0.02) < 1e-9);
+  parseCodexLine(settings(), state);
+  const standard = parseCodexLine(tokens(200_000), state)!;
+  assert.equal(standard.serviceTier, undefined);
+  assert.ok(Math.abs(estimateCost(standard)! - 0.02) < 1e-9);
 });
 
 test('the scan counts each Claude response once across files and reads only what was appended', async () => {

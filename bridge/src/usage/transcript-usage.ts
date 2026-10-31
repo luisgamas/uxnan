@@ -51,6 +51,9 @@ export interface UsageRecord {
   costUsd?: number;
   /** Identity for de-duplication when a record can appear twice. */
   dedupeKey?: string;
+  /** The service tier the request ran at, where the CLI records it (Codex's
+   *  `service_tier`: `fast`, `flex`, …), which sets its price. */
+  serviceTier?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -122,15 +125,26 @@ export function parseClaudeLine(line: string): UsageRecord | undefined {
   };
 }
 
-/** Codex's per-file state: the model its token events belong to. */
+/** Codex's per-file state: the model and service tier its token events belong to. */
 export interface CodexParseState {
   model?: string;
+  /** `thread_settings.service_tier` of the latest `thread_settings_applied`. */
+  serviceTier?: string;
   /** The last usage seen, to skip a repeated event. */
   last?: string;
 }
 
 /** A Codex rollout line → a response's usage, tracking the model in [state]. */
 export function parseCodexLine(line: string, state: CodexParseState): UsageRecord | undefined {
+  if (line.includes('"thread_settings_applied"')) {
+    const settings = record(record(parse(line)?.['payload'])?.['thread_settings']);
+    if (settings) {
+      const tier = str(settings['service_tier']);
+      if (tier) state.serviceTier = tier;
+      else delete state.serviceTier;
+    }
+    return undefined;
+  }
   if (line.includes('"turn_context"')) {
     const row = parse(line);
     const payload = record(row?.['payload']);
@@ -164,6 +178,7 @@ export function parseCodexLine(line: string, state: CodexParseState): UsageRecor
     cacheWriteTokens: cacheWrite,
     outputTokens: num(last['output_tokens']),
     reasoningTokens: num(last['reasoning_output_tokens']),
+    ...(state.serviceTier ? { serviceTier: state.serviceTier } : {}),
   };
 }
 

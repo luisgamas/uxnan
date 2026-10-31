@@ -1433,9 +1433,10 @@ shows concrete ids rather than aliases, since a commit message names the model
 that wrote it: what each alias runs today, under its label, then the older ids,
 folded the same way.
 
-**The one table left is the price** (`src/usage/usage-prices.ts` →
+**Prices are the only tables left** (`src/usage/usage-prices.ts` →
 `CLAUDE_PRICES`, pinned to Anthropic's published rates by
-`test/usage/transcript-usage.test.ts`). Spend is read from the transcripts
+`test/usage/transcript-usage.test.ts`; Codex's `CODEX_PRICES` beside it — see
+*Spend*). Spend is read from the transcripts
 (`src/usage/transcript-usage.ts`, architecture `02a` §5.8.10), which record
 tokens per response but cost only per CLI process (`cost-state`), so a new generation still needs an entry there, keyed
 on the model id rather than its family. A model without one is shown as
@@ -1515,13 +1516,29 @@ terminal sessions alike (`src/usage/transcript-usage.ts`,
 | Agent | Store | Cost |
 |---|---|---|
 | Claude Code | `~/.claude/projects/**.jsonl` | estimated at Anthropic's published prices (`CLAUDE_PRICES`) |
-| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | tokens only (no price table) |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | estimated at OpenAI's published prices (`CODEX_PRICES`) |
 | pi | `~/.pi/agent/sessions/**.jsonl` | billed, as pi records it |
 | Grok | `~/.grok/sessions/**/updates.jsonl` | billed (`costUsdTicks`) |
 | OpenCode 2 | `opencode.db` | billed, as OpenCode records it |
 | Zero | `~/.local/share/zero/sessions/*/events.jsonl` | tokens only — and only for `zero exec` sessions: an ACP-driven one records no `provider_usage` (see *Drive surface*), so the bridge's own Zero turns are not counted |
 | Antigravity | `~/.gemini/antigravity-cli/conversations/<id>.db` | tokens only: billed against its plan quota |
 | GitHub Copilot | — | not an agent the bridge drives; nothing on disk to read |
+
+**Codex's price.** `CODEX_PRICES` holds OpenAI's published rates (read
+2026-10-31) per **exact model id** and **service tier** — standard, flex,
+fast (formerly priority), ultrafast — each with its long-context prices for a
+request over 272K input tokens. The tier is `thread_settings.service_tier` of
+the rollout's `thread_settings_applied` (absent = standard). Codex's
+`input_tokens` include the cached part, which is taken out and priced at the
+cached rate; `output_tokens` include the reasoning, priced once as output. A
+request with cache writes stays unpriced: Codex does not record whether they
+were 30-minute or 12-hour writes, which OpenAI prices differently. An id or
+tier with no row (`codex-auto-review`, say) is unpriced. Live 30-day read:
+2,684 responses, 270M tokens, about $4.27 at API prices; 164K tokens unpriced.
+
+The scan cache (`~/.uxnan/usage-scan.json`) carries a version that is bumped
+whenever a price or a parser changes what a record is worth, so every file is
+read again rather than keeping sums made the old way.
 
 **Antigravity's store, verified against the driven surface** (agy 1.4.12): a
 turn driven over `--input-format stream-json` streamed `input_tokens 10069,

@@ -485,14 +485,19 @@ Three audiences, three homes — keep them separate so none of them rots:
   table or an id-keyed rule for effort or context: a new model must appear
   without a code change, and only for the accounts that can use it.
 
-  **The one Claude table left is the price**: `CLAUDE_PRICES` in
-  `bridge/src/usage/usage-prices.ts`, pinned to Anthropic's published rates by
-  `test/usage/transcript-usage.test.ts` and keyed on the model id, not its
-  family (Haiku 5.5 prices by prompt length; Opus 5.5 and Fable 5.1 read the
-  cache at their own rates). Spend is read from transcripts that record tokens
-  per response but cost only per CLI process, so a new generation needs its
-  entry there; one without it shows as unpriced tokens, never a guess. Full
-  rules: [`bridge/docs/agents.md`](bridge/docs/agents.md) → *Claude Code models*.
+  **Prices are the only tables left**, one per provider whose transcripts
+  record tokens but no cost, both in `bridge/src/usage/usage-prices.ts` and
+  pinned to the provider's published rates by
+  `test/usage/transcript-usage.test.ts`: `CLAUDE_PRICES` (Anthropic; keyed on
+  the model id, not its family — Haiku 5.5 prices by prompt length; Opus 5.5,
+  Sonnet 5.5 and Fable 5.1 read the cache at their own rates) and
+  `CODEX_PRICES` (OpenAI; one row per exact model id and service tier, with its
+  long-context prices past 272K input tokens). A new generation needs its row
+  there; one without it shows as unpriced tokens, never a guess. Re-read the
+  provider's page and update the pinned test when a price moves — never adjust
+  the test to fit the code. Full rules:
+  [`bridge/docs/agents.md`](bridge/docs/agents.md) → *Claude Code models* and
+  *Spend*.
 
 - **The standalone Gemini CLI is intentionally unsupported: do not reintroduce
   it.** Its adapter, contract id, catalogs, hooks, quota reader and UI surfaces

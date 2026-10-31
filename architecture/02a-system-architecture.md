@@ -2855,9 +2855,14 @@ que reporta su `step_update`; `bridge/src/usage/antigravity-usage.ts`):
 cuenta **todo** lo que el agente gasto en esa PC, los turnos del bridge y las sesiones
 que la persona corrio en una terminal. Antigravity se cobra contra la cuota del plan
 y Uxnan no conoce precio por token para el: aparece en tokens, sin precio. El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
-una estimacion a los **precios publicados por Anthropic** (Claude: la tabla de
-precios de modelos, mantenida a mano en `bridge/src/usage/usage-prices.ts` e
-incluyendo los tramos por longitud de prompt de Haiku 5.5). Es una estimacion
+una estimacion a los **precios publicados del proveedor**, mantenidos a mano en
+`bridge/src/usage/usage-prices.ts` y fijados por pruebas: Claude (`CLAUDE_PRICES`,
+la tabla de Anthropic con los tramos por longitud de prompt de Haiku 5.5) y Codex
+(`CODEX_PRICES`, la de OpenAI por id exacto de modelo y nivel de servicio — el
+`service_tier` de `thread_settings_applied` — con precios de contexto largo por
+encima de 272K tokens de entrada; el razonamiento ya va dentro de la salida y se
+cobra una vez, y una respuesta con escrituras de cache queda sin precio porque
+Codex no dice su duracion). Es una estimacion
 porque se infiere de los tokens, no porque falte el dato: el CLI de Claude si
 registra su coste real por modelo (`cost-state` → `modelUsage[].costUSD` en su
 transcripcion, junto a `hasUnknownModelCost`), que Uxnan todavia no lee — igual

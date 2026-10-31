@@ -73,6 +73,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Zero's naming run is read-only** (`zero exec --plan`).
 
 ### Added
+- **Codex spend is priced** at OpenAI's published API rates (`CODEX_PRICES`,
+  read 2026-10-31, pinned by tests): one row per exact model id and service
+  tier (standard, flex, fast, ultrafast — from the rollout's
+  `thread_settings_applied`), with long-context prices past 272K input tokens.
+  Cached input is priced at its own rate, reasoning once as output; a request
+  with cache writes, an unknown id or tier stays unpriced, never guessed.
 - **Antigravity and OpenCode plan limits** in `agent/usageStats`. Antigravity
   is asked through `agy -p /usage` and `agy -p /credits` (agy 1.1.11 and later
   answer them without an agent turn; the version is checked first, and an
@@ -109,6 +115,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   names its plans as Codex does (`ent26` → Enterprise, `prolite` → Pro Lite, …).
 
 ### Fixed
+- **Claude Sonnet 5.5 cache reads cost 0.05x** ($0.10 per million), as
+  Anthropic's table now publishes, not $0.20.
+- The spend cache is versioned, so a price change re-reads every transcript
+  instead of keeping sums made at the old prices.
 - **Grok showed no bar on a free account.** Its billing answer is protobuf
   JSON, which leaves zero values out: a current period with no
   `creditUsagePercent` is now the weekly window at 0%, with its reset.

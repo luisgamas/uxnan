@@ -10,6 +10,9 @@
  * file of a resumed or forked session, so its responses are counted once
  * across files: the first file seen owns each response.
  *
+ * What a record is worth is fixed when it is read (`spendOf`), so the cache's
+ * version is bumped whenever a price table or a parser changes it.
+ *
  * OpenCode keeps its messages in a SQLite database, read directly each time
  * (`node:sqlite`, read-only) — it answers in milliseconds. Antigravity keeps
  * one SQLite database per conversation (`antigravity-usage.ts`): each is read
@@ -116,7 +119,9 @@ interface FileEntry {
 }
 
 interface CacheFile {
-  version: 1;
+  /** Bumped whenever what a record is worth changes (a price table, a parser),
+   *  so every file is read again instead of keeping sums made the old way. */
+  version: 2;
   nextId: number;
   files: Record<string, FileEntry>;
   /** Claude response key → id of the file that owns it. */
@@ -124,7 +129,7 @@ interface CacheFile {
 }
 
 function emptyCache(): CacheFile {
-  return { version: 1, nextId: 1, files: {}, claudeOwner: {} };
+  return { version: 2, nextId: 1, files: {}, claudeOwner: {} };
 }
 
 /** A fresh spend record. */
@@ -289,7 +294,7 @@ export class UsageScanner {
   async #load(): Promise<CacheFile> {
     if (this.#cache) return this.#cache;
     const raw = await this.#o.state.readJson<CacheFile>(USAGE_SCAN_FILE).catch(() => null);
-    this.#cache = raw?.version === 1 && raw.files ? raw : emptyCache();
+    this.#cache = raw?.version === 2 && raw.files ? raw : emptyCache();
     return this.#cache;
   }
 
