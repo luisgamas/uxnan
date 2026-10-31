@@ -44,7 +44,8 @@ The panel (`src/lib/components/ProviderSpend.svelte`, view data from
 
 Cost is what the provider billed where the CLI records it (pi, Grok, OpenCode;
 a free model counts $0). Otherwise it is an **estimate at the provider's public
-API prices** (Claude Code) and the headline says so — a subscription plan pays
+API prices** (Claude Code at Anthropic's, Codex at OpenAI's — per model, service
+tier and context length) and the headline says so — a subscription plan pays
 a flat fee instead. A model with no known price is never shown as $0: it reads
 **No price**, is counted in tokens, and focusing such an agent charts it in
 tokens.

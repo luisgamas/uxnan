@@ -35,6 +35,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   appears by itself a few seconds later (the phone asks again every 5 seconds,
   18 times at most, only while the screen is open). Sessions that cannot be
   named keep *Untitled session*.
+- **Codex spend shows its cost** in the spend chart and a PC's details — an
+  estimate at OpenAI's API prices from the bridge — instead of "No price".
 - **Banked resets**: each reset is listed with its expiry; Claude Code's say to
   use them with `/limit-reset` in Claude Code and have no Redeem button, Codex's
   keep theirs behind a confirmation. Antigravity appears in the spend chart.

@@ -92,6 +92,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   usage popover — every provider the bridge reads can be pinned, six today.
 
 ### Changed
+- **Codex spend shows its cost** in Settings → Providers — an estimate at
+  OpenAI's API prices, the bridge's new Codex price table — instead of "No
+  price"; Claude Sonnet 5.5's estimate reads its cache at the published 0.05x.
 - **The status-bar usage popover is wider and denser.** 30rem (never wider than
   the window), one block per provider: name and plan, one line per window
   (name · bar · % used · "in 3d 6h", the clock time on hover), then its money
