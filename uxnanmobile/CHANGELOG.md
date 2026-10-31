@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.47-alpha.20261031+20261031] - 20261031
 ### Added
 
 - **Antigravity and OpenCode plan limits** on a PC's details screen, with the
