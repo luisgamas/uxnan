@@ -15,7 +15,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { GitService, runGit } from '../../src/index.js';
 import {
+  CREATED_MARKER,
   MARKER_FILE,
+  markWorktreeCreated,
   defaultRoot,
   managedPath,
   markerMatches,
@@ -237,4 +239,33 @@ test('the sibling layout creates nothing of its own', async () => {
   // `prepare` must be a no-op there: that folder is the user's own, not ours.
   await prepareWorktreePath(resolved);
   await assert.rejects(() => readFile(join(repo, '..', MARKER_FILE), 'utf8'));
+});
+
+test('a worktree the bridge creates carries the record the desktop reads', async () => {
+  const root = await newDir();
+  const repo = await newRepo();
+
+  const made = await git.createWorktree(repo, 'by-phone', undefined, { location: 'custom', root });
+  const adminDir = (await readFile(join(made.path, '.git'), 'utf8'))
+    .split('\n')
+    .find((l) => l.startsWith('gitdir:'))!
+    .slice('gitdir:'.length)
+    .trim();
+  assert.equal(await readFile(join(adminDir, CREATED_MARKER), 'utf8'), '');
+
+  // A checkout made with plain git has none — that is what "external" means.
+  const plain = join(await newDir(), 'plain');
+  await runGit(repo, ['worktree', 'add', '-b', 'plain', plain]);
+  const plainAdmin = (await readFile(join(plain, '.git'), 'utf8'))
+    .split('\n')
+    .find((l) => l.startsWith('gitdir:'))!
+    .slice('gitdir:'.length)
+    .trim();
+  await assert.rejects(readFile(join(plainAdmin, CREATED_MARKER)));
+});
+
+test('recording a creation never fails the creation', async () => {
+  // Not a linked worktree (no `.git` file): nothing to write, nothing thrown.
+  await markWorktreeCreated(await newDir());
+  await markWorktreeCreated(join(await newDir(), 'missing'));
 });

@@ -20,7 +20,7 @@
  * tool that walks the tree would walk one copy of the project per worktree.
  */
 import { homedir } from 'node:os';
-import { dirname, basename, join } from 'node:path';
+import { dirname, basename, isAbsolute, join } from 'node:path';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 
 /** Which layout new worktrees use. */
@@ -254,4 +254,30 @@ export async function prepareWorktreePath(resolved: ResolvedWorktree): Promise<v
   const marker = join(parent, MARKER_FILE);
   if (await exists(marker)) return;
   await writeFile(marker, normalize(resolved.mainWorktree), 'utf8').catch(() => undefined);
+}
+
+/** The file whose presence in a worktree's git admin directory says "Uxnan
+ * created this worktree" — the desktop engine writes and reads the same one
+ * (`CREATED_MARKER` in `uxnandesktop/src-tauri/crates/workspace-engine/src/git.rs`).
+ * It lives with the worktree: `git worktree remove`/`prune` delete the directory,
+ * `git worktree move` keeps it. */
+export const CREATED_MARKER = 'uxnan-created';
+
+/**
+ * Record that Uxnan created the worktree at [worktreePath], so the desktop's left
+ * panel does not treat a checkout the phone made as one that "appeared on its
+ * own" and set it aside. Best-effort: a creation must not fail over a record —
+ * the worktree would merely look external, which the panel shows with a way back.
+ */
+export async function markWorktreeCreated(worktreePath: string): Promise<void> {
+  try {
+    // A linked worktree's `.git` is a file: `gitdir: <common dir>/worktrees/<name>`.
+    const text = await readFile(join(worktreePath, '.git'), 'utf8');
+    const target = /^gitdir:\s*(.+)$/m.exec(text)?.[1]?.trim();
+    if (!target) return;
+    const adminDir = isAbsolute(target) ? target : join(worktreePath, target);
+    await writeFile(join(adminDir, CREATED_MARKER), '');
+  } catch {
+    // Unreadable or not a linked worktree: nothing to record.
+  }
 }
