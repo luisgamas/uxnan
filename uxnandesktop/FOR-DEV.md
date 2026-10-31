@@ -40,7 +40,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (2
 integration), of which 56 are ignored probes that need something real to talk to
 (one copies and runs a built bridge runtime, 48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 2,080 frontend Vitest tests across two
+GitHub tests) + 2,154 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its

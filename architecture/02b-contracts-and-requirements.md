@@ -1,6 +1,12 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.7.0 | **Fecha:** 2026-10-31 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.8.0 | **Fecha:** 2026-10-31 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.8.0):** `AgentSessionSummary` gains `titlePending?` (the
+> bridge is naming an untitled agent session; the title arrives on a later
+> `agent/sessions` answer) and the adapter-side `NativeSessionInfo` /
+> `GenerateTitleOptions` gain `model?` (the model a session ran on, used to
+> name it). No method or notification is added.
 >
 > **Executive summary (1.7.0):** approvals and questions never expire.
 > `ApprovalResolvedParams.timedOut` and `QuestionResolvedParams.timedOut` are

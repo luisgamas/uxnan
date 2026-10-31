@@ -1,11 +1,23 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.11.0
+> **Version:** 1.12.0
 > **Fecha:** 2026-10-31
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.12.0):** the agents' own sessions are listed in **one
+> place**, the conversation catalog (§5.8.19, §5.8.21): the desktop's
+> Conversations tab and the phone's catalog both have an *Agent sessions* view,
+> and the new-chat / new-conversation screens only say how many there are, so
+> they stay composer-first however much history exists. A session its CLI keeps
+> no title for is **named by the bridge** in the background
+> (`AgentSessionSummary.titlePending`; the clients ask again, no notification),
+> with the same `generateTitle` errand as a conversation's and one model rule for
+> every agent: the cheapest the CLI can name, else the conversation's model (for
+> a native session, the one it last ran on, `NativeSessionInfo.model`), else the
+> default.
+>
 > **Executive summary (1.11.0):** an agent's approval or question **waits for a
 > person, with no clock** (§5.8.16). The bridge's five-minute auto-reject /
 > auto-skip and its phone-connected countdown are gone; a request ends only

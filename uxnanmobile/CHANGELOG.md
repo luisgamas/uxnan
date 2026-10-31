@@ -14,14 +14,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   nobody made. A card answered on another client while the phone was away
   settles from the outcome the bridge stores on it (`ApprovalRequest.outcome`,
   `QuestionRequest.outcome`) on the next history read.
-
-### Added
-
-- **"Needs you" notifications.** A new *Needs you* switch in Settings →
-  Notifications (sent to the bridge as `needsInput`); when an agent asks for an
-  approval or a question outside the conversation on screen, the phone shows
-  one local notification for it and removes it once the request is answered
-  anywhere. A foreground "needs you" push is keyed the same way.
 - **The new-conversation screen stays short, however much history there is.**
   It keeps the folder's three latest conversations and *See all*; the agents'
   own sessions in that folder (the ones started in a terminal on the PC or in
@@ -40,6 +32,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   named keep *Untitled session*.
 
 ## [0.0.46-alpha.20261030+20261030] - 20261030
+
+### Added
+
+- **"Needs you" notifications.** A new *Needs you* switch in Settings →
+  Notifications (sent to the bridge as `needsInput`); when an agent asks for an
+  approval or a question outside the conversation on screen, the phone shows
+  one local notification for it and removes it once the request is answered
+  anywhere. A foreground "needs you" push is keyed the same way.
+
 ### Added
 
 - **Every conversation in one searchable catalog.** The search button of the
