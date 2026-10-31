@@ -88,6 +88,17 @@ export function createOpenCodeServer(
  * leave behind; `--standalone` keeps the run self-contained. OpenCode 1 has no
  * such service and rejects the flag.
  */
-export function openCodeRunArgs(protocol: OpenCodeProtocolVersion, prompt: string): string[] {
-  return protocol === 2 ? ['run', '--standalone', prompt] : ['run', prompt];
+export function openCodeRunArgs(
+  protocol: OpenCodeProtocolVersion,
+  prompt: string,
+  model?: string,
+  ownedTitle?: string,
+): string[] {
+  const flags = model !== undefined ? ['--model', model] : [];
+  // OpenCode 2 keeps the session a run opens; titled with a conversation-id
+  // look-alike it is the bridge's (never listed as a person's session).
+  const owned = protocol === 2 && ownedTitle !== undefined ? ['--title', ownedTitle] : [];
+  return protocol === 2
+    ? ['run', '--standalone', ...flags, ...owned, prompt]
+    : ['run', ...flags, prompt];
 }

@@ -156,7 +156,9 @@ at a time:
 - **Sessions in a folder.** `agent/sessions` lists each agent's own sessions in
   a folder (started in a terminal, in the agent's app or by the bridge), and
   `thread/start` with `agentSessionId` continues one. Antigravity cannot list
-  its sessions. A conversation keeps its native session across a bridge restart
+  its sessions. A session its CLI keeps no title for is named by the bridge in
+  the background (listed `titlePending` until it is), on the cheapest model its
+  agent can name with — else the conversation's, else the default. A conversation keeps its native session across a bridge restart
   or self-update, for all seven agents.
 - **A terminal holds its session.** Uxnan Desktop tells the bridge which
   sessions its terminals have open (`agent/hold` / `agent/release`, local channel

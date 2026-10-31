@@ -91,6 +91,7 @@ import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { SessionHolds } from './agents/session-holds.js';
+import { SessionTitles } from './agents/session-titles.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
@@ -674,6 +675,16 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     openCodeMessages: (sessionId, cwd) =>
       openCodeAdapter?.readSessionMessages(sessionId, cwd) ?? Promise.resolve([]),
   });
+  // The names of the agents' own sessions that have none (§5.8.19): the same
+  // naming errand as a conversation's, read from the session's own history.
+  const sessionTitles = new SessionTitles({
+    state,
+    readTurns: (source, threadId) => sessionHistory.readTurns(source, threadId),
+    generate: (agentId, options) => agentManager.generateSessionTitle(agentId, options),
+    now,
+    logger,
+  });
+  await sessionTitles.init();
   // The one owner of that merge (§5.8.8): before `turn/list` pages a thread,
   // and every few seconds for the threads a connected client is reading — a
   // change is announced, so no client polls for it.
@@ -753,6 +764,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     agentManager,
     viewStore,
     sessionHolds,
+    sessionTitles,
     agentInstalls,
     projects,
     ledger,

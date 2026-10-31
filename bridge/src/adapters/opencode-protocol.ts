@@ -220,6 +220,8 @@ export interface OpenCodeListedSession {
   /** The folder it runs in. */
   directory?: string;
   title?: string;
+  /** The model the session last ran on, as `provider/model` — what `--model` takes. */
+  model?: string;
   /** Last change, epoch ms. */
   updated?: number;
 }

@@ -1173,7 +1173,7 @@ export class PiAdapter extends BaseAgentAdapter {
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
-    const model = this.#titleModel();
+    const model = this.#titleModel(options.model);
     const args = ['-p', '--no-session'];
     if (model) args.push('--model', model);
     args.push(prompt);
@@ -1188,13 +1188,16 @@ export class PiAdapter extends BaseAgentAdapter {
    * The model to name with.
    *
    * pi routes through many providers, so unlike the single-vendor CLIs there is
-   * no fixed "cheap tier" id to hard-code — pinning one here would break the
-   * moment a user's provider set differs. Passing nothing lets pi use its own
-   * configured default, which is the honest answer until a per-provider cheap
-   * model is configurable (see bridge/FOR-DEV.md).
+   * no cheap tier it announces and none to hard-code — a pinned id would break
+   * the moment a user's provider set differs. The rule for an agent like this:
+   * the conversation's own model, else the configured default, else nothing
+   * (pi's own default).
+   *
+   * FOR-DEV: a titling model set in daemon config for this and the other
+   * multi-provider CLIs — see FOR-DEV.md → *A configurable titling model*.
    */
-  #titleModel(): string | undefined {
-    return undefined;
+  #titleModel(conversationModel: string | undefined): string | undefined {
+    return conversationModel ?? this.#defaultModel;
   }
 
   /**

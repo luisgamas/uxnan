@@ -556,6 +556,7 @@ function fakeContext(
     } as unknown as BridgeContext['agentManager'],
     viewStore: {} as BridgeContext['viewStore'],
     sessionHolds: {} as BridgeContext['sessionHolds'],
+    sessionTitles: {} as BridgeContext['sessionTitles'],
     agentInstalls: {} as BridgeContext['agentInstalls'],
     projects: {} as BridgeContext['projects'],
     ledger: {} as BridgeContext['ledger'],

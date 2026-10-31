@@ -121,7 +121,13 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       const existing = await ctx.threadStore.threadForSession(agentId, agentSessionId);
       if (existing) return withLiveState(existing, ctx);
     }
-    const title = optionalString(p, 'title');
+    // A session picked without a name takes the one the bridge gave it, if it
+    // has (`SessionTitles`) — provisional, like the CLI's own.
+    const title =
+      optionalString(p, 'title') ??
+      (agentSessionId !== undefined
+        ? ctx.sessionTitles.titleOf(agentId, agentSessionId)
+        : undefined);
     // The conversation starts in its agent's default mode, set here by the
     // owner of threads — not by whichever client opened it, so every surface
     // starts alike and the first turn never runs in a mode nobody chose.

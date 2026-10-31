@@ -575,7 +575,13 @@ test('OpenCodeV1Server asks the server whether it has a session', async () => {
 test('OpenCodeV2Server lists a folder’s sessions', async () => {
   const fake = fakeOpenCode(2, {
     listedSessions: [
-      { id: 'ses_a', title: 'Dark theme', location: { directory: '/p' }, time: { updated: 20 } },
+      {
+        id: 'ses_a',
+        title: 'Dark theme',
+        model: { id: 'big-pickle', providerID: 'opencode', variant: 'default' },
+        location: { directory: '/p' },
+        time: { updated: 20 },
+      },
       { id: 'ses_b', location: { directory: '/p' }, time: { updated: 10 } },
       { id: 'ses_c', title: 'x', location: { directory: '/q' }, time: { updated: 30 } },
     ],
@@ -587,7 +593,13 @@ test('OpenCodeV2Server lists a folder’s sessions', async () => {
   });
   try {
     assert.deepEqual(await server.listSessions('/p', 5), [
-      { id: 'ses_a', directory: '/p', title: 'Dark theme', updated: 20 },
+      {
+        id: 'ses_a',
+        directory: '/p',
+        title: 'Dark theme',
+        model: 'opencode/big-pickle',
+        updated: 20,
+      },
       { id: 'ses_b', directory: '/p', updated: 10 },
     ]);
     const request = fake.requests().find((r) => r.url.startsWith('/api/session?'));

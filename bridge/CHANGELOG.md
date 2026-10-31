@@ -40,6 +40,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   registered phone whose `needsInput` preference is on (absent = on), behind the
   new `pushOnAgentNeedsInput` config switch (default `true`). The push carries
   `data.requestId` so the phone can drop it once the request is answered.
+- **The bridge names the agents' own sessions that have no title** (architecture/02a
+  §5.8.19). `agent/sessions` lists a session its CLI keeps no title for (OpenCode's
+  never-named ones, Codex's with no name or preview, a session only a terminal
+  hold knows) as `titlePending`, queues it, and the answer to the next ask carries
+  the name — the same errand as a conversation's (`generateTitle`, one layer),
+  fed the session's first exchange read from the agent's own history. Bounded: two
+  runs at a time, a queue of 12, 30 runs an hour, two tries per session; kept in
+  `session-titles.json`. `thread/start { agentSessionId }` with no title takes it.
+  A session is named on **the model it last ran on**, read from its own record
+  (`NativeSessionInfo.model`: OpenCode 2's session list, pi's last `model_change`,
+  Grok's `summary.json`, Zero's `metadata.json`), before the agent's default.
+- **Naming a conversation follows one model rule for every agent**: the agent's
+  cheapest model when its CLI can name one (Claude Code, Codex, Antigravity),
+  else the conversation's own model (`GenerateTitleOptions.model`, passed by the
+  manager), else the default. OpenCode (`--model`), pi (`--model`), Grok (`-m`)
+  and Zero (`-m`) now take the conversation's model instead of always their own
+  default — which, on a machine whose default has no credit, made every title
+  fail. Measured on all seven real CLIs (`docs/agents.md` → *Naming a
+  conversation*).
+
+### Fixed
+
+- **"Untitled session" rows that were Uxnan's own naming runs.** An OpenCode
+  one-shot keeps its session, untitled and listed like a person's, and its first
+  message (the naming prompt) could not be seen in the list. The run now carries
+  a bridge-owned `--title` (OpenCode 2) and `$PWD` — OpenCode takes its project
+  from `$PWD`, so its session landed in the bridge's own folder — and a session
+  whose first message is one of Uxnan's one-shots is left out of the list.
+- **OpenCode 1's `New session - <time>` placeholder** counts as untitled, so the
+  bridge names it.
+- **Zero's naming run is read-only** (`zero exec --plan`).
 
 ## [0.0.54-alpha.20261030] - 20261030
 ### Added

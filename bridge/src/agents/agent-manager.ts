@@ -30,6 +30,7 @@ import {
   type AgentStreamEvent,
   type ApprovalDecision,
   type ApprovalRequestBlock,
+  type GenerateTitleOptions,
   type IAgentAdapter,
   type QuestionRequestBlock,
   type NativeSessionInfo,
@@ -567,6 +568,21 @@ export class AgentManager {
       );
     }
     return { lists: await Promise.all(pending), unlisted };
+  }
+
+  /**
+   * Name one of an agent's own sessions from its opening exchange — the same
+   * errand as naming a conversation (`IAgentAdapter.generateTitle`, one layer),
+   * for a session that has no title of its own. `undefined` when the agent
+   * cannot, is not installed, or produced nothing usable.
+   */
+  async generateSessionTitle(
+    agentId: AgentId,
+    options: GenerateTitleOptions,
+  ): Promise<string | undefined> {
+    const adapter = this.#adapters.get(agentId);
+    if (!adapter?.generateTitle || !this.isAvailable(agentId)) return undefined;
+    return adapter.generateTitle(options);
   }
 
   /**
@@ -1190,6 +1206,7 @@ export class AgentManager {
         userText,
         ...(assistantText ? { assistantText } : {}),
         ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
+        ...(thread.model !== undefined ? { model: thread.model } : {}),
       });
       if (!title) return;
 

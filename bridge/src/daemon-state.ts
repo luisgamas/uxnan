@@ -74,6 +74,8 @@ export const DAEMON_FILES = {
   relay: 'relay.json',
   // Every agent process the running bridge started (`adapters/child-ledger.ts`).
   agentProcesses: 'agent-processes.json',
+  // The names the bridge gave the agents' own sessions that had none (`agents/session-titles.ts`).
+  sessionTitles: 'session-titles.json',
 } as const;
 
 /**

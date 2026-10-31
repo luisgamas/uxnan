@@ -15,6 +15,7 @@ import type { MetricsService } from './metrics/metrics-service.js';
 import type { UsageScanner } from './usage/usage-scan.js';
 import type { AgentManager } from './agents/agent-manager.js';
 import type { SessionHolds } from './agents/session-holds.js';
+import type { SessionTitles } from './agents/session-titles.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
 import type { BrowseService } from './workspace/browse-service.js';
 import type { PushService } from './push/push-service.js';
@@ -61,6 +62,8 @@ export interface BridgeContext {
   readonly viewStore: ViewStore;
   /** Which agent sessions a desktop terminal holds right now (§5.8.19). */
   readonly sessionHolds: SessionHolds;
+  /** The names given to the agents' own sessions that had none (§5.8.19). */
+  readonly sessionTitles: SessionTitles;
   /** Which agent CLIs are installed, kept true while the bridge runs. */
   readonly agentInstalls: AgentInstalls;
   /** The registry of projects every client mirrors (§5.8.17). */

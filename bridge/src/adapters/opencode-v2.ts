@@ -520,6 +520,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
       const s = raw as {
         id?: unknown;
         title?: unknown;
+        model?: { id?: unknown; providerID?: unknown };
         location?: { directory?: unknown };
         time?: { updated?: unknown };
       };
@@ -529,6 +530,10 @@ export class OpenCodeV2Server implements IOpenCodeServer {
           id: s.id,
           ...(typeof s.location?.directory === 'string' ? { directory: s.location.directory } : {}),
           ...(typeof s.title === 'string' ? { title: s.title } : {}),
+          // The model the session last ran on (verified against opencode 2.2.0).
+          ...(typeof s.model?.providerID === 'string' && typeof s.model.id === 'string'
+            ? { model: `${s.model.providerID}/${s.model.id}` }
+            : {}),
           ...(typeof s.time?.updated === 'number' ? { updated: s.time.updated } : {}),
         },
       ];

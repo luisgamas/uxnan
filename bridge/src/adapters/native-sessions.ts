@@ -10,7 +10,7 @@
  * prompt are) and the tail (where the latest title is) of each file are read,
  * newest files first, up to {@link MAX_LISTED}.
  */
-import { open, readdir, stat } from 'node:fs/promises';
+import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { NativeSessionInfo } from '@uxnan/shared';
 
@@ -91,7 +91,7 @@ export async function listClaudeSessions(home: string, cwd: string): Promise<Nat
 export async function listPiSessions(agentDir: string, cwd: string): Promise<NativeSessionInfo[]> {
   const out: NativeSessionInfo[] = [];
   for (const file of await newestFiles(piSessionDir(agentDir, cwd), '.jsonl')) {
-    const { head } = await readEnds(file.path);
+    const { head, tail } = await readEnds(file.path);
     let header: Record<string, unknown> | undefined;
     let prompt: string | undefined;
     for (const line of jsonLines(head)) {
@@ -106,9 +106,61 @@ export async function listPiSessions(agentDir: string, cwd: string): Promise<Nat
     if (!header || header['cwd'] !== cwd || typeof header['id'] !== 'string') continue;
     const title = cleanTitle(prompt);
     if (title === undefined) continue;
-    out.push({ sessionId: header['id'], cwd, title, updatedAt: file.mtime, interactive: true });
+    const model = piSessionModel(tail) ?? piSessionModel(head);
+    out.push({
+      sessionId: header['id'],
+      cwd,
+      title,
+      updatedAt: file.mtime,
+      interactive: true,
+      ...(model !== undefined ? { model } : {}),
+    });
   }
   return out;
+}
+
+/**
+ * The model pi last switched to in [text] — a `model_change` entry
+ * (`{ provider, modelId }`) — as `provider/id`, the form `pi --model` takes.
+ */
+export function piSessionModel(text: string): string | undefined {
+  let model: string | undefined;
+  for (const line of jsonLines(text)) {
+    if (
+      line['type'] === 'model_change' &&
+      typeof line['provider'] === 'string' &&
+      typeof line['modelId'] === 'string'
+    ) {
+      model = `${line['provider']}/${line['modelId']}`;
+    }
+  }
+  return model;
+}
+
+/** The model a Grok session runs on: `current_model_id` of its `summary.json`. */
+async function grokSessionModel(dir: string): Promise<string | undefined> {
+  try {
+    const summary: unknown = JSON.parse(await readFile(join(dir, 'summary.json'), 'utf8'));
+    const id = isRecord(summary) ? summary['current_model_id'] : undefined;
+    return typeof id === 'string' && id.length > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The model a Zero session runs on: `modelId` of its `metadata.json`. */
+export async function zeroSessionModel(
+  home: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  try {
+    const file = join(home, '.local', 'share', 'zero', 'sessions', sessionId, 'metadata.json');
+    const metadata: unknown = JSON.parse(await readFile(file, 'utf8'));
+    const id = isRecord(metadata) ? metadata['modelId'] : undefined;
+    return typeof id === 'string' && id.length > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Where Grok keeps a folder's sessions: `~/.grok/sessions/<folder, URL-encoded>/<id>/`. */
@@ -160,7 +212,15 @@ export async function listGrokSessions(home: string, cwd: string): Promise<Nativ
     }
     const title = cleanTitle(promptText(prompt));
     if (title === undefined) continue;
-    out.push({ sessionId: file.name, cwd, title, updatedAt: file.mtime, interactive: true });
+    const model = await grokSessionModel(join(root, file.name));
+    out.push({
+      sessionId: file.name,
+      cwd,
+      title,
+      updatedAt: file.mtime,
+      interactive: true,
+      ...(model !== undefined ? { model } : {}),
+    });
   }
   return out;
 }

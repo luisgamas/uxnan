@@ -185,19 +185,26 @@ them, in two stages: the opening message titles a thread instantly, and once its
 first turn has an answer the agent writes the real one.
 
 That second step is a **side errand, not a turn** — a one-shot with no session
-id, so nothing enters the conversation's history — on the agent's **cheapest**
-model, because a six-word title is not work for the model the user is paying
-attention to.
+id, so nothing enters the conversation's history. One rule picks its model for
+every agent: **the agent's cheapest model when its CLI can name one, else the
+conversation's own model (for a native session, the model it last ran on),
+else the agent's default** — because a six-word title
+is not work for the model the user is paying attention to, and for an agent with
+no cheap tier to name, spending the model the conversation already runs on beats
+guessing one the account may not have (`GenerateTitleOptions.model` carries the
+conversation's; `AgentManager` passes the thread's). Measured 2026-10-31, one
+real run per adapter in a scratch folder (Claude Code 2.1.312, codex-cli
+0.163.0, agy 1.4.12, OpenCode 2.2.0, pi 1.4.0, Grok 1.0.70, Zero 0.10.0):
 
-| Agent | One-shot used | Title model |
-|---|---|---|
-| **Claude Code** | `-p` with no `--resume` | `haiku` |
-| **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` |
-| **OpenCode** | `opencode run` (no `--session`/`--continue`); on 2.x `opencode run --standalone`, so a title never starts the shared background service | CLI default |
-| **pi** | `pi -p --no-session` | CLI default |
-| **Antigravity** | `agy -p --mode plan` (no `--conversation`) | the lowest tier of a `flash` family in `agy models` (else any `-low` id, else the CLI default) — read, never pinned |
-| **Grok** | `grok -p` | CLI default |
-| **Zero** | `zero exec` | CLI default |
+| Agent | One-shot used | Title model | Measured |
+|---|---|---|---|
+| **Claude Code** | `-p --no-session-persistence`, no `--resume` | `haiku` (cheapest known) | title in 3.1 s, no session left |
+| **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` (cheapest known) | title in 3.7 s, no session left |
+| **Antigravity** | `agy -p --mode plan` (no `--conversation`) | the lowest tier of a `flash` family in `agy models` (else any `-low` id) — read, never pinned (`gemini-3.8-flash-low` on this account); with no cheap tier listed, the conversation's model, else the default | title in 8.2 s |
+| **OpenCode** | `opencode run`; on 2.x `opencode run --standalone --title <uuid>` (the run's session is the bridge's, so it is never listed as a person's), with `$PWD` set to the folder (OpenCode takes its project from `$PWD`, not the process's working directory: without it the run's session landed in the bridge's own folder) | no cheap tier it announces → the conversation's `provider/model` (`--model`), else the configured default, else OpenCode's own | with `opencode/big-pickle`: title in 5.7 s. On OpenCode's own default (an OpenRouter model asking 131k max tokens) the run failed for lack of credit — the case the rule exists for |
+| **pi** | `pi -p --no-session` | none announced → the conversation's `provider/id` (`--model`), else the default, else pi's own | with `openrouter/cohere/north-mini-code:free`: title in 2.5 s, no session left. pi's own default failed (402, no credit) |
+| **Grok** | `grok -p` | none announced (one model on this account) → the conversation's id (`-m`), else the default, else Grok's own | the flag is accepted (`-m grok-4.7`); **no title was produced: the account's free Grok Build usage limit was reached** on 2026-10-31. A title run leaves a Grok session whose first prompt is the naming prompt, which the bridge's session list leaves out by its opening |
+| **Zero** | `zero exec --plan` (read-only: a name never needs a write or a shell) | none for the provider the person set up → the conversation's id (`-m`), else the default, else Zero's own | default: title in 4.1–9.9 s, no session left. `-m gpt-4.1-mini` is accepted (it reached the provider, which refused for lack of credit). Zero's `--mode fast` was **not** used: it picks `claude-haiku-4.5` from Zero's own registry, which fails when the configured provider is another one (`zero model claude-haiku-4.5 belongs to anthropic, not openai-compatible`) |
 
 **Cheap means cheapest on the bill, measured — not the smallest-sounding name.**
 Codex names on `gpt-5.6-luna` rather than the `mini` tier because Luna wins on
@@ -210,7 +217,9 @@ run instead of quietly naming on the default tier.
 
 **Each pinned id — and Antigravity's rule — has a twin in the desktop app**
 (`uxnandesktop/src-tauri/src/convtitle.rs` → `title_model` / `agy_title_model` /
-`title_effort_args`), which names terminal tabs the same way. Move both halves in the same change set — the bridge once passed
+`title_effort_args`), which names terminal tabs the same way (a terminal has no
+conversation model to offer, so an agent with no cheap tier names on its default
+there — the rule's last step). Move both halves in the same change set — the bridge once passed
 **no** model for Antigravity while both the spec and the desktop said it named
 on the cheap flash tier, so every phone-side title quietly ran on the account's
 frontier model.
@@ -219,11 +228,6 @@ Codex needs all three flags: `--ephemeral` writes no session file, `read-only`
 denies the sandbox any write, and `-o` yields the final message **alone** — its
 stdout carries a banner, hook lines and a token count, so parsing that would be
 guesswork.
-
-Six are verified live; **Zero is not** (not installed, no credits) — its form is
-confirmed against Zero's own source, which drives itself that way in its eval
-harness. OpenCode, pi and Grok route through many providers, so there is no
-fixed cheap-tier id to pin and they title on their own default.
 
 **Model ids are checked against each account's real list, never assumed.** A
 wrong id is not cosmetic: the CLI rejects the run and the thread silently keeps
@@ -244,6 +248,47 @@ structurally by the `AgentManager`), so agents without a
 name concept are unaffected, and it needs no loaded thread — verified against
 codex-cli 0.147.0 from a process that never resumed it: the name lands in
 `~/.codex/session_index.jsonl`, which is the list those clients read.
+
+### Naming the agents' own sessions
+
+`agent/sessions` lists what each CLI keeps, and some CLIs keep no title for a
+session (OpenCode never names one it did not title; Codex has none for a thread
+with no name or preview). The bridge names those with **the same errand** — one
+layer, `IAgentAdapter.generateTitle`, under the rule above — on **the model the
+session itself last ran on**, read from the agent's own record where it keeps
+one (`NativeSessionInfo.model`: OpenCode 2's session list `model.providerID/id`,
+pi's last `model_change`, Grok's `summary.json` `current_model_id`, Zero's
+`metadata.json` `modelId`; verified on the real stores 2026-10-31), so a machine
+whose default model has no credit still names what it ran. An agent with a cheap
+tier (Claude Code, Codex, Antigravity) names on that tier as always; OpenCode 1's
+listing carries no model, and a session whose record names none falls to the
+agent's default — from the session's **first exchange read from the agent's own history**
+(`SessionHistoryReader.readTurns`: OpenCode through its server, Claude Code,
+Codex, pi, Zero and Grok from their transcripts). Antigravity's history cannot
+be read, so a session of its own stays untitled.
+
+It never makes a listing wait: `agent/sessions` answers at once with the name it
+already gave or `titlePending`, the work is queued, and the client asks again
+(every 5 s, at most 18 times). `SessionTitles` (`src/agents/session-titles.ts`)
+bounds it: **two runs at a time, a queue of 12** (a listing offers the rest
+later), **30 runs an hour**, a failed session **twice** and then not again until
+the bridge restarts, a session with nothing to read left alone for 10 minutes.
+Names are kept in `session-titles.json` (newest 500). Picking a session up
+(`thread/start { agentSessionId }`) with no title of the client's own takes the
+bridge's.
+
+Reading the first message also finds what Uxnan's own naming runs leave behind
+in a CLI that cannot run one without a session — OpenCode keeps them untitled
+and *interactive*, which is what the "Untitled session" rows were. A session
+whose first message is one of Uxnan's own one-shots (`isOneShotPrompt`) is not
+listed. Measured on OpenCode 2.2.0 with a scratch bridge and **no default model
+configured**: untitled sessions listed `titlePending` and were named in 10–60 s
+on the model each had run on (`opencode/beam-free`, `opencode/big-pickle`), two
+runs at a time. pi (`openrouter/cohere/north-mini-code:free` read from the
+session's own `model_change`) and OpenCode named on that model in 3–5 s; Grok's
+`-m grok-4.7` was refused by the account's usage limit. Zero's `exec` keeps no
+session, and an ACP-opened one is the bridge's own, so its `modelId` was checked
+on a real `metadata.json` and `zero exec --plan -m openrouter/free` was run.
 
 ## Drive surface (read this before touching an adapter)
 
@@ -742,6 +787,11 @@ measured 2026-09-27 against the installed CLIs:
 | Grok | `~/.grok/sessions/<cwd, URL-encoded>/<id>/updates.jsonl` (first `user_message_chunk`s); its ACP `session/list` carries no title and lists empty sessions too | every session with a prompt counts |
 | Zero | ACP `session/list { cwd }` (Zero 0.9.0 announces `sessionCapabilities.list`) | a session opened over ACP keeps the title `ACP session` |
 | Antigravity | — (`agy` has no listing) | continued from the terminal that holds it |
+
+A title is the CLI's own when it keeps one, else the person's first prompt; a
+session with neither is named by the bridge (*Naming the agents' own sessions*)
+and listed `titlePending` until it is. Claude Code, pi and Grok leave out a
+session with no prompt instead.
 
 The bridge lists a program's session only when a conversation continues it,
 never Uxnan's own one-shots (how their prompt opens:
