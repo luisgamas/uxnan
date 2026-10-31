@@ -305,14 +305,15 @@ Continue as chat / Open in terminal, holds and the sessions list — is built
   waits / left an unread result, and when ready to close (and lingers after its
   result is read until another worktree is selected), so *Ready to close* and
   its count are never thinned out (`sidebar-visibility.ts`, `docs/worktrees.md` →
-  *The left panel*). The header says what is held back (a count pill), each
-  project says it too, and an empty panel tells *nothing here* from *everything is
+  *The left panel*). The header says what is held back (a count badge on its
+  one **options** menu — new terminal and profiles, view, both sorts, hidden
+  worktrees, refresh — `SidebarOptionsMenu.svelte`; beside the *Add project*
+  button), each project says it too, and an empty panel tells *nothing here* from *everything is
   hidden*. A worktree **created outside Uxnan** (no `uxnan-created` record in its
   git admin directory — written by `worktreeloc::create`, the PR/issue checkouts
   and the bridge's `createWorktree`) is set aside by the same rule while untouched,
   unless it was already there when its project was first listed or the user showed,
-  pinned or "stopped hiding" it (`knownWorktrees`, `worktreeBaselineProjects`).
-  **Pending the maintainer's visual review.**
+  pinned or "stopped hiding" it (`knownWorktrees`, `worktreeBaselineProjects`). **Pending the maintainer's visual review.**
 - **In-app auto-updater** (`tauri-plugin-updater`) — Settings → Updates with
   stable/nightly channels (mapped to GitHub's pre-release flag), background
   download + agent-idle-guarded install (a restart stops agents, so the install

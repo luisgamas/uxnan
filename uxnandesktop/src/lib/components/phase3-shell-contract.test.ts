@@ -108,10 +108,10 @@ describe("phase-three shell contracts", () => {
   });
 
   it("keeps the audited shell menus on the shared standard width role", () => {
-    const leftSidebar = source("LeftSidebar.svelte");
+    const options = source("SidebarOptionsMenu.svelte");
     const fileTree = source("FileTreePanel.svelte");
     const profile = source("SidebarProfile.svelte");
-    expect(leftSidebar).toMatch(/<DropdownMenu\.Content width="standard" align="end">[\s\S]*?terminal\.newDefault/);
+    expect(options).toMatch(/<DropdownMenu\.Content width="standard" align="end">[\s\S]*?terminal\.newTerminal/);
     expect(fileTree).toMatch(/<DropdownMenu\.Content width="standard" align="end">[\s\S]*?fileTree\.newFile/);
     expect(profile).toContain('<DropdownMenu.SubContent width="standard" viewport="compact">');
     expect(profile).toContain("pets.library");

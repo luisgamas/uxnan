@@ -444,7 +444,7 @@ owner of the state is the `projects` store, persisted in `AppSettings`
   **decision** kept in `AppSettings.knownWorktrees` / `worktreeBaselineProjects`
   (shown, pinned, "stop hiding", or already there when its project was first
   listed — `baselineKnown`, skipped for a host's stand-in list).
-  The panel states what it holds back (header pill, per-project line, view menu)
+  The panel states what it holds back (count badge on the header's options button, per-project line, options menu)
   and `sidebarEmptyState` separates *no projects* / *no match* / *all hidden* /
   *no worktrees yet*. Same behaviour in all three views, because they read the one
   `visibleChildWorktrees`.

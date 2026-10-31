@@ -77,6 +77,18 @@ Three rules about how a worktree is *shown* (not where it lives). The pure logic
 is `src/lib/worktree-label.ts` and `src/lib/sidebar-visibility.ts`; the store
 that owns the state is `src/lib/state/projects.svelte.ts`.
 
+**The header.** Beside *PROJECTS (N)* the header keeps only what must stay in
+sight: the *needs you* pill (an agent waiting inside a collapsed project is
+otherwise invisible), the **Add project** button and one **panel options** button
+(`SidebarOptionsMenu.svelte`). Its menu is the panel's whole control surface —
+*New terminal* (with its shortcut; configured profiles are a submenu), view
+(tree / by status / by review), *Sort projects* and *Sort worktrees* (submenus
+that show their current choice), *View hidden worktrees (N)* and *Stop hiding
+worktrees* (once anything is set aside — the first only looks, the second ends the
+hiding), and *Refresh worktrees* — so a new panel-wide action goes there, not into
+the header. *Add project* lives in one place only, the
+button (its shortcut is global, so the menu does not need a second entry).
+
 **What a worktree is called.** Its branch. A worktree with no branch — a checkout
 of a tag, a commit, a PR — is named after its **folder** (git refuses two
 worktrees on one path, so the folder is what tells them apart), with
@@ -114,14 +126,16 @@ stricter than the single hide: it takes only worktrees the panel already calls
 **inert** (clean, nothing unpushed, no live agent) that nothing above would show.
 A search looks through hidden worktrees, so a name you type is never "missing".
 
-What is held back is always said: a pill in the panel header (*N hidden*, with
-the eye glyph — one press shows them dimmed, another hides them again), a
-*N hidden · Show* line under each expanded project, the same switch and *Show all
-again* in the view menu, and a count beside the branch glyph of a collapsed
-project. When a flat view has nothing to draw, the empty state says *Every
-worktree here is hidden* with a *Show N hidden* button, which is not the same
-message as *No projects yet*. Removing a worktree forgets its mark, and a mark
-whose worktree is gone is pruned once every project has loaded.
+What is held back is always said: a count badge on the panel's **options** button
+in the header (primary while rows are being held back, quiet once you chose to
+look at them), a *N hidden · Show* line under each expanded project, the *View
+hidden worktrees (N)* checkbox — a view switch, the marks stay — and *Stop hiding
+worktrees* — the action that ends the hiding — in the options menu (a project's
+⋯ menu has *Stop hiding worktrees here*), and a count beside the branch glyph of
+a collapsed project. When a flat view has nothing to draw, the empty state says
+*Every worktree here is hidden* with a *Show N hidden* button, which is not the
+same message as *No projects yet*. Removing a worktree forgets its marks, and a
+mark whose worktree is gone is pruned once every project has loaded.
 
 **Worktrees created outside Uxnan start out set aside.** A worktree an agent's
 CLI or a `git worktree add` made on its own — a scratch checkout, a throwaway

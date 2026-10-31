@@ -1,11 +1,11 @@
 /**
- * The panel's hidden-worktrees surface: the header pill that counts what is held
- * back (and switches it on), and an empty state that tells "nothing here" from
+ * The panel's hidden-worktrees surface: the count on the header's options button
+ * (the switch lives in its menu), the per-project line, and an empty state that tells "nothing here" from
  * "everything here is hidden". The rules themselves are `sidebar-visibility.ts`;
  * this proves they reach the screen in every view.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mountWithProviders } from "../../test/render";
 import { app } from "$lib/state/app.svelte";
@@ -35,6 +35,7 @@ function setup(groupBy: SidebarGroupBy, hidden: string[], showHidden = false) {
     [B_OLD.path]: { dirty: 0, ahead: 0, behind: 0 },
   };
   projects.query = '';
+  projects.pickerOpen = false;
   projects.activeWorktreePath = null;
   app.settings.sidebarGroupBy = groupBy;
   app.settings.sidebarExpandedProjects = ['a', 'b'];
@@ -49,63 +50,101 @@ function setup(groupBy: SidebarGroupBy, hidden: string[], showHidden = false) {
 beforeEach(() => setup('none', []));
 
 describe('LeftSidebar — hidden worktrees', () => {
-  it('shows no hidden pill while nothing is hidden', () => {
+  it('shows no hidden badge on the options button while nothing is hidden', () => {
     const { screen } = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
 
-    expect(screen.queryByRole('button', { name: /hidden worktree/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Panel options' })).toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar-options-badge')).toBeNull();
     expect(screen.getByText('old')).toBeInTheDocument();
   });
 
+  it('keeps the header to the title, the attention signal, Add project and the options menu', async () => {
+    const { screen, user } = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
+
+    // What used to be a pill and four more buttons now lives in the options menu.
+    expect(screen.getByRole('button', { name: 'Panel options' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add project…' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New terminal' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Refresh worktrees' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sort' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Add project…' }));
+    expect(projects.pickerOpen).toBe(true);
+  });
+
   it.each(['none', 'status', 'review'] as const)(
-    'holds hidden worktrees back in the %s view and counts them in the header',
+    'holds hidden worktrees back in the %s view and counts them on the options button',
     async (view) => {
       setup(view, [A_OLD.path, B_OLD.path]);
       const { screen } = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
 
       expect(screen.queryByText('old')).toBeNull();
       expect(screen.queryByText('older')).toBeNull();
-      const pill = await screen.findByRole('button', { name: /2 hidden worktree/ });
-      expect(pill).toHaveAttribute('aria-pressed', 'false');
+      expect(
+        await screen.findByRole('button', { name: 'Panel options — 2 hidden worktrees' }),
+      ).toBeInTheDocument();
       // The primary worktrees are not part of it.
       expect(screen.getAllByText('main').length).toBeGreaterThan(0);
     },
   );
 
-  it('draws them again when the pill is pressed, and says so', async () => {
+  it('draws them again from the options menu, and says so', async () => {
     setup('status', [A_OLD.path]);
     const { screen, user } = mountWithProviders(LeftSidebar, {
       commands: { update_settings: () => ({}) },
     });
 
-    await user.click(await screen.findByRole('button', { name: /1 hidden worktree/ }));
+    const trigger = await screen.findByRole('button', { name: /1 hidden worktree/ });
+    trigger.focus();
+    await user.keyboard('{ArrowDown}');
+    const toggle = await vi.waitFor(() => {
+      const hit = [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find((e) =>
+        /View hidden worktrees/.test(e.textContent ?? ''),
+      );
+      if (!hit) throw new Error('no toggle');
+      return hit;
+    });
+    await vi.waitFor(async () => {
+      toggle.focus();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(document.activeElement).toBe(toggle);
+    });
+    await user.keyboard('{Enter}');
 
     expect(await screen.findByText('old')).toBeInTheDocument();
     expect(app.settings.sidebarShowHidden).toBe(true);
-    expect(screen.getByRole('button', { name: /Showing 1 hidden/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
   });
 
-  it('says one hidden worktree in the singular', async () => {
-    setup('none', [A_OLD.path]);
-    const one = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
-    expect(await one.screen.findByRole('button', { name: '1 hidden worktree — show it' })).toBeInTheDocument();
-    expect(one.screen.getByRole('button', { name: /^1 hidden\s*·\s*Show/ })).toBeInTheDocument();
-  });
-
-  it('counts several hidden worktrees in the plural, in Spanish too', async () => {
+  it('counts several hidden worktrees on the options button in Spanish too', async () => {
     setup('none', [A_OLD.path, B_OLD.path]);
     app.settings.language = 'es';
     try {
       const { screen } = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
       expect(
-        await screen.findByRole('button', { name: '2 worktrees ocultos — mostrarlos' }),
+        await screen.findByRole('button', { name: 'Opciones del panel — 2 worktrees ocultos' }),
       ).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: /^1 oculto\s*·\s*Mostrar/ }).length).toBe(2);
     } finally {
       app.settings.language = 'en';
     }
+  });
+
+  it('sets aside a worktree created outside Uxnan the same way, and shows it on request', async () => {
+    // Nobody hid anything: these two simply appeared (plain `git worktree add`)
+    // after the panel had taken the project in, and nothing is happening in them.
+    setup('none', []);
+    app.settings.knownWorktrees = [];
+    const { screen, user } = mountWithProviders(LeftSidebar, { commands: { update_settings: () => ({}) } });
+
+    expect(screen.queryByText('old')).toBeNull();
+    expect(screen.queryByText('older')).toBeNull();
+    expect(
+      await screen.findByRole('button', { name: 'Panel options — 2 hidden worktrees' }),
+    ).toBeInTheDocument();
+    // The per-project line is the same switch, with the same words.
+    await user.click(await screen.findAllByRole('button', { name: /^1 hidden\s*·\s*Show/ }).then((b) => b[0]));
+    expect(await screen.findByText('old')).toBeInTheDocument();
+    expect(app.settings.sidebarShowHidden).toBe(true);
   });
 
   it('keeps a project in the tree even when all its children are hidden, with a way back', async () => {
@@ -115,7 +154,7 @@ describe('LeftSidebar — hidden worktrees', () => {
     });
 
     expect(await screen.findByText('alpha')).toBeInTheDocument();
-    // The project's own footnote is the same switch as the header's pill.
+    // The project's own footnote is the same switch as the options menu's.
     await user.click(await screen.findByRole('button', { name: /1 hidden\s*·\s*Show/ }));
     expect(app.settings.sidebarShowHidden).toBe(true);
   });

@@ -254,8 +254,8 @@ status-bar control a `rounded` or a height other than the bar's.
 
 `shell.root`, `shell.sidebar`,
 `shell.terminalStrip`, `shell.rightPanelHeader`, `shell.laneHeader`,
-`shell.laneAction`, `shell.sidebarPill` (the shape of the header's count pills —
-*needs you*, *hidden*; the caller picks the tone), and `shell.titlebar` remain the region-specific roles; they
+`shell.laneAction`, `shell.sidebarPill` (the shape of the header's attention pill —
+*needs you*; the caller picks the tone), and `shell.titlebar` remain the region-specific roles; they
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
 config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
 keeps left-aligned content clear of them.

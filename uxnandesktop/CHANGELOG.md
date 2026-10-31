@@ -25,6 +25,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   worktree. `WorktreeEntry` gains `createdByUxnan`; settings gain
   `knownWorktrees` and `worktreeBaselineProjects`.
 
+### Changed
+
+- **The left panel's header is calm again: three things in sight, the rest in
+  one options menu.** Next to *PROJECTS* the header used to carry the attention
+  pill, a hidden-worktrees pill and four icon buttons (add a folder, refresh,
+  sort, new terminal). It now keeps the title, the attention pill — the one
+  signal that must escape the tree — the **Add project** button and a single
+  **panel options** button. Its menu holds *New terminal* (with its shortcut, and
+  *Choose a terminal profile* as a submenu once profiles exist), the view (tree,
+  by status, by review), *Sort projects* and *Sort worktrees* as submenus that
+  show their current choice, *View hidden worktrees (N)* — a checkbox that only looks at the hidden rows —
+  and *Stop hiding worktrees*, the action that ends the hiding, and *Refresh
+  worktrees*. The held-back count that
+  had its own pill is now a badge on the options button — strong while rows are
+  held back, quiet once you are looking at them — so it is still visible with the
+  menu closed; each project's *N hidden · Show* line is unchanged. With fewer
+  buttons the *PROJECTS (N)* label keeps its count until 15rem of panel width with
+  the attention pill showing (13rem without) instead of 22rem/16rem.
+
 ## [0.0.84] - 20261030
 ### Fixed
 
