@@ -55,7 +55,7 @@
 <td width="46%" valign="top">
 
 ### Empiézalo en una terminal, retómalo donde sea
-La sesión de un agente no está atada al lugar donde empezó. Corre Claude Code en una terminal del desktop y luego **Continuar como chat** cuando prefieras leer en vez de desplazarte: Uxnan cierra el agente ahí (una señal a su proceso, nunca teclas) y el chat sigue con su historial. **Abrir en terminal** la regresa. En tu teléfono, una sesión que sigue abierta en una terminal de la PC lo indica, y **Continuar aquí** le pide a la PC que te la pase en cuanto el agente esté libre. Un chat nuevo también lista las sesiones que tus agentes tuvieron en esa carpeta, desde una terminal, su propia app u otra superficie, para que retomes cualquiera. Un solo escritor a la vez, y el agente conserva su memoria cuando el bridge se reinicia.
+La sesión de un agente no está atada al lugar donde empezó. Corre Claude Code en una terminal del desktop y luego **Continuar como chat** cuando prefieras leer en vez de desplazarte: Uxnan cierra el agente ahí (una señal a su proceso, nunca teclas) y el chat sigue con su historial. **Abrir en terminal** la regresa. En tu teléfono, una sesión que sigue abierta en una terminal de la PC lo indica, y **Continuar aquí** le pide a la PC que te la pase en cuanto el agente esté libre. El catálogo de conversaciones también lista las sesiones que tus agentes tuvieron en esa carpeta (un chat nuevo solo dice cuántas hay), desde una terminal, su propia app u otra superficie, para que retomes cualquiera. Un solo escritor a la vez, y el agente conserva su memoria cuando el bridge se reinicia.
 
 [Terminal ⇄ chat →](uxnandesktop/docs/chat.md#from-a-terminal-to-a-chat-and-back)
 

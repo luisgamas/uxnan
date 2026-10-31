@@ -54,7 +54,7 @@
 <td width="46%" valign="top">
 
 ### Start it in a terminal, pick it up anywhere
-An agent's session isn't tied to where it started. Run Claude Code in a desktop terminal, then **Continue as chat** when you'd rather read than scroll: Uxnan closes the agent there (a signal to its process, never keystrokes) and the chat carries on with its history. **Open in terminal** takes it back. On your phone, a session still open in a PC terminal says so, and **Continue here** asks the PC to hand it over once the agent is idle. A new chat also lists the sessions your agents had in that folder, from a terminal, their own app or another surface, so you can pick any of them up. One writer at a time, and the agent keeps its memory when the bridge restarts.
+An agent's session isn't tied to where it started. Run Claude Code in a desktop terminal, then **Continue as chat** when you'd rather read than scroll: Uxnan closes the agent there (a signal to its process, never keystrokes) and the chat carries on with its history. **Open in terminal** takes it back. On your phone, a session still open in a PC terminal says so, and **Continue here** asks the PC to hand it over once the agent is idle. The conversation catalog also lists the sessions your agents had in that folder (a new chat just says how many there are), from a terminal, their own app or another surface, so you can pick any of them up. One writer at a time, and the agent keeps its memory when the bridge restarts.
 
 [Terminal ⇄ chat →](uxnandesktop/docs/chat.md#from-a-terminal-to-a-chat-and-back)
 
