@@ -2800,38 +2800,61 @@ panel Proveedores de Uxnan Desktop). Contratos en `shared/src/models/usage.ts`
 **Limites del plan — `agent/usageStats { providers }`.** Ventanas de cuota (%
 consumido + reinicio), plan/cuenta, saldo y reinicios canjeables de los
 proveedores que el usuario **activo** (nunca de todos). Postura:
-- **Claude Code y Codex se preguntan a si mismos.** Cada CLI responde por la cuenta
-  con la que ya inicio sesion, desde la sesion que el mismo guarda, asi que el
-  bridge **no lee ninguna credencial ni necesita permisos del SO** — los limites
-  de Claude llegan tambien en macOS (antes quedaban en el llavero, fuera del
-  alcance del bridge). Claude: `claude --input-format stream-json`, peticiones de
-  control `initialize` (cuenta, organizacion, plan) y `get_usage` (`rate_limits`
-  con `limits[]` `percent`/`resets_at`, `extra_usage`); Codex: `codex app-server`,
-  `account/read` y `account/rateLimits/read` (ventanas `primary`/`secondary`,
-  creditos y `rateLimitResetCredits`). Procesos efimeros, sin turno ni tokens
-  (`bridge/src/usage/cli-usage.ts`).
-- **Copilot y Grok** no tienen esa superficie: solo se lee el token que cada CLI
-  guardo (`gh auth token`, `~/.grok/auth.json`) y se llama a la API oficial de uso
-  del proveedor. Nunca cookies del navegador, API keys pegadas ni refresh tokens.
-  - Grok: `cli-chat-proxy.grok.com/v1/billing?format=credits` gives the
-    `creditUsagePercent` window (when the account has one) and the `{val}` USD
-    amounts → `credit`: on-demand spend of its cap once a cap is set or anything
-    was spent, else a prepaid balance above zero, else none (a free account's
-    are all 0). The plan comes from `/v1/user?include=subscription`
-    (`subscriptionTier`; `null` on a personal account reads `Free`), the call
-    the Grok CLI itself takes it from; its failure only drops the plan.
+- **Cada proveedor se pregunta a su propio CLI.** Cada CLI responde por la cuenta
+  con la que ya inicio sesion, desde donde el mismo la guarda (llavero de macOS,
+  almacen del SO, su archivo), asi que el bridge **no lee ninguna credencial ni
+  necesita permisos del SO** y todo snapshot es `source: 'cli'`
+  (`bridge/src/usage/cli-usage.ts`; procesos efimeros, sin turno ni tokens):
+  - Claude Code: `claude --input-format stream-json`, peticiones de control
+    `initialize` (cuenta, organizacion, plan) y `get_usage` (`rate_limits.limits[]`
+    `percent`/`resets_at`; credito de `spend` en unidades menores, o del antiguo
+    `extra_usage` con `decimal_places`).
+  - Codex: `codex app-server`, `account/read` y `account/rateLimits/read`
+    (ventanas `primary`/`secondary`, `individualLimit`, creditos y
+    `rateLimitResetCredits`).
+  - GitHub Copilot: `gh api /copilot_internal/user` — `gh` envia su propia
+    sesion; el bridge solo lee la respuesta (`quota_snapshots`, `copilot_plan`,
+    `access_type_sku`, `login`). Una cuota que el plan no incluye
+    (`has_quota: false`) no se muestra.
+  - Grok: `grok agent stdio` (la superficie ACP con la que se le maneja),
+    `initialize` y la extension `_x.ai/billing` (`config` con `currentPeriod`,
+    `creditUsagePercent` — ausente = 0 %, JSON de protobuf — y los montos `{val}`
+    en USD; plan de `subscription_tier`). Saldo: gasto on-demand de su tope si hay
+    tope o gasto, si no saldo prepago mayor a cero, si no ninguno.
+  - Antigravity: `agy -p /usage` y `agy -p /credits` con `--output-format json`
+    (agy >= 1.1.11: respuesta sin turno de agente). Una ventana por
+    `groups[].buckets[]` (usado = 1 − `remaining_fraction`), creditos de IA si
+    hay. Una respuesta que corrio un turno bloquea nuevas preguntas en ese proceso
+    del bridge.
+  - OpenCode 2: `opencode api --standalone GET /api/experimental/usage/limits`
+    (servidor privado): medidores de OpenCode Go y el presupuesto de la Console.
+  - pi y Zero no tienen limites de plan (usan las keys del propio usuario).
+  Leer un token guardado para llamar una API directamente es el ultimo recurso,
+  ningun proveedor lo usa hoy, y requeriria permiso explicito del usuario.
+- Los proveedores se leen en paralelo; un proveedor que ya se esta leyendo
+  responde a otro cliente con esa misma lectura. Un id desconocido se omite (no
+  se rechaza), para que un cliente mas nuevo reciba los demas.
 - Cada proveedor degrada a un `status` (`ok`/`authRequired`/`notInstalled`/`error`);
   uno lento o roto no tumba a los demas.
-- **`usage/redeemReset { provider, idempotencyKey, creditId? }`** canjea un reinicio
-  de Codex (`account/rateLimitResetCredit/consume`) y responde el uso actualizado.
+- **Reinicios guardados (`resetCredits`).** Codex: se ven, se listan y se usan —
+  **`usage/redeemReset { provider, idempotencyKey, creditId? }`** canjea uno
+  (`account/rateLimitResetCredit/consume`) y responde el uso actualizado; los
+  clientes lo piden solo tras una confirmacion explicita. Claude Code: se ven y se
+  listan (`rate_limits.cedar_ember` de `get_usage`), pero el CLI solo los gasta con
+  su comando interactivo `/limit-reset`, asi que `resetCredits.redeemCommand` lo dice
+  y el bridge no canjea ninguno (`usage/redeemReset` responde como usarlo). Grok,
+  Antigravity, OpenCode, Copilot, pi y Zero no exponen reinicios.
 
 **Gasto — `usage/summary { days }`.** Tokens y costo por dia local de la PC, agente
 y modelo, leidos de las **transcripciones que cada CLI guarda en disco** (Claude
 Code `~/.claude/projects`, Codex `~/.codex/sessions`, pi `~/.pi/agent/sessions`,
-Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`, Zero `~/.local/share/zero/sessions`):
+Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`, Zero `~/.local/share/zero/sessions`,
+Antigravity `~/.gemini/antigravity-cli/conversations/<id>.db` — una base SQLite por
+conversacion cuyas filas `gen_metadata` guardan, por llamada al modelo, el mismo uso
+que reporta su `step_update`; `bridge/src/usage/antigravity-usage.ts`):
 cuenta **todo** lo que el agente gasto en esa PC, los turnos del bridge y las sesiones
-que la persona corrio en una terminal. Antigravity queda fuera: su transcripcion no
-registra tokens (`bridge/FOR-DEV.md`). El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
+que la persona corrio en una terminal. Antigravity se cobra contra la cuota del plan
+y Uxnan no conoce precio por token para el: aparece en tokens, sin precio. El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
 una estimacion a los **precios publicados por Anthropic** (Claude: la tabla de
 precios de modelos, mantenida a mano en `bridge/src/usage/usage-prices.ts` e
 incluyendo los tramos por longitud de prompt de Haiku 5.5). Es una estimacion

@@ -72,6 +72,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   bridge names it.
 - **Zero's naming run is read-only** (`zero exec --plan`).
 
+### Added
+- **Antigravity and OpenCode plan limits** in `agent/usageStats`. Antigravity
+  is asked through `agy -p /usage` and `agy -p /credits` (agy 1.1.11 and later
+  answer them without an agent turn; the version is checked first, and an
+  answer that ran a turn stops further asks for the life of the process): a
+  weekly window per model group and the AI credits once above zero. OpenCode 2
+  is asked through `opencode api --standalone GET /api/experimental/usage/limits`:
+  the OpenCode Go meters and the OpenCode Console budget.
+- **Antigravity in `usage/summary`.** Its spend is read from the conversation
+  databases `agy` keeps (`~/.gemini/antigravity-cli/conversations/*.db`), whose
+  per-call usage matches what the driven stream-json surface reports; tokens
+  only, as Antigravity bills by plan quota. Every wired agent with a store that
+  records tokens is now charted.
+- **Claude Code's limit resets** are listed from `get_usage`
+  (`rate_limits.cedar_ember`) with `resetCredits.redeemCommand: "/limit-reset"`:
+  the CLI spends one only interactively, so `usage/redeemReset` answers with that
+  instruction instead of redeeming.
+- **Provider reads are coalesced and parallel.** Every provider is read side by
+  side, and one already being read answers a second client from that read.
+
+### Changed
+- **No provider is read from a credential any more.** Grok is asked over the
+  ACP surface it is driven on (`grok agent stdio` → `_x.ai/billing`), and
+  GitHub Copilot through `gh api /copilot_internal/user`, where `gh` sends its
+  own sign-in. The bridge no longer reads `~/.grok/auth.json` or runs
+  `gh auth token`; every snapshot is `source: "cli"`.
+- **Balances are a list** (`credits`): Grok reports on-demand and prepaid
+  together, OpenCode every Console budget (a per-model one names its models in
+  `scope`). Claude's model-scoped weekly window carries its `model`, and Grok's
+  window id is its period (`weekly`, `monthly`, `daily`), so clients name every
+  window in their own language.
+- **An unknown provider id is skipped, not refused**, so a newer client asking
+  for a provider this bridge does not know still gets the rest.
+- **Codex** reports a seat's spend limit (`individualLimit`) as a window and
+  names its plans as Codex does (`ent26` → Enterprise, `prolite` → Pro Lite, …).
+
+### Fixed
+- **Grok showed no bar on a free account.** Its billing answer is protobuf
+  JSON, which leaves zero values out: a current period with no
+  `creditUsagePercent` is now the weekly window at 0%, with its reset.
+- **Copilot Free showed premium requests "100% used"** for a quota its plan
+  does not include (`has_quota: false`, entitlement 0); it is skipped, and the
+  plan reads `Copilot Free` instead of `Individual`.
+- **Claude's usage credits would have read 100× too high** once enabled: the
+  amounts are minor units (`spend.{used,limit}.amount_minor` with `exponent`,
+  or `extra_usage` with `decimal_places`), so 4000 is $40.00, not $4,000.
+
 ## [0.0.54-alpha.20261030] - 20261030
 ### Added
 

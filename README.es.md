@@ -190,7 +190,7 @@ Rama nueva, rama existente, o una ubicación personalizada: cada tarea obtiene s
 <td width="46%" valign="top">
 
 ### Conoce tu cuota antes de que se acabe
-Uso de sesión, semanal y mensual para Codex, Claude, Copilot y Grok, leído directo del token con el que cada CLI ya inició sesión: nunca una key pegada, nunca una cookie.
+Uso de sesión, semanal y mensual, plan, reinicios y crédito para Codex, Claude, Copilot, Grok, Antigravity y OpenCode, preguntado al propio CLI de cada proveedor: Uxnan no lee ninguna credencial, nunca un token, una key pegada ni una cookie.
 
 [Estadísticas de uso por proveedor →](uxnandesktop/docs/providers.md)
 

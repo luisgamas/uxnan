@@ -3,74 +3,64 @@
  * 02a §5.8.10): the one reader every client asks — the phone and Uxnan
  * Desktop alike.
  *
- * Claude Code and Codex are asked themselves (`cli-usage.ts`): each CLI
- * answers for the account it is signed in to, from the sign-in it keeps, so
- * the bridge reads no credential and needs no OS permission — Claude's limits
- * reach every client on macOS too. Copilot and Grok have no such surface; for
- * them only the token each CLI itself stored is read (`gh auth token`,
- * `~/.grok/auth.json`) → the provider's official usage API. Never browser
- * cookies, never a pasted key, never a refresh token. Every provider is
- * best-effort and isolated: a slow or failed one degrades to its own
- * `status` + `message` and never rejects the whole call.
+ * Every provider is asked of its own CLI (`cli-usage.ts`): Claude Code, Codex,
+ * Grok, Antigravity and OpenCode over their headless surfaces, Copilot through
+ * GitHub's CLI (`gh api`). Each answers for the account it is signed in to,
+ * from the sign-in it keeps, so the bridge reads no credential — no token
+ * file, no keychain item, no OS permission prompt — and the same limits reach
+ * every client on every OS. Never browser cookies, never a pasted key, never a
+ * refresh token. Every provider is best-effort and isolated: a slow or failed
+ * one degrades to its own `status` + `message` and never rejects the whole
+ * call, and they are all read side by side, so one slow CLI does not hold the
+ * others up.
  *
- * All I/O is injectable so each provider's mapping is unit-tested against
- * canned answers with no process, disk or network.
+ * Every CLI is injectable so each provider's mapping is unit-tested against
+ * canned answers with no process.
  */
-import { execFile } from 'node:child_process';
-import { readFile as fsReadFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { promisify } from 'node:util';
 import {
+  askAntigravityUsage,
   askClaudeUsage,
   askCodexUsage,
+  askCopilotUsage,
+  askGrokUsage,
+  askOpenCodeUsage,
+  type AntigravityUsageAnswer,
   type ClaudeUsageAnswer,
   type CodexUsageAnswer,
+  type CopilotUsageAnswer,
+  type GrokUsageAnswer,
+  type OpenCodeUsageAnswer,
 } from './cli-usage.js';
 import type {
   AccountType,
   CreditBalance,
   ProviderUsage,
+  ResetCreditEntry,
+  ResetCredits,
   UsageProvider,
   UsageStatus,
   UsageWindow,
 } from '@uxnan/shared';
 
-const execFileAsync = promisify(execFile);
-
-/** Per-request timeout, matching the desktop reader's 15 s. */
-const DEFAULT_TIMEOUT_MS = 15_000;
-
-/** Injectable seams so the reader is testable without disk/network. */
+/** Injectable seams so the reader is testable without a CLI. */
 export interface UsageReaderDeps {
-  /** Home directory (defaults to the OS home). */
-  homeDir?: string;
-  /** Reads a file to a string (defaults to fs `readFile` utf8). */
-  readFile?: (path: string) => Promise<string>;
-  /** Outbound fetch (defaults to the global `fetch`). */
-  fetchImpl?: typeof fetch;
   /** Clock in epoch ms (defaults to `Date.now`). */
   now?: () => number;
-  /** Reads the GitHub token via `gh auth token` (Copilot). */
-  ghAuthToken?: () => Promise<string | undefined>;
-  /** Per-request timeout in ms. */
-  timeoutMs?: number;
-  /** Asks Claude Code for its account and limits (`cli-usage.ts`). */
+  /** Asks Claude Code for its account and limits. */
   askClaude?: () => Promise<ClaudeUsageAnswer | undefined>;
-  /** Asks Codex for its account and limits (`cli-usage.ts`). */
+  /** Asks Codex for its account and limits. */
   askCodex?: () => Promise<CodexUsageAnswer | undefined>;
+  /** Asks `gh` for the Copilot user record. */
+  askCopilot?: () => Promise<CopilotUsageAnswer | undefined>;
+  /** Asks Grok for its billing. */
+  askGrok?: () => Promise<GrokUsageAnswer | undefined>;
+  /** Asks Antigravity for its limits and AI credits. */
+  askAntigravity?: () => Promise<AntigravityUsageAnswer | undefined>;
+  /** Asks OpenCode for its Console workspace's limits. */
+  askOpenCode?: () => Promise<OpenCodeUsageAnswer | undefined>;
 }
 
-interface ResolvedDeps {
-  homeDir: string;
-  readFile: (path: string) => Promise<string>;
-  fetchImpl: typeof fetch;
-  now: () => number;
-  ghAuthToken: () => Promise<string | undefined>;
-  timeoutMs: number;
-  askClaude: () => Promise<ClaudeUsageAnswer | undefined>;
-  askCodex: () => Promise<CodexUsageAnswer | undefined>;
-}
+type ResolvedDeps = Required<UsageReaderDeps>;
 
 /** Reads usage for exactly [providers] — inactive providers cost nothing. */
 export async function readUsage(
@@ -78,24 +68,22 @@ export async function readUsage(
   deps: UsageReaderDeps = {},
 ): Promise<ProviderUsage[]> {
   const resolved: ResolvedDeps = {
-    homeDir: deps.homeDir ?? homedir(),
-    readFile: deps.readFile ?? ((p) => fsReadFile(p, 'utf8')),
-    fetchImpl: deps.fetchImpl ?? fetch,
     now: deps.now ?? (() => Date.now()),
-    ghAuthToken: deps.ghAuthToken ?? defaultGhAuthToken,
-    timeoutMs: deps.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     askClaude: deps.askClaude ?? askClaudeUsage,
     askCodex: deps.askCodex ?? askCodexUsage,
+    askCopilot: deps.askCopilot ?? askCopilotUsage,
+    askGrok: deps.askGrok ?? askGrokUsage,
+    askAntigravity: deps.askAntigravity ?? askAntigravityUsage,
+    askOpenCode: deps.askOpenCode ?? askOpenCodeUsage,
   };
-  const out: ProviderUsage[] = [];
-  for (const provider of providers) {
-    try {
-      out.push(await readOne(provider, resolved));
-    } catch (error) {
-      out.push(withMessage(base(provider, 'error', resolved.now()), String(error)));
-    }
-  }
-  return out;
+  // Side by side, answered in the order asked.
+  return Promise.all(
+    providers.map((provider) =>
+      readOne(provider, resolved).catch((error: unknown) =>
+        withMessage(base(provider, 'error', resolved.now()), String(error)),
+      ),
+    ),
+  );
 }
 
 function readOne(provider: UsageProvider, deps: ResolvedDeps): Promise<ProviderUsage> {
@@ -108,6 +96,10 @@ function readOne(provider: UsageProvider, deps: ResolvedDeps): Promise<ProviderU
       return readCopilot(deps);
     case 'grok':
       return readGrok(deps);
+    case 'antigravity':
+      return readAntigravity(deps);
+    case 'opencode':
+      return readOpenCode(deps);
   }
 }
 
@@ -123,15 +115,15 @@ async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
   const plan = str(signedIn?.planType);
   const account = makeAccount({
     email: str(signedIn?.email),
-    plan: plan ? prettifyPlan(plan) : undefined,
-    accountType: plan ? classifyPlan(plan) : undefined,
+    plan: plan ? codexPlanLabel(plan) : undefined,
+    accountType: plan ? classifyPlan(codexPlanLabel(plan)) : undefined,
   });
   if (!signedIn) {
     return withMessage(base('codex', 'authRequired', now), 'Codex is not signed in on this PC');
   }
   if (signedIn.type !== 'chatgpt') {
     // An API key has no plan limits: usage is billed per token.
-    return finish('codex', now, [], account, undefined);
+    return finish('codex', now, [], account, []);
   }
   const limits = asObj(answer.rateLimits);
   const byId = asObj(limits?.rateLimitsByLimitId);
@@ -151,13 +143,24 @@ async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
       ...spreadResets(epochMs(w.resetsAt)),
     });
   }
+  // A spend control on a workspace seat: how much of the member's own cap is left.
+  const individual = asObj(main?.individualLimit);
+  const remaining = num(individual?.remainingPercent);
+  if (remaining !== undefined) {
+    windows.push({
+      id: 'individual',
+      label: 'Spend limit',
+      usedPercent: clampPct(100 - remaining),
+      ...spreadResets(epochMs(individual?.resetsAt)),
+    });
+  }
   const credits = asObj(main?.credits);
   const balance = num(credits?.balance);
-  const credit: CreditBalance | undefined =
+  const balances: CreditBalance[] =
     credits?.hasCredits === true && balance !== undefined
-      ? { used: 0, available: balance, currency: 'credits', period: 'Credits' }
-      : undefined;
-  const usage = finish('codex', now, windows, account, credit);
+      ? [{ used: 0, available: balance, currency: 'credits', period: 'Credits' }]
+      : [];
+  const usage = finish('codex', now, windows, account, balances);
   const resets = asObj(limits?.rateLimitResetCredits);
   const entries = (Array.isArray(resets?.credits) ? resets.credits : [])
     .map((c) => asObj(c))
@@ -177,6 +180,31 @@ async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
     };
   }
   return usage;
+}
+
+/** How Codex's `PlanType` slugs read; anything else is prettified as it comes. */
+const CODEX_PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  go: 'Go',
+  plus: 'Plus',
+  pro: 'Pro',
+  prolite: 'Pro Lite',
+  promax: 'Pro Max',
+  team: 'Team',
+  business: 'Business',
+  self_serve_business_prolite: 'Business',
+  self_serve_business_usage_based: 'Business',
+  ent26: 'Enterprise',
+  enterprise: 'Enterprise',
+  enterprise_cbp_automation: 'Enterprise',
+  enterprise_cbp_usage_based: 'Enterprise',
+  edu: 'Edu',
+  edu_plus: 'Edu Plus',
+  edu_pro: 'Edu Pro',
+};
+
+function codexPlanLabel(plan: string): string {
+  return CODEX_PLAN_LABELS[plan.toLowerCase()] ?? prettifyPlan(plan);
 }
 
 /** A Codex window's stable id from its length: the 5-hour and weekly ones by name. */
@@ -219,7 +247,7 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
   }
   if (usage.rate_limits_available === false) {
     // An API key, Bedrock or Vertex: no plan limits apply.
-    return finish('claude', now, [], account, undefined);
+    return finish('claude', now, [], account, []);
   }
   const body = asObj(usage.rate_limits) ?? {};
 
@@ -238,6 +266,7 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
       id:
         kind === 'weekly_scoped' && model ? `weekly_${model.toLowerCase()}` : (kind ?? `limit${i}`),
       label: claudeLimitLabel(kind, group, model),
+      ...(model ? { model } : {}),
       usedPercent: clampPct(pct),
       ...(windowMinutes !== undefined ? { windowMinutes } : {}),
       ...spreadResets(epochMs(w.resets_at)),
@@ -248,20 +277,88 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
     claudeWindow(windows, body.seven_day, 'seven_day', 'Weekly', 10_080);
   }
 
-  let credit: CreditBalance | undefined;
-  const extra = asObj(body.extra_usage);
-  if (extra && extra.is_enabled === true) {
-    const used = num(extra.used_credits) ?? 0;
-    const limit = num(extra.monthly_limit);
-    const currency = str(extra.currency) ?? 'USD';
-    credit = {
-      used,
+  const credit = claudeCredit(body);
+  const usageOut = finish('claude', now, windows, account, credit ? [credit] : []);
+  const resets = claudeResets(body.cedar_ember);
+  if (resets) usageOut.resetCredits = resets;
+  return usageOut;
+}
+
+/**
+ * Claude Code's limit resets: `rate_limits.cedar_ember` of its `get_usage`
+ * answer (`{eligible, grants[{id, label, resets_total, resets_left, ends_at,
+ * paused, type}]}`, the shape the CLI itself parses). A grant counts while it
+ * has resets left and is not paused. They are used inside Claude Code with
+ * `/limit-reset` — its only way to spend one, an interactive command — so the
+ * bridge reports them and how to use them, and redeems none itself.
+ */
+function claudeResets(value: unknown): ResetCredits | undefined {
+  const status = asObj(value);
+  if (!status || status.eligible === false) return undefined;
+  const grants = (Array.isArray(status.grants) ? status.grants : [])
+    .map((g) => asObj(g))
+    .filter(
+      (g): g is Record<string, unknown> =>
+        !!g && (num(g.resets_left) ?? 0) > 0 && g.paused !== true,
+    );
+  const available = grants.reduce((sum, g) => sum + (num(g.resets_left) ?? 0), 0);
+  if (available === 0) return undefined;
+  const entries: ResetCreditEntry[] = grants
+    .map((g) => ({
+      ...(str(g.id) ? { id: str(g.id) } : {}),
+      ...(str(g.label) || str(g.type) ? { title: str(g.label) ?? prettifyPlan(str(g.type)!) } : {}),
+      ...spreadExpires(epochMs(g.ends_at)),
+    }))
+    .sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
+  const total = grants.reduce((sum, g) => sum + (num(g.resets_total) ?? 0), 0);
+  return {
+    available,
+    ...(total > 0 ? { totalEarned: total } : {}),
+    ...(entries[0]?.expiresAt !== undefined ? { nextExpiresAt: entries[0].expiresAt } : {}),
+    entries,
+    redeemCommand: '/limit-reset',
+  };
+}
+
+/**
+ * Claude's usage credits (extra usage past the plan's limits), once they are
+ * enabled. Amounts come in minor units: `spend` carries them as
+ * `{amount_minor, currency, exponent}`, the older `extra_usage` as
+ * `used_credits`/`monthly_limit` with `decimal_places` — 4000 at 2 decimal
+ * places is $40.00, never $4,000.
+ */
+function claudeCredit(body: Record<string, unknown>): CreditBalance | undefined {
+  const spend = asObj(body.spend);
+  if (spend) {
+    if (spend.enabled !== true) return undefined;
+    const used = claudeMoney(spend.used);
+    const limit = claudeMoney(spend.limit);
+    const currency = used?.currency ?? limit?.currency ?? 'USD';
+    return {
+      used: used?.amount ?? 0,
       currency,
       period: 'Monthly credits',
-      ...(limit !== undefined ? { limit } : {}),
+      ...(limit ? { limit: limit.amount } : {}),
     };
   }
-  return finish('claude', now, windows, account, credit);
+  const extra = asObj(body.extra_usage);
+  if (!extra || extra.is_enabled !== true) return undefined;
+  const scale = 10 ** (num(extra.decimal_places) ?? 2);
+  const limit = num(extra.monthly_limit);
+  return {
+    used: (num(extra.used_credits) ?? 0) / scale,
+    currency: str(extra.currency) ?? 'USD',
+    period: 'Monthly credits',
+    ...(limit !== undefined ? { limit: limit / scale } : {}),
+  };
+}
+
+function claudeMoney(value: unknown): { amount: number; currency?: string } | undefined {
+  const money = asObj(value);
+  const minor = num(money?.amount_minor);
+  if (!money || minor === undefined) return undefined;
+  const currency = str(money.currency);
+  return { amount: minor / 10 ** (num(money.exponent) ?? 2), ...(currency ? { currency } : {}) };
 }
 
 function claudeLimitLabel(
@@ -301,37 +398,30 @@ function claudeWindow(
 
 async function readCopilot(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
-  const token = await deps.ghAuthToken();
-  if (!token) {
+  const answer = await deps.askCopilot();
+  if (!answer) {
     return withMessage(
-      base('copilot', 'authRequired', now),
-      'no GitHub token from `gh auth token` — run `gh auth login`',
+      base('copilot', 'notInstalled', now),
+      'GitHub CLI (`gh`) is not installed on this PC',
     );
   }
-  const res = await fetchJson(
-    {
-      url: 'https://api.github.com/copilot_internal/user',
-      headers: {
-        authorization: `token ${token}`,
-        'editor-version': 'uxnan/1.0',
-        'editor-plugin-version': 'uxnan/1.0',
-        'x-github-api-version': '2025-04-01',
-        accept: 'application/json',
-      },
-    },
-    deps,
-  );
-  if (!res.ok) return httpError('copilot', res, now);
-  const body = asObj(res.body) ?? {};
-
-  const plan = str(body.copilot_plan);
-  const login = await githubLogin(token, deps);
+  if (answer.signedOut) {
+    return withMessage(
+      base('copilot', 'authRequired', now),
+      'GitHub CLI is not signed in on this PC — run `gh auth login`',
+    );
+  }
+  if (!answer.user) {
+    return withMessage(base('copilot', 'error', now), answer.failure ?? 'no answer');
+  }
+  const body = answer.user;
+  const plan = copilotPlan(str(body.copilot_plan), str(body.access_type_sku));
   const account = makeAccount({
-    email: login,
-    plan: plan ? prettifyPlan(plan) : undefined,
+    email: str(body.login),
+    plan,
     accountType: plan ? classifyPlan(plan) : undefined,
   });
-  const reset = epochMs(body.quota_reset_date);
+  const reset = epochMs(body.quota_reset_date_utc) ?? epochMs(body.quota_reset_date);
 
   const windows: UsageWindow[] = [];
   const snapshots = asObj(body.quota_snapshots);
@@ -339,144 +429,95 @@ async function readCopilot(deps: ResolvedDeps): Promise<ProviderUsage> {
     for (const [key, value] of Object.entries(snapshots)) {
       const w = asObj(value);
       if (!w || w.unlimited === true) continue;
-      const remaining = num(w.percent_remaining) ?? 0;
+      // A quota the plan does not include (`has_quota: false`, an entitlement
+      // of 0 — premium requests on Copilot Free) is not "100% used": skip it.
+      if (w.has_quota === false || num(w.entitlement) === 0) continue;
+      const remaining = num(w.percent_remaining);
+      if (remaining === undefined) continue;
       windows.push({
         id: key,
-        label: prettifyPlan(key),
+        label: COPILOT_QUOTA_LABELS[key] ?? prettifyPlan(key),
         usedPercent: clampPct(100 - remaining),
+        windowMinutes: 43_200,
         ...spreadResets(reset),
       });
     }
   }
-  return finish('copilot', now, windows, account, undefined, {
+  return finish('copilot', now, windows, account, [], {
     empty: 'signed in, but no Copilot quota was returned for this account',
   });
 }
 
-async function githubLogin(token: string, deps: ResolvedDeps): Promise<string | undefined> {
-  const res = await fetchJson(
-    {
-      url: 'https://api.github.com/user',
-      headers: {
-        authorization: `token ${token}`,
-        accept: 'application/json',
-        'x-github-api-version': '2022-11-28',
-      },
-    },
-    deps,
-  );
-  return res.ok ? str(asObj(res.body)?.login) : undefined;
+/** How Copilot names its quotas; anything else is prettified as it comes. */
+const COPILOT_QUOTA_LABELS: Record<string, string> = {
+  chat: 'Chat',
+  completions: 'Completions',
+  premium_interactions: 'Premium requests',
+};
+
+/**
+ * The Copilot plan. `copilot_plan` names the billing kind (`individual`,
+ * `business`, `enterprise`) and is `individual` on Copilot Free too; only the
+ * SKU tells Free apart (`free_limited_copilot`). Paid individual tiers are not
+ * told apart by name, so none is claimed for them.
+ */
+function copilotPlan(plan: string | undefined, sku: string | undefined): string | undefined {
+  if (sku && /free/i.test(sku)) return 'Copilot Free';
+  return plan ? `Copilot ${prettifyPlan(plan)}` : undefined;
 }
 
 // ── Grok ─────────────────────────────────────────────────────────────────────
 
-/** Grok's CLI API: `/billing?format=credits` and `/user?include=subscription`. */
-const GROK_API = 'https://cli-chat-proxy.grok.com/v1';
-
-/** The plan is a label: never let its request hold the whole read up. */
-const GROK_USER_TIMEOUT_MS = 5_000;
-
 async function readGrok(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
-  const auth = await readJson(join(deps.homeDir, '.grok', 'auth.json'), deps);
-  if (!auth) {
-    return withMessage(
-      base('grok', 'notInstalled', now),
-      'Grok is not set up on this PC (~/.grok/auth.json missing)',
-    );
+  const answer = await deps.askGrok();
+  if (!answer) {
+    return withMessage(base('grok', 'notInstalled', now), 'Grok is not installed on this PC');
   }
-  // auth is keyed by issuer/client; pick the first entry with a string `.key`.
-  let token: string | undefined;
-  let email: string | undefined;
-  for (const value of Object.values(auth)) {
-    const entry = asObj(value);
-    const key = str(entry?.key);
-    if (key) {
-      token = key;
-      email = str(entry?.email);
-      break;
-    }
-  }
-  if (!token) {
-    return withMessage(
-      base('grok', 'authRequired', now),
-      'Grok has no usable signed-in credential — run `grok login`',
-    );
-  }
-  const account = makeAccount({ email });
-  const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
-
-  // The billing answer carries the quota window and the money; the plan is not
-  // in it — the Grok CLI takes its tier from the signed-in user, so the bridge
-  // asks that too (same host, same credential, a short timeout: a failure only
-  // costs the plan label).
-  const [res, user] = await Promise.all([
-    fetchJson({ url: `${GROK_API}/billing?format=credits`, headers }, deps),
-    fetchJson(
-      {
-        url: `${GROK_API}/user?include=subscription`,
-        headers,
-        timeoutMs: Math.min(GROK_USER_TIMEOUT_MS, deps.timeoutMs),
-      },
-      deps,
-    ),
-  ]);
-  if (!res.ok) {
-    if (res.unauthorized) {
-      return withAccount(
-        withMessage(
+  if (answer.error !== undefined) {
+    return /auth|login|sign/i.test(answer.error)
+      ? withMessage(
           base('grok', 'authRequired', now),
-          'Grok credential expired — run the Grok CLI to refresh it',
-        ),
-        account,
-      );
-    }
-    return httpError('grok', res, now, account);
+          'Grok is not signed in on this PC — run `grok login`',
+        )
+      : withMessage(base('grok', 'error', now), answer.error);
   }
-  const body = asObj(res.body) ?? {};
+  const body = answer.billing ?? {};
   const config = asObj(body.config) ?? body;
 
-  const plan = user.ok ? grokPlan(asObj(user.body)) : undefined;
-  const credit = grokCredit(config);
+  const tier = str(body.subscription_tier ?? body.subscriptionTier);
+  const plan = tier ? (GROK_TIER_LABELS[tier.toLowerCase()] ?? prettifyPlan(tier)) : undefined;
+  const balances = grokBalances(config);
   // No plan but money on the account: it is billed by use.
-  const accountType = plan ? classifyPlan(plan) : credit ? 'payAsYouGo' : undefined;
-  const withPlan = makeAccount({ email, plan, accountType });
+  const accountType = plan ? classifyPlan(plan) : balances.length > 0 ? 'payAsYouGo' : undefined;
+  const account = makeAccount({ plan, accountType });
 
   const windows: UsageWindow[] = [];
-  const pct = num(config.creditUsagePercent ?? config.credit_usage_percent);
+  const period = asObj(config.currentPeriod);
+  const periodType = grokPeriodType(str(period?.type));
+  // The billing answer is protobuf JSON, which leaves zero-valued numbers out:
+  // a current period with no `creditUsagePercent` is a period with 0% used.
+  const pct =
+    num(config.creditUsagePercent ?? config.credit_usage_percent) ??
+    (periodType && periodType !== 'UNSPECIFIED' ? 0 : undefined);
   if (pct !== undefined) {
-    const period = asObj(config.currentPeriod);
-    const periodType = grokPeriodType(str(period?.type));
     const resetsAt = epochMs(period?.end) ?? epochMs(config.billingPeriodEnd);
     windows.push({
-      id: 'credits',
+      id: grokPeriodId(periodType),
       label: grokPeriodLabel(periodType),
       usedPercent: clampPct(pct),
       ...spreadWindowMinutes(grokPeriodMinutes(periodType)),
       ...spreadResets(resetsAt),
     });
   }
-  return finish('grok', now, windows, withPlan, credit, {
-    empty: 'signed in, but the Grok billing API returned no quota window',
+  return finish('grok', now, windows, account, balances, {
+    empty: 'signed in, but Grok reported no quota window for this account',
   });
-}
-
-/**
- * The plan from `GET /user?include=subscription`: its `subscriptionTier`, or
- * `Free` when the tier is `null` on a personal account — what the Grok CLI
- * itself calls such an account. A team or organization member with no tier of
- * their own is billed by that team, so no plan is claimed for them.
- */
-function grokPlan(user: Record<string, unknown> | undefined): string | undefined {
-  if (!user) return undefined;
-  const tier = str(user.subscriptionTier ?? user.subscription_tier);
-  if (tier) return GROK_TIER_LABELS[tier.toLowerCase()] ?? prettifyPlan(tier);
-  const personal = user.subscriptionTier === null && !user.teamId && !user.organizationId;
-  return personal ? 'Free' : undefined;
 }
 
 /** How xAI writes its own tiers; anything else is prettified as it comes. */
 const GROK_TIER_LABELS: Record<string, string> = {
+  free: 'Free',
   supergrok: 'SuperGrok',
   supergrok_lite: 'SuperGrok Lite',
   supergrok_plus: 'SuperGrok Plus',
@@ -486,34 +527,31 @@ const GROK_TIER_LABELS: Record<string, string> = {
 };
 
 /**
- * The money Grok reports, as a `CreditBalance` in USD. Its billing answer
- * wraps each amount as `{val}`: `onDemandUsed` of an `onDemandCap` (pay as you
- * go, for the billing period) and a `prepaidBalance`. The zero rule is the one
- * every provider follows — a balance is shown once the account has one
- * (Claude's extra usage once it is enabled, Codex's credits once it has them):
- * on-demand when a cap is set or anything was spent, else a prepaid balance
- * above zero, else nothing. A free account answers all three as 0 and shows no
- * credit. When both exist, on-demand is shown: it is what the account is
- * spending now, and the contract carries one balance.
+ * The money Grok reports, as `CreditBalance`s in USD. Its billing answer wraps
+ * each amount as `{val}`: `onDemandUsed` of an `onDemandCap` (pay as you go,
+ * for the billing period) and a `prepaidBalance`. The zero rule is the one
+ * every provider follows — a balance is listed once the account has one
+ * (Claude's usage credits once enabled, Codex's credits once it has them): the
+ * on-demand spend when a cap is set or anything was spent, and the prepaid
+ * balance when it is above zero — on-demand first, as what the account is
+ * spending now. A free account answers all three as 0 and lists neither.
  */
-function grokCredit(config: Record<string, unknown>): CreditBalance | undefined {
+function grokBalances(config: Record<string, unknown>): CreditBalance[] {
+  const out: CreditBalance[] = [];
   const used = grokMoney(config.onDemandUsed ?? config.on_demand_used) ?? 0;
   const cap = grokMoney(config.onDemandCap ?? config.on_demand_cap) ?? 0;
   if (used > 0 || cap > 0) {
-    const resetsAt = epochMs(config.billingPeriodEnd);
-    return {
+    out.push({
       used,
       currency: 'USD',
       period: 'On-demand',
       ...(cap > 0 ? { limit: cap, available: Math.max(0, cap - used) } : {}),
-      ...spreadResets(resetsAt),
-    };
+      ...spreadResets(epochMs(config.billingPeriodEnd)),
+    });
   }
   const prepaid = grokMoney(config.prepaidBalance ?? config.prepaid_balance) ?? 0;
-  if (prepaid > 0) {
-    return { used: 0, available: prepaid, currency: 'USD', period: 'Prepaid' };
-  }
-  return undefined;
+  if (prepaid > 0) out.push({ used: 0, available: prepaid, currency: 'USD', period: 'Prepaid' });
+  return out;
 }
 
 /** An amount as Grok sends it: `{val}` (also a bare number, `{value}`, `{amount}`). */
@@ -525,6 +563,21 @@ function grokMoney(value: unknown): number | undefined {
 /** `USAGE_PERIOD_TYPE_WEEKLY` and `WEEKLY` name the same period. */
 function grokPeriodType(period: string | undefined): string | undefined {
   return period?.replace(/^USAGE_PERIOD_TYPE_/, '');
+}
+
+/** The window's id from its period (`daily`, `weekly`, `monthly`); `credits`
+ *  for a period Grok does not name. */
+function grokPeriodId(period: string | undefined): string {
+  switch (period) {
+    case 'DAILY':
+      return 'daily';
+    case 'WEEKLY':
+      return 'weekly';
+    case 'MONTHLY':
+      return 'monthly';
+    default:
+      return 'credits';
+  }
 }
 
 function grokPeriodLabel(period: string | undefined): string {
@@ -553,88 +606,172 @@ function grokPeriodMinutes(period: string | undefined): number | undefined {
   }
 }
 
+// ── Antigravity ──────────────────────────────────────────────────────────────
+
+async function readAntigravity(deps: ResolvedDeps): Promise<ProviderUsage> {
+  const now = deps.now();
+  const answer = await deps.askAntigravity();
+  if (!answer) {
+    return withMessage(
+      base('antigravity', 'notInstalled', now),
+      'Antigravity is not installed on this PC',
+    );
+  }
+  if (!answer.usage) {
+    const failure = answer.failure ?? { kind: 'error', message: 'no answer' };
+    switch (failure.kind) {
+      case 'signedOut':
+        return withMessage(
+          base('antigravity', 'authRequired', now),
+          'Antigravity is not signed in on this PC — run `agy` to sign in',
+        );
+      case 'tooOld':
+        return withMessage(
+          base('antigravity', 'error', now),
+          `Antigravity ${failure.version} cannot report its limits headless — update it (\`agy update\`)`,
+        );
+      case 'ranTurn':
+        return withMessage(
+          base('antigravity', 'error', now),
+          'Antigravity answered the usage request with a model turn, so it is not asked again until the bridge restarts',
+        );
+      case 'error':
+        return withMessage(base('antigravity', 'error', now), failure.message);
+    }
+  }
+  const windows: UsageWindow[] = [];
+  const groups = Array.isArray(answer.usage.groups) ? answer.usage.groups : [];
+  for (const rawGroup of groups) {
+    const group = asObj(rawGroup);
+    const buckets = (Array.isArray(group?.buckets) ? group.buckets : [])
+      .map((b) => asObj(b))
+      .filter((b): b is Record<string, unknown> => !!b && b.disabled !== true);
+    const groupName = str(group?.name);
+    for (const bucket of buckets) {
+      const remaining = num(bucket.remaining_fraction);
+      if (remaining === undefined) continue;
+      const bucketName = str(bucket.name);
+      const minutes = antigravityWindowMinutes(str(bucket.window));
+      windows.push({
+        id: str(bucket.id) ?? `${groupName ?? 'bucket'}_${windows.length}`,
+        label:
+          buckets.length > 1 && bucketName
+            ? `${groupName ?? 'Usage'} · ${bucketName}`
+            : (groupName ?? bucketName ?? 'Usage'),
+        usedPercent: clampPct((1 - Math.max(0, Math.min(1, remaining))) * 100),
+        ...spreadWindowMinutes(minutes),
+        ...spreadResets(epochMs(bucket.reset_time)),
+      });
+    }
+  }
+  // AI credits, once the account holds any (the zero rule every provider follows).
+  const remainingCredits = num(answer.credits?.remaining_credits);
+  const balances: CreditBalance[] =
+    remainingCredits !== undefined && remainingCredits > 0
+      ? [{ used: 0, available: remainingCredits, currency: 'credits', period: 'AI credits' }]
+      : [];
+  return finish('antigravity', now, windows, undefined, balances, {
+    empty: 'signed in, but Antigravity reported no quota for this account',
+  });
+}
+
+function antigravityWindowMinutes(window: string | undefined): number | undefined {
+  switch (window) {
+    case '5h':
+      return 300;
+    case 'daily':
+      return 1440;
+    case 'weekly':
+      return 10_080;
+    default:
+      return undefined;
+  }
+}
+
+// ── OpenCode ─────────────────────────────────────────────────────────────────
+
+async function readOpenCode(deps: ResolvedDeps): Promise<ProviderUsage> {
+  const now = deps.now();
+  const answer = await deps.askOpenCode();
+  if (!answer) {
+    return withMessage(
+      base('opencode', 'notInstalled', now),
+      'OpenCode is not installed on this PC',
+    );
+  }
+  if (answer.failure !== undefined) {
+    return withMessage(base('opencode', 'error', now), answer.failure);
+  }
+  const data = answer.data;
+  if (!data) {
+    return withMessage(
+      base('opencode', 'authRequired', now),
+      'OpenCode is not signed in to an OpenCode Console workspace on this PC',
+    );
+  }
+  const workspace = asObj(data.workspace);
+  const go = asObj(data.go);
+  const windows: UsageWindow[] = [];
+  if (go) {
+    for (const [key, id, label, minutes] of [
+      ['rolling', 'session5h', 'Session (5h)', 300],
+      ['weekly', 'weekly', 'Weekly', 10_080],
+      ['monthly', 'monthly', 'Monthly', 43_200],
+    ] as const) {
+      const meter = asObj(go[key]);
+      const pct = num(meter?.percent);
+      if (!meter || pct === undefined) continue;
+      windows.push({
+        id,
+        label,
+        usedPercent: clampPct(pct),
+        windowMinutes: minutes,
+        ...spreadResets(epochMs(meter.resetsAt)),
+      });
+    }
+  }
+  const plan = go ? 'OpenCode Go' : undefined;
+  const account = makeAccount({
+    organization: str(workspace?.name),
+    plan,
+    accountType: plan ? 'subscription' : undefined,
+  });
+  return finish('opencode', now, windows, account, openCodeBudgets(data.budgets), {
+    empty: 'signed in; this OpenCode Console workspace has no OpenCode Go plan or budget',
+  });
+}
+
+/**
+ * The workspace's Console budgets, each a `CreditBalance` in USD: the one that
+ * covers everything the workspace spends (`scope: combined`, `coverage: all`)
+ * first, then the rest in the order OpenCode lists them. A budget for some
+ * models names them in `scope`.
+ */
+function openCodeBudgets(raw: unknown): CreditBalance[] {
+  const budgets = (Array.isArray(raw) ? raw : [])
+    .map((b) => asObj(b))
+    .filter((b): b is Record<string, unknown> => !!b && num(b.limit) !== undefined);
+  const whole = (b: Record<string, unknown>) => b.scope === 'combined' && b.coverage === 'all';
+  return [...budgets.filter(whole), ...budgets.filter((b) => !whole(b))].map((budget) => {
+    const limit = num(budget.limit) ?? 0;
+    const used = num(budget.spent) ?? 0;
+    const models = (Array.isArray(budget.models) ? budget.models : [])
+      .map((m) => str(asObj(m)?.name))
+      .filter((name): name is string => !!name);
+    const scope = budget.coverage === 'models' && models.length > 0 ? models.join(', ') : undefined;
+    return {
+      used,
+      limit,
+      available: Math.max(0, limit - used),
+      currency: 'USD',
+      period: 'Budget',
+      ...(scope ? { scope } : {}),
+      ...spreadResets(epochMs(budget.resetsAt)),
+    };
+  });
+}
+
 // ── Shared plumbing ──────────────────────────────────────────────────────────
-
-type HttpResult =
-  | { ok: true; body: unknown }
-  | { ok: false; unauthorized: boolean; message: string };
-
-async function fetchJson(
-  req: {
-    url: string;
-    method?: string;
-    headers: Record<string, string>;
-    body?: string;
-    /** This request's own timeout, when shorter than the reader's. */
-    timeoutMs?: number;
-  },
-  deps: ResolvedDeps,
-): Promise<HttpResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), req.timeoutMs ?? deps.timeoutMs);
-  try {
-    const res = await deps.fetchImpl(req.url, {
-      method: req.method ?? 'GET',
-      headers: { 'user-agent': 'uxnan-bridge', ...req.headers },
-      body: req.body,
-      signal: controller.signal,
-    });
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, unauthorized: true, message: 'unauthorized' };
-    }
-    if (!res.ok) return { ok: false, unauthorized: false, message: `HTTP ${res.status}` };
-    try {
-      return { ok: true, body: await res.json() };
-    } catch (error) {
-      return { ok: false, unauthorized: false, message: `invalid JSON: ${String(error)}` };
-    }
-  } catch (error) {
-    return { ok: false, unauthorized: false, message: String(error) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** Maps an HTTP failure to a `ProviderUsage` (401/403 → authRequired). */
-function httpError(
-  provider: UsageProvider,
-  res: { unauthorized: boolean; message: string },
-  now: number,
-  account?: ProviderUsage['account'],
-): ProviderUsage {
-  const usage = res.unauthorized
-    ? withMessage(
-        base(provider, 'authRequired', now),
-        'the stored token was rejected — sign in again with the CLI',
-      )
-    : withMessage(base(provider, 'error', now), res.message);
-  return account ? withAccount(usage, account) : usage;
-}
-
-async function defaultGhAuthToken(): Promise<string | undefined> {
-  try {
-    const { stdout } = await execFileAsync('gh', ['auth', 'token'], {
-      windowsHide: true,
-      timeout: 10_000,
-    });
-    const token = stdout.trim();
-    return token.length > 0 ? token : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function readJson(
-  path: string,
-  deps: ResolvedDeps,
-): Promise<Record<string, unknown> | undefined> {
-  try {
-    const parsed: unknown = JSON.parse(await deps.readFile(path));
-    return asObj(parsed);
-  } catch {
-    return undefined;
-  }
-}
 
 /** Assembles the final `ok` usage, adding the "no windows" hint when empty. */
 function finish(
@@ -642,24 +779,20 @@ function finish(
   now: number,
   windows: UsageWindow[],
   account: ProviderUsage['account'],
-  credit: CreditBalance | undefined,
+  credits: CreditBalance[],
   hints: { empty?: string } = {},
 ): ProviderUsage {
   const usage: ProviderUsage = {
     provider,
     status: 'ok',
-    source: provider === 'claude' || provider === 'codex' ? 'cli' : 'token',
+    source: 'cli',
     windows,
     updatedAt: now,
     ...(account ? { account } : {}),
-    ...(credit ? { credit } : {}),
+    ...(credits.length > 0 ? { credits } : {}),
   };
-  if (windows.length === 0 && !credit) {
-    usage.message =
-      hints.empty ??
-      (provider === 'claude' || provider === 'codex'
-        ? 'signed in; no plan limits apply to this account'
-        : 'signed in, but the usage API returned no quota windows');
+  if (windows.length === 0 && credits.length === 0) {
+    usage.message = hints.empty ?? 'signed in; no plan limits apply to this account';
   }
   return usage;
 }
@@ -670,10 +803,6 @@ function base(provider: UsageProvider, status: UsageStatus, now: number): Provid
 
 function withMessage(usage: ProviderUsage, message: string): ProviderUsage {
   return { ...usage, message };
-}
-
-function withAccount(usage: ProviderUsage, account: ProviderUsage['account']): ProviderUsage {
-  return account ? { ...usage, account } : usage;
 }
 
 function makeAccount(fields: {

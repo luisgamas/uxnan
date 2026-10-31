@@ -19,10 +19,10 @@
  * | Grok | `$GROK_HOME|~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` `usage.modelUsage` per model, `costUsdTicks` (1 USD = 1e10) |
  * | OpenCode 2 | `$XDG_DATA_HOME|~/.local/share/opencode/opencode.db` (SQLite `message.data`) | an assistant message with `tokens` and `cost` |
  * | Zero | `$XDG_DATA_HOME|~/.local/share/zero/sessions/<session>/events.jsonl` | a `provider_usage` event (the model from the session's `metadata.json`) |
+ * | Antigravity | `~/.gemini/antigravity-cli/conversations/<conversation>.db` (SQLite, protobuf rows) | a `gen_metadata` row's usage block (`antigravity-usage.ts`) |
  *
- * Antigravity is the one wired agent missing: its transcript
- * (`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`)
- * records no token counts at all.
+ * Antigravity's text transcript records no token counts; its per-conversation
+ * SQLite stores do, and `antigravity-usage.ts` reads them.
  *
  * Verified against the CLIs on the maintainer's machine (Claude Code 2.1.283,
  * Codex 0.13x, pi 0.85, Grok 4.7, OpenCode 2.0.16, Zero), 2026-09-27.

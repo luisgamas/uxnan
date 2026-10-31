@@ -189,7 +189,7 @@ New branch, existing branch, or a custom location — every task gets its own wo
 <td width="46%" valign="top">
 
 ### Know your quota before it runs out
-Session, weekly and monthly usage for Codex, Claude, Copilot and Grok, read straight from each CLI's own signed-in token — never a pasted key, never a cookie.
+Session, weekly and monthly usage, plan, resets and credit for Codex, Claude, Copilot, Grok, Antigravity and OpenCode, asked of each provider's own CLI — Uxnan reads no credential: never a token, never a pasted key, never a cookie.
 
 [Provider usage stats →](uxnandesktop/docs/providers.md)
 

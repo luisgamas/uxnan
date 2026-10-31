@@ -338,6 +338,7 @@ test('the scan counts each Claude response once across files and reads only what
     grok: join(root, 'grok'),
     zero: join(root, 'zero'),
     openCodeDb: join(root, 'none.db'),
+    antigravity: join(root, 'antigravity'),
   };
   try {
     await mkdir(join(root, 'claude', 'proj'), { recursive: true });
@@ -387,6 +388,7 @@ test('the scan reads a Zero session with the model its metadata names', async ()
     grok: join(root, 'grok'),
     zero: join(root, 'zero'),
     openCodeDb: join(root, 'none.db'),
+    antigravity: join(root, 'antigravity'),
   };
   try {
     const session = join(root, 'zero', 'zero_1');
