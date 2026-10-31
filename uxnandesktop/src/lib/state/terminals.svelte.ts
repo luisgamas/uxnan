@@ -188,6 +188,8 @@ export interface ConversationsTab extends BaseTab {
   target?: TargetId;
   /** Bumped when it is asked to show [cwd]'s project again (the scope resets). */
   focusSerial?: number;
+  /** What it lists when it is (re)focused: absent = the conversations. */
+  view?: 'chats' | 'sessions';
 }
 
 export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab | ConversationsTab;
@@ -1456,10 +1458,17 @@ class TerminalStore {
 
   /** Open the Conversations tab (focusing the one already open for that
    *  machine), scoped to `cwd`'s project. Returns the tab id. */
-  openConversations(opts: { cwd: string; target?: TargetId; groupId?: string }): string {
+  openConversations(opts: {
+    cwd: string;
+    target?: TargetId;
+    groupId?: string;
+    /** `sessions`: the agents' own sessions in `cwd` instead of the conversations. */
+    view?: 'chats' | 'sessions';
+  }): string {
     for (const { tab, workspace } of this.tabsWithWorkspace()) {
       if (tab.kind === 'conversations' && sameMachine(tab.target, opts.target)) {
         tab.cwd = opts.cwd;
+        tab.view = opts.view;
         tab.focusSerial = (tab.focusSerial ?? 0) + 1;
         this.revealTab(workspace, tab.id);
         return tab.id;
@@ -1472,6 +1481,7 @@ class TerminalStore {
       title: i18n.t('conversations.tab'),
       cwd: opts.cwd,
       ...(opts.target && !isLocalTarget(opts.target) ? { target: opts.target } : {}),
+      ...(opts.view ? { view: opts.view } : {}),
     };
     this.insertTab(tab, opts.groupId);
     return id;

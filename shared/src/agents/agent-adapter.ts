@@ -136,6 +136,13 @@ export interface GenerateTitleOptions {
   assistantText?: string;
   /** Working directory to run the one-shot in (the thread's own). */
   cwd?: string;
+  /**
+   * The model the conversation runs on, when there is one. Used only by an
+   * agent with no cheaper model it can name (see
+   * {@link IAgentAdapter.generateTitle}); absent for a native session, which
+   * has no model of ours.
+   */
+  model?: string;
 }
 
 /**
@@ -150,6 +157,13 @@ export interface NativeSessionInfo {
   title?: string;
   /** When it last changed, on this PC's clock (epoch ms). */
   updatedAt: number;
+  /**
+   * The model the session last ran on, in the form its CLI's model flag takes —
+   * read from the session's own record where the CLI keeps one (OpenCode 2,
+   * pi, Grok, Zero). It names the session when it has no title, on the model it
+   * already used.
+   */
+  model?: string;
   /**
    * Started by a person in the agent's own interface (its terminal UI or
    * app), rather than run headless by a program — the bridge's own runs, or
@@ -211,10 +225,12 @@ export interface IAgentAdapter {
    *
    * **This is a side errand, not a turn.** Implementations run a fresh one-shot
    * with **no session id**, so nothing lands in the thread's history, no
-   * streaming event is emitted, and the agent's own context is untouched. It is
-   * also expected to use the agent's *cheapest* model rather than the one the
-   * conversation runs on: naming is a trivial task and should never spend the
-   * expensive model's quota.
+   * streaming event is emitted, and the agent's own context is untouched.
+   *
+   * The model follows one rule for every agent: the agent's *cheapest* model
+   * when its CLI can name one — naming is a trivial task and should never spend
+   * the expensive model's quota — else the conversation's own model
+   * (`GenerateTitleOptions.model`), else the agent's default.
    *
    * Optional — an adapter that cannot do it cheaply simply omits it, and the
    * thread keeps the provisional title derived from the opening message.

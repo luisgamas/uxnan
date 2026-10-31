@@ -9,6 +9,11 @@
   //
   // Wide, the list and the details sit side by side; narrow (a split pane), the
   // details replace the list until "Back".
+  //
+  // Beside the conversations, the other view lists the agents' own sessions in
+  // the folder that no conversation continues yet — the new-chat screen only
+  // links here (`ConversationSessions`, architecture/02a §5.8.19).
+  import { untrack } from "svelte";
   import type { Thread, ThreadSearchHit, Turn, TurnList } from "$shared/models/thread";
   import { SvelteMap } from "svelte/reactivity";
   import { chatFor } from "$lib/bridge/chat.svelte";
@@ -21,6 +26,7 @@
     type ConversationOriginFilter,
     type ConversationScope,
     type ConversationStateFilter,
+    type ConversationsView,
   } from "$lib/bridge/conversationsView";
   import { bridgeAgentLogo, hookAgentForBridgeAgent } from "$lib/bridge/agents";
   import { resumeInvocation } from "$lib/agentResume";
@@ -31,6 +37,7 @@
   import type { Project } from "$shared/models/project";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ChatBridgeGate from "./ChatBridgeGate.svelte";
+  import ConversationSessions from "./ConversationSessions.svelte";
   import ChatHostGate from "./ChatHostGate.svelte";
   import { sshHostId } from "$lib/target";
   import AgentStatusIndicator from "$lib/components/AgentStatusIndicator.svelte";
@@ -58,6 +65,7 @@
 
   const STATE_FILTERS: ConversationStateFilter[] = ["any", "working", "needsYou", "failed", "idle"];
 
+  let view = $state<ConversationsView>(untrack(() => tab.view ?? "chats"));
   let scope = $state<ConversationScope>("project");
   let agentId = $state<string | undefined>(undefined);
   let stateFilter = $state<ConversationStateFilter>("any");
@@ -68,11 +76,26 @@
   /** Narrow layout: the details replace the list while one is open. */
   let showingDetails = $state(false);
 
-  // Asked to show a folder again (`openConversations`): back to its project.
+  // Asked to show a folder again (`openConversations`): back to its project,
+  // on the view that asked.
   $effect(() => {
     void tab.focusSerial;
     scope = "project";
+    view = tab.view ?? "chats";
   });
+
+  // The folder's agent sessions: how many there are shows on the view switch,
+  // and they are asked again whenever the tab is (re)focused or reconnects.
+  const folderName = $derived(
+    tab.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? tab.cwd,
+  );
+  $effect(() => {
+    void tab.focusSerial;
+    const cwd = tab.cwd;
+    if (!chat.client.connected) return;
+    void chat.refreshAgentSessions(cwd).catch(() => undefined);
+  });
+  const sessionsHere = $derived(chat.agentSessionsOf(tab.cwd));
 
   // The folder's project, as the bridge resolves it (a worktree maps to its
   // repository) — what "This project" means.
@@ -111,7 +134,7 @@
       hits.clear();
       searchCursor = undefined;
     }
-    if (q.length < 2 || !chat.client.connected) {
+    if (q.length < 2 || !chat.client.connected || view !== "chats") {
       searching = false;
       return;
     }
@@ -143,6 +166,7 @@
     void scope;
     void archived;
     void projectId;
+    void view;
     const timer = setTimeout(() => void runSearch(false), 250);
     return () => clearTimeout(timer);
   });
@@ -165,14 +189,36 @@
   );
   const groups = $derived(groupByAge(rows, Date.now()));
   const selected = $derived(selectedId ? chat.threads.get(selectedId) : undefined);
+  // The agents the filter offers: those of the conversations, or of the
+  // sessions on show.
   const agentsListed = $derived(
-    [...new Set([...chat.threads.values()].map((t) => t.agentId).filter((a): a is string => !!a))]
+    [
+      ...new Set(
+        (view === "sessions"
+          ? (sessionsHere?.sessions ?? [])
+          : [...chat.threads.values()]
+        )
+          .map((t) => t.agentId)
+          .filter((a): a is string => !!a),
+      ),
+    ]
       .map((id) => ({ id, name: chat.agent(id)?.displayName ?? id }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
   const filtersOn = $derived(
-    (agentId ? 1 : 0) + (stateFilter !== "any" ? 1 : 0) + (origin !== "any" ? 1 : 0) + (archived ? 1 : 0),
+    (agentId ? 1 : 0) +
+      (view === "chats"
+        ? (stateFilter !== "any" ? 1 : 0) + (origin !== "any" ? 1 : 0) + (archived ? 1 : 0)
+        : 0),
   );
+
+  function showView(next: ConversationsView) {
+    if (next === view) return;
+    view = next;
+    // The other view may not list the agent that was picked.
+    agentId = undefined;
+    showingDetails = false;
+  }
 
   // Keep a selection on screen: the first row when none (or it left the list).
   $effect(() => {
@@ -299,6 +345,20 @@
 <div class={cn(pane.root, "@container")}>
   <!-- Toolbar: search, scope and filters. -->
   <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2">
+    <Segmented
+      value={view}
+      label={i18n.t("conversations.view")}
+      options={[
+        { value: "chats", label: i18n.t("conversations.viewChats") },
+        {
+          value: "sessions",
+          label: i18n.t("conversations.viewSessions"),
+          // Reserved from the first paint: it fills in when the bridge answers.
+          ...(sessionsHere ? { count: sessionsHere.sessions.length } : {}),
+        },
+      ]}
+      onValueChange={(v) => showView(v as ConversationsView)}
+    />
     <InputGroup.Root class="h-8 min-w-40 flex-1">
       <InputGroup.Addon>
         <Icon icon={SearchIcon} class={icon.action} />
@@ -306,9 +366,11 @@
       <InputGroup.Input
         bind:value={query}
         autofocus={active}
-        placeholder={contentSearch === "on"
-          ? i18n.t("conversations.searchPlaceholder")
-          : i18n.t("conversations.searchTitlesOnly")}
+        placeholder={view === "sessions"
+          ? i18n.t("conversations.searchSessions")
+          : contentSearch === "on"
+            ? i18n.t("conversations.searchPlaceholder")
+            : i18n.t("conversations.searchTitlesOnly")}
         aria-label={i18n.t("conversations.search")}
       />
       {#if searching}
@@ -317,15 +379,17 @@
         </InputGroup.Addon>
       {/if}
     </InputGroup.Root>
-    <Segmented
-      value={scope}
-      label={i18n.t("conversations.scope")}
-      options={[
-        { value: "project", label: i18n.t("conversations.scopeProject") },
-        { value: "all", label: i18n.t("conversations.scopeAll") },
-      ]}
-      onValueChange={(v) => (scope = v as ConversationScope)}
-    />
+    {#if view === "chats"}
+      <Segmented
+        value={scope}
+        label={i18n.t("conversations.scope")}
+        options={[
+          { value: "project", label: i18n.t("conversations.scopeProject") },
+          { value: "all", label: i18n.t("conversations.scopeAll") },
+        ]}
+        onValueChange={(v) => (scope = v as ConversationScope)}
+      />
+    {/if}
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
@@ -346,6 +410,7 @@
             <DropdownMenu.RadioItem class={text.menu} value={a.id}>{a.name}</DropdownMenu.RadioItem>
           {/each}
         </DropdownMenu.RadioGroup>
+        {#if view === "chats"}
         <DropdownMenu.Separator />
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("conversations.filterState")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup value={stateFilter} onValueChange={(v) => (stateFilter = v as ConversationStateFilter)}>
@@ -364,207 +429,221 @@
         <DropdownMenu.CheckboxItem class={text.menu} bind:checked={archived}>
           {i18n.t("conversations.showArchived")}
         </DropdownMenu.CheckboxItem>
+        {/if}
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   </header>
 
-  <div class="flex min-h-0 flex-1">
-    <!-- The list. -->
-    <div
-      class={cn(
-        "uxnan-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-2 py-2 @[44rem]:max-w-[26rem] @[44rem]:border-r @[44rem]:border-border/60",
-        showingDetails && "hidden @[44rem]:block",
-      )}
-    >
-      <p class={cn(text.meta, "px-2 pb-2")}>
-        {scope === "project"
-          ? i18n.t("conversations.countProject", { n: String(rows.length), project: projectName })
-          : i18n.t("conversations.countAll", { n: String(rows.length) })}
-      </p>
-      {#if rows.length === 0}
-        <p class={cn(text.meta, "px-2 py-8 text-center")}>
-          {query.trim().length > 0 ? i18n.t("conversations.noMatch") : i18n.t("conversations.empty")}
+  {#if view === "sessions"}
+    <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <ConversationSessions
+        {chat}
+        cwd={tab.cwd}
+        {agentId}
+        {query}
+        folder={folderName}
+        onPicked={(thread) => openChat(thread)}
+      />
+    </div>
+  {:else}
+    <div class="flex min-h-0 flex-1">
+      <!-- The list. -->
+      <div
+        class={cn(
+          "uxnan-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-2 py-2 @[44rem]:max-w-[26rem] @[44rem]:border-r @[44rem]:border-border/60",
+          showingDetails && "hidden @[44rem]:block",
+        )}
+      >
+        <p class={cn(text.meta, "px-2 pb-2")}>
+          {scope === "project"
+            ? i18n.t("conversations.countProject", { n: String(rows.length), project: projectName })
+            : i18n.t("conversations.countAll", { n: String(rows.length) })}
         </p>
-      {/if}
-      {#each groups as band (band.group)}
-        <div class="flex flex-col gap-0.5 pb-3">
-          <span class={cn(text.section, "px-2 pb-1")}>{i18n.t(`conversations.age.${band.group}`)}</span>
-          {#each band.rows as entry (entry.thread.id)}
-            {@const thread = entry.thread}
-            {@const status = chat.activity.of(thread.id)}
-            <button
-              type="button"
-              class={cn(
-                row.list,
-                "items-start",
-                thread.id === selectedId ? row.listActive : row.listInactive,
-                focus.ring,
-              )}
-              onclick={() => select(thread.id)}
-              ondblclick={() => openChat(thread)}
-            >
-              <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "mt-0.5 shrink-0")} />
-              <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="flex min-w-0 items-center gap-2">
-                  <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
-                  {#if status !== "idle"}
-                    <AgentStatusIndicator {status} />
-                  {/if}
-                  <span class={cn(text.meta, "shrink-0 tabular-nums")}>
-                    {relativeTime(thread.updatedAt, i18n.locale)}
+        {#if rows.length === 0}
+          <p class={cn(text.meta, "px-2 py-8 text-center")}>
+            {query.trim().length > 0 ? i18n.t("conversations.noMatch") : i18n.t("conversations.empty")}
+          </p>
+        {/if}
+        {#each groups as band (band.group)}
+          <div class="flex flex-col gap-0.5 pb-3">
+            <span class={cn(text.section, "px-2 pb-1")}>{i18n.t(`conversations.age.${band.group}`)}</span>
+            {#each band.rows as entry (entry.thread.id)}
+              {@const thread = entry.thread}
+              {@const status = chat.activity.of(thread.id)}
+              <button
+                type="button"
+                class={cn(
+                  row.list,
+                  "items-start",
+                  thread.id === selectedId ? row.listActive : row.listInactive,
+                  focus.ring,
+                )}
+                onclick={() => select(thread.id)}
+                ondblclick={() => openChat(thread)}
+              >
+                <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "mt-0.5 shrink-0")} />
+                <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
+                    {#if status !== "idle"}
+                      <AgentStatusIndicator {status} />
+                    {/if}
+                    <span class={cn(text.meta, "shrink-0 tabular-nums")}>
+                      {relativeTime(thread.updatedAt, i18n.locale)}
+                    </span>
                   </span>
+                  <span class={cn(text.meta, "truncate")}>
+                    {[spaceOf(thread), originOf(thread)].filter(Boolean).join(" · ")}
+                  </span>
+                  {#if entry.hit}{@render snippetText(entry.hit)}{/if}
                 </span>
-                <span class={cn(text.meta, "truncate")}>
-                  {[spaceOf(thread), originOf(thread)].filter(Boolean).join(" · ")}
-                </span>
-                {#if entry.hit}{@render snippetText(entry.hit)}{/if}
-              </span>
-            </button>
-          {/each}
-        </div>
-      {/each}
-      {#if searchCursor && query.trim().length >= 2}
-        <Button variant="ghost" size="sm" class="mx-2" disabled={searching} onclick={() => void runSearch(true)}>
-          {i18n.t("conversations.searchMore")}
-        </Button>
-      {/if}
-    </div>
-
-    <!-- The details of the selected one. -->
-    <div
-      class={cn(
-        "uxnan-scroll min-h-0 min-w-0 flex-1 overflow-y-auto",
-        !showingDetails && "hidden @[44rem]:block",
-      )}
-    >
-      {#if selected}
-        <div class="flex flex-col gap-4 px-5 py-4">
-          <div class="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              class="@[44rem]:hidden"
-              aria-label={i18n.t("conversations.back")}
-              onclick={() => (showingDetails = false)}
-            >
-              <Icon icon={ArrowLeftIcon} class={icon.action} />
-            </Button>
-            <AgentLogo logo={bridgeAgentLogo(selected.agentId)} class={cn(icon.brand, "shrink-0")} />
-            <h3 class={cn(text.title, "min-w-0 flex-1 truncate")}>{selected.title}</h3>
-            {@render actionsMenu(selected)}
+              </button>
+            {/each}
           </div>
+        {/each}
+        {#if searchCursor && query.trim().length >= 2}
+          <Button variant="ghost" size="sm" class="mx-2" disabled={searching} onclick={() => void runSearch(true)}>
+            {i18n.t("conversations.searchMore")}
+          </Button>
+        {/if}
+      </div>
 
-          <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
-            <dt class={text.meta}>{i18n.t("conversations.agent")}</dt>
-            <dd class="min-w-0 truncate">
-              {chat.agent(selected.agentId)?.displayName ?? selected.agentId ?? "—"}{selected.model ? ` · ${selected.model}` : ""}
-            </dd>
-            <dt class={text.meta}>{i18n.t("conversations.space")}</dt>
-            <dd class="min-w-0 truncate" title={selected.cwd}>{spaceOf(selected)}</dd>
-            <dt class={text.meta}>{i18n.t("conversations.stateLabel")}</dt>
-            <dd class="min-w-0 truncate">
-              {selected.status === "archived"
-                ? i18n.t("conversations.archived")
-                : i18n.t(`conversations.activity.${chat.activity.of(selected.id)}`)}
-            </dd>
-            <dt class={text.meta}>{i18n.t("conversations.startedWhere")}</dt>
-            <dd class="min-w-0 truncate">
-              <!-- Where it started only when the bridge recorded it; never a bare dash. -->
-              {[
-                selected.origin
-                  ? i18n.t("conversations.startedOn", { where: originOf(selected) ?? "", name: selected.origin.name })
-                  : undefined,
-                relativeTime(selected.createdAt, i18n.locale),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </dd>
-            {#if selected.transfer}
-              {@const source = chat.threads.get(selected.transfer.sourceThreadId)}
-              <dt class={text.meta}>{i18n.t("conversations.continues")}</dt>
+      <!-- The details of the selected one. -->
+      <div
+        class={cn(
+          "uxnan-scroll min-h-0 min-w-0 flex-1 overflow-y-auto",
+          !showingDetails && "hidden @[44rem]:block",
+        )}
+      >
+        {#if selected}
+          <div class="flex flex-col gap-4 px-5 py-4">
+            <div class="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class="@[44rem]:hidden"
+                aria-label={i18n.t("conversations.back")}
+                onclick={() => (showingDetails = false)}
+              >
+                <Icon icon={ArrowLeftIcon} class={icon.action} />
+              </Button>
+              <AgentLogo logo={bridgeAgentLogo(selected.agentId)} class={cn(icon.brand, "shrink-0")} />
+              <h3 class={cn(text.title, "min-w-0 flex-1 truncate")}>{selected.title}</h3>
+              {@render actionsMenu(selected)}
+            </div>
+
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
+              <dt class={text.meta}>{i18n.t("conversations.agent")}</dt>
               <dd class="min-w-0 truncate">
-                {#if source}
-                  <button type="button" class={cn("truncate underline-offset-2 hover:underline", focus.ring)} onclick={() => select(source.id)}>
-                    {source.title}
-                  </button>
-                {:else}
-                  {selected.transfer.sourceTitle}
-                {/if}
-                · {i18n.t(`transfer.status.${selected.transfer.status}`)}
+                {chat.agent(selected.agentId)?.displayName ?? selected.agentId ?? "—"}{selected.model ? ` · ${selected.model}` : ""}
               </dd>
-            {/if}
-            {#if selected.continuations?.length}
-              <dt class={text.meta}>{i18n.t("conversations.continuedIn")}</dt>
-              <dd class="flex min-w-0 flex-col">
-                {#each selected.continuations as next (next.threadId)}
-                  {@const target = chat.threads.get(next.threadId)}
-                  {#if target}
-                    <button type="button" class={cn("truncate text-left underline-offset-2 hover:underline", focus.ring)} onclick={() => select(target.id)}>
-                      {chat.agent(next.agentId)?.displayName ?? next.agentId} — {target.title}
+              <dt class={text.meta}>{i18n.t("conversations.space")}</dt>
+              <dd class="min-w-0 truncate" title={selected.cwd}>{spaceOf(selected)}</dd>
+              <dt class={text.meta}>{i18n.t("conversations.stateLabel")}</dt>
+              <dd class="min-w-0 truncate">
+                {selected.status === "archived"
+                  ? i18n.t("conversations.archived")
+                  : i18n.t(`conversations.activity.${chat.activity.of(selected.id)}`)}
+              </dd>
+              <dt class={text.meta}>{i18n.t("conversations.startedWhere")}</dt>
+              <dd class="min-w-0 truncate">
+                <!-- Where it started only when the bridge recorded it; never a bare dash. -->
+                {[
+                  selected.origin
+                    ? i18n.t("conversations.startedOn", { where: originOf(selected) ?? "", name: selected.origin.name })
+                    : undefined,
+                  relativeTime(selected.createdAt, i18n.locale),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </dd>
+              {#if selected.transfer}
+                {@const source = chat.threads.get(selected.transfer.sourceThreadId)}
+                <dt class={text.meta}>{i18n.t("conversations.continues")}</dt>
+                <dd class="min-w-0 truncate">
+                  {#if source}
+                    <button type="button" class={cn("truncate underline-offset-2 hover:underline", focus.ring)} onclick={() => select(source.id)}>
+                      {source.title}
                     </button>
+                  {:else}
+                    {selected.transfer.sourceTitle}
                   {/if}
-                {/each}
-              </dd>
-            {/if}
-          </dl>
+                  · {i18n.t(`transfer.status.${selected.transfer.status}`)}
+                </dd>
+              {/if}
+              {#if selected.continuations?.length}
+                <dt class={text.meta}>{i18n.t("conversations.continuedIn")}</dt>
+                <dd class="flex min-w-0 flex-col">
+                  {#each selected.continuations as next (next.threadId)}
+                    {@const target = chat.threads.get(next.threadId)}
+                    {#if target}
+                      <button type="button" class={cn("truncate text-left underline-offset-2 hover:underline", focus.ring)} onclick={() => select(target.id)}>
+                        {chat.agent(next.agentId)?.displayName ?? next.agentId} — {target.title}
+                      </button>
+                    {/if}
+                  {/each}
+                </dd>
+              {/if}
+            </dl>
 
-          <div class="flex flex-wrap gap-2">
-            <Button size="sm" onclick={() => openChat(selected)}>
-              <Icon icon={BubbleChatIcon} class={icon.button} />
-              {i18n.t("conversations.continueInChat")}
-            </Button>
-            <!-- Always shown, as the same agent's session reopened in a
-                 terminal (the existing resume path); when it cannot, it says
-                 why — Zero has no interactive resume, a conversation with no
-                 message yet has no session, one open in a terminal already is. -->
-            <TooltipSimple title={terminalReason ?? ""}>
-              {#snippet children(tp)}
-                <span {...(terminalReason ? tp : {})} class="inline-flex">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={terminalState !== "ready"}
-                    onclick={() => sessions.openInTerminal(selected)}
-                  >
-                    {terminalState === "working" ? i18n.t("sessions.openInTerminalWait") : i18n.t("conversations.continueInTerminal")}
-                  </Button>
-                </span>
-              {/snippet}
-            </TooltipSimple>
-            {#if selected.status !== "archived"}
-              <Button size="sm" variant="outline" onclick={() => chatActionUi.run("transfer", selected, () => undefined)}>
-                {i18n.t("conversations.continueWithAgent")}
+            <div class="flex flex-wrap gap-2">
+              <Button size="sm" onclick={() => openChat(selected)}>
+                <Icon icon={BubbleChatIcon} class={icon.button} />
+                {i18n.t("conversations.continueInChat")}
               </Button>
-              <Button size="sm" variant="ghost" onclick={() => chatActionUi.run("fork", selected, () => undefined)}>
-                {i18n.t("chat.action.fork")}
-              </Button>
+              <!-- Always shown, as the same agent's session reopened in a
+                   terminal (the existing resume path); when it cannot, it says
+                   why — Zero has no interactive resume, a conversation with no
+                   message yet has no session, one open in a terminal already is. -->
+              <TooltipSimple title={terminalReason ?? ""}>
+                {#snippet children(tp)}
+                  <span {...(terminalReason ? tp : {})} class="inline-flex">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={terminalState !== "ready"}
+                      onclick={() => sessions.openInTerminal(selected)}
+                    >
+                      {terminalState === "working" ? i18n.t("sessions.openInTerminalWait") : i18n.t("conversations.continueInTerminal")}
+                    </Button>
+                  </span>
+                {/snippet}
+              </TooltipSimple>
+              {#if selected.status !== "archived"}
+                <Button size="sm" variant="outline" onclick={() => chatActionUi.run("transfer", selected, () => undefined)}>
+                  {i18n.t("conversations.continueWithAgent")}
+                </Button>
+                <Button size="sm" variant="ghost" onclick={() => chatActionUi.run("fork", selected, () => undefined)}>
+                  {i18n.t("chat.action.fork")}
+                </Button>
+              {/if}
+            </div>
+
+            {#if terminalReason && terminalState !== "working"}
+              <p class={cn(text.meta, "-mt-2")}>{terminalReason}</p>
             {/if}
+
+            <section class="flex flex-col gap-2">
+              <span class={text.section}>{i18n.t("conversations.lastExchange")}</span>
+              {#if lastLoading && !last}
+                <Spinner class={cn(icon.decorative, "text-muted-foreground")} />
+              {:else if last}
+                {#if said(last, "user")}
+                  <p class="rounded-lg bg-muted px-3 py-2 text-[13px] leading-5 whitespace-pre-wrap break-words">{said(last, "user")}</p>
+                {/if}
+                {#if said(last, "assistant")}
+                  <p class="px-1 text-[13px] leading-5 whitespace-pre-wrap break-words text-foreground/90">{said(last, "assistant")}</p>
+                {/if}
+              {:else}
+                <p class={text.meta}>{i18n.t("chat.emptyThread")}</p>
+              {/if}
+            </section>
           </div>
-
-          {#if terminalReason && terminalState !== "working"}
-            <p class={cn(text.meta, "-mt-2")}>{terminalReason}</p>
-          {/if}
-
-          <section class="flex flex-col gap-2">
-            <span class={text.section}>{i18n.t("conversations.lastExchange")}</span>
-            {#if lastLoading && !last}
-              <Spinner class={cn(icon.decorative, "text-muted-foreground")} />
-            {:else if last}
-              {#if said(last, "user")}
-                <p class="rounded-lg bg-muted px-3 py-2 text-[13px] leading-5 whitespace-pre-wrap break-words">{said(last, "user")}</p>
-              {/if}
-              {#if said(last, "assistant")}
-                <p class="px-1 text-[13px] leading-5 whitespace-pre-wrap break-words text-foreground/90">{said(last, "assistant")}</p>
-              {/if}
-            {:else}
-              <p class={text.meta}>{i18n.t("chat.emptyThread")}</p>
-            {/if}
-          </section>
-        </div>
-      {:else}
-        <p class={cn(text.meta, "px-5 py-10 text-center")}>{i18n.t("conversations.pick")}</p>
-      {/if}
+        {:else}
+          <p class={cn(text.meta, "px-5 py-10 text-center")}>{i18n.t("conversations.pick")}</p>
+        {/if}
+      </div>
     </div>
-  </div>
+  {/if}
 </div>
 {/if}

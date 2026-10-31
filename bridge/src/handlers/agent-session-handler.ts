@@ -5,6 +5,8 @@
  * `agent/sessions` asks each agent's CLI through the adapter
  * (`AgentManager.listAgentSessions`) and adds what the bridge knows: the
  * conversation that continues a session and the terminal that holds one.
+ * A session its CLI keeps no title for is named by the bridge in the
+ * background (`SessionTitles`) and listed `titlePending` until it is.
  * A session counts only when a person had it — one a program ran headless is
  * listed only when a conversation continues it, and Uxnan's own one-shots
  * (naming, commit messages) never are.
@@ -60,6 +62,8 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
       const now = ctx.now();
       const seen = new Set<string>();
       const sessions: AgentSessionSummary[] = [];
+      /** The model each session last ran on, from its CLI's own record. */
+      const ranOn = new Map<string, string>();
       for (const { agentId, sessions: native } of lists) {
         for (const s of native) {
           const key = sessionKey(agentId, s.sessionId);
@@ -68,6 +72,7 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
           if (s.title !== undefined && isOneShotPrompt(s.title)) continue;
           const hold = ctx.sessionHolds.find(agentId, s.sessionId);
           seen.add(key);
+          if (s.model !== undefined) ranOn.set(key, s.model);
           sessions.push({
             agentId,
             sessionId: s.sessionId,
@@ -96,6 +101,40 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
         });
       }
       sessions.sort((a, b) => a.updatedAgoMs - b.updatedAgoMs);
+      // What a naming run left behind in a CLI's store (found by reading it)
+      // is not a session of anybody's.
+      for (let i = sessions.length - 1; i >= 0; i--) {
+        const s = sessions[i]!;
+        if (s.threadId === undefined && ctx.sessionTitles.isErrand(s.agentId, s.sessionId)) {
+          sessions.splice(i, 1);
+        }
+      }
+      // A session its CLI keeps no title for is named by the bridge, lazily: the
+      // name it already gave, else queued (newest first) and `titlePending`, so
+      // the listing never waits for a model (`agents/session-titles.ts`).
+      const untitled = sessions.filter((s) => s.title === undefined && s.threadId === undefined);
+      for (const s of untitled) {
+        const named = ctx.sessionTitles.titleOf(s.agentId, s.sessionId);
+        if (named !== undefined) s.title = named;
+      }
+      ctx.sessionTitles.request(
+        untitled
+          .filter((s) => s.title === undefined)
+          .map((s) => {
+            const model = ranOn.get(sessionKey(s.agentId, s.sessionId));
+            return {
+              agentId: s.agentId,
+              sessionId: s.sessionId,
+              cwd,
+              ...(model !== undefined ? { model } : {}),
+            };
+          }),
+      );
+      for (const s of untitled) {
+        if (s.title === undefined && ctx.sessionTitles.isPending(s.agentId, s.sessionId)) {
+          s.titlePending = true;
+        }
+      }
       return { sessions, unlisted };
     },
   );

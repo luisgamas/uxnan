@@ -583,15 +583,17 @@ export class GrokAdapter extends BaseAgentAdapter {
    * Name a conversation with a one-shot run. `grok -p` is its documented single-turn form: it prints the reply to stdout
    * and exits, so nothing touches the ACP session this thread runs on.
    *
-   * No model flag: Grok exposes its models through the ACP `initialize`
-   * handshake rather than a fixed cheap-tier id, so this runs on its own
-   * default. Verified live against grok 0.2.118.
+   * Grok announces no cheap tier (its ACP `initialize` handshake lists the
+   * account's models, nothing ranks them), so the model is the conversation's
+   * own, else the configured default, else Grok's own (`-m`).
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
+    const model = options.model ?? this.#defaultModel;
+    const args = [...(model !== undefined ? ['-m', model] : []), '-p', prompt];
     const raw = await runTitleOneShot(() =>
-      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...['-p', prompt]], cwd),
+      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
     );
     return raw === undefined ? undefined : sanitizeTitle(raw);
   }

@@ -1,11 +1,23 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.11.0
+> **Version:** 1.12.0
 > **Fecha:** 2026-10-31
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.12.0):** the agents' own sessions are listed in **one
+> place**, the conversation catalog (§5.8.19, §5.8.21): the desktop's
+> Conversations tab and the phone's catalog both have an *Agent sessions* view,
+> and the new-chat / new-conversation screens only say how many there are, so
+> they stay composer-first however much history exists. A session its CLI keeps
+> no title for is **named by the bridge** in the background
+> (`AgentSessionSummary.titlePending`; the clients ask again, no notification),
+> with the same `generateTitle` errand as a conversation's and one model rule for
+> every agent: the cheapest the CLI can name, else the conversation's model (for
+> a native session, the one it last ran on, `NativeSessionInfo.model`), else the
+> default.
+>
 > **Executive summary (1.11.0):** an agent's approval or question **waits for a
 > person, with no clock** (§5.8.16). The bridge's five-minute auto-reject /
 > auto-skip and its phone-connected countdown are gone; a request ends only
@@ -3704,11 +3716,32 @@ siquiera dejan sesion: `claude --no-session-persistence`, `codex exec
 --ephemeral`, `pi --no-session`). Una sesion retenida en esa carpeta aparece
 aunque su CLI no sepa listarla.
 
+**Sesiones sin titulo (`titlePending`).** Algunos CLIs no guardan titulo para
+una sesion (OpenCode no nombra las que nadie nombro; Codex no tiene nombre ni
+`preview` en un hilo vacio). El bridge las nombra con **el mismo encargo** que
+nombra una conversacion (`IAgentAdapter.generateTitle`, una sola capa), con el
+primer intercambio de la sesion leido de la historia del propio agente
+(`SessionHistoryReader`; la de Antigravity no se puede leer, asi que sus sesiones
+siguen sin titulo). Un listado nunca espera a un modelo: `agent/sessions` contesta
+al instante con el nombre ya dado o con `titlePending: true`, y el cliente vuelve
+a preguntar cada 5 s (maximo 18 veces) hasta que llega `title` — converger
+preguntando al dueño, sin notificacion. Esta acotado (`SessionTitles`): 2
+ejecuciones a la vez, cola de 12, 30 ejecuciones por hora, dos intentos por
+sesion; los nombres se guardan en `session-titles.json`. **El modelo es el mismo
+para todo agente que nombra**: el mas barato que su CLI pueda nombrar (Claude
+Code, Codex, Antigravity), si no el de la conversacion — para una sesion nativa,
+el modelo con que corrio por ultima vez, leido del registro del propio agente
+(`NativeSessionInfo.model`: OpenCode 2, pi, Grok, Zero) —, si no el predeterminado.
+Una sesion cuyo primer mensaje es un encargo de un solo uso de Uxnan (lo que deja
+una ejecucion de nombrado en un CLI que no puede correrla sin sesion, p. ej.
+OpenCode) no se lista.
+
 **Retomar (`thread/start { agentId, agentSessionId, cwd }`).** El hilo nace
 guardando la sesion (`agentSessionId`): su primer turno la continua (adopcion,
 §5.8.8) y `turn/list` importa su historial por la convergencia de siempre. Una
 sesion tiene una sola conversacion: si ya hay una que la continua, `thread/start`
-devuelve esa. El titulo que traiga es provisional (`titleSource: prompt`).
+devuelve esa. El titulo que traiga es provisional (`titleSource: prompt`); sin
+titulo del cliente, toma el que el bridge ya dio a la sesion, si lo dio.
 
 **La terminal como escritor (`agent/hold` / `release`).** Una sesion de
 un CLI tiene un solo escritor. Cuando una terminal del desktop tiene el agente
@@ -3736,8 +3769,13 @@ un agente que el bridge conduce), las repite al reconectar, atiende
 (`pty_stop_agent`, nunca teclas; el shell y la pestana quedan) y ofrece
 *Continuar como chat* en la pestana y *Abrir en terminal* en el chat
 (`app.launchAgent` con `resume`). Ambas apps listan las sesiones de la carpeta
-al empezar una conversacion (desktop: el inicio del chat; movil: *Nueva
-conversacion*), muestran la retencion sobre el compositor con *Continuar aqui*
+en un solo lugar: el catalogo de conversaciones (§5.8.21) — la pestana
+*Conversaciones* del desktop, y en el movil la vista *Sesiones de agentes* del
+catalogo (`ConversationCatalogScreen`, `AgentSessionsView`). La pantalla de
+inicio de una conversacion (desktop: el inicio del chat; movil: *Nueva
+conversacion*) no las lista: solo muestra una linea con cuantas hay fuera de
+Uxnan que abre esa vista, de modo que nunca crece con el historial. Las dos
+muestran la retencion sobre el compositor con *Continuar aqui*
 (`requestHandoff`) y lo ofrecen solo si el bridge anuncia
 `features.agentSessions`.
 
@@ -3916,8 +3954,11 @@ bridge.
 **Superficies.** Desktop: pestana "Conversaciones" (todas o las del proyecto,
 busqueda, filtros agente/estado/origen/archivadas, por edad, detalles con
 "Continuar en chat / en terminal / con otro agente", bifurcar y las acciones de
-`chatActions`), la pantalla de chat nuevo muestra las 3 recientes + "Ver todas"
-y "Continuar de…", la cabecera del chat ofrece bifurcar, continuar con otro
+`chatActions`; un segundo conmutador la lleva a las *Sesiones de agentes* de la
+carpeta, §5.8.19), la pantalla de chat nuevo ancla el compositor (nada de abajo lo
+mueve) y muestra solo las 3 recientes + "Ver todas", una linea con cuantas
+sesiones de agentes hay fuera de Uxnan que abre esa vista, y "Continuar de…",
+la cabecera del chat ofrece bifurcar, continuar con otro
 agente e informacion de sesion, y el inicio de la conversacion dice de donde
 viene y a donde siguio. Movil: la misma busqueda, filtros y acciones en la lista
 de conversaciones y su menu. `uxnan-cli`: `chat fork`, `chat forward`, `chat

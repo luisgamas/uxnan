@@ -17,6 +17,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
+import 'package:uxnan/application/services/session_title_follow_up.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
@@ -1081,19 +1082,32 @@ final threadHoldProvider =
 
 /// Every agent's own sessions in a folder of the connected PC, that no
 /// conversation continues yet — the ones a new conversation can pick up.
+///
+/// The one owner of that list: the new-conversation screen counts it, the
+/// catalog's *Agent sessions* view shows it. While the bridge names untitled
+/// sessions it asks again ([followSessionTitles]); the follow-up stops with
+/// the last listener, and invalidating the provider starts the count over.
 final agentSessionsProvider =
-    FutureProvider.autoDispose.family<AgentSessionList, String>(
-  (ref, cwd) async {
+    StreamProvider.autoDispose.family<AgentSessionList, String>(
+  (ref, cwd) {
     if (!ref.watch(bridgeSupportsAgentSessionsProvider)) {
-      return const AgentSessionList(sessions: [], unlisted: []);
+      return Stream.value(const AgentSessionList(sessions: [], unlisted: []));
     }
-    final list = await ref.watch(bridgeReplicaProvider).listAgentSessions(cwd);
-    return AgentSessionList(
-      sessions: [
-        for (final s in list.sessions)
-          if (s.threadId == null) s,
-      ],
-      unlisted: list.unlisted,
+    final replica = ref.watch(bridgeReplicaProvider);
+    var active = true;
+    ref.onDispose(() => active = false);
+    return followSessionTitles(
+      () async {
+        final list = await replica.listAgentSessions(cwd);
+        return AgentSessionList(
+          sessions: [
+            for (final s in list.sessions)
+              if (s.threadId == null) s,
+          ],
+          unlisted: list.unlisted,
+        );
+      },
+      isActive: () => active,
     );
   },
 );

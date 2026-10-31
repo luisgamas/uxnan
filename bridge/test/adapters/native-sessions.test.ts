@@ -17,7 +17,9 @@ import {
   listGrokSessions,
   listPiSessions,
   piSessionDir,
+  piSessionModel,
   promptText,
+  zeroSessionModel,
 } from '../../src/adapters/native-sessions.js';
 
 const CWD = '/Users/me/app_one';
@@ -130,9 +132,11 @@ test('pi: the sessions whose header names the folder, titled by the first messag
       join(dir, '2026-09-25T05-31_p-1.jsonl'),
       jsonl([
         { type: 'session', version: 3, id: 'p-1', cwd: CWD },
-        { type: 'model_change', modelId: 'm' },
+        { type: 'model_change', provider: 'openrouter', modelId: 'cohere/north-mini-code:free' },
         message('user', 'describe this project'),
         message('assistant', 'It is…'),
+        // Switched later: the model it last ran on.
+        { type: 'model_change', provider: 'opencode', modelId: 'big-pickle' },
       ]),
       30,
     );
@@ -149,9 +153,35 @@ test('pi: the sessions whose header names the folder, titled by the first messag
 
     const sessions = await listPiSessions(agentDir, CWD);
     assert.deepEqual(
-      sessions.map((s) => [s.sessionId, s.title, s.interactive]),
-      [['p-1', 'describe this project', true]],
+      sessions.map((s) => [s.sessionId, s.title, s.interactive, s.model]),
+      [['p-1', 'describe this project', true, 'opencode/big-pickle']],
     );
+  });
+});
+
+test('pi: the model is the last model_change, in the form --model takes', () => {
+  assert.equal(piSessionModel(''), undefined);
+  assert.equal(
+    piSessionModel(
+      jsonl([
+        { type: 'model_change', provider: 'a', modelId: 'one' },
+        { type: 'message', message: { role: 'user', content: 'x' } },
+        { type: 'model_change', provider: 'b', modelId: 'two/three:free' },
+      ]),
+    ),
+    'b/two/three:free',
+  );
+});
+
+test('Zero: the model of a session is its metadata.json modelId', async () => {
+  await withHome(async (home) => {
+    await write(
+      join(home, '.local', 'share', 'zero', 'sessions', 'z-1', 'metadata.json'),
+      JSON.stringify({ sessionId: 'z-1', modelId: 'openrouter/free' }),
+      5,
+    );
+    assert.equal(await zeroSessionModel(home, 'z-1'), 'openrouter/free');
+    assert.equal(await zeroSessionModel(home, 'z-none'), undefined);
   });
 });
 
@@ -180,10 +210,16 @@ test('Grok: sessions with a prompt, titled by it; an empty one is not a session'
       20,
     );
     await write(join(dir, 'g-2', 'updates.jsonl'), jsonl([update('hook_execution')]), 5);
+    // The model it runs on is in its summary.
+    await write(
+      join(dir, 'g-1', 'summary.json'),
+      JSON.stringify({ current_model_id: 'grok-4.7' }),
+      20,
+    );
     const sessions = await listGrokSessions(home, CWD);
     assert.deepEqual(
-      sessions.map((s) => [s.sessionId, s.title, s.interactive]),
-      [['g-1', 'add dark mode', true]],
+      sessions.map((s) => [s.sessionId, s.title, s.interactive, s.model]),
+      [['g-1', 'add dark mode', true, 'grok-4.7']],
     );
     assert.deepEqual(await listGrokSessions(home, '/nowhere'), []);
   });

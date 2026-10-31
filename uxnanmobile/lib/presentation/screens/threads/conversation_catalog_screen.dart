@@ -10,12 +10,15 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/thread_search.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/threads/agent_sessions_view.dart';
+import 'package:uxnan/presentation/screens/threads/catalog_age.dart';
 import 'package:uxnan/presentation/screens/threads/conversation_continuity.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
@@ -23,11 +26,22 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
+import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
+
+/// What the catalog lists.
+enum CatalogView {
+  /// The PC's conversations — the catalog proper.
+  conversations,
+
+  /// The agents' own sessions in a folder, outside Uxnan, to pick up as a
+  /// conversation (architecture/02a §5.8.19).
+  sessions,
+}
 
 /// What a conversation is doing, as the catalog filters it.
 enum CatalogState {
@@ -91,27 +105,6 @@ class CatalogFilters {
       ];
 }
 
-/// How long ago, in the catalog's three groups.
-enum CatalogAge {
-  /// Since midnight.
-  today,
-
-  /// The last seven days.
-  week,
-
-  /// Before that, or unknown.
-  earlier;
-
-  /// The group [at] falls in, seen from [now].
-  static CatalogAge of(DateTime? at, DateTime now) {
-    if (at == null) return CatalogAge.earlier;
-    final midnight = DateTime(now.year, now.month, now.day);
-    if (!at.isBefore(midnight)) return CatalogAge.today;
-    if (now.difference(at) <= const Duration(days: 7)) return CatalogAge.week;
-    return CatalogAge.earlier;
-  }
-}
-
 /// Every conversation of a PC, searchable — the phone's catalog, the same one
 /// Uxnan Desktop shows in its Conversations tab (architecture/02a §5.8.21).
 ///
@@ -120,12 +113,19 @@ enum CatalogAge {
 /// history and keeps a digest of it, while the phone holds only the
 /// conversations it has opened. The two are listed apart, so it is always clear
 /// which ones matched by name and which by content.
+///
+/// Opened for a folder ([sessionsCwd]), it also lists that folder's agent
+/// sessions — the ones an agent had in a terminal or its own app, that no
+/// conversation continues yet — as a second view, [CatalogView.sessions]:
+/// the one place the app lists them.
 class ConversationCatalogScreen extends ConsumerStatefulWidget {
   /// Creates a [ConversationCatalogScreen].
   const ConversationCatalogScreen({
     required this.deviceId,
     required this.onOpen,
     this.projectId,
+    this.sessionsCwd,
+    this.initialView = CatalogView.conversations,
     super.key,
   });
 
@@ -136,6 +136,14 @@ class ConversationCatalogScreen extends ConsumerStatefulWidget {
   /// chosen at first. Null lists every conversation.
   final String? projectId;
 
+  /// The folder whose agent sessions the catalog can also list. Null: only
+  /// conversations, with no view switch.
+  final String? sessionsCwd;
+
+  /// The view shown first; [CatalogView.conversations] when there is no
+  /// [sessionsCwd] to list sessions of.
+  final CatalogView initialView;
+
   /// Opens a conversation; the catalog has already closed itself.
   final void Function(String threadId) onOpen;
 
@@ -145,6 +153,8 @@ class ConversationCatalogScreen extends ConsumerStatefulWidget {
     BuildContext context, {
     required String deviceId,
     String? projectId,
+    String? sessionsCwd,
+    CatalogView initialView = CatalogView.conversations,
     void Function(String threadId)? onOpen,
   }) {
     final navigator = Navigator.of(context);
@@ -153,6 +163,8 @@ class ConversationCatalogScreen extends ConsumerStatefulWidget {
       builder: (_) => ConversationCatalogScreen(
         deviceId: deviceId,
         projectId: projectId,
+        sessionsCwd: sessionsCwd,
+        initialView: initialView,
         onOpen: (id) {
           if (route.isActive) navigator.removeRoute(route);
           if (onOpen != null) {
@@ -176,6 +188,9 @@ class _ConversationCatalogScreenState
   final TextEditingController _query = TextEditingController();
   Timer? _debounce;
   late bool _inProject = widget.projectId != null;
+  late CatalogView _view = widget.sessionsCwd == null
+      ? CatalogView.conversations
+      : widget.initialView;
   String? _agentId;
   ClientKind? _origin;
   CatalogState _state = CatalogState.any;
@@ -203,6 +218,8 @@ class _ConversationCatalogScreenState
   /// PC's, live. Kept from the last build, which watches both.
   bool _canSearchContent = false;
 
+  bool get _inSessions => _view == CatalogView.sessions;
+
   void _onQueryChanged(String _) {
     _debounce?.cancel();
     setState(() {
@@ -210,6 +227,12 @@ class _ConversationCatalogScreenState
       _cursor = null;
       _searchFailed = false;
     });
+    // Sessions are matched by title, here; the bridge searches conversations.
+    if (_inSessions) {
+      _generation++;
+      setState(() => _searching = false);
+      return;
+    }
     if (_trimmed.length < kThreadSearchMinQueryChars || !_canSearchContent) {
       _generation++;
       setState(() => _searching = false);
@@ -277,6 +300,18 @@ class _ConversationCatalogScreenState
     );
     final byId = {for (final t in all) t.id: t};
     final agentIds = {for (final t in all) t.agentId}.toList()..sort();
+    // The agents that have a session here, for the sessions view's filter.
+    final sessionAgentIds = widget.sessionsCwd == null
+        ? const <String>[]
+        : ({
+            for (final s in ref
+                    .watch(agentSessionsProvider(widget.sessionsCwd!))
+                    .value
+                    ?.sessions ??
+                const <AgentSessionSummary>[])
+              s.agentId,
+          }.toList()
+          ..sort());
     final query = _trimmed;
     final searching = query.isNotEmpty;
     _canSearchContent = ref.watch(bridgeSupportsConversationsProvider) &&
@@ -294,7 +329,9 @@ class _ConversationCatalogScreenState
           ),
           child: SearchBar(
             controller: _query,
-            hintText: l10n.catalogSearchHint,
+            hintText: _inSessions
+                ? l10n.catalogSessionsSearchHint
+                : l10n.catalogSearchHint,
             leading: const UxIcon(UxIcons.search),
             trailing: [
               if (query.isNotEmpty)
@@ -313,83 +350,129 @@ class _ConversationCatalogScreenState
           ),
         ),
       ),
+      if (widget.sessionsCwd != null)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              0,
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+            ),
+            child: ConnectedButtonGroup<CatalogView>(
+              values: CatalogView.values,
+              selected: _view,
+              onChanged: _switchView,
+              labelBuilder: (view, _) => Text(
+                view == CatalogView.conversations
+                    ? l10n.catalogViewConversations
+                    : l10n.catalogViewSessions,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
       SliverToBoxAdapter(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
           child: Row(
-            children: [
-              if (widget.projectId != null) ...[
-                ChoiceChip(
-                  label: Text(l10n.catalogScopeProject),
-                  selected: _inProject,
-                  onSelected: (_) => _refilter(() => _inProject = true),
-                ),
-                const SizedBox(width: UxnanSpacing.xs),
-                ChoiceChip(
-                  label: Text(l10n.catalogScopeAll),
-                  selected: !_inProject,
-                  onSelected: (_) => _refilter(() => _inProject = false),
-                ),
-                const SizedBox(width: UxnanSpacing.md),
-              ],
-              _MenuChip<String?>(
-                label: _agentId == null
-                    ? l10n.catalogFilterAgent
-                    : agentNameOf(ref, _agentId),
-                active: _agentId != null,
-                options: [
-                  (null, l10n.catalogAnyAgent),
-                  for (final id in agentIds) (id, agentNameOf(ref, id)),
-                ],
-                onSelected: (id) => setState(() => _agentId = id),
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              _MenuChip<CatalogState>(
-                label: _state == CatalogState.any
-                    ? l10n.catalogFilterState
-                    : _stateLabel(l10n, _state),
-                active: _state != CatalogState.any,
-                options: [
-                  for (final s in CatalogState.values)
-                    (s, _stateLabel(l10n, s)),
-                ],
-                onSelected: (s) => setState(() => _state = s),
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              _MenuChip<ClientKind?>(
-                label: _origin == null
-                    ? l10n.catalogFilterOrigin
-                    : _originLabel(l10n, _origin),
-                active: _origin != null,
-                options: [
-                  (null, l10n.catalogOriginAny),
-                  (ClientKind.phone, l10n.catalogOriginPhone),
-                  (ClientKind.desktop, l10n.catalogOriginDesktop),
-                ],
-                onSelected: (o) => setState(() => _origin = o),
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              FilterChip(
-                label: Text(l10n.catalogFilterArchived),
-                selected: _archived,
-                onSelected: (v) => _refilter(() => _archived = v),
-              ),
-            ],
+            children: _inSessions
+                ? [
+                    _MenuChip<String?>(
+                      label: _agentId == null
+                          ? l10n.catalogFilterAgent
+                          : agentNameOf(ref, _agentId),
+                      active: _agentId != null,
+                      options: [
+                        (null, l10n.catalogAnyAgent),
+                        for (final id in sessionAgentIds)
+                          (id, agentNameOf(ref, id)),
+                      ],
+                      onSelected: (id) => setState(() => _agentId = id),
+                    ),
+                  ]
+                : [
+                    if (widget.projectId != null) ...[
+                      ChoiceChip(
+                        label: Text(l10n.catalogScopeProject),
+                        selected: _inProject,
+                        onSelected: (_) => _refilter(() => _inProject = true),
+                      ),
+                      const SizedBox(width: UxnanSpacing.xs),
+                      ChoiceChip(
+                        label: Text(l10n.catalogScopeAll),
+                        selected: !_inProject,
+                        onSelected: (_) => _refilter(() => _inProject = false),
+                      ),
+                      const SizedBox(width: UxnanSpacing.md),
+                    ],
+                    _MenuChip<String?>(
+                      label: _agentId == null
+                          ? l10n.catalogFilterAgent
+                          : agentNameOf(ref, _agentId),
+                      active: _agentId != null,
+                      options: [
+                        (null, l10n.catalogAnyAgent),
+                        for (final id in agentIds) (id, agentNameOf(ref, id)),
+                      ],
+                      onSelected: (id) => setState(() => _agentId = id),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    _MenuChip<CatalogState>(
+                      label: _state == CatalogState.any
+                          ? l10n.catalogFilterState
+                          : _stateLabel(l10n, _state),
+                      active: _state != CatalogState.any,
+                      options: [
+                        for (final s in CatalogState.values)
+                          (s, _stateLabel(l10n, s)),
+                      ],
+                      onSelected: (s) => setState(() => _state = s),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    _MenuChip<ClientKind?>(
+                      label: _origin == null
+                          ? l10n.catalogFilterOrigin
+                          : _originLabel(l10n, _origin),
+                      active: _origin != null,
+                      options: [
+                        (null, l10n.catalogOriginAny),
+                        (ClientKind.phone, l10n.catalogOriginPhone),
+                        (ClientKind.desktop, l10n.catalogOriginDesktop),
+                      ],
+                      onSelected: (o) => setState(() => _origin = o),
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    FilterChip(
+                      label: Text(l10n.catalogFilterArchived),
+                      selected: _archived,
+                      onSelected: (v) => _refilter(() => _archived = v),
+                    ),
+                  ],
           ),
         ),
       ),
       const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.md)),
-      ...searching
-          ? _searchSlivers(
-              context,
-              scoped,
-              byId,
-              filters,
-              admitted,
-              projectNames,
-            )
-          : _ageSlivers(context, scoped, projectNames),
+      if (_inSessions)
+        AgentSessionsView(
+          cwd: widget.sessionsCwd!,
+          query: query,
+          agentId: _agentId,
+          onOpen: _open,
+        )
+      else
+        ...searching
+            ? _searchSlivers(
+                context,
+                scoped,
+                byId,
+                filters,
+                admitted,
+                projectNames,
+              )
+            : _ageSlivers(context, scoped, projectNames),
       const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.xxl)),
     ];
 
@@ -403,7 +486,7 @@ class _ConversationCatalogScreenState
       automaticBackButton: false,
       slivers: [
         ...slivers,
-        if (scoped.isEmpty && !searching)
+        if (!_inSessions && scoped.isEmpty && !searching)
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
@@ -548,6 +631,23 @@ class _ConversationCatalogScreenState
   }
 
   void _open(String threadId) => widget.onOpen(threadId);
+
+  /// Switches between the conversations and the folder's agent sessions: the
+  /// agent filter and the query belong to the view they were typed in.
+  void _switchView(CatalogView view) {
+    if (view == _view) return;
+    _debounce?.cancel();
+    _generation++;
+    setState(() {
+      _view = view;
+      _agentId = null;
+      _query.clear();
+      _hits = const [];
+      _cursor = null;
+      _searching = false;
+      _searchFailed = false;
+    });
+  }
 
   static String _stateLabel(AppLocalizations l10n, CatalogState s) =>
       switch (s) {

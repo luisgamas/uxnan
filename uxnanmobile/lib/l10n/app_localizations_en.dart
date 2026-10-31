@@ -1411,9 +1411,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadFailed => 'Couldn\'t start the conversation';
 
   @override
-  String get sessionsSection => 'Or continue a session in this folder';
-
-  @override
   String get sessionsSectionHint =>
       'Conversations your agents had here outside Uxnan — in a terminal on the PC or their own app. Pick one to continue it here.';
 
@@ -1424,12 +1421,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sessionsUntitled => 'Untitled session';
 
   @override
-  String get sessionsShowFewer => 'Show fewer';
-
-  @override
-  String sessionsShowAll(int count) {
-    return 'Show all $count';
-  }
+  String get sessionsNaming => 'Naming…';
 
   @override
   String sessionsUnlisted(String agents) {
@@ -3907,6 +3899,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get catalogNoResults => 'Nothing matches';
+
+  @override
+  String get catalogViewConversations => 'Conversations';
+
+  @override
+  String get catalogViewSessions => 'Agent sessions';
+
+  @override
+  String get catalogSessionsSearchHint => 'Search agent sessions by title';
+
+  @override
+  String get catalogSessionsEmpty =>
+      'No agent sessions outside Uxnan in this folder';
+
+  @override
+  String get catalogSessionsLoadFailed =>
+      'Couldn\'t list this folder\'s agent sessions';
+
+  @override
+  String newThreadSessionsLink(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count agent sessions in this folder outside Uxnan',
+      one: '1 agent session in this folder outside Uxnan',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get catalogContentUnavailable =>

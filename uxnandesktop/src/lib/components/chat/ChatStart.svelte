@@ -12,10 +12,14 @@
   // purpose: the three newest conversations here and "See all", which opens the
   // Conversations tab (the whole catalog, searchable — architecture/02a
   // §5.8.21); any of them can seed this one ("Continue from…": its context goes
-  // with the first message, to the agent chosen here). Then the agents' own
+  // with the first message, to the agent chosen here). The agents' own
   // sessions in this folder that no conversation continues yet — started in a
-  // terminal, here or elsewhere — to pick up as a chat (§5.8.19). One open in a
-  // terminal says so, and picking it asks that terminal to let it go first.
+  // terminal, here or elsewhere (§5.8.19) — are not listed here: one quiet line
+  // says how many there are and opens the Conversations tab on them.
+  //
+  // The screen is composer-first: the hero and the composer sit at a fixed
+  // anchor of the pane, and the history below them has a reserved box of its
+  // own, so no amount of history — or the moment it arrives — moves them.
   import { untrack } from "svelte";
   import { hosts } from "$lib/state/hosts.svelte";
   import { sshHostId } from "$lib/target";
@@ -24,11 +28,11 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button } from "$lib/components/ui/button";
-  import { Badge } from "$lib/components/ui/badge";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
   import ArrowTurnForwardIcon from "@hugeicons/core-free-icons/ArrowTurnForwardIcon";
+  import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ModelPicker, { type PickerAgent } from "$lib/components/ModelPicker.svelte";
@@ -41,9 +45,7 @@
   import { effectiveAccessMode } from "$lib/bridge/accessMode";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
-  import { sessionKey, useChat } from "$lib/bridge/chat.svelte";
-  import type { AgentSessionSummary } from "$shared/models/agent-session";
-  import { toast } from "$lib/toast";
+  import { useChat } from "$lib/bridge/chat.svelte";
   import { bridgeAgentForCommand, bridgeAgentLogo } from "$lib/bridge/agents";
   import { app } from "$lib/state/app.svelte";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
@@ -121,6 +123,8 @@
     (models.find((m) => m.id === model) ?? (model ? undefined : models.find((m) => m.isDefault)))
       ?.options ?? [],
   );
+  /** How many recent conversations the screen shows; the rest is "See all". */
+  const RECENT_SHOWN = 3;
   const existing = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status !== "archived"));
   /** How many the Conversations tab lists for this folder's project. */
   const projectCount = $derived.by(() => {
@@ -132,57 +136,15 @@
   /** The conversation this one continues, when one was picked ("Continue from…"). */
   let seed = $state<{ threadId: string; strategy: TransferStrategy } | null>(null);
   const seedThread = $derived(seed ? chat.threads.get(seed.threadId) : undefined);
-  // The agents' own sessions here that no conversation continues yet.
-  let sessions = $state<AgentSessionSummary[]>([]);
-  let unlisted = $state<string[]>([]);
-  let showAllSessions = $state(false);
-  let pickingSession = $state<string | null>(null);
+  // How many of the agents' own sessions here no conversation continues yet:
+  // asked once the bridge is there (again after a reconnect); listed by the
+  // Conversations tab, not here.
   $effect(() => {
     const cwd = tab.cwd;
     if (!bridge.connected) return;
-    let cancelled = false;
-    chat
-      .listAgentSessions(cwd)
-      .then((result) => {
-        if (cancelled) return;
-        sessions = result.sessions.filter((s) => !s.threadId);
-        unlisted = result.unlisted;
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    void chat.refreshAgentSessions(cwd).catch(() => undefined);
   });
-  const unlistedNames = $derived(
-    unlisted.map((id) => chat.agent(id)?.displayName ?? id).join(", "),
-  );
-
-  /** Continue one of the agents' sessions as this tab's conversation. */
-  async function pickSession(session: AgentSessionSummary) {
-    const key = sessionKey(session.agentId, session.sessionId);
-    if (pickingSession) return;
-    pickingSession = key;
-    try {
-      if (chat.holds.get(key) ?? session.hold) {
-        const outcome = await chat.requestHandoff(session);
-        if (outcome !== "released" && outcome !== "notHeld") {
-          toast(i18n.t(`sessions.handoff.${outcome}`));
-          return;
-        }
-      }
-      const thread = await chat.startThread({
-        cwd: tab.cwd,
-        agentId: session.agentId,
-        agentSessionId: session.sessionId,
-        ...(session.title ? { title: session.title } : {}),
-      });
-      openExisting(thread.id);
-    } catch (err) {
-      toastError(err);
-    } finally {
-      pickingSession = null;
-    }
-  }
+  const sessionCount = $derived(chat.agentSessionsOf(tab.cwd)?.sessions.length);
 
   const folder = $derived(
     tab.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? tab.cwd,
@@ -299,192 +261,180 @@
   </ContextMenu.Root>
 {/snippet}
 
-{#snippet sessionRow(session: AgentSessionSummary)}
-  {@const key = sessionKey(session.agentId, session.sessionId)}
-  {@const hold = chat.holds.get(key) ?? session.hold}
-  <button
-    type="button"
-    class={cn(row.list, row.listInactive)}
-    disabled={pickingSession !== null}
-    title={i18n.t("sessions.pickHint", { agent: chat.agent(session.agentId)?.displayName ?? session.agentId })}
-    onclick={() => void pickSession(session)}
-  >
-    <AgentLogo logo={bridgeAgentLogo(session.agentId)} class={cn(icon.brand, "shrink-0")} />
-    <span class={cn("min-w-0 flex-1 truncate", session.title ? "text-foreground" : "text-muted-foreground")}>
-      {session.title ?? i18n.t("sessions.untitled")}
-    </span>
-    {#if hold}
-      <Badge variant="outline" class={cn("shrink-0 font-normal", text.indicator)}>
-        {hold.busy ? i18n.t("sessions.inTerminalWorking") : i18n.t("sessions.inTerminal")}
-      </Badge>
-    {/if}
-    <span class={cn(text.meta, "shrink-0")}>
-      {pickingSession === key
-        ? i18n.t("sessions.opening")
-        : relativeTime(Date.now() - session.updatedAgoMs, i18n.locale)}
-    </span>
-  </button>
-{/snippet}
-
 <div class="uxnan-scroll h-full min-h-0 overflow-y-auto">
-  <div class={cn(chatTokens.column, "flex min-h-full max-w-2xl flex-col justify-center gap-5 py-10")}>
-    <div class="flex flex-col items-center gap-1.5 text-center">
-      <h2 class={chatTokens.hero}>
-        {i18n.t("chat.startTitle", { folder })}
-      </h2>
-      <p class={cn(text.meta, "max-w-md")}>
-        {onHost
-          ? i18n.t("chat.startHintHost", { host: hosts.labelOf(onHost) })
-          : i18n.t("chat.startHint")}
-      </p>
+  <!-- Three rows: a gap above the hero (a share of the pane, so it sits at the
+       same height however much history there is), the hero with its composer,
+       and the box the history lives in (room for three recent rows and the
+       sessions line, which never pushes what is above). Short panes scroll
+       the pane, with the composer still the first thing in it. -->
+  <div
+    class={cn(
+      chatTokens.column,
+      "grid h-full min-h-[34rem] max-w-2xl grid-rows-[minmax(1rem,24%)_auto_minmax(12.5rem,1fr)] pb-6",
+    )}
+  >
+    <div aria-hidden="true"></div>
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col items-center gap-1.5 text-center">
+        <h2 class={chatTokens.hero}>
+          {i18n.t("chat.startTitle", { folder })}
+        </h2>
+        <p class={cn(text.meta, "max-w-md")}>
+          {onHost
+            ? i18n.t("chat.startHintHost", { host: hosts.labelOf(onHost) })
+            : i18n.t("chat.startHint")}
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        {#if seedThread && seed}
+          <!-- What this conversation continues: its context goes with the first
+               message, to the agent chosen below. -->
+          <div class={cn("flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5", text.meta)}>
+            <Icon icon={ArrowTurnForwardIcon} class={cn(icon.decorative, "shrink-0")} />
+            <span class="min-w-0 flex-1 truncate">
+              {i18n.t("chat.continuingFrom", { title: seedThread.title })}
+            </span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button variant="ghost" size="sm" class="h-6 gap-1 px-1.5 text-xs" {...props}>
+                    {i18n.t(`transfer.strategy.${seed?.strategy ?? "selection"}`)}
+                    <Icon icon={ChevronDownIcon} class={icon.status} />
+                  </Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content width="standard" align="end">
+                <DropdownMenu.RadioGroup
+                  value={seed.strategy}
+                  onValueChange={(v) => {
+                    if (seed) seed = { ...seed, strategy: v as TransferStrategy };
+                  }}
+                >
+                  {#each TRANSFER_STRATEGIES.filter((v) => v !== "fork") as value (value)}
+                    <DropdownMenu.RadioItem class={text.menu} {value}>
+                      <span class="flex flex-col">
+                        <span>{i18n.t(`transfer.strategy.${value}`)}</span>
+                        <span class={text.meta}>{i18n.t(`transfer.strategyDesc.${value}`)}</span>
+                      </span>
+                    </DropdownMenu.RadioItem>
+                  {/each}
+                </DropdownMenu.RadioGroup>
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={i18n.t("chat.continueFromClear")}
+              onclick={() => (seed = null)}
+            >
+              <Icon icon={CancelIcon} class={icon.action} />
+            </Button>
+          </div>
+        {/if}
+        <ChatComposer
+          bind:this={composer}
+          bind:value={draft}
+          draftKey={tab.id}
+          disabled={!agentId || starting}
+          autofocus={active}
+          placeholder={i18n.t("chat.startPlaceholder")}
+          onsend={start}
+          {loadCommands}
+          mentionRoot={tab.cwd}
+          acceptsImages={chat.agent(agentId)?.capabilities?.images === true}
+        >
+          {#snippet leading()}
+            <ModelPicker
+              variant="pill"
+              agents={pickerAgents}
+              {agentId}
+              {models}
+              value={model}
+              loading={modelsLoading || agents.length === 0}
+              modelsOf={(id) => chat.cachedModels(id)}
+              loadingOf={(id) => browsing.has(id)}
+              onBrowse={browseAgent}
+              disabled={!agentId}
+              onSelect={pickModel}
+            />
+            <RunOptionsPicker options={runOptions} bind:values={optionValues} disabled={!agentId} />
+          {/snippet}
+          {#snippet trailing()}
+            {#if accessMode !== undefined}
+              <Separator orientation="vertical" class="mx-0.5 h-4! bg-border/60" />
+              <ChatAccessMenu value={accessMode} modes={accessModes} onChange={(mode) => (access = mode)} />
+            {/if}
+          {/snippet}
+        </ChatComposer>
+        <div class="flex items-center gap-2 px-1">
+          <p class={cn(text.meta, "min-w-0 flex-1")}>{i18n.t("chat.agentFixedHint")}</p>
+          {#if existing.length > 0 && !seed}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button variant="ghost" size="sm" class="h-6 shrink-0 px-1.5 text-xs" {...props}>
+                    {i18n.t("chat.continueFrom")}
+                  </Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content width="standard" align="end" class="max-h-72 overflow-y-auto">
+                {#each existing.slice(0, 12) as thread (thread.id)}
+                  <DropdownMenu.Item
+                    class={cn(text.menu, "gap-2")}
+                    onclick={() => (seed = { threadId: thread.id, strategy: "selection" })}
+                  >
+                    <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
+                    <span class="min-w-0 flex-1 truncate">{thread.title}</span>
+                  </DropdownMenu.Item>
+                {/each}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          {/if}
+        </div>
+      </div>
+
     </div>
 
-    <div class="flex flex-col gap-1.5">
-      {#if seedThread && seed}
-        <!-- What this conversation continues: its context goes with the first
-             message, to the agent chosen below. -->
-        <div class={cn("flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5", text.meta)}>
-          <Icon icon={ArrowTurnForwardIcon} class={cn(icon.decorative, "shrink-0")} />
-          <span class="min-w-0 flex-1 truncate">
-            {i18n.t("chat.continuingFrom", { title: seedThread.title })}
-          </span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button variant="ghost" size="sm" class="h-6 gap-1 px-1.5 text-xs" {...props}>
-                  {i18n.t(`transfer.strategy.${seed?.strategy ?? "selection"}`)}
-                  <Icon icon={ChevronDownIcon} class={icon.status} />
-                </Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content width="standard" align="end">
-              <DropdownMenu.RadioGroup
-                value={seed.strategy}
-                onValueChange={(v) => {
-                  if (seed) seed = { ...seed, strategy: v as TransferStrategy };
-                }}
-              >
-                {#each TRANSFER_STRATEGIES.filter((v) => v !== "fork") as value (value)}
-                  <DropdownMenu.RadioItem class={text.menu} {value}>
-                    <span class="flex flex-col">
-                      <span>{i18n.t(`transfer.strategy.${value}`)}</span>
-                      <span class={text.meta}>{i18n.t(`transfer.strategyDesc.${value}`)}</span>
-                    </span>
-                  </DropdownMenu.RadioItem>
-                {/each}
-              </DropdownMenu.RadioGroup>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={i18n.t("chat.continueFromClear")}
-            onclick={() => (seed = null)}
-          >
-            <Icon icon={CancelIcon} class={icon.action} />
-          </Button>
+    <!-- The history: at most the three newest conversations here, then one
+         quiet line for the agents' own sessions. Nothing here expands in place
+         — the Conversations tab holds the rest. It appears in a box that was
+         already reserved, so it can arrive late without moving anything. -->
+    <div class="flex flex-col gap-2 pt-7">
+      {#if chat.threadsLoaded && chat.threads.size > 0}
+        <div class="animate-in fade-in flex flex-col gap-1 duration-200">
+          <div class="flex items-center gap-2 px-1">
+            <span class={cn(text.section, "flex-1")}>{i18n.t("chat.recent")}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7"
+              onclick={() => terminals.openConversations({ cwd: tab.cwd, target: chat.target })}
+            >
+              {projectCount > 0
+                ? i18n.t("chat.seeAllConversations", { n: String(projectCount) })
+                : i18n.t("chat.seeAllConversationsNone")}
+            </Button>
+          </div>
+          {#each existing.slice(0, RECENT_SHOWN) as thread (thread.id)}
+            {@render threadRow(thread)}
+          {/each}
         </div>
       {/if}
-      <ChatComposer
-        bind:this={composer}
-        bind:value={draft}
-        draftKey={tab.id}
-        disabled={!agentId || starting}
-        autofocus={active}
-        placeholder={i18n.t("chat.startPlaceholder")}
-        onsend={start}
-        {loadCommands}
-        mentionRoot={tab.cwd}
-        acceptsImages={chat.agent(agentId)?.capabilities?.images === true}
-      >
-        {#snippet leading()}
-          <ModelPicker
-            variant="pill"
-            agents={pickerAgents}
-            {agentId}
-            {models}
-            value={model}
-            loading={modelsLoading || agents.length === 0}
-            modelsOf={(id) => chat.cachedModels(id)}
-            loadingOf={(id) => browsing.has(id)}
-            onBrowse={browseAgent}
-            disabled={!agentId}
-            onSelect={pickModel}
-          />
-          <RunOptionsPicker options={runOptions} bind:values={optionValues} disabled={!agentId} />
-        {/snippet}
-        {#snippet trailing()}
-          {#if accessMode !== undefined}
-            <Separator orientation="vertical" class="mx-0.5 h-4! bg-border/60" />
-            <ChatAccessMenu value={accessMode} modes={accessModes} onChange={(mode) => (access = mode)} />
-          {/if}
-        {/snippet}
-      </ChatComposer>
-      <div class="flex items-center gap-2 px-1">
-        <p class={cn(text.meta, "min-w-0 flex-1")}>{i18n.t("chat.agentFixedHint")}</p>
-        {#if existing.length > 0 && !seed}
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button variant="ghost" size="sm" class="h-6 shrink-0 px-1.5 text-xs" {...props}>
-                  {i18n.t("chat.continueFrom")}
-                </Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content width="standard" align="end" class="max-h-72 overflow-y-auto">
-              {#each existing.slice(0, 12) as thread (thread.id)}
-                <DropdownMenu.Item
-                  class={cn(text.menu, "gap-2")}
-                  onclick={() => (seed = { threadId: thread.id, strategy: "selection" })}
-                >
-                  <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
-                  <span class="min-w-0 flex-1 truncate">{thread.title}</span>
-                </DropdownMenu.Item>
-              {/each}
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        {/if}
-      </div>
+      {#if chat.threadsLoaded && sessionCount !== undefined && sessionCount > 0}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="animate-in fade-in h-7 max-w-full self-start gap-1.5 px-2.5 text-muted-foreground duration-200"
+          onclick={() =>
+            terminals.openConversations({ cwd: tab.cwd, target: chat.target, view: "sessions" })}
+        >
+          <span class="min-w-0 truncate">
+            {i18n.plural(sessionCount, "sessions.outsideOne", "sessions.outside")}
+          </span>
+          <Icon icon={ArrowRightIcon} class={cn(icon.action, "shrink-0")} />
+        </Button>
+      {/if}
     </div>
-
-    {#if existing.length > 0 || chat.threads.size > 0}
-      <div class="flex flex-col gap-1 pt-2">
-        <div class="flex items-center gap-2 px-1">
-          <span class={cn(text.section, "flex-1")}>{i18n.t("chat.recent")}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="h-7"
-            onclick={() => terminals.openConversations({ cwd: tab.cwd, target: chat.target })}
-          >
-            {projectCount > 0
-              ? i18n.t("chat.seeAllConversations", { n: String(projectCount) })
-              : i18n.t("chat.seeAllConversationsNone")}
-          </Button>
-        </div>
-        {#each existing.slice(0, 3) as thread (thread.id)}
-          {@render threadRow(thread)}
-        {/each}
-      </div>
-    {/if}
-
-    {#if sessions.length > 0}
-      <div class="flex flex-col gap-1 pt-2">
-        <span class={cn(text.section, "px-1")}>{i18n.t("sessions.section")}</span>
-        <p class={cn(text.meta, "px-1 pb-1")}>{i18n.t("sessions.sectionHint")}</p>
-        {#each showAllSessions ? sessions : sessions.slice(0, 3) as session (sessionKey(session.agentId, session.sessionId))}
-          {@render sessionRow(session)}
-        {/each}
-        {#if sessions.length > 3}
-          <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAllSessions = !showAllSessions)}>
-            {showAllSessions ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(sessions.length) })}
-          </Button>
-        {/if}
-        {#if unlisted.length > 0}
-          <p class={cn(text.meta, "px-1 pt-1")}>{i18n.t("sessions.unlisted", { agents: unlistedNames })}</p>
-        {/if}
-      </div>
-    {/if}
-
   </div>
 </div>

@@ -131,6 +131,14 @@ void main() {
                 'title': 'Fix the login',
                 'updatedAgoMs': 60000,
               },
+              // Untitled, and the bridge is naming it in the background.
+              {
+                'agentId': 'opencode',
+                'sessionId': 'o-1',
+                'cwd': params?['cwd'],
+                'titlePending': true,
+                'updatedAgoMs': 5000,
+              },
               {'agentId': 'codex', 'cwd': '/broken'},
             ],
             'unlisted': ['antigravity-cli'],
@@ -506,8 +514,11 @@ void main() {
     test("lists a folder's sessions and asks a terminal to let one go",
         () async {
       final list = await replica.listAgentSessions('/repo');
-      expect(list.sessions.single.title, 'Fix the login');
-      expect(list.sessions.single.updatedAgo, const Duration(minutes: 1));
+      expect(list.sessions.first.title, 'Fix the login');
+      expect(list.sessions.first.titlePending, isFalse);
+      expect(list.sessions.first.updatedAgo, const Duration(minutes: 1));
+      expect(list.sessions.last.title, isNull);
+      expect(list.sessions.last.titlePending, isTrue);
       expect(list.unlisted, ['antigravity-cli']);
       expect(calls.last.$2, {'cwd': '/repo'});
 

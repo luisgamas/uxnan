@@ -70,6 +70,20 @@ class UnlistedAdapter extends ListingAdapter {
 }
 Object.defineProperty(UnlistedAdapter.prototype, 'listNativeSessions', { value: undefined });
 
+/** An agent that can name a session; remembers what it was asked to name. */
+class NamingAdapter extends ListingAdapter {
+  readonly asked: { userText: string; assistantText?: string; cwd?: string; model?: string }[] = [];
+  generateTitle(options: {
+    userText: string;
+    assistantText?: string;
+    cwd?: string;
+    model?: string;
+  }): Promise<string | undefined> {
+    this.asked.push(options);
+    return Promise.resolve('Plan the release');
+  }
+}
+
 async function boot(): Promise<{ bridge: Bridge; baseDir: string; claude: ListingAdapter }> {
   const baseDir = await mkdtemp(join(tmpdir(), 'uxnan-sessions-'));
   const bridge = await startBridge({
@@ -286,6 +300,153 @@ test('asking for a held session reaches the desktop that holds it, and its answe
     );
     assert.equal((await pending).result?.outcome, 'released');
     assert.equal(bridge.context.sessionHolds.find('claude-code', 's-2'), undefined);
+  } finally {
+    await bridge.stop();
+    await rmrf(baseDir);
+  }
+});
+
+test('an untitled session is named in the background: pending first, then titled, kept, and taken on pick-up', async () => {
+  const { bridge, baseDir } = await boot();
+  try {
+    const opencode = new NamingAdapter('opencode');
+    bridge.context.agentManager.register(opencode, { available: true });
+    opencode.sessions = [
+      {
+        sessionId: 'o-1',
+        cwd: CWD,
+        updatedAt: NOW - 5_000,
+        interactive: true,
+        model: 'opencode/big-pickle',
+      },
+      {
+        sessionId: 'o-2',
+        cwd: CWD,
+        title: 'Already named',
+        updatedAt: NOW - 9_000,
+        interactive: true,
+      },
+    ];
+    // What OpenCode's own history holds of it (its server, in a real bridge).
+    (bridge.context.sessionHistory as { readTurns: unknown }).readTurns = () =>
+      Promise.resolve([
+        {
+          id: 't',
+          threadId: 'x',
+          status: 'completed',
+          createdAt: 1,
+          messages: [
+            { id: 'u', role: 'user', content: 'how do we ship this?', createdAt: 1 },
+            { id: 'a', role: 'assistant', content: 'cut the release', createdAt: 2 },
+          ],
+        },
+      ]);
+
+    const first = (await call<AgentSessionListResult>(bridge, 'agent/sessions', { cwd: CWD }))
+      .result!;
+    const pending = first.sessions.find((s) => s.sessionId === 'o-1')!;
+    assert.equal(pending.title, undefined);
+    assert.equal(pending.titlePending, true);
+    // One the CLI named is never asked about.
+    assert.equal(first.sessions.find((s) => s.sessionId === 'o-2')?.titlePending, undefined);
+
+    let second = first;
+    for (
+      let i = 0;
+      i < 50 && second.sessions.find((s) => s.sessionId === 'o-1')?.title === undefined;
+      i++
+    ) {
+      await new Promise((r) => setTimeout(r, 20));
+      second = (await call<AgentSessionListResult>(bridge, 'agent/sessions', { cwd: CWD })).result!;
+    }
+    const named = second.sessions.find((s) => s.sessionId === 'o-1')!;
+    assert.equal(named.title, 'Plan the release');
+    assert.equal(named.titlePending, undefined);
+    assert.deepEqual(opencode.asked, [
+      {
+        userText: 'how do we ship this?',
+        assistantText: 'cut the release',
+        cwd: CWD,
+        // The model the session ran on, from its own record.
+        model: 'opencode/big-pickle',
+      },
+    ]);
+
+    // Picking it up with no name of the client's own takes the bridge's.
+    const thread = await call<Thread>(bridge, 'thread/start', {
+      cwd: CWD,
+      agentId: 'opencode',
+      agentSessionId: 'o-1',
+    });
+    assert.equal(thread.result?.title, 'Plan the release');
+  } finally {
+    await bridge.stop();
+    await rmrf(baseDir);
+  }
+});
+
+test('a conversation is named on its own model when its agent has no cheaper one to name', async () => {
+  const { bridge, baseDir } = await boot();
+  try {
+    const opencode = new NamingAdapter('opencode');
+    bridge.context.agentManager.register(opencode, { available: true });
+    const thread = (
+      await call<Thread>(bridge, 'thread/start', {
+        cwd: CWD,
+        agentId: 'opencode',
+        model: 'anthropic/claude-haiku-4-5',
+      })
+    ).result!;
+    await call(bridge, 'turn/send', { threadId: thread.id, text: 'plan the release' });
+    for (let i = 0; i < 50 && opencode.asked.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.equal(opencode.asked[0]?.model, 'anthropic/claude-haiku-4-5');
+    assert.equal(opencode.asked[0]?.userText, 'plan the release');
+  } finally {
+    await bridge.stop();
+    await rmrf(baseDir);
+  }
+});
+
+test('an errand an agent’s store kept is not listed once it has been read', async () => {
+  const { bridge, baseDir } = await boot();
+  try {
+    const opencode = new NamingAdapter('opencode');
+    bridge.context.agentManager.register(opencode, { available: true });
+    opencode.sessions = [
+      { sessionId: 'o-errand', cwd: CWD, updatedAt: NOW - 5_000, interactive: true },
+    ];
+    (bridge.context.sessionHistory as { readTurns: unknown }).readTurns = () =>
+      Promise.resolve([
+        {
+          id: 't',
+          threadId: 'x',
+          status: 'completed',
+          createdAt: 1,
+          messages: [
+            {
+              id: 'u',
+              role: 'user',
+              content: 'Name this conversation in 3 to 6 words, as a short title.\n\nUser: hi',
+              createdAt: 1,
+            },
+          ],
+        },
+      ]);
+    const first = (await call<AgentSessionListResult>(bridge, 'agent/sessions', { cwd: CWD }))
+      .result!;
+    assert.equal(first.sessions.find((s) => s.sessionId === 'o-errand')?.titlePending, true);
+    let again = first;
+    for (let i = 0; i < 50 && again.sessions.some((s) => s.sessionId === 'o-errand'); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      again = (await call<AgentSessionListResult>(bridge, 'agent/sessions', { cwd: CWD })).result!;
+    }
+    assert.equal(
+      again.sessions.some((s) => s.sessionId === 'o-errand'),
+      false,
+    );
+    assert.deepEqual(opencode.asked, []);
   } finally {
     await bridge.stop();
     await rmrf(baseDir);

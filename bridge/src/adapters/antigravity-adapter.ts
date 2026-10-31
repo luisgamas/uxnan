@@ -1302,13 +1302,17 @@ export class AntigravityAdapter extends BaseAgentAdapter {
    * ({@link chooseAntigravityTitleModel}), never the thread's own: a title must
    * not spend the quota of the model the user is working with. The listing is
    * the last one `agy models` gave (fetched here when there is none yet); with
-   * no cheap tier listed, `agy`'s own default names it.
+   * no cheap tier listed, the conversation's model, else the default, names it.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
     const listing = this.#models.length > 0 ? this.#models : await this.listModels();
-    const titleModel = chooseAntigravityTitleModel(expandAntigravityModels(listing));
+    // The cheapest tier the listing offers; with none, the conversation's own
+    // model, else the configured default, else `agy`'s own.
+    const titleModel =
+      chooseAntigravityTitleModel(expandAntigravityModels(listing)) ??
+      normalizeAntigravityModel(options.model ?? this.#defaultModel);
     const args = [
       '--output-format',
       'text',

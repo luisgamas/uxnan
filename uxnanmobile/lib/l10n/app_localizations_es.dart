@@ -1415,9 +1415,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadFailed => 'No se pudo iniciar la conversación';
 
   @override
-  String get sessionsSection => 'O continúa una sesión de esta carpeta';
-
-  @override
   String get sessionsSectionHint =>
       'Conversaciones que tus agentes tuvieron aquí fuera de Uxnan: en una terminal de la PC o en su propia app. Elige una para seguirla aquí.';
 
@@ -1428,12 +1425,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get sessionsUntitled => 'Sesión sin título';
 
   @override
-  String get sessionsShowFewer => 'Mostrar menos';
-
-  @override
-  String sessionsShowAll(int count) {
-    return 'Mostrar las $count';
-  }
+  String get sessionsNaming => 'Poniendo nombre…';
 
   @override
   String sessionsUnlisted(String agents) {
@@ -3933,6 +3925,34 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get catalogNoResults => 'Nada coincide';
+
+  @override
+  String get catalogViewConversations => 'Conversaciones';
+
+  @override
+  String get catalogViewSessions => 'Sesiones de agentes';
+
+  @override
+  String get catalogSessionsSearchHint => 'Buscar sesiones por título';
+
+  @override
+  String get catalogSessionsEmpty =>
+      'No hay sesiones de agentes fuera de Uxnan en esta carpeta';
+
+  @override
+  String get catalogSessionsLoadFailed =>
+      'No se pudieron listar las sesiones de agentes de esta carpeta';
+
+  @override
+  String newThreadSessionsLink(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sesiones de agentes en esta carpeta fuera de Uxnan',
+      one: '1 sesión de agente en esta carpeta fuera de Uxnan',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get catalogContentUnavailable =>

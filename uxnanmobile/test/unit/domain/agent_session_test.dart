@@ -46,6 +46,54 @@ void main() {
     expect(AgentSessionList.fromJson(null).sessions, isEmpty);
   });
 
+  test('a session the bridge is naming says so, until it has a title', () {
+    final list = AgentSessionList.fromJson(const {
+      'sessions': [
+        {
+          'agentId': 'opencode',
+          'sessionId': 'o-1',
+          'cwd': '/repo',
+          'titlePending': true,
+          'updatedAgoMs': 1000,
+        },
+        {
+          'agentId': 'opencode',
+          'sessionId': 'o-2',
+          'cwd': '/repo',
+          'title': 'Named at last',
+          'updatedAgoMs': 2000,
+        },
+        {
+          'agentId': 'opencode',
+          'sessionId': 'o-3',
+          'cwd': '/repo',
+          'titlePending': 'yes',
+          'updatedAgoMs': 3000,
+        },
+      ],
+      'unlisted': <String>[],
+    });
+    expect(list.sessions[0].titlePending, isTrue);
+    expect(list.sessions[0].title, isNull);
+    expect(list.sessions[1].titlePending, isFalse);
+    expect(list.sessions[1].title, 'Named at last');
+    // Only a real `true` counts.
+    expect(list.sessions[2].titlePending, isFalse);
+    // It is part of the session's identity: a naming session is not the
+    // named one.
+    expect(
+      list.sessions[0],
+      isNot(
+        const AgentSessionSummary(
+          agentId: 'opencode',
+          sessionId: 'o-1',
+          cwd: '/repo',
+          updatedAgo: Duration(seconds: 1),
+        ),
+      ),
+    );
+  });
+
   test('a hand-off outcome reads the wire and says when the session is free',
       () {
     expect(

@@ -63,7 +63,7 @@ import type {
 import type { ApprovalRequester } from './user-input.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { acpPrompt } from './turn-input.js';
-import { MAX_LISTED, cleanTitle } from './native-sessions.js';
+import { MAX_LISTED, cleanTitle, zeroSessionModel } from './native-sessions.js';
 import type { AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn, type SpawnedProcess } from './spawn.js';
@@ -505,16 +505,22 @@ export class ZeroAdapter extends BaseAgentAdapter {
    * which drives itself that way in its eval harness — so nothing touches the
    * ACP session this thread runs on.
    *
-   * No model flag: this agent exposes no fixed cheap-tier id, so it runs on its
-   * own default. **Not run against the live CLI**: Zero is not installed
-   * here and the account has no credits (see FOR-DEV.md). It degrades safely: any failure
-   * returns undefined and the thread keeps its provisional title.
+   * Zero announces no cheap tier for the provider the person set up: its
+   * `--mode fast` preset picks a model from Zero's own registry, which fails
+   * when that model belongs to another provider (measured: `zero model
+   * claude-haiku-4.5 belongs to anthropic, not openai-compatible`). So the model
+   * is the conversation's own, else the configured default, else Zero's own
+   * (`-m`). `--plan` keeps the run read-only: a name never needs a write or a
+   * shell. Any failure returns undefined and the thread keeps its provisional
+   * title.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
+    const model = options.model ?? this.#defaultModel;
+    const args = ['exec', '--plan', ...(model !== undefined ? ['-m', model] : []), prompt];
     const raw = await runTitleOneShot(() =>
-      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...['exec', prompt]], cwd),
+      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
     );
     return raw === undefined ? undefined : sanitizeTitle(raw);
   }
@@ -539,7 +545,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
   async listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
     const rpc = await this.#ensureAcp();
     const res = await rpc.request<{ sessions?: AcpListedSession[] }>('session/list', { cwd });
-    return (res.sessions ?? [])
+    const listed = (res.sessions ?? [])
       .flatMap((s): NativeSessionInfo[] => {
         if (typeof s.sessionId !== 'string' || s.cwd !== cwd) return [];
         const acpOpened = s.title === ZERO_ACP_TITLE;
@@ -556,6 +562,13 @@ export class ZeroAdapter extends BaseAgentAdapter {
         ];
       })
       .slice(0, MAX_LISTED);
+    // The model each session ran on is in its own record (ACP's list has none).
+    return Promise.all(
+      listed.map(async (s) => {
+        const model = await zeroSessionModel(homedir(), s.sessionId);
+        return model !== undefined ? { ...s, model } : s;
+      }),
+    );
   }
 
   /** Lazy ACP lifecycle: spawn `zero acp` → initialize → return the RPC client. */

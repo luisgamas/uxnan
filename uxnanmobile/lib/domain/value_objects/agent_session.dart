@@ -66,6 +66,7 @@ class AgentSessionSummary extends Equatable {
     required this.cwd,
     required this.updatedAgo,
     this.title,
+    this.titlePending = false,
     this.threadId,
     this.hold,
   });
@@ -88,6 +89,7 @@ class AgentSessionSummary extends Equatable {
       cwd: cwd,
       updatedAgo: Duration(milliseconds: ago is num ? ago.toInt() : 0),
       title: title is String && title.isNotEmpty ? title : null,
+      titlePending: json['titlePending'] == true,
       threadId: threadId is String ? threadId : null,
       hold: AgentSessionHold.fromJson(json['hold']),
     );
@@ -108,6 +110,10 @@ class AgentSessionSummary extends Equatable {
   /// Its name — the CLI's title, else the first thing asked.
   final String? title;
 
+  /// The bridge is naming this session in the background (it has no title of
+  /// its own): asking again in a few seconds returns the title.
+  final bool titlePending;
+
   /// The conversation that continues it, when one does.
   final String? threadId;
 
@@ -118,8 +124,16 @@ class AgentSessionSummary extends Equatable {
   String get key => agentSessionKey(agentId, sessionId);
 
   @override
-  List<Object?> get props =>
-      [agentId, sessionId, cwd, updatedAgo, title, threadId, hold];
+  List<Object?> get props => [
+        agentId,
+        sessionId,
+        cwd,
+        updatedAgo,
+        title,
+        titlePending,
+        threadId,
+        hold,
+      ];
 }
 
 /// A folder's sessions, as `agent/sessions` answers.

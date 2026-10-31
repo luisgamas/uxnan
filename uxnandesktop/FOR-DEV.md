@@ -40,7 +40,7 @@ in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (2
 integration), of which 56 are ignored probes that need something real to talk to
 (one copies and runs a built bridge runtime, 48 live SSH probes — 3 of them against a **Linux host in a
 container**, `npm run test:ssh:linux` — and 7 supervised live
-GitHub tests) + 2,066 frontend Vitest tests across two
+GitHub tests) + 2,154 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1059,6 +1059,12 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       `uxnan-cli skills get control --full`, never hand-edited.
 
 ### Conversations tab and continuing with another agent (2026-10-29)
+- [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
+      composer-anchored new-chat screen (three recent + one *agent sessions* line)
+      and the Conversations tab's *Agent sessions* view, rendered in a browser
+      preview (1280→380 px, EN/ES, light/dark; heavy fixture of 30 conversations
+      and 15 sessions, few and empty) against seeded state, never in the packaged
+      app.
 - [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
       Conversations tab, the shorter new-chat screen, the *Continue with another
       agent* dialog, *Session info* and the transfer banner were rendered in a

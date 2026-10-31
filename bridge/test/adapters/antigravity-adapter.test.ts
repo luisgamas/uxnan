@@ -900,6 +900,25 @@ test('AntigravityAdapter lists the models before naming when none are known yet'
   assert.equal(title.args.includes('--model'), false);
 });
 
+test('AntigravityAdapter names on the conversation’s model when no cheap tier is listed', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+
+  const titling = adapter.generateTitle({
+    userText: 'hi',
+    assistantText: 'ok',
+    cwd: '/p',
+    model: 'claude-opus-4-6-thinking',
+  });
+  await spawnedAtLeast(spawns, 2);
+  answerListing(spawns, 'claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)\n', '');
+  await spawnedAtLeast(spawns, 3);
+  const title = spawns[spawns.length - 1]!;
+  title.feed(['Fix the model list']);
+  assert.equal(await titling, 'Fix the model list');
+  assert.equal(title.args[title.args.indexOf('--model') + 1], 'claude-opus-4-6-thinking');
+});
+
 test('buildAntigravityToolBlock formats command, diff, and tool blocks', () => {
   const cmdBlock = buildAntigravityToolBlock({
     step_index: 1,

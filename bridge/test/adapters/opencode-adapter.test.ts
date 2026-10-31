@@ -1025,6 +1025,13 @@ test('OpenCodeAdapter lists the folder’s sessions from its server', async () =
       updated: 1_000,
     },
     { id: 'ses_else', directory: '/q', title: 'x', updated: 500 },
+    // OpenCode 1's own placeholder for a session nobody named.
+    {
+      id: 'ses_v1',
+      directory: '/p',
+      title: 'New session - 2026-10-30T22:14:09.123Z',
+      updated: 400,
+    },
   ];
   const adapter = makeAdapter(server);
   assert.deepEqual(await adapter.listNativeSessions('/p'), [
@@ -1037,6 +1044,7 @@ test('OpenCodeAdapter lists the folder’s sessions from its server', async () =
     },
     { sessionId: 'ses_untitled', cwd: '/p', updatedAt: 2_000, interactive: true },
     { sessionId: 'ses_bridge', cwd: '/p', updatedAt: 1_000, interactive: false },
+    { sessionId: 'ses_v1', cwd: '/p', updatedAt: 400, interactive: true },
   ]);
 });
 

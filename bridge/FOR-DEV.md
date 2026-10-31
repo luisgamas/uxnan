@@ -531,19 +531,23 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
-- [ ] **Name conversations on Zero.** `IAgentAdapter.generateTitle` is wired for
-      all seven active agents and **verified live on six**: Claude Code
-      (`haiku`), Codex (`gpt-5.6-luna` at `low` effort, `codex exec --ephemeral
-      -s read-only -o <file>`), OpenCode, pi, Antigravity
-      (the lowest flash tier `agy models` lists) and Grok. Zero's `zero exec
-      <prompt>` form is confirmed **in Zero's own source** (its eval harness
-      drives itself that way), but has never run: Zero is not installed here and
-      the account has no credits. Run it once and drop this item.
-      Also open: **a per-provider cheap model** for the multi-provider CLIs.
-      OpenCode, pi and Grok route through many providers, so there is no fixed
-      cheap-tier id to hard-code and they title on their own default. A
-      configurable titling model belongs in daemon config. See the `#titleModel`
-      marker in `pi-adapter.ts`.
+- [ ] **A titling model for what no record names.** The naming errand follows one
+      rule for every agent (`docs/agents.md` → *Naming a conversation*): its
+      cheapest model when the CLI can name one (Claude Code, Codex, Antigravity),
+      else the model the conversation — or, for a native session, the session
+      itself — ran on, else the default. The session's own model is read for
+      OpenCode 2, pi, Grok and Zero; **OpenCode 1's listing carries none**, a
+      terminal tab has none, and **Grok produced no title** on 2026-10-31 (the
+      account's free usage limit), so only its `-m` flag is confirmed. Those
+      still fall to the CLI's default, which can have no credit; a titling model
+      in daemon config would cover them.
+- [ ] **OpenCode 1's naming run still leaves an untitled session behind**, and
+      the desktop's twin (`uxnandesktop/src-tauri/src/convtitle.rs` → the
+      one-shot runner) does not set `$PWD` or a bridge-owned `--title` for
+      OpenCode at all. The bridge hides what it finds by reading the session's
+      first message (`SessionTitles.isErrand`), so they are not listed, but the
+      leftovers stay in OpenCode's own picker. Only OpenCode 2.2.0 was run here
+      (`--title` and `$PWD` fix it there); 1.x has no binary on this machine.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-

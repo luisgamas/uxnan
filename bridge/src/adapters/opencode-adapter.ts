@@ -45,7 +45,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { UXNAN_CWD_HEADER, encodeCwdHeader } from '@uxnan/shared';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { ApprovalRequester, QuestionRequester } from './user-input.js';
 import { BaseAgentAdapter } from './base-adapter.js';
@@ -543,15 +543,26 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /**
    * Name a conversation with a one-shot `opencode run`, deliberately not the
    * session a turn uses: a throwaway run, so the conversation's own history is
-   * untouched. No model flag: OpenCode routes through many providers, so there
-   * is no cheap-tier id to hard-code; it runs on OpenCode's default.
+   * untouched. OpenCode routes through many providers and announces no cheap
+   * tier, so the model is the conversation's own (`provider/model`), else the
+   * configured default, else OpenCode's own (`--model`).
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
     const protocol = await this.#protocol(cwd);
     const raw = await runTitleOneShot(() =>
-      this.#spawn(this.#binaryPath, openCodeRunArgs(protocol, prompt), cwd),
+      this.#spawn(
+        this.#binaryPath,
+        openCodeRunArgs(protocol, prompt, options.model ?? this.#defaultModel, randomUUID()),
+        cwd,
+        // OpenCode takes its project from `$PWD`, not from the process's working
+        // directory: without this the run's session lands in the bridge's own
+        // folder (measured against opencode 2.2.0).
+        // FOR-DEV: OpenCode 1 still leaves an untitled session behind (no
+        // `--title` verified there) — see FOR-DEV.md → *OpenCode 1's naming run*.
+        { env: { PWD: cwd } },
+      ),
     );
     return raw === undefined ? undefined : sanitizeTitle(raw);
   }
@@ -1120,11 +1131,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const sessions = await server.listSessions(cwd, MAX_LISTED);
     return sessions.map((s) => {
       const bridgeOwned = s.title !== undefined && UUID.test(s.title);
-      const title = bridgeOwned ? undefined : cleanTitle(s.title);
+      // A session OpenCode never named carries no title (2.x) or its own
+      // placeholder (1.x: `New session - <time>`): untitled, so the bridge names it.
+      const placeholder = s.title !== undefined && PLACEHOLDER_TITLE.test(s.title.trim());
+      const title = bridgeOwned || placeholder ? undefined : cleanTitle(s.title);
       return {
         sessionId: s.id,
         cwd,
         ...(title !== undefined ? { title } : {}),
+        ...(s.model !== undefined ? { model: s.model } : {}),
         updatedAt: s.updated ?? 0,
         interactive: !bridgeOwned,
       };
@@ -1141,6 +1156,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return commands;
   }
 }
+
+/** The title OpenCode 1 gives a session nobody named. */
+const PLACEHOLDER_TITLE = /^(?:New|Child) session - \d{4}-\d{2}-\d{2}T[\d:.]+Z?$/i;
 
 /** A conversation id, as the bridge titles the OpenCode sessions it opens. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

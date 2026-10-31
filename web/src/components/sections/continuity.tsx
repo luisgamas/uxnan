@@ -75,9 +75,9 @@ export function Continuity() {
           <Reveal>
             <h3 className="text-[15px] font-semibold">Pick up any session</h3>
             <p className="mt-2 text-[14.5px] leading-relaxed text-muted">
-              A new chat lists the sessions your agents had in that folder, from
-              a terminal, their own app or another surface, and continues any of
-              them with its history. {listing} list theirs; {unlisted} continues
+              The conversation catalog lists the sessions your agents had in that
+              folder, from a terminal, their own app or another surface, and
+              continues any of them with its history. {listing} list theirs; {unlisted} continues
               from the terminal it runs in.
             </p>
           </Reveal>

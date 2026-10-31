@@ -259,7 +259,24 @@ shown, and off with its reason under it when it cannot: Zero has no interactive
 resume, a conversation with no message yet has no session, or a terminal
 already holds it), *Continue with another agent…*, *Fork* and the rest of the
 menu. Wide, list and details sit side by
-side; narrow (≤ 44rem), the details replace the list until *Back*. Rules:
+side; narrow (≤ 44rem), the details replace the list until *Back*.
+
+The switch at the start of its toolbar picks the other view, **Agent sessions**
+(with its count): the agents' own sessions in the tab's folder that no
+conversation continues yet — the one place they are listed
+(`ConversationSessions.svelte`; the new-chat screen only links here). Newest
+first, each with its agent and age; one the bridge could not name (no readable
+history, nothing asked yet, or its naming failed) reads *Untitled {agent} session*. The search field
+filters their titles, *Filters* offers the agent, and the scope control hides
+(sessions belong to one folder). Picking one continues it as a chat: its
+history comes in and its first message resumes it. One that a terminal of this
+window holds says *In a terminal*; picking it asks that terminal to let it go
+first (`agent/requestHandoff`, then `thread/start { agentSessionId }`). An agent
+whose CLI cannot list its sessions (Antigravity) is named under the list. A
+session whose CLI keeps no title is named by the bridge, on the model it ran on
+(architecture/02a §5.8.19): its row reads *Naming…* while `titlePending`, and the replica asks
+again every `TITLE_FOLLOW_UP_MS` (5 s, at most `TITLE_FOLLOW_UP_ROUNDS` = 18
+times) until the names come. Rules:
 `src/lib/bridge/conversationsView.ts`.
 
 ### Continuing with another agent
@@ -342,20 +359,26 @@ before the first message. The first message starts the thread in the tab's
 folder — in that mode — and the thread is titled from that message until the
 agent writes a better name.
 
-Below it, kept short: **Recent here** — the three newest conversations of this
-folder, whichever app started it — and **See all conversations (N)**, which
-opens the Conversations tab on this project. **Continue from…** (or *Continue
-from this in a new chat* in a recent one's menu) starts this chat as the
-continuation of another: a line over the composer names it and the context to
-carry, and the first message carries that context to the agent chosen here
-(`thread/start { continueFrom }`). **Sessions in this folder** (three, *Show
-all*) lists the agents' own sessions there that no conversation continues yet — ones
+The screen is **composer-first**: the hero and the composer sit at a fixed
+anchor of the pane (a share of its height above them), and the history below has
+a box of its own, so no amount of history — nor the moment it arrives from the
+bridge — moves them; a pane too short for it scrolls, with the composer still the
+first thing in it. Below the composer, kept short and never expanding in place:
+**Recent here** — the three newest conversations of this folder, whichever app
+started it — and **See all conversations (N)**, which opens the Conversations tab
+on this project. **Continue from…** (or *Continue from this in a new chat* in a
+recent one's menu) starts this chat as the continuation of another: a line over
+the composer names it and the context to carry, and the first message carries
+that context to the agent chosen here (`thread/start { continueFrom }`).
+
+The agents' own sessions in this folder that no conversation continues yet —
 started in a terminal, here or elsewhere, or in the agent's own app
-(`agent/sessions`, architecture/02a §5.8.19). Picking one continues it as
-this chat: its history comes in and its first message resumes it. One that a
-terminal of this window holds says *In a terminal*; picking it asks that
-terminal to let it go first. An agent whose CLI cannot list its sessions
-(Antigravity) is named under the list.
+(`agent/sessions`, architecture/02a §5.8.19) — are **not listed here**: one quiet
+line, *N agent sessions in this folder outside Uxnan →*, opens the Conversations
+tab on its *Agent sessions* view. The count comes from the replica
+(`ChatStore.agentSessions`, asked once per folder and again after a reconnect),
+the same list that view shows; the line appears only when there is something to
+say and only after the conversations loaded, so it never moves what is above.
 
 ## From a terminal to a chat, and back
 
