@@ -118,8 +118,9 @@ export interface OpenCodeAdapterOptions {
   spawnFn?: SpawnFn;
   /**
    * Surfaces a permission request to the bridge so the phone can decide.
-   * Returns the user's {@link ApprovalDecision} (or `reject` after the bridge's
-   * approval timeout). Absent → the request is rejected (fail-safe).
+   * Returns the user's {@link ApprovalDecision} whenever they answer (there is
+   * no clock), or `reject` once withdrawn. Absent → the request is rejected
+   * (fail-safe).
    */
   onApprovalRequest?: ApprovalRequester;
   /**

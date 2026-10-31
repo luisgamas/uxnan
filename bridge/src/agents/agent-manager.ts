@@ -31,6 +31,7 @@ import {
   type ApprovalDecision,
   type ApprovalRequestBlock,
   type IAgentAdapter,
+  type QuestionRequestBlock,
   type NativeSessionInfo,
   type QueuePausedReason,
   type QueueStateResult,
@@ -66,9 +67,6 @@ import {
 import type { QuestionItem } from '@uxnan/shared';
 import type { ViewStore } from '../views/view-store.js';
 import { convertViewToolBlock } from '../views/convert-view-block.js';
-
-/** How long a tool approval waits for the user before defaulting to deny. */
-const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Build the `approval` content block for a tool the agent wants to run. */
 function approvalContent(approvalId: string, info: ApprovalRequestInfo): ApprovalRequestBlock {
@@ -121,6 +119,17 @@ export interface TurnEndInfo {
   text?: string;
 }
 
+/** An agent started waiting on the person: it asked for an approval or a question. */
+export interface InputRequestInfo {
+  threadId: string;
+  turnId: string;
+  /** The `approvalId` / `questionId` — one notification per request. */
+  requestId: string;
+  kind: 'approval' | 'question';
+  /** What is asked: the approval's action, or the first question's text. */
+  text: string;
+}
+
 export interface AgentManagerOptions {
   store: ThreadStore;
   /** Broadcast a JSON-RPC notification to connected phones. */
@@ -133,22 +142,27 @@ export interface AgentManagerOptions {
   /** Optional hook fired when a turn completes or errors (e.g. push notifications). */
   onTurnEnd?: (info: TurnEndInfo) => void;
   /**
-   * Whether at least one phone currently has a live channel. The approval
-   * auto-reject countdown ({@link APPROVAL_TIMEOUT_MS}) only runs while this is
-   * true, so an approval requested while the phone is backgrounded/offline
-   * WAITS (its card is replayed from the outbound log on reconnect) instead of
-   * defaulting to reject on a prompt the user never saw — which would make the
-   * agent take an unauthorized default action and the turn appear "cut".
-   * Defaults to always-connected when omitted (preserves the prior timeout
-   * behavior, e.g. in tests).
+   * Optional hook fired once per approval or question an agent asks — the
+   * moment it starts waiting on the person (e.g. a "needs you" push).
    */
-  isPhoneConnected?: () => boolean;
-  /**
-   * Override the approval auto-reject window in ms (defaults to
-   * {@link APPROVAL_TIMEOUT_MS}). Injected so tests can exercise the timeout
-   * without waiting minutes.
-   */
-  approvalTimeoutMs?: number;
+  onInputRequested?: (info: InputRequestInfo) => void;
+}
+
+/** An approval an adapter is waiting on, until a person answers it. */
+interface PendingApproval {
+  threadId: string;
+  /** The turn whose message shows the card; its stored block gets the outcome. */
+  turnId: string;
+  content: ApprovalRequestBlock;
+  resolve: (decision: ApprovalDecision) => void;
+}
+
+/** A question an adapter is waiting on, until a person answers it. */
+interface PendingQuestion {
+  threadId: string;
+  turnId: string;
+  content: QuestionRequestBlock;
+  resolve: (answers: string[][]) => void;
 }
 
 export interface SendTurnOptions {
@@ -354,43 +368,25 @@ export class AgentManager {
    * runs next instead of the queue pausing.
    */
   readonly #sendNextAfterStop = new Map<string, string>();
-  /** approvalId → resolver for a pending approval an adapter asked for
-   * ({@link requestApproval}); one map, so a single `respondApproval` call
-   * resolves any of them. The resolver takes the user's `ApprovalDecision`; the
-   * adapter translates that into the wire shape its protocol expects. */
-  readonly #pendingHookApprovals = new Map<
-    string,
-    {
-      threadId: string;
-      resolve: (decision: ApprovalDecision) => void;
-      timer: ReturnType<typeof setTimeout> | undefined;
-    }
-  >();
+  /** approvalId → a pending approval an adapter asked for ({@link requestApproval});
+   * one map, so a single `respondApproval` call resolves any of them. The
+   * resolver takes the user's `ApprovalDecision`; the adapter translates that
+   * into the wire shape its protocol expects. Nothing here runs on a clock: an
+   * entry leaves only when a person answers, the agent withdraws the request,
+   * or the run that asked ends ({@link #forgetRun}). */
+  readonly #pendingApprovals = new Map<string, PendingApproval>();
   #approvalSeq = 0;
-  /** questionId → resolver for a pending question (the agent's `question` tool);
-   * resolves with the chosen answers per question, or `[]` on timeout/skip. Same
-   * shape as the approval pending map so `respondQuestion` mirrors `respondApproval`. */
-  readonly #pendingQuestions = new Map<
-    string,
-    {
-      threadId: string;
-      resolve: (answers: string[][]) => void;
-      timer: ReturnType<typeof setTimeout> | undefined;
-    }
-  >();
+  /** questionId → a pending question (the agent's ask-the-user tool); resolves
+   * with the chosen answers per question, or `[]` when skipped or withdrawn.
+   * Same life as {@link #pendingApprovals}. */
+  readonly #pendingQuestions = new Map<string, PendingQuestion>();
   #questionSeq = 0;
   readonly #options: AgentManagerOptions;
-  /** Whether a phone is connected to see/answer approvals (see options). */
-  readonly #isPhoneConnected: () => boolean;
-  /** Approval auto-reject window in ms (see options). */
-  readonly #approvalTimeoutMs: number;
 
   constructor(options: AgentManagerOptions) {
     this.#options = options;
     this.#mcpServers = options.mcpServers ?? [];
     this.#viewStore = options.viewStore;
-    this.#isPhoneConnected = options.isPhoneConnected ?? (() => true);
-    this.#approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
   }
 
   register(adapter: IAgentAdapter, meta?: Partial<AgentMeta>): void {
@@ -703,12 +699,34 @@ export class AgentManager {
     if (open?.size === 0) this.#awaitingInput.delete(threadId);
   }
 
+  /**
+   * A pending approval ends: the adapter gets [decision] at once, the stored
+   * card is written over with its outcome (so a client that missed the
+   * notification converges from `turn/list`), and then every client retires
+   * its card. [withdrawn] — no person answered (the agent settled it itself,
+   * or the run that asked ended).
+   */
+  async #settleApproval(
+    approvalId: string,
+    decision: ApprovalDecision,
+    withdrawn: boolean,
+  ): Promise<void> {
+    const pending = this.#pendingApprovals.get(approvalId);
+    if (!pending) return;
+    this.#pendingApprovals.delete(approvalId);
+    this.#closeInput(pending.threadId, approvalId);
+    pending.resolve(decision);
+    const outcome = { decision, ...(withdrawn ? { withdrawn: true } : {}) };
+    await this.#storeOutcome(pending.threadId, pending.turnId, { ...pending.content, outcome });
+    this.#announceApproval(pending.threadId, approvalId, decision, withdrawn);
+  }
+
   /** Every client retires its card for [approvalId]. */
   #announceApproval(
     threadId: string,
     approvalId: string,
     decision: ApprovalDecision,
-    timedOut = false,
+    withdrawn = false,
   ): void {
     this.#closeInput(threadId, approvalId);
     this.#options.notify(
@@ -716,28 +734,55 @@ export class AgentManager {
         threadId,
         approvalId,
         decision,
-        ...(timedOut ? { timedOut: true } : {}),
+        ...(withdrawn ? { withdrawn: true } : {}),
       } satisfies ApprovalResolvedParams),
     );
   }
 
-  /** Every client retires its card for [questionId]. */
-  #announceQuestion(
-    threadId: string,
+  /** A pending question ends — same steps as {@link #settleApproval}. */
+  async #settleQuestion(
     questionId: string,
     answers: string[][],
-    timedOut = false,
-  ): void {
-    this.#closeInput(threadId, questionId);
+    withdrawn: boolean,
+  ): Promise<void> {
+    const pending = this.#pendingQuestions.get(questionId);
+    if (!pending) return;
+    this.#pendingQuestions.delete(questionId);
+    this.#closeInput(pending.threadId, questionId);
+    pending.resolve(answers);
+    const outcome = { answers, ...(withdrawn ? { withdrawn: true } : {}) };
+    await this.#storeOutcome(pending.threadId, pending.turnId, { ...pending.content, outcome });
     this.#options.notify(
       makeNotification(StreamNotification.QuestionResolved, {
-        threadId,
+        threadId: pending.threadId,
         questionId,
         skipped: answers.every((chosen) => chosen.length === 0),
         answers,
-        ...(timedOut ? { timedOut: true } : {}),
+        ...(withdrawn ? { withdrawn: true } : {}),
       } satisfies QuestionResolvedParams),
     );
+  }
+
+  /** Writes a settled request card over its pending form in the stored turn.
+   *  Best-effort: the live notification still goes out if the write fails. */
+  async #storeOutcome(threadId: string, turnId: string, settled: unknown): Promise<void> {
+    try {
+      await this.#options.store.settleStep(threadId, turnId, settled, this.#options.now());
+    } catch (err) {
+      this.#options.logger.warn(`could not store a request's outcome: ${String(err)}`);
+    }
+  }
+
+  /** The run on [threadId] ended: nothing waits on its requests any more.
+   *  Each is withdrawn — its adapter is released and every client retires it. */
+  async #withdrawRequests(threadId: string): Promise<void> {
+    const approvals = [...this.#pendingApprovals]
+      .filter(([, p]) => p.threadId === threadId)
+      .map(([id]) => this.#settleApproval(id, 'reject', true));
+    const questions = [...this.#pendingQuestions]
+      .filter(([, p]) => p.threadId === threadId)
+      .map(([id]) => this.#settleQuestion(id, [], true));
+    await Promise.all([...approvals, ...questions]);
   }
 
   /** Persists a turn as `queued` and parks it behind the in-flight one. */
@@ -1197,15 +1242,17 @@ export class AgentManager {
   }
 
   /**
-   * Ask the user (via the phone) whether an agent tool may run. Emits an
-   * `approval` content block on the thread's in-flight turn and resolves once
-   * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} →
-   * `reject`).
+   * Ask the person whether an agent tool may run. Emits an `approval` content
+   * block on the thread's in-flight turn and resolves once
+   * {@link respondApproval} arrives — however long that takes. There is no
+   * clock: the request stays pending, on every client and across reconnects,
+   * until a person answers it, the agent withdraws it ([signal]), or the run
+   * that asked ends.
    *
    * The return type is the full {@link ApprovalDecision}: each adapter
    * translates it into the wire shape its protocol expects (a stream-json
    * `control_response`, an app-server decision, an ACP option, …). A common
-   * pending map + common resolver keeps the phone's reply path
+   * pending map + common resolver keeps the reply path
    * (`turn/send { approvalResponse }`) uniform for every agent.
    *
    * [signal] withdraws the request — the agent settled it itself, or the turn
@@ -1219,9 +1266,31 @@ export class AgentManager {
     const turnId = this.#activeTurnByThread.get(threadId);
     if (!turnId || signal?.aborted) return 'reject'; // nothing to attach the approval to
     const approvalId = `appr-${turnId}-${(this.#approvalSeq += 1)}`;
-    this.#openInput(threadId, approvalId);
-    const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = approvalContent(approvalId, info);
+    const decision = new Promise<ApprovalDecision>((resolve) => {
+      this.#pendingApprovals.set(approvalId, { threadId, turnId, content, resolve });
+    });
+    await this.#showRequest(threadId, turnId, approvalId, content);
+    this.#withdrawOnAbort(signal, () => void this.#settleApproval(approvalId, 'reject', true));
+    this.#options.onInputRequested?.({
+      threadId,
+      turnId,
+      requestId: approvalId,
+      kind: 'approval',
+      text: content.action,
+    });
+    return decision;
+  }
+
+  /** Puts a request card on the turn: opened, stored, then told to every client. */
+  async #showRequest(
+    threadId: string,
+    turnId: string,
+    requestId: string,
+    content: ApprovalRequestBlock | QuestionRequestBlock,
+  ): Promise<void> {
+    this.#openInput(threadId, requestId);
+    const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const index = this.#options.store.blockIndex(threadId, turnId, content);
     try {
       await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
@@ -1229,23 +1298,6 @@ export class AgentManager {
       /* best-effort persistence */
     }
     this.#notifyBlock({ threadId, turnId, messageId, content, index });
-    return new Promise<ApprovalDecision>((resolve) => {
-      this.#pendingHookApprovals.set(approvalId, { threadId, resolve, timer: undefined });
-      this.#withdrawOnAbort(signal, () => {
-        const pending = this.#pendingHookApprovals.get(approvalId);
-        if (!pending) return;
-        clearTimeout(pending.timer);
-        this.#pendingHookApprovals.delete(approvalId);
-        pending.resolve('reject');
-        this.#announceApproval(threadId, approvalId, 'reject');
-      });
-      // Only start the auto-reject countdown while a phone is connected to see
-      // and answer the card. While offline the approval WAITS (the card replays
-      // from the outbound log on reconnect), so the agent never takes an
-      // unauthorized default the user never saw. The countdown (re)starts when a
-      // phone (re)connects — see onPhoneConnected.
-      if (this.#isPhoneConnected()) this.#armApprovalTimeout(approvalId);
-    });
   }
 
   /** Runs [withdraw] once if [signal] aborts (also when it already has). */
@@ -1253,52 +1305,6 @@ export class AgentManager {
     if (!signal) return;
     if (signal.aborted) withdraw();
     else signal.addEventListener('abort', withdraw, { once: true });
-  }
-
-  /**
-   * (Re)arms the auto-reject countdown for a pending approval. Idempotent —
-   * clears any existing timer first, so a phone reconnect grants a fresh window.
-   */
-  #armApprovalTimeout(approvalId: string): void {
-    const pending = this.#pendingHookApprovals.get(approvalId);
-    if (!pending) return;
-    if (pending.timer) clearTimeout(pending.timer);
-    pending.timer = setTimeout(() => {
-      this.#pendingHookApprovals.delete(approvalId);
-      pending.resolve('reject');
-      this.#announceApproval(pending.threadId, approvalId, 'reject', true);
-    }, this.#approvalTimeoutMs);
-  }
-
-  /**
-   * A phone (re)connected: grant a fresh auto-reject window to every approval
-   * that was waiting while the user was away (its card is replayed on
-   * reconnect), so the user actually gets time to answer it.
-   */
-  onPhoneConnected(): void {
-    for (const approvalId of this.#pendingHookApprovals.keys()) {
-      this.#armApprovalTimeout(approvalId);
-    }
-    for (const questionId of this.#pendingQuestions.keys()) {
-      this.#armQuestionTimeout(questionId);
-    }
-  }
-
-  /**
-   * The last phone disconnected: stop every approval/question auto-resolve
-   * countdown so a pending elicitation waits for the user to return instead of
-   * defaulting on a card they never saw. No-op while any phone is still connected.
-   */
-  onPhoneDisconnected(): void {
-    if (this.#isPhoneConnected()) return;
-    for (const pending of this.#pendingHookApprovals.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-      pending.timer = undefined;
-    }
-    for (const pending of this.#pendingQuestions.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-      pending.timer = undefined;
-    }
   }
 
   /**
@@ -1320,12 +1326,8 @@ export class AgentManager {
     // `#activeTurnByThread` before we return — so read it while it is still set
     // and report that regardless of when the completion event lands.
     const turnId = this.#activeTurnByThread.get(threadId) ?? '';
-    const pending = this.#pendingHookApprovals.get(approvalId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.#pendingHookApprovals.delete(approvalId);
-      pending.resolve(decision);
-      this.#announceApproval(threadId, approvalId, decision);
+    if (this.#pendingApprovals.has(approvalId)) {
+      await this.#settleApproval(approvalId, decision, false);
       return { turnId };
     }
     const agentId = this.#agentByThread.get(threadId);
@@ -1348,13 +1350,12 @@ export class AgentManager {
   }
 
   /**
-   * Ask the user (via the phone) to answer the agent's multiple-choice
-   * {@link QuestionItem}s. Emits a `question` content block on the thread's
-   * in-flight turn and resolves once {@link respondQuestion} arrives with the
-   * chosen answers (or after {@link APPROVAL_TIMEOUT_MS} → `[]`, i.e. no answer,
-   * so the adapter can skip/reject and unblock the turn). Mirrors
-   * {@link requestApproval}; the caller (the OpenCode adapter) translates the
-   * returned answers into its CLI's reply shape.
+   * Ask the person to answer the agent's multiple-choice {@link QuestionItem}s.
+   * Emits a `question` content block on the thread's in-flight turn and
+   * resolves once {@link respondQuestion} arrives with the chosen answers —
+   * with no clock, like {@link requestApproval} — or with `[]` when the agent
+   * withdraws it ([signal]) or the run that asked ends. The caller translates
+   * the returned answers into its CLI's reply shape.
    */
   async requestQuestion(
     threadId: string,
@@ -1364,42 +1365,20 @@ export class AgentManager {
     const turnId = this.#activeTurnByThread.get(threadId);
     if (!turnId || signal?.aborted) return []; // nothing to attach the question to
     const questionId = `qst-${turnId}-${(this.#questionSeq += 1)}`;
-    this.#openInput(threadId, questionId);
-    const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = questionBlock(questionId, questions);
-    const index = this.#options.store.blockIndex(threadId, turnId, content);
-    try {
-      await this.#options.store.appendBlock(threadId, turnId, content, this.#options.now());
-    } catch {
-      /* best-effort persistence */
-    }
-    this.#notifyBlock({ threadId, turnId, messageId, content, index });
-    return new Promise<string[][]>((resolve) => {
-      this.#pendingQuestions.set(questionId, { threadId, resolve, timer: undefined });
-      this.#withdrawOnAbort(signal, () => {
-        const pending = this.#pendingQuestions.get(questionId);
-        if (!pending) return;
-        clearTimeout(pending.timer);
-        this.#pendingQuestions.delete(questionId);
-        pending.resolve([]);
-        this.#announceQuestion(threadId, questionId, []);
-      });
-      // Same offline posture as approvals: only run the auto-skip countdown while
-      // a phone is connected to see and answer the card (see onPhoneConnected).
-      if (this.#isPhoneConnected()) this.#armQuestionTimeout(questionId);
+    const answers = new Promise<string[][]>((resolve) => {
+      this.#pendingQuestions.set(questionId, { threadId, turnId, content, resolve });
     });
-  }
-
-  /** (Re)arms the auto-skip countdown for a pending question. Idempotent. */
-  #armQuestionTimeout(questionId: string): void {
-    const pending = this.#pendingQuestions.get(questionId);
-    if (!pending) return;
-    if (pending.timer) clearTimeout(pending.timer);
-    pending.timer = setTimeout(() => {
-      this.#pendingQuestions.delete(questionId);
-      pending.resolve([]);
-      this.#announceQuestion(pending.threadId, questionId, [], true);
-    }, this.#approvalTimeoutMs);
+    await this.#showRequest(threadId, turnId, questionId, content);
+    this.#withdrawOnAbort(signal, () => void this.#settleQuestion(questionId, [], true));
+    this.#options.onInputRequested?.({
+      threadId,
+      turnId,
+      requestId: questionId,
+      kind: 'question',
+      text: questions[0]?.question ?? '',
+    });
+    return answers;
   }
 
   /**
@@ -1407,19 +1386,14 @@ export class AgentManager {
    * promise). No new turn is created. Returns the in-flight turn id (or `''`) so
    * the `turn/send` reply still carries a `turnId`.
    */
-  respondQuestion(
+  async respondQuestion(
     threadId: string,
     questionId: string,
     answers: string[][],
   ): Promise<{ turnId: string }> {
-    const pending = this.#pendingQuestions.get(questionId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.#pendingQuestions.delete(questionId);
-      pending.resolve(answers);
-      this.#announceQuestion(threadId, questionId, answers);
-    }
-    return Promise.resolve({ turnId: this.#activeTurnByThread.get(threadId) ?? '' });
+    const turnId = this.#activeTurnByThread.get(threadId) ?? '';
+    await this.#settleQuestion(questionId, answers, false);
+    return { turnId };
   }
 
   /**
@@ -2179,6 +2153,7 @@ export class AgentManager {
   /** A run ended: drop what linked it to the turns it answered, and whatever
    *  it was still asking (nothing waits on a run that is over). */
   #forgetRun(runId: string, turnId: string, threadId: string): void {
+    void this.#withdrawRequests(threadId);
     this.#awaitingInput.delete(threadId);
     this.#turnOfRun.delete(runId);
     this.#runOfTurn.delete(turnId);
@@ -2290,10 +2265,17 @@ export class AgentManager {
   }
 }
 
-/** The id of an approval or question a block asks the user for, if it is one. */
+/** The id of an approval or question a block asks the user for, if it is one
+ *  still open (a settled card carries its `outcome`). */
 function pendingInputId(content: unknown): string | undefined {
   if (!content || typeof content !== 'object') return undefined;
-  const block = content as { type?: unknown; approvalId?: unknown; questionId?: unknown };
+  const block = content as {
+    type?: unknown;
+    approvalId?: unknown;
+    questionId?: unknown;
+    outcome?: unknown;
+  };
+  if (block.outcome !== undefined) return undefined;
   if (block.type === 'approval' && typeof block.approvalId === 'string') return block.approvalId;
   if (block.type === 'question' && typeof block.questionId === 'string') return block.questionId;
   return undefined;

@@ -101,6 +101,8 @@ export interface DaemonConfig {
   pushEnabled: boolean;
   pushOnAgentDone: boolean;
   pushOnAgentError: boolean;
+  /** Push when an agent starts waiting on the person (an approval or a question). */
+  pushOnAgentNeedsInput: boolean;
   autoReconnect: boolean;
   maxConcurrentSessions: number;
   sessionTimeoutMinutes: number;
@@ -173,6 +175,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   pushEnabled: true,
   pushOnAgentDone: true,
   pushOnAgentError: true,
+  pushOnAgentNeedsInput: true,
   autoReconnect: true,
   maxConcurrentSessions: 1,
   sessionTimeoutMinutes: 30,

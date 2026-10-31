@@ -422,10 +422,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     ],
     viewStore,
     onTurnEnd: (info) => pushService.onTurnEnd(info),
-    // Pause the approval auto-reject countdown while no phone is connected, so an
-    // approval requested while the app is backgrounded waits (and replays on
-    // reconnect) instead of defaulting to reject on a card the user never saw.
-    isPhoneConnected: () => sessionRegistry.anyActive(),
+    // An agent waiting on the person is worth a push: it stays blocked until
+    // someone answers, however long that takes.
+    onInputRequested: (info) => pushService.onInputRequested(info),
   });
   // Every change clients mirror is announced from the store that made it, with
   // its sync revision — the one place these notifications come from (§5.8.17).
@@ -971,10 +970,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             deviceId: localReceiverId(clientId),
             local: clientId,
           }),
-        // A local client can see and answer approvals exactly like a phone, so
-        // it counts as "someone is there" for the approval countdown.
         onClientConnected: (clientId) => {
-          agentManager.onPhoneConnected();
           // Only Uxnan Desktop is a presence; a CLI command's short call is not.
           // Each desktop profile is its own client, so the installed app and a
           // development build show (and come and go) separately.
@@ -989,7 +985,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           logger.info(`local client connected: ${clientId}`);
         },
         onClientDisconnected: (clientId) => {
-          agentManager.onPhoneDisconnected();
           presence.disconnected(localReceiverId(clientId));
           // Its tools' token dies with it (the desktop mints a new one).
           agentManager.clearDesktopMcpServer(clientId);

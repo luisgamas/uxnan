@@ -4,8 +4,9 @@
  *
  * The phone registers its FCM/APNs token over the live session
  * (`notifications/register`). The bridge keeps the token and, when a turn ends
- * with push enabled, delivers a background notification **itself**, straight to
- * FCM through {@link PushSender}. That works on any transport (LAN, Tailscale or
+ * or an agent starts waiting on the person (an approval or a question it
+ * asked), delivers a background notification **itself**, straight to FCM
+ * through {@link PushSender}. That works on any transport (LAN, Tailscale or
  * the relay), and the token never leaves this machine except toward FCM: the
  * relay carries no push traffic.
  *
@@ -45,6 +46,18 @@ export interface TurnEndInfo {
   text?: string;
 }
 
+/** An agent asked the person something (`AgentManager.requestApproval` / `requestQuestion`). */
+export interface InputRequestedInfo {
+  threadId: string;
+  turnId: string;
+  /** The `approvalId` / `questionId`: the push carries it, so the phone can
+   *  drop the notification once the request is answered anywhere. */
+  requestId: string;
+  kind: 'approval' | 'question';
+  /** The approval's action or the question's text, for the body. */
+  text: string;
+}
+
 interface Registration {
   sessionId: string;
   /** Trusted-device id that owns this registration (for prune-on-untrust). */
@@ -73,7 +86,11 @@ interface PersistedPushState {
   registrations: Registration[];
 }
 
-const DEFAULT_PREFERENCES: NotificationPreferences = { turnCompleted: true, turnError: true };
+const DEFAULT_PREFERENCES: NotificationPreferences = {
+  turnCompleted: true,
+  turnError: true,
+  needsInput: true,
+};
 
 export interface PushServiceOptions {
   config: DaemonConfig;
@@ -229,14 +246,51 @@ export class PushService {
     return this.#config.pushOnAgentError && prefs.turnError;
   }
 
+  // FOR-DEV: a push the OS already showed stays after the request is answered
+  // elsewhere — tag it with `requestId` and send a replacing message on
+  // resolution once the HTTP v1 sender lands (bridge/FOR-DEV.md, *Transport &
+  // connectivity*).
+  /**
+   * Fire-and-forget: one push per approval or question an agent asks, to every
+   * registered phone that has not turned "needs you" off. A request is never
+   * resolved on a clock, so this is the person's cue that an agent is blocked.
+   */
+  onInputRequested(info: InputRequestedInfo): void {
+    void this.#maybePushInput(info).catch((err) =>
+      this.#logger.warn(`push notify failed: ${errorMessage(err)}`),
+    );
+  }
+
+  async #maybePushInput(info: InputRequestedInfo): Promise<void> {
+    if (!this.#config.pushEnabled || !this.#config.pushOnAgentNeedsInput) return;
+    if (this.#registrations.size === 0) return;
+    const title = info.kind === 'approval' ? 'Approval needed' : 'Question for you';
+    const body = truncate(info.text) ?? 'Your agent is waiting for you.';
+    const data = { threadId: info.threadId, turnId: info.turnId, requestId: info.requestId };
+    await Promise.all(
+      [...this.#registrations.values()]
+        // An older registration without the field reads as on (shared contract).
+        .filter((reg) => reg.preferences.needsInput !== false)
+        .map((reg) => this.#send(reg, title, body, data)),
+    );
+  }
+
   async #notifyOne(
     reg: Registration,
     info: TurnEndInfo,
     title: string,
     body: string,
   ): Promise<void> {
+    await this.#send(reg, title, body, { threadId: info.threadId, turnId: info.turnId });
+  }
+
+  async #send(
+    reg: Registration,
+    title: string,
+    body: string,
+    data: Record<string, string>,
+  ): Promise<void> {
     if (!this.#pushSender) return;
-    const data = { threadId: info.threadId, turnId: info.turnId };
     try {
       await this.#pushSender.send(reg.pushToken, reg.platform, { title, body, data });
     } catch (err) {

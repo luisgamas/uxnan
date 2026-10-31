@@ -29,7 +29,7 @@ file is optional; create it to override. Defaults live in
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
-| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (background delivery is gated on the bridge's Firebase service account — see [`push-notifications.md`](./push-notifications.md)). |
+| `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` / `pushOnAgentNeedsInput` | `true` | Push-notification toggles (`pushOnAgentNeedsInput`: an agent asked for an approval or a question and is waiting on you) (background delivery is gated on the bridge's Firebase service account — see [`push-notifications.md`](./push-notifications.md)). |
 
 ## Projects: one registry every client mirrors
 

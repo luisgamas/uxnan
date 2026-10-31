@@ -72,7 +72,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<vo
   throw new Error('waitFor timed out');
 }
 
-async function managerHarness(approvalTimeoutMs?: number): Promise<{
+async function managerHarness(): Promise<{
   manager: AgentManager;
   store: ThreadStore;
   notes: Note[];
@@ -87,7 +87,6 @@ async function managerHarness(approvalTimeoutMs?: number): Promise<{
     now: () => 1,
     logger: createLogger('test', 'error'),
     defaultAgent: 'echo',
-    ...(approvalTimeoutMs !== undefined ? { approvalTimeoutMs } : {}),
   });
   manager.register(new HeldAdapter());
   return { manager, store, notes, baseDir };
@@ -161,26 +160,31 @@ test('an answered approval is announced so every other client retires its card',
   }
 });
 
-test('an approval that times out is announced as a timed-out reject', async () => {
-  const { manager, store, notes, baseDir } = await managerHarness(40);
+test('an approval the agent withdraws is announced as withdrawn, not as a choice', async () => {
+  const { manager, store, notes, baseDir } = await managerHarness();
   try {
     const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
     await manager.sendTurn(thread.id, 'go');
-    assert.equal(
-      await manager.requestApproval(thread.id, { toolName: 'Bash', input: {} }),
-      'reject',
+    const controller = new AbortController();
+    const decision = manager.requestApproval(
+      thread.id,
+      { toolName: 'Bash', input: {} },
+      controller.signal,
     );
+    await waitFor(() => of(notes, StreamNotification.ContentBlock).length > 0);
+    controller.abort();
+    assert.equal(await decision, 'reject');
+    await waitFor(() => of(notes, StreamNotification.ApprovalResolved).length === 1);
     const resolved = of<ApprovalResolvedParams>(notes, StreamNotification.ApprovalResolved);
-    assert.equal(resolved.length, 1);
     assert.equal(resolved[0]?.decision, 'reject');
-    assert.equal(resolved[0]?.timedOut, true);
+    assert.equal(resolved[0]?.withdrawn, true);
   } finally {
     await rmrf(baseDir);
   }
 });
 
-test('answered, skipped and timed-out questions are announced', async () => {
-  const { manager, store, notes, baseDir } = await managerHarness(40);
+test('answered, skipped and withdrawn questions are announced', async () => {
+  const { manager, store, notes, baseDir } = await managerHarness();
   try {
     const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
     await manager.sendTurn(thread.id, 'go');
@@ -204,11 +208,16 @@ test('answered, skipped and timed-out questions are announced', async () => {
     await manager.respondQuestion(thread.id, second?.content.questionId ?? '', [[]]);
     await skipped;
 
-    await manager.requestQuestion(thread.id, questions); // times out
+    const controller = new AbortController();
+    const withdrawn = manager.requestQuestion(thread.id, questions, controller.signal);
+    await waitFor(() => of(notes, StreamNotification.ContentBlock).length === 3);
+    controller.abort();
+    assert.deepEqual(await withdrawn, []);
+    await waitFor(() => of(notes, StreamNotification.QuestionResolved).length === 3);
 
     const resolved = of<QuestionResolvedParams>(notes, StreamNotification.QuestionResolved);
     assert.deepEqual(
-      resolved.map((r) => [r.skipped, r.timedOut === true]),
+      resolved.map((r) => [r.skipped, r.withdrawn === true]),
       [
         [false, false],
         [true, false],
