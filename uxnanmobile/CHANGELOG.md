@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Antigravity and OpenCode plan limits** on a PC's details screen, with the
+  same windows, resets, pace and credit as every other provider.
+
 ### Changed
 
 - **Approval and question cards wait for an answer, with no clock.** A card the
@@ -30,6 +35,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   appears by itself a few seconds later (the phone asks again every 5 seconds,
   18 times at most, only while the screen is open). Sessions that cannot be
   named keep *Untitled session*.
+- **Banked resets**: each reset is listed with its expiry; Claude Code's say to
+  use them with `/limit-reset` in Claude Code and have no Redeem button, Codex's
+  keep theirs behind a confirmation. Antigravity appears in the spend chart.
+- **Windows and balances are named in the UI language** (`windowLabel`,
+  `balanceLabel`, `balanceFigure` in `usage_format.dart`), every balance a
+  provider reports is listed, and the plan is said once — no account-type
+  badge repeating it.
+- A provider's plan name lives in one place (`UsageProvider.displayName`), used
+  by the plan chip and the plan-limits cards alike.
 
 ## [0.0.46-alpha.20261030+20261030] - 20261030
 

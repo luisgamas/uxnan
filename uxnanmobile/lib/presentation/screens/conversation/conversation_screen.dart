@@ -1539,9 +1539,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                 ? _ComposerInfoBar(
                                     edits: lastEdits,
                                     plan: plan,
-                                    planName: planProvider == null
-                                        ? null
-                                        : planDisplayName(planProvider),
+                                    planName: planProvider?.displayName,
                                     showContext: environment.showContext,
                                     hasContext: environment.hasContext,
                                     percent: environment.contextPercent,

@@ -51,8 +51,10 @@ void main() {
   });
 
   test('names each plan', () {
-    expect(planDisplayName(UsageProvider.claude), 'Claude');
-    expect(planDisplayName(UsageProvider.codex), 'Codex');
-    expect(planDisplayName(UsageProvider.grok), 'Grok');
+    expect(UsageProvider.claude.displayName, 'Claude');
+    expect(UsageProvider.codex.displayName, 'Codex');
+    expect(UsageProvider.grok.displayName, 'Grok');
+    expect(UsageProvider.antigravity.displayName, 'Antigravity');
+    expect(UsageProvider.opencode.displayName, 'OpenCode');
   });
 }

@@ -611,7 +611,79 @@ class AppLocalizationsEs extends AppLocalizations {
   String get usageLoadError => 'No se pudo cargar';
 
   @override
-  String get usageCreditLabel => 'Crédito';
+  String get usageWindowSession => 'Sesión (5 h)';
+
+  @override
+  String get usageWindowDaily => 'Diario';
+
+  @override
+  String get usageWindowWeekly => 'Semanal';
+
+  @override
+  String get usageWindowMonthly => 'Mensual';
+
+  @override
+  String get usageWindowChat => 'Chat';
+
+  @override
+  String get usageWindowCompletions => 'Autocompletado';
+
+  @override
+  String get usageWindowPremium => 'Solicitudes premium';
+
+  @override
+  String get usageWindowSpendLimit => 'Límite de gasto';
+
+  @override
+  String get usageWindowGeminiModels => 'Modelos Gemini';
+
+  @override
+  String get usageWindowClaudeGptModels => 'Modelos Claude y GPT';
+
+  @override
+  String usageWindowModelWeekly(String model) {
+    return '$model (semanal)';
+  }
+
+  @override
+  String get usageBalanceMonthlyCredits => 'Créditos mensuales';
+
+  @override
+  String get usageBalanceCredits => 'Créditos';
+
+  @override
+  String get usageBalanceOnDemand => 'Bajo demanda';
+
+  @override
+  String get usageBalancePrepaid => 'Prepago';
+
+  @override
+  String get usageBalanceAiCredits => 'Créditos de IA';
+
+  @override
+  String get usageBalanceBudget => 'Presupuesto';
+
+  @override
+  String usageCredits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count créditos',
+      one: '1 crédito',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String usageCreditsAvailable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count créditos disponibles',
+      one: '1 crédito disponible',
+    );
+    return '$_temp0';
+  }
 
   @override
   String usageCreditAvailable(String amount) {
@@ -3343,6 +3415,19 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String usageResetExpires(String date) {
     return 'el próximo vence el $date';
+  }
+
+  @override
+  String get usageResetEntry => 'Reinicio';
+
+  @override
+  String usageResetEntryExpires(String date) {
+    return 'vence el $date';
+  }
+
+  @override
+  String usageRedeemInCli(String cli, String command) {
+    return 'Usa uno en $cli con $command.';
   }
 
   @override

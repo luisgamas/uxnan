@@ -18,8 +18,8 @@ import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Plan limits: how much of each provider's allowance is used, read live from
-/// the connected PC (`agent/usageStats` — the bridge asks Claude Code and Codex
-/// themselves). Each window shows what is used, where the window stands in
+/// the connected PC (`agent/usageStats` — the bridge asks each provider's own
+/// CLI). Each window shows what is used, where the window stands in
 /// time, and whether the current pace reaches the limit before it resets.
 /// Codex's redeemable resets can be spent from here, as on the desktop.
 ///
@@ -124,17 +124,18 @@ class _ProviderCard extends ConsumerWidget {
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
                 child: Text(
-                  _labelOf(usage.provider),
+                  usage.provider.displayName,
                   style: textTheme.titleMedium,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (plan != null) NeBadge(label: plan),
-              if (type != null && _accountTypeLabel(l10n, type) != plan) ...[
-                const SizedBox(width: UxnanSpacing.xs),
+              // The plan, said once: its name, else the kind of account (a
+              // type derived from that same plan would only repeat it).
+              if (plan != null)
+                NeBadge(label: plan)
+              else if (type != null)
                 NeBadge(label: _accountTypeLabel(l10n, type)),
-              ],
             ],
           ),
           if (usage.status != UsageStatus.ok) ...[
@@ -150,7 +151,7 @@ class _ProviderCard extends ConsumerWidget {
               ),
             ),
           ] else ...[
-            if (usage.windows.isEmpty && usage.credit == null)
+            if (usage.windows.isEmpty && usage.credits.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: UxnanSpacing.sm),
                 child: Text(
@@ -164,11 +165,12 @@ class _ProviderCard extends ConsumerWidget {
               const SizedBox(height: UxnanSpacing.md),
               _WindowBar(window: window),
             ],
-            if (usage.credit != null) ...[
-              const SizedBox(height: UxnanSpacing.md),
+            for (final (i, balance) in usage.credits.indexed) ...[
+              SizedBox(height: i == 0 ? UxnanSpacing.md : UxnanSpacing.xs),
               _Line(
                 icon: UxIcons.accountBalanceWallet,
-                text: _creditLine(l10n, usage.credit!),
+                text: '${balanceFigure(l10n, balance)} · '
+                    '${balanceLabel(l10n, balance)}',
               ),
             ],
             if (resets != null && resets.available > 0) ...[
@@ -194,6 +196,7 @@ class _WindowBar extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final label = windowLabel(l10n, window);
     final used = window.usedPercent.clamp(0, 100).toDouble();
     final pace = WindowPace.of(window, DateTime.now());
     final hot = pace?.runsOutIn != null;
@@ -214,7 +217,7 @@ class _WindowBar extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                window.label,
+                label,
                 style: textTheme.labelLarge,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -231,7 +234,7 @@ class _WindowBar extends StatelessWidget {
         ),
         const SizedBox(height: UxnanSpacing.xs),
         Semantics(
-          label: window.label,
+          label: label,
           value: '${window.usedPercent.round()}%',
           child: SizedBox(
             height: 12,
@@ -347,24 +350,72 @@ class _ResetsState extends ConsumerState<_Resets> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final expires = widget.resets.entries.firstOrNull?.expiresAt;
-    return Row(
+    final resets = widget.resets;
+    final expires = resets.entries.firstOrNull?.expiresAt;
+    final command = resets.redeemCommand;
+    final muted = Theme.of(context)
+        .textTheme
+        .bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: _Line(
-            icon: UxIcons.refresh,
-            text: [
-              l10n.usageResetsAvailable(widget.resets.available),
-              if (expires != null)
-                l10n.usageResetExpires(DateFormat.MMMd().format(expires)),
-            ].join(' · '),
+        Row(
+          children: [
+            Expanded(
+              child: _Line(
+                icon: UxIcons.refresh,
+                text: [
+                  l10n.usageResetsAvailable(resets.available),
+                  if (expires != null)
+                    l10n.usageResetExpires(DateFormat.MMMd().format(expires)),
+                ].join(' · '),
+              ),
+            ),
+            // A reset the bridge can spend (Codex) is redeemed from here,
+            // after a confirmation; one only the CLI spends gets no button.
+            if (command == null) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _redeem,
+                child: Text(l10n.usageRedeemAction),
+              ),
+            ],
+          ],
+        ),
+        if (resets.entries.length > 1 ||
+            resets.entries.any((e) => (e.title ?? '').isNotEmpty))
+          for (final entry in resets.entries)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: UxnanSize.iconContentSmall + UxnanSpacing.sm,
+                top: UxnanSpacing.xs,
+              ),
+              child: Text(
+                [
+                  if ((entry.title ?? '').isNotEmpty)
+                    entry.title!
+                  else
+                    l10n.usageResetEntry,
+                  if (entry.expiresAt != null)
+                    l10n.usageResetEntryExpires(
+                      DateFormat.MMMd().format(entry.expiresAt!),
+                    ),
+                ].join(' · '),
+                style: muted,
+              ),
+            ),
+        if (command != null)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: UxnanSize.iconContentSmall + UxnanSpacing.sm,
+              top: UxnanSpacing.xs,
+            ),
+            child: Text(
+              l10n.usageRedeemInCli(widget.provider.cliName, command),
+              style: muted,
+            ),
           ),
-        ),
-        const SizedBox(width: UxnanSpacing.sm),
-        FilledButton.tonal(
-          onPressed: _busy ? null : _redeem,
-          child: Text(l10n.usageRedeemAction),
-        ),
       ],
     );
   }
@@ -412,36 +463,13 @@ String _resetLabel(AppLocalizations l10n, DateTime reset) {
   return l10n.usageResetsIn(shortDuration(diff));
 }
 
-String _creditLine(AppLocalizations l10n, CreditBalance credit) {
-  // A balance with no cap that says what is left (a prepaid balance) reads as
-  // that amount available, as on the desktop; otherwise what was spent, of
-  // the cap when there is one.
-  final String amount;
-  if (credit.limit == null && credit.available != null) {
-    amount = l10n.usageCreditAvailable(
-      fmtMoney(credit.available!, credit.currency),
-    );
-  } else {
-    final used = fmtMoney(credit.used, credit.currency);
-    amount = credit.limit != null
-        ? '$used / ${fmtMoney(credit.limit!, credit.currency)}'
-        : used;
-  }
-  return '${l10n.usageCreditLabel}: $amount · ${credit.period}';
-}
-
 AgentId? _agentOf(UsageProvider provider) => switch (provider) {
       UsageProvider.codex => AgentId.codex,
       UsageProvider.claude => AgentId.claudeCode,
       UsageProvider.grok => AgentId.grok,
+      UsageProvider.antigravity => AgentId.antigravity,
+      UsageProvider.opencode => AgentId.opencode,
       UsageProvider.copilot => null,
-    };
-
-String _labelOf(UsageProvider provider) => switch (provider) {
-      UsageProvider.codex => 'Codex',
-      UsageProvider.claude => 'Claude',
-      UsageProvider.grok => 'Grok',
-      UsageProvider.copilot => 'GitHub Copilot',
     };
 
 String _accountTypeLabel(AppLocalizations l10n, AccountType type) =>

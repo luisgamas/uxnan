@@ -73,7 +73,66 @@ class _Usage extends UsageStatsController {
   }
 }
 
-Widget _wrap(_Usage usage) => ProviderScope(
+/// The providers the bridge asks of `agy` and OpenCode, as it answers them.
+class _NewProviders extends UsageStatsController {
+  @override
+  Future<List<ProviderUsage>> build() async => [
+        ProviderUsage(
+          provider: UsageProvider.antigravity,
+          status: UsageStatus.ok,
+          windows: const [
+            UsageWindow(
+              id: 'gemini-weekly',
+              label: 'Gemini Models',
+              usedPercent: 9,
+              windowMinutes: 10080,
+            ),
+          ],
+          credits: const [
+            CreditBalance(
+              used: 0,
+              available: 120,
+              currency: 'credits',
+              period: 'AI credits',
+            ),
+          ],
+          updatedAt: DateTime.now(),
+        ),
+        ProviderUsage(
+          provider: UsageProvider.opencode,
+          status: UsageStatus.ok,
+          windows: const [],
+          updatedAt: DateTime.now(),
+          account: const UsageAccount(organization: 'Default'),
+        ),
+      ];
+}
+
+/// A Claude Code account holding a limit reset it spends only itself.
+class _ClaudeResets extends UsageStatsController {
+  @override
+  Future<List<ProviderUsage>> build() async => [
+        ProviderUsage(
+          provider: UsageProvider.claude,
+          status: UsageStatus.ok,
+          windows: const [],
+          updatedAt: DateTime.now(),
+          resetCredits: ResetCredits(
+            available: 1,
+            entries: [
+              ResetCreditEntry(
+                id: 'g-1',
+                title: 'Full reset',
+                expiresAt: DateTime(2026, 11, 20),
+              ),
+            ],
+            redeemCommand: '/limit-reset',
+          ),
+        ),
+      ];
+}
+
+Widget _wrap(UsageStatsController usage) => ProviderScope(
       overrides: [
         connectedDeviceProvider.overrideWith((ref) => Stream.value(_pc)),
         usageStatsProvider.overrideWith(() => usage),
@@ -94,7 +153,8 @@ void main() {
     expect(find.text('As Studio Mac reads them now'), findsOneWidget);
     expect(find.textContaining('At this pace you hit the limit in'), findsOne);
     expect(find.text('Max'), findsOneWidget);
-    expect(find.text('Subscription'), findsOneWidget);
+    // The plan is said once: no account-type badge repeating it.
+    expect(find.text('Subscription'), findsNothing);
     expect(find.text('Grok'), findsNothing);
   });
 
@@ -116,6 +176,33 @@ void main() {
     expect(usage.redeemed.single.provider, UsageProvider.codex);
     expect(usage.redeemed.single.id, 'soon');
     expect(usage.redeemed.single.attempt, isNotEmpty);
+  });
+
+  testWidgets('shows Antigravity and OpenCode like every other provider', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_NewProviders()));
+    await tester.pumpAndSettle();
+    expect(find.text('Antigravity'), findsOneWidget);
+    // Known window ids and balances are named in the UI language.
+    expect(find.text('Gemini models'), findsOneWidget);
+    expect(find.text('120 credits available · AI credits'), findsOneWidget);
+    expect(find.text('OpenCode'), findsOneWidget);
+  });
+
+  testWidgets(
+      'lists Claude Code resets and says how to use them, with no button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_ClaudeResets()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 reset available'), findsOneWidget);
+    expect(find.textContaining('Full reset'), findsOneWidget);
+    expect(
+      find.text('Use one in Claude Code with /limit-reset.'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(FilledButton, 'Redeem'), findsNothing);
   });
 
   testWidgets('hidden while no PC is connected', (tester) async {

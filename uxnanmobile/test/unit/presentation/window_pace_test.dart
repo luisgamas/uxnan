@@ -67,7 +67,6 @@ void main() {
     expect(fmtMoney(12.5), r'$12.50');
     Intl.defaultLocale = null;
     expect(fmtMoney(4.2, 'EUR'), '€4.20');
-    expect(fmtMoney(120, 'credits'), '120 credits');
   });
 
   test('the pressing window: one the pace runs out first, else the fullest',
@@ -97,6 +96,8 @@ void main() {
     expect(usageProviderForAgent('claude-code'), UsageProvider.claude);
     expect(usageProviderForAgent('codex'), UsageProvider.codex);
     expect(usageProviderForAgent('grok'), UsageProvider.grok);
+    expect(usageProviderForAgent('antigravity-cli'), UsageProvider.antigravity);
+    // OpenCode routes through many providers: its chats are not on its Go plan.
     expect(usageProviderForAgent('opencode'), isNull);
   });
 }
