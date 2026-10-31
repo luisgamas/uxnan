@@ -51,6 +51,23 @@ export interface QuestionRequestBlock {
   /** The request's own id again (`questionId`), as the `LiveBlock` id: a
    *  request delivered twice replaces the first copy in place. */
   blockId?: string;
+  /**
+   * How the questions ended, once they have — written over the stored block
+   * as `stream/question/resolved` is announced, so a client that missed the
+   * notification reads the same outcome from `turn/list`. Absent while pending.
+   */
+  outcome?: QuestionOutcome;
+}
+
+/**
+ * How a question ended: the answers the agent received, one list per question
+ * (empty when skipped). `withdrawn` means no person answered: the agent
+ * settled it itself, or the run that asked ended. A pending question never
+ * ends on a clock: it waits until a person answers.
+ */
+export interface QuestionOutcome {
+  answers: string[][];
+  withdrawn?: boolean;
 }
 
 /**

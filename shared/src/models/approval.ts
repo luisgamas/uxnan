@@ -45,4 +45,23 @@ export interface ApprovalRequestBlock {
    * instead of showing as a second card.
    */
   blockId?: string;
+  /**
+   * How the request ended, once it has: the bridge writes it over the stored
+   * block (by `blockId`) as it announces `stream/approval/resolved`, so a
+   * client that missed the notification — offline, restarted, paired later —
+   * reads the same outcome from `turn/list`. Absent while it is pending.
+   */
+  outcome?: ApprovalOutcome;
+}
+
+/**
+ * How an approval ended. `withdrawn` means no person answered it: the agent
+ * settled the request itself, or the run that asked ended (stopped, failed,
+ * its CLI exited). `decision` is then what the bridge answered the adapter
+ * with — never a person's choice, so a client shows the withdrawal instead.
+ * A pending approval never ends on a clock: it waits until a person answers.
+ */
+export interface ApprovalOutcome {
+  decision: ApprovalDecision;
+  withdrawn?: boolean;
 }

@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **Approvals and questions never expire** (architecture/02a §5.8.16, 02b
+  1.7.0). `ApprovalResolvedParams.timedOut` / `QuestionResolvedParams.timedOut`
+  become `withdrawn` — no person answered: the agent settled the request itself,
+  or the run that asked ended. `ApprovalRequestBlock.outcome`
+  (`ApprovalOutcome { decision, withdrawn? }`) and `QuestionRequestBlock.outcome`
+  (`QuestionOutcome { answers, withdrawn? }`) carry the same record on the
+  stored card, so `turn/list` converges a client that missed the notification.
+
+### Added
+
+- `NotificationPreferences.needsInput?` (absent = on): push when an agent starts
+  waiting on the person, once per approval or question.
+
 ## [0.0.36-alpha.20261030] - 20261030
 ### Added
 

@@ -9,7 +9,8 @@
  *
  * Source: architecture/02b-contracts-and-requirements.md (streaming events).
  */
-import type { ApprovalDecision } from '../models/approval.js';
+import type { ApprovalDecision, ApprovalOutcome } from '../models/approval.js';
+import type { QuestionOutcome } from '../models/question.js';
 import type { QueuePausedReason, Thread, Turn } from '../models/thread.js';
 import type { StepPreview } from '../models/history.js';
 import type { Project } from '../models/project.js';
@@ -55,9 +56,9 @@ export const StreamNotification = {
    * agent's answer to it starts streaming.
    */
   TurnCreated: 'stream/turn/created',
-  /** A pending approval was answered (on any client) or timed out. */
+  /** A pending approval was answered (on any client) or withdrawn. */
   ApprovalResolved: 'stream/approval/resolved',
-  /** A pending question was answered (on any client), skipped or timed out. */
+  /** A pending question was answered (on any client), skipped or withdrawn. */
   QuestionResolved: 'stream/question/resolved',
   /** A project was registered or its entry changed. */
   ProjectUpdated: 'stream/project/updated',
@@ -337,31 +338,35 @@ export interface TurnCreatedParams {
 
 /**
  * A pending approval is no longer pending. `decision` is what the agent got:
- * the answer a client sent, or `reject` when it timed out (`timedOut: true`).
- * Every client retires its card for `approvalId` — the one that answered and
- * any other showing the same request.
+ * the answer a client sent, or — `withdrawn: true` — what the bridge answered
+ * when no person did (the agent settled the request itself, or the run that
+ * asked ended). Approvals never expire on a clock. Every client retires its
+ * card for `approvalId` — the one that answered and any other showing the
+ * same request. The stored block carries the same {@link ApprovalOutcome}.
  */
 export interface ApprovalResolvedParams {
   threadId: string;
   approvalId: string;
   decision: ApprovalDecision;
-  timedOut?: boolean;
+  withdrawn?: boolean;
 }
 
 /**
  * A pending question is no longer pending: answered on some client, skipped
- * (empty answers), or timed out (`timedOut: true`). Every client retires its
- * card for `questionId`.
+ * (empty answers), or withdrawn (`withdrawn: true` — no person answered: the
+ * agent settled it itself, or its run ended). Questions never expire on a
+ * clock. Every client retires its card for `questionId`; the stored block
+ * carries the same {@link QuestionOutcome}.
  */
 export interface QuestionResolvedParams {
   threadId: string;
   questionId: string;
-  /** True when no option was chosen (skipped, or timed out). */
+  /** True when no option was chosen (skipped, or withdrawn). */
   skipped: boolean;
   /**
    * The chosen option labels, one list per question in order — what the agent
    * received — so a client that did not answer can still show the choice.
    */
   answers: string[][];
-  timedOut?: boolean;
+  withdrawn?: boolean;
 }
