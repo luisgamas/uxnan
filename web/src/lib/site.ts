@@ -193,9 +193,9 @@ export const CONTROL_CLI = {
 
 /**
  * Agents whose own sessions in a folder, from a terminal, their app or any
- * surface, a new chat can list and continue (`agent/sessions`). Antigravity's
+ * surface, the conversation catalog can list and continue (`agent/sessions`). Antigravity's
  * CLI cannot list them, so its sessions continue from the terminal they run in.
- * source: bridge/docs/agents.md; uxnandesktop/docs/chat.md → *Sessions in this folder*
+ * source: bridge/docs/agents.md; uxnandesktop/docs/chat.md → *The Conversations tab* (Agent sessions view)
  */
 export const SESSIONS_UNLISTED = ["antigravity"];
 export const SESSION_AGENTS = CHAT_AGENTS.filter((a) => !SESSIONS_UNLISTED.includes(a.id));
