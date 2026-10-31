@@ -447,7 +447,7 @@ usage/summary           -> gasto por dia local de la PC, agente y modelo, de las
 
 **Sesiones de agente (6):** (`02a` §5.8.19)
 ```
-agent/sessions           -> las sesiones de cada agente en una carpeta. Params { cwd, agentId? }. Result { sessions: AgentSessionSummary[{ agentId, sessionId, cwd, title?, updatedAgoMs, threadId?, hold? }], unlisted: AgentId[] }. Cada CLI se lista por su propia superficie; solo sesiones de una persona (o que una conversacion continua), nunca los encargos de un solo uso de Uxnan. La mas reciente primero
+agent/sessions           -> las sesiones de cada agente en una carpeta. Params { cwd, agentId? }. Result { sessions: AgentSessionSummary[{ agentId, sessionId, cwd, title?, titlePending?, updatedAgoMs, threadId?, hold? }], unlisted: AgentId[] }. Cada CLI se lista por su propia superficie; solo sesiones de una persona (o que una conversacion continua), nunca los encargos de un solo uso de Uxnan. La mas reciente primero. Una sesion sin titulo (su CLI no lo guarda) la nombra el bridge en segundo plano: sale con `titlePending: true` y el cliente vuelve a preguntar hasta que llega `title`
 agent/holds          -> { holds: AgentSessionHold[] } — las sesiones que una terminal del desktop tiene abiertas ahora (para converger tras perder avisos)
 agent/hold           -> (solo canal local) una terminal del desktop tiene abierta la sesion. Params { agentId, sessionId, cwd?, busy? }; idempotente, la ultima llamada gana. Result AgentSessionHold { holder: { kind: terminal, name }, heldAgoMs, busy, threadId? }. Mientras dure, `turn/send` sobre esa sesion → -32010
 agent/release        -> (solo canal local) la terminal solto la sesion. Params { agentId, sessionId }

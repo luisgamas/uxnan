@@ -4,6 +4,17 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`AgentSessionSummary.titlePending`** (architecture/02a §5.8.19): the bridge is
+  naming an untitled agent session in the background; the title arrives on a later
+  `agent/sessions` answer, which clients ask for again.
+- **`NativeSessionInfo.model`**: the model a session last ran on, in the form its
+  CLI's model flag takes, where the CLI's own record says (OpenCode 2, pi, Grok,
+  Zero) — what names a session that has no title.
+- **`GenerateTitleOptions.model`**: the conversation's own model, used by an agent
+  with no cheaper one to name with (`IAgentAdapter.generateTitle` now documents one
+  model rule for every agent).
 
 ### Changed
 

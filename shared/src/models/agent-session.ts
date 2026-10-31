@@ -25,6 +25,12 @@ export interface AgentSessionSummary {
    * first thing the person asked, trimmed. Absent when neither is known.
    */
   title?: string;
+  /**
+   * The bridge is naming this session right now (it has no title of its own and
+   * is queued or running): ask again in a few seconds and the title is there.
+   * Absent once it is named, or when nothing can name it (no readable history).
+   */
+  titlePending?: boolean;
   /** How long ago the session last changed. */
   updatedAgoMs: number;
   /** The conversation that continues this session, when one does. */
