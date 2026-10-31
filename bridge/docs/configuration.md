@@ -85,6 +85,12 @@ dots and spaces, reserved device names like `CON`, length capped at 60 on a word
 boundary); a taken destination takes the next free `-2`/`-3`; and nothing is ever
 placed inside the repository's own work tree.
 
+Every worktree the bridge creates also gets an empty `uxnan-created` file in its
+own git admin directory (`<common dir>/worktrees/<name>/`), the record Uxnan
+Desktop's engine writes for the worktrees it creates. The desktop reads it to tell
+a checkout Uxnan made from one that appeared on its own (which its left panel sets
+aside while untouched); it lives and dies with the worktree and git ignores it.
+
 Worktrees the bridge placed itself are recorded in `~/.uxnan/managed-worktrees.json`,
 so a later cleanup can tell them from checkouts that were already on disk. A
 client-supplied path is not recorded — that is the client's own arrangement.

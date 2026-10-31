@@ -457,7 +457,7 @@
             {#if hiddenCount > 0}
               <DropdownMenu.Item class={text.menu} onclick={() => projects.showAllHidden(repo.id)}>
                 <Icon icon={ViewIcon} class={icon.button} />
-                {i18n.t("project.showHidden", { n: hiddenCount })}
+                {i18n.t("project.stopHiding")}
               </DropdownMenu.Item>
             {/if}
           {/if}

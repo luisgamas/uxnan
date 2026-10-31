@@ -5987,11 +5987,13 @@ pub async fn github_pr_checkout(
     git::add_worktree(&repo_path, &branch, &worktree_path, Some("FETCH_HEAD"))
         .await
         .map_err(CommandError::from)?;
+    git::mark_created(&worktree_path, &repo_path).await;
     Ok(WorktreeEntry {
         path: worktree_path,
         branch: Some(branch),
         head: None,
         is_main: false,
+        created_by_uxnan: true,
     })
 }
 
@@ -6176,11 +6178,13 @@ pub async fn github_issue_develop(
             .await
             .map_err(CommandError::from)?;
     }
+    git::mark_created(&worktree_path, &repo_path).await;
     Ok(WorktreeEntry {
         path: worktree_path,
         branch: Some(branch),
         head: None,
         is_main: false,
+        created_by_uxnan: true,
     })
 }
 

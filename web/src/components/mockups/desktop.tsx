@@ -1,7 +1,6 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowDownIcon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
 import AttachmentIcon from "@hugeicons/core-free-icons/Attachment01Icon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
@@ -11,7 +10,6 @@ import CirclePauseIcon from "@hugeicons/core-free-icons/PauseCircleIcon";
 import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
 import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
 import FileViewIcon from "@hugeicons/core-free-icons/FileViewIcon";
-import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
 import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
 import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
 import FolderTreeIcon from "@hugeicons/core-free-icons/FolderTreeIcon";
@@ -21,9 +19,11 @@ import MessageCircleQuestionMarkIcon from "@hugeicons/core-free-icons/ChatQuesti
 import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import PanelLeftIcon from "@hugeicons/core-free-icons/PanelLeftIcon";
 import PanelRightIcon from "@hugeicons/core-free-icons/PanelRightIcon";
+import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
 import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
 import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
 import SmartPhoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import ServerStackIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
@@ -286,9 +286,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
               </span>
               <span className="ml-auto flex items-center gap-2 text-faint">
                 <HugeiconsIcon icon={FolderAddIcon} className="size-2.5" />
-                <HugeiconsIcon icon={RefreshCwIcon} className="size-2.5" />
-                <HugeiconsIcon icon={ArrowUpDownIcon} className="size-2.5" />
-                <HugeiconsIcon icon={PlusIcon} className="size-2.5" />
+                <HugeiconsIcon icon={SlidersHorizontalIcon} className="size-2.5" />
               </span>
             </div>
 

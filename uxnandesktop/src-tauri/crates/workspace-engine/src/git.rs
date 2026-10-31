@@ -26,6 +26,13 @@ pub struct WorktreeEntry {
     pub head: Option<String>,
     /// The repository's primary worktree (the original checkout).
     pub is_main: bool,
+    /// Uxnan created this worktree (any of its creators: the app, a control
+    /// client, the bridge). Read from the record left in the worktree's own git
+    /// admin directory (see [`mark_created`]); a worktree made by plain `git
+    /// worktree add` — or before the record existed — has none. Absent in an
+    /// older peer's answer, which reads as "not ours".
+    #[serde(default)]
+    pub created_by_uxnan: bool,
 }
 
 /// What the caller wants done with the removed worktree's branch(es). Every
@@ -1167,6 +1174,7 @@ pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, Error
             branch: None,
             head: None,
             is_main: true,
+            created_by_uxnan: false,
         }]);
     }
     let out = git(repo_path, &["worktree", "list", "--porcelain"]).await?;
@@ -1185,7 +1193,72 @@ pub async fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeEntry>, Error
             }
         }
     }
+    for entry in &mut entries {
+        if !entry.is_main {
+            entry.created_by_uxnan = is_created(&entry.path, repo_path).await;
+        }
+    }
     Ok(entries)
+}
+
+// --- Who created a worktree --------------------------------------------------
+//
+// `git worktree list` says nothing about an author, and the managed folder is
+// only a convention (the `sibling` and `custom` layouts, and a changed setting,
+// all break "it is under our root"). So whoever creates a worktree for Uxnan —
+// this engine, and the bridge's own `createWorktree` — leaves a record **inside
+// the worktree's git admin directory** (`<common dir>/worktrees/<name>/`).
+// There it has the worktree's own lifetime: `git worktree remove` and `prune`
+// delete the directory, `git worktree move` keeps it, nothing needs cleaning up,
+// and it is keyed by the worktree rather than by a path that can be re-spelled.
+// Git ignores unknown files there. The left panel reads it to tell a worktree
+// Uxnan made from one that appeared on its own (`sidebar-visibility.ts`).
+
+/// The file whose presence says "Uxnan created this worktree".
+pub const CREATED_MARKER: &str = "uxnan-created";
+
+/// The worktree's git admin directory, from the `gitdir:` line of its `.git`
+/// file. `None` for the primary worktree (its `.git` is a directory) and for
+/// anything unreadable. Relative targets resolve against the worktree; a WSL
+/// repo's Linux path is mapped to the UNC form this process can read.
+async fn worktree_admin_dir(worktree_path: &str, repo_path: &str) -> Option<std::path::PathBuf> {
+    let dot_git = Path::new(worktree_path).join(".git");
+    let text = tokio::fs::read_to_string(&dot_git).await.ok()?;
+    let target = text.lines().find_map(|l| l.strip_prefix("gitdir:"))?.trim();
+    if target.is_empty() {
+        return None;
+    }
+    if cfg!(windows) && target.starts_with('/') {
+        if let Some(w) = crate::wsl::parse(repo_path) {
+            return Some(std::path::PathBuf::from(crate::wsl::to_unc(
+                &w.host, &w.distro, target,
+            )));
+        }
+    }
+    let target = Path::new(target);
+    Some(if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        Path::new(worktree_path).join(target)
+    })
+}
+
+/// Record that Uxnan created the worktree at `worktree_path`. Best-effort by
+/// design: a creation must not fail because a record could not be written — the
+/// worktree would then merely look external, which the panel shows (hidden, with
+/// a way back) rather than losing anything.
+pub async fn mark_created(worktree_path: &str, repo_path: &str) {
+    if let Some(dir) = worktree_admin_dir(worktree_path, repo_path).await {
+        let _ = tokio::fs::write(dir.join(CREATED_MARKER), b"").await;
+    }
+}
+
+/// Whether Uxnan created the worktree at `worktree_path` (see [`mark_created`]).
+pub async fn is_created(worktree_path: &str, repo_path: &str) -> bool {
+    match worktree_admin_dir(worktree_path, repo_path).await {
+        Some(dir) => tokio::fs::metadata(dir.join(CREATED_MARKER)).await.is_ok(),
+        None => false,
+    }
 }
 
 /// Parse `git worktree list --porcelain` output. Blocks are separated by blank
@@ -1210,6 +1283,7 @@ pub fn parse_worktree_porcelain(input: &str) -> Vec<WorktreeEntry> {
                 branch: None,
                 head: None,
                 is_main: false,
+                created_by_uxnan: false,
             });
         } else if let Some(head) = line.strip_prefix("HEAD ") {
             if let Some(entry) = current.as_mut() {
@@ -2123,6 +2197,68 @@ mod tests {
         std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
         run_git(dir, &["add", "-A"]).await;
         run_git(dir, &["commit", "-m", "initial"]).await;
+    }
+
+    /// A worktree made by plain `git worktree add` — what an agent or a person
+    /// does outside Uxnan — carries no record, one Uxnan made does, and the
+    /// primary worktree is never "created".
+    #[tokio::test]
+    async fn listing_tells_a_worktree_uxnan_made_from_one_that_appeared_on_its_own() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+
+        let outside = sibling(&repo_path, "outside");
+        run_git(&repo_path, &["worktree", "add", "-b", "outside", &outside]).await;
+        let ours = sibling(&repo_path, "ours");
+        add_worktree(&repo_path, "ours", &ours, Some("main"))
+            .await
+            .unwrap();
+        mark_created(&ours, &repo_path).await;
+
+        let listed = list_worktrees(&repo_path).await.unwrap();
+        let by = |path: &str| listed.iter().find(|e| e.path == path).unwrap().clone();
+        assert!(
+            !by(&repo_path).created_by_uxnan,
+            "the primary is not 'created'"
+        );
+        assert!(!by(&outside).created_by_uxnan, "outside: {listed:?}");
+        assert!(by(&ours).created_by_uxnan, "ours: {listed:?}");
+    }
+
+    /// The record has the worktree's own lifetime: it moves with `git worktree
+    /// move` and is gone with `git worktree remove` — nothing to clean up.
+    #[tokio::test]
+    async fn the_creation_record_follows_the_worktree_and_dies_with_it() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+        let wt = sibling(&repo_path, "ours");
+        add_worktree(&repo_path, "ours", &wt, Some("main"))
+            .await
+            .unwrap();
+        mark_created(&wt, &repo_path).await;
+        assert!(is_created(&wt, &repo_path).await);
+
+        let moved = sibling(&repo_path, "moved");
+        run_git(&repo_path, &["worktree", "move", &wt, &moved]).await;
+        assert!(is_created(&moved, &repo_path).await, "a move keeps it");
+
+        let admin = worktree_admin_dir(&moved, &repo_path).await.unwrap();
+        assert!(admin.join(CREATED_MARKER).exists());
+        run_git(&repo_path, &["worktree", "remove", &moved]).await;
+        assert!(!admin.exists(), "git deletes the whole admin directory");
+    }
+
+    #[tokio::test]
+    async fn a_folder_without_a_git_file_is_not_created_by_uxnan_and_marking_it_is_harmless() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::worktreeloc::canonical_temp(dir.path());
+        mark_created(&path, &path).await; // no `.git` file: nothing to write, no panic
+        assert!(!is_created(&path, &path).await);
+        // The primary worktree's `.git` is a directory, not a `gitdir:` file.
+        std::fs::create_dir(format!("{path}/.git")).unwrap();
+        assert!(!is_created(&path, &path).await);
     }
 
     #[tokio::test]

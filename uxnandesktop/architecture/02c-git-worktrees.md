@@ -431,7 +431,20 @@ owner of the state is the `projects` store, persisted in `AppSettings`
   (`nextLingering`, in-memory state kept by the `projects` store), so a row never
   leaves under the pointer; the primary worktree cannot be hidden; a search and "show hidden" lift
   the filter. *Hide idle* takes only worktrees `classifyCompletion` calls `inert`.
-  The panel states what it holds back (header pill, per-project line, view menu)
+  **Worktrees created outside Uxnan** (plain `git worktree add`, a CLI agent's
+  scratch checkout) are *set aside* by the same rule while untouched — `external`
+  and `quiet` (the completion verdict `inert`) are two more inputs to
+  `isSetAside`, so the count, the surface reasons, "show hidden" and "stop hiding"
+  cannot disagree about either kind. Provenance is a **fact owned by the creator**:
+  every creation through the engine (`worktreeloc::create` — the dialog,
+  `worktree/create`, a host's engine — and the PR/issue checkouts) and the
+  bridge's `git/createWorktree` leave `uxnan-created` in the worktree's own git
+  admin directory; `list_worktrees` reads it into `WorktreeEntry.created_by_uxnan`
+  (`createdByUxnan` on the wire, absent = not ours). Taking a worktree in is a
+  **decision** kept in `AppSettings.knownWorktrees` / `worktreeBaselineProjects`
+  (shown, pinned, "stop hiding", or already there when its project was first
+  listed — `baselineKnown`, skipped for a host's stand-in list).
+  The panel states what it holds back (count badge on the header's options button, per-project line, options menu)
   and `sidebarEmptyState` separates *no projects* / *no match* / *all hidden* /
   *no worktrees yet*. Same behaviour in all three views, because they read the one
   `visibleChildWorktrees`.

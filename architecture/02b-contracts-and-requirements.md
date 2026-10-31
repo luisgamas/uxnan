@@ -374,7 +374,7 @@ git/push                -> push a remote, con progreso por fase (stream/git/prog
 git/pull                -> pull desde remote
 git/checkout            -> checkout de rama (con auto-stash opcional)
 git/createBranch        -> crear nueva rama
-git/createWorktree      -> crear worktree (`path` OPCIONAL: sin el, lo ubica el bridge)
+git/createWorktree      -> crear worktree (`path` OPCIONAL: sin el, lo ubica el bridge); deja el registro `uxnan-created` en el directorio git del worktree (el mismo que escribe el motor del desktop: el panel izquierdo aparta los worktrees creados fuera de Uxnan)
 git/stage               -> stage de archivos o hunks especificos
 git/unstage             -> unstage de archivos o hunks especificos
 git/discard             -> descartar cambios de archivos o hunks especificos

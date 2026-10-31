@@ -6,6 +6,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 ### Changed
 
+- **The desktop mockup's left-panel header follows the app's.** *PROJECTS* now
+  carries the add-project and panel-options (sliders) buttons instead of the four
+  icons it drew before (`src/components/mockups/desktop.tsx`).
+
 - **The mobile section says Uxnan Desktop comes with the bridge.** Under the
   `npm install -g uxnan-bridge` lines, one sentence (`BRIDGE_WITH_DESKTOP` in
   `src/lib/site.ts`) says there is nothing to install with the desktop: its

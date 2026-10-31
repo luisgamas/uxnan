@@ -29,6 +29,7 @@ import type {
 } from '@uxnan/shared';
 import { GitCommandError, runGh, runGit } from './git-runner.js';
 import {
+  markWorktreeCreated,
   prepareWorktreePath,
   resolveWorktreePath,
   type WorktreeLocationConfig,
@@ -543,6 +544,9 @@ export class GitService {
       ? ['worktree', 'add', target, branch]
       : ['worktree', 'add', '-b', branch, target];
     await runGit(cwd, args);
+    // Say who made it: the desktop's left panel sets aside worktrees that
+    // appeared without this record (see `markWorktreeCreated`).
+    await markWorktreeCreated(target);
     return { path: target, branch };
   }
 

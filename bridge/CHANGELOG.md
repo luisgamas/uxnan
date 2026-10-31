@@ -4,6 +4,14 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A worktree the phone creates is marked as Uxnan's own.** `git/createWorktree`
+  now leaves an empty `uxnan-created` file in the new worktree's git admin
+  directory (`markWorktreeCreated`), the same record Uxnan Desktop's engine writes,
+  so the desktop's left panel — which sets aside worktrees that appeared outside
+  Uxnan while they are untouched — does not hide a checkout made from the phone.
+  Best-effort: a failure to write it never fails the creation.
 
 ## [0.0.54-alpha.20261030] - 20261030
 ### Added

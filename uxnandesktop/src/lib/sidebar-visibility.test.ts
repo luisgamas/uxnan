@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  addKnown,
+  baselineKnown,
   canHide,
   canHideIdle,
   hidesImmediately,
+  isAuthoritativeList,
+  isExternalWorktree,
   isRowShown,
+  isSetAside,
   isSuppressed,
   nextLingering,
-  pruneHidden,
+  pruneMarks,
   sidebarEmptyState,
   surfaceReason,
   type EmptyStateInputs,
@@ -16,6 +21,8 @@ import {
 /** A quiet, hidden, ordinary child worktree — the case the feature exists for. */
 const quiet: VisibilityInputs = {
   hidden: true,
+  external: false,
+  quiet: true,
   isMain: false,
   pinned: false,
   active: false,
@@ -174,14 +181,14 @@ describe("nextLingering", () => {
   });
 });
 
-describe("pruneHidden", () => {
+describe("pruneMarks", () => {
   it("forgets paths whose worktree is gone", () => {
-    expect(pruneHidden(["/a", "/b", "/c"], new Set(["/a", "/c"]))).toEqual(["/a", "/c"]);
+    expect(pruneMarks(["/a", "/b", "/c"], new Set(["/a", "/c"]))).toEqual(["/a", "/c"]);
   });
 
   it("returns the very same list when nothing changed", () => {
     const list = ["/a"];
-    expect(pruneHidden(list, new Set(["/a", "/z"]))).toBe(list);
+    expect(pruneMarks(list, new Set(["/a", "/z"]))).toBe(list);
   });
 });
 
@@ -225,5 +232,142 @@ describe("sidebarEmptyState", () => {
   it("does not mistake a hidden-only project for an empty tree", () => {
     // Every child hidden, but the card and its primary worktree still draw.
     expect(state({ view: "tree", projectCount: 1, matchedProjectCount: 1, hiddenCount: 5 })).toBe("none");
+  });
+});
+
+// --- Worktrees created outside Uxnan -------------------------------------------
+
+/** An external, untouched, not-hidden worktree — what an agent's scratch checkout
+ *  looks like to the panel. */
+const outside: VisibilityInputs = { ...quiet, hidden: false, external: true, quiet: true };
+const outside_ = (patch: Partial<VisibilityInputs>): VisibilityInputs => ({ ...outside, ...patch });
+
+describe("isExternalWorktree", () => {
+  const base = { isMain: false, createdByUxnan: false, known: false };
+
+  it("is a worktree nobody at Uxnan made and nobody took in", () => {
+    expect(isExternalWorktree(base)).toBe(true);
+  });
+
+  it("is not one Uxnan made — whichever creator left its record", () => {
+    expect(isExternalWorktree({ ...base, createdByUxnan: true })).toBe(false);
+  });
+
+  it("is not one that was taken in (it was there first, or it was shown once)", () => {
+    expect(isExternalWorktree({ ...base, known: true })).toBe(false);
+  });
+
+  it("is never the primary worktree", () => {
+    expect(isExternalWorktree({ ...base, isMain: true })).toBe(false);
+  });
+});
+
+describe("an external worktree is set aside while it is untouched", () => {
+  it("holds back an external worktree that is quiet, with nobody having hidden it", () => {
+    expect(isSetAside(outside)).toBe(true);
+    expect(surfaceReason(outside)).toBeNull();
+    expect(isSuppressed(outside)).toBe(true);
+  });
+
+  it("keeps one with work in it: dirty, unpushed, a live agent or an open PR is not 'untouched'", () => {
+    // `quiet` is the completion verdict `inert`; anything else is `active`.
+    expect(isSetAside(outside_({ quiet: false }))).toBe(false);
+    expect(isSuppressed(outside_({ quiet: false }))).toBe(false);
+  });
+
+  it("does not touch a worktree that is neither external nor hidden", () => {
+    expect(isSuppressed(outside_({ external: false }))).toBe(false);
+  });
+
+  it("is surfaced by the very same reasons as a hidden one", () => {
+    expect(isSuppressed(outside_({ active: true }))).toBe(false);
+    expect(isSuppressed(outside_({ pinned: true }))).toBe(false);
+    expect(isSuppressed(outside_({ attention: 1 }))).toBe(false);
+    expect(isSuppressed(outside_({ attention: 3 }))).toBe(false);
+    expect(isSuppressed(outside_({ closable: true }))).toBe(false);
+    expect(isSuppressed(outside_({ lingering: true }))).toBe(false);
+    expect(isSuppressed(outside_({ isMain: true }))).toBe(false);
+    expect(isSuppressed(outside_({ attention: 4 }))).toBe(true);
+  });
+
+  it("stays held back when the user also hid it, even if it has work in it", () => {
+    // Hiding is the user's decision and does not lapse when the work arrives.
+    expect(isSuppressed(outside_({ hidden: true, quiet: false }))).toBe(true);
+  });
+
+  it("is lifted by 'show hidden' and by a search, like a hidden one", () => {
+    expect(isRowShown(outside, { showHidden: false, searching: false })).toBe(false);
+    expect(isRowShown(outside, { showHidden: true, searching: false })).toBe(true);
+    expect(isRowShown(outside, { showHidden: false, searching: true })).toBe(true);
+  });
+
+  it("is not offered Hide while it is already set aside — that is Show — but is once it has work", () => {
+    expect(canHide(outside)).toBe(false);
+    expect(canHide(outside_({ quiet: false }))).toBe(true);
+    expect(canHide(outside_({ external: false, hidden: false }))).toBe(true);
+  });
+
+  it("is not taken by a bulk 'hide idle' — it is already out of the list", () => {
+    expect(canHideIdle(outside, "inert")).toBe(false);
+  });
+});
+
+describe("isAuthoritativeList", () => {
+  it("trusts a list with several worktrees, or one that names a branch", () => {
+    expect(isAuthoritativeList([{ branch: null }, { branch: "x" }])).toBe(true);
+    expect(isAuthoritativeList([{ branch: "main" }])).toBe(true);
+  });
+
+  it("does not trust the stand-in a host gets while it cannot be asked", () => {
+    expect(isAuthoritativeList([{ branch: null }])).toBe(false);
+    expect(isAuthoritativeList([])).toBe(false);
+  });
+});
+
+describe("baselineKnown (what was already there when this arrived)", () => {
+  const entry = (path: string, over: Partial<{ isMain: boolean; createdByUxnan: boolean }> = {}) => ({
+    path,
+    isMain: false,
+    createdByUxnan: false,
+    ...over,
+  });
+
+  it("takes in every worktree that is already there, so none of them vanishes", () => {
+    const list = [entry("/r", { isMain: true }), entry("/r--a"), entry("/r--b")];
+    expect(baselineKnown([], list)).toEqual(["/r--a", "/r--b"]);
+  });
+
+  it("needs no entry for what Uxnan made, nor for the primary worktree", () => {
+    const list = [entry("/r", { isMain: true }), entry("/r--ours", { createdByUxnan: true })];
+    const known: string[] = ["/other"];
+    expect(baselineKnown(known, list)).toBe(known);
+  });
+
+  it("keeps what was known and never repeats a path", () => {
+    expect(baselineKnown(["/r--a"], [entry("/r--a"), entry("/r--b")])).toEqual(["/r--a", "/r--b"]);
+  });
+
+  it("returns the very same list when there is nothing to add", () => {
+    const known = ["/r--a"];
+    expect(baselineKnown(known, [entry("/r--a")])).toBe(known);
+  });
+
+  it("leaves a worktree that appears afterwards external", () => {
+    const known = baselineKnown([], [entry("/r", { isMain: true }), entry("/r--old")]);
+    const knownSet = new Set(known);
+    const fresh = entry("/r--fresh");
+    expect(isExternalWorktree({ ...fresh, known: knownSet.has(fresh.path) })).toBe(true);
+    expect(isExternalWorktree({ ...entry("/r--old"), known: knownSet.has("/r--old") })).toBe(false);
+  });
+});
+
+describe("addKnown", () => {
+  it("adds the new paths, once", () => {
+    expect(addKnown(["/a"], ["/b", "/a", "/b"])).toEqual(["/a", "/b"]);
+  });
+
+  it("returns the very same list when nothing is new", () => {
+    const known = ["/a", "/b"];
+    expect(addKnown(known, ["/b"])).toBe(known);
   });
 });

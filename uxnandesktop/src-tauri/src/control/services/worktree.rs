@@ -76,6 +76,7 @@ pub fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<W
         branch: None,
         head: None,
         is_main: true,
+        created_by_uxnan: false,
     }])
 }
 

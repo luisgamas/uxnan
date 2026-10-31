@@ -628,6 +628,10 @@ describe('hidden worktrees', () => {
     projects.query = '';
     projects.activeWorktreePath = null;
     app.settings.hiddenWorktrees = [];
+    // These are worktrees the panel already took in: this describe is about what
+    // the user hides, not about what appeared outside Uxnan (the one below).
+    app.settings.knownWorktrees = [A_QUIET.path, A_BUSY.path, B_OLD.path];
+    app.settings.worktreeBaselineProjects = [A, B];
     app.settings.sidebarShowHidden = false;
     app.settings.pinnedWorktrees = [];
     // The PR cache outlives a test; a MERGED one would make the worktree closable.
@@ -894,6 +898,304 @@ describe('hidden worktrees', () => {
       projects.pruneHiddenWorktrees();
 
       expect(app.settings.hiddenWorktrees).toEqual([A_QUIET.path, B_OLD.path]);
+    });
+  });
+});
+
+describe('worktrees created outside Uxnan', () => {
+  const A = 'repo-a';
+  const B = 'repo-b';
+  const clean = { dirty: 0, ahead: 0, behind: 0 };
+  const wt = (path: string, branch: string | null, extra: Partial<WorktreeEntry> = {}): WorktreeEntry => ({
+    path,
+    branch,
+    head: 'abcdef0123456789',
+    isMain: false,
+    ...extra,
+  });
+  const A_MAIN = wt('/p/a', 'main', { isMain: true });
+  const A_SCRATCH = wt('/p/a/.claude/worktrees/scratch', 'scratch'); // made by plain git
+  const A_OURS = wt('/p/a--ours', 'ours', { createdByUxnan: true });
+  const B_MAIN = wt('/p/b', 'main', { isMain: true });
+  const B_SCRATCH = wt('/p/b/.claude/worktrees/other', 'other');
+  const names = (list: { path: string }[]) => list.map((w) => w.path);
+
+  beforeEach(() => {
+    installFakeBackend({ update_settings: () => ({}) });
+    app.repos = [
+      { id: A, name: 'alpha', path: A_MAIN.path, worktrees: [], isGit: true },
+      { id: B, name: 'beta', path: B_MAIN.path, worktrees: [], isGit: true },
+    ];
+    projects.worktreesByRepo = { [A]: [A_MAIN, A_SCRATCH, A_OURS], [B]: [B_MAIN, B_SCRATCH] };
+    projects.statusByPath = {
+      [A_SCRATCH.path]: clean,
+      [A_OURS.path]: clean,
+      [B_SCRATCH.path]: clean,
+    };
+    projects.query = '';
+    projects.activeWorktreePath = null;
+    app.settings.hiddenWorktrees = [];
+    app.settings.knownWorktrees = [];
+    app.settings.worktreeBaselineProjects = [A, B];
+    app.settings.sidebarShowHidden = false;
+    app.settings.pinnedWorktrees = [];
+    for (const w of [A_MAIN, A_SCRATCH, A_OURS, B_MAIN, B_SCRATCH]) projects.notePr(w.path, null);
+    projects.syncLingering();
+  });
+
+  it('holds back an untouched one, and counts it with the hidden ones', () => {
+    expect(projects.isExternal(A_SCRATCH.path)).toBe(true);
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_OURS.path]);
+    expect(projects.hiddenCountOf(A)).toBe(1);
+    expect(projects.hiddenCountOf(B)).toBe(1);
+    expect(projects.hiddenCount).toBe(2);
+    expect(projects.isHeldBack(A_SCRATCH)).toBe(true);
+    expect(projects.isSetAside(A_SCRATCH)).toBe(true);
+  });
+
+  it('adds up with what the user hid, once each', () => {
+    app.settings.hiddenWorktrees = [A_OURS.path];
+    expect(projects.hiddenCountOf(A)).toBe(2);
+    expect(projects.hiddenCount).toBe(3);
+  });
+
+  it('never sets aside the primary worktree or one Uxnan made', () => {
+    expect(projects.isExternal(A_MAIN.path)).toBe(false);
+    expect(projects.isExternal(A_OURS.path)).toBe(false);
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_OURS.path);
+  });
+
+  it('shows one that has work in it — dirty, unpushed — and one whose state is not known yet', () => {
+    projects.statusByPath = { ...projects.statusByPath, [A_SCRATCH.path]: { dirty: 2, ahead: 0, behind: 0 } };
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+    expect(projects.hiddenCountOf(A)).toBe(0);
+
+    projects.statusByPath = { ...projects.statusByPath, [A_SCRATCH.path]: { dirty: 0, ahead: 1, behind: 0 } };
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+
+    // Unknown is not "untouched": it is drawn until git has said.
+    const { [A_SCRATCH.path]: _gone, ...rest } = projects.statusByPath;
+    projects.statusByPath = rest;
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+  });
+
+  it('shows one with an open pull request', () => {
+    projects.notePr(A_SCRATCH.path, { state: 'OPEN', isDraft: false, checks: null });
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+  });
+
+  it('keeps a finished one in "Ready to close" — a decision is never hidden', () => {
+    projects.notePr(A_SCRATCH.path, { state: 'MERGED', isDraft: false, checks: null });
+    expect(projects.completion(A_SCRATCH)).toBe('done');
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+  });
+
+  it('brings it back while it is selected, and lets it go after', () => {
+    projects.activeWorktreePath = A_SCRATCH.path;
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+    expect(projects.hiddenCountOf(A)).toBe(0);
+
+    projects.activeWorktreePath = A_MAIN.path;
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_SCRATCH.path);
+  });
+
+  it('does not let it vanish when an agent in it is read — it lingers like a hidden one', () => {
+    projects.activeWorktreePath = A_MAIN.path;
+    projects.syncLingering();
+    unread.mark(A_SCRATCH.path);
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+
+    unread.clear(A_SCRATCH.path);
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+
+    projects.activeWorktreePath = B_MAIN.path;
+    projects.syncLingering();
+    expect(names(projects.visibleChildWorktrees(A))).not.toContain(A_SCRATCH.path);
+  });
+
+  it('is drawn when hidden worktrees are shown, and found by a search', () => {
+    projects.setShowHidden(true);
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+    expect(projects.hiddenCountOf(A)).toBe(1); // still the number held aside
+
+    projects.setShowHidden(false);
+    projects.query = 'scratch';
+    expect(names(projects.visibleChildWorktrees(A))).toEqual([A_SCRATCH.path]);
+  });
+
+  it('is not offered Hide — it is already out of the list — and not taken by hide-idle', () => {
+    expect(projects.canHideWorktree(A_SCRATCH)).toBe(false);
+    expect(projects.idleHideable(A).map((w) => w.path)).not.toContain(A_SCRATCH.path);
+  });
+
+  it('is known once it is shown: it stays in the list, and the choice is saved', () => {
+    const backend = installFakeBackend({ update_settings: () => ({}) });
+    projects.showWorktree(A_SCRATCH.path);
+
+    expect(projects.isExternal(A_SCRATCH.path)).toBe(false);
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+    expect(app.settings.knownWorktrees).toEqual([A_SCRATCH.path]);
+    const saved = backend.lastCallTo('update_settings')?.args.settings as { knownWorktrees: string[] };
+    expect(saved.knownWorktrees).toEqual([A_SCRATCH.path]);
+    // …even once it goes quiet again and nothing else surfaces it.
+    expect(projects.hiddenCountOf(A)).toBe(0);
+  });
+
+  it('is known once it is pinned, so unpinning does not set it aside again', () => {
+    projects.toggleWorktreePin(A_SCRATCH.path);
+    expect(projects.isExternal(A_SCRATCH.path)).toBe(false);
+
+    projects.toggleWorktreePin(A_SCRATCH.path); // unpin
+    expect(names(projects.visibleChildWorktrees(A))).toContain(A_SCRATCH.path);
+  });
+
+  it('is known when "stop hiding" ends the hiding, for one project or for all', () => {
+    projects.showAllHidden(A);
+    expect(projects.isExternal(A_SCRATCH.path)).toBe(false);
+    expect(projects.isExternal(B_SCRATCH.path)).toBe(true); // the other project is untouched
+    expect(projects.hiddenCount).toBe(1);
+
+    projects.showAllHidden();
+    expect(projects.isExternal(B_SCRATCH.path)).toBe(false);
+    expect(projects.hiddenCount).toBe(0);
+    expect(app.settings.knownWorktrees).toEqual([A_SCRATCH.path, B_SCRATCH.path]);
+  });
+
+  it('stops showing hidden worktrees once nothing is left to show', () => {
+    projects.setShowHidden(true);
+    projects.showAllHidden();
+    expect(projects.showHidden).toBe(false);
+  });
+
+  it('does nothing when there is nothing set aside', () => {
+    projects.showAllHidden();
+    const backend = installFakeBackend({ update_settings: () => ({}) });
+    projects.showAllHidden();
+    expect(backend.lastCallTo('update_settings')).toBeUndefined();
+  });
+
+  describe('what was already there when this arrived', () => {
+    const NEW = 'repo-new';
+    const OLD = wt('/p/n--old', 'old');
+    const NEW_MAIN = wt('/p/n', 'main', { isMain: true });
+
+    beforeEach(() => {
+      app.repos = [...app.repos, { id: NEW, name: 'novel', path: NEW_MAIN.path, worktrees: [], isGit: true }];
+      app.settings.worktreeBaselineProjects = [A, B]; // NEW has never been listed
+    });
+
+    it('takes every existing worktree in the first time a project is listed — none vanishes', async () => {
+      installFakeBackend({
+        update_settings: () => ({}),
+        worktree_list: () => [NEW_MAIN, OLD, wt('/p/n--ours', 'ours', { createdByUxnan: true })],
+      });
+      projects.statusByPath = { [OLD.path]: clean };
+
+      await projects.loadWorktrees(NEW, false);
+
+      expect(names(projects.visibleChildWorktrees(NEW))).toEqual([OLD.path, '/p/n--ours']);
+      expect(projects.hiddenCountOf(NEW)).toBe(0);
+      expect(app.settings.knownWorktrees).toEqual([OLD.path]); // Uxnan's own need no entry
+      expect(app.settings.worktreeBaselineProjects).toContain(NEW);
+    });
+
+    it('sets aside only what appears after that', async () => {
+      const fresh = wt('/p/n--fresh', 'fresh');
+      let list: WorktreeEntry[] = [NEW_MAIN, OLD];
+      installFakeBackend({ update_settings: () => ({}), worktree_list: () => list });
+      await projects.loadWorktrees(NEW, false);
+
+      list = [NEW_MAIN, OLD, fresh];
+      await projects.loadWorktrees(NEW, false);
+      projects.statusByPath = { ...projects.statusByPath, [OLD.path]: clean, [fresh.path]: clean };
+
+      expect(projects.isExternal(fresh.path)).toBe(true);
+      expect(projects.isExternal(OLD.path)).toBe(false);
+      expect(names(projects.visibleChildWorktrees(NEW))).toEqual([OLD.path]);
+      expect(projects.hiddenCountOf(NEW)).toBe(1);
+    });
+
+    it('does not count the stand-in list of a host it cannot ask as the first listing', async () => {
+      installFakeBackend({
+        update_settings: () => ({}),
+        worktree_list: () => [wt('/p/n', null, { isMain: true })],
+      });
+      await projects.loadWorktrees(NEW, false);
+      expect(app.settings.worktreeBaselineProjects).not.toContain(NEW);
+
+      // The host answers at last: everything that was there is taken in.
+      installFakeBackend({ update_settings: () => ({}), worktree_list: () => [NEW_MAIN, OLD] });
+      await projects.loadWorktrees(NEW, false);
+      expect(app.settings.knownWorktrees).toEqual([OLD.path]);
+      expect(app.settings.worktreeBaselineProjects).toContain(NEW);
+    });
+
+    it('does not take a worktree in again once the project was', async () => {
+      installFakeBackend({ update_settings: () => ({}), worktree_list: () => [NEW_MAIN, OLD] });
+      app.settings.worktreeBaselineProjects = [A, B, NEW];
+      await projects.loadWorktrees(NEW, false);
+
+      expect(app.settings.knownWorktrees).toEqual([]);
+      expect(projects.isExternal(OLD.path)).toBe(true);
+    });
+  });
+
+  describe('the creation record landing a moment late', () => {
+    it('replaces a list that only differs by it, so a worktree Uxnan made is not stuck "external"', async () => {
+      const unmarked = wt('/p/a--late', 'late');
+      const marked = { ...unmarked, createdByUxnan: true };
+      projects.worktreesByRepo = { [A]: [A_MAIN, unmarked] };
+      installFakeBackend({
+        update_settings: () => ({}),
+        worktree_list: () => [A_MAIN, marked],
+      });
+
+      await projects.refreshWorktrees(true);
+
+      expect(projects.worktreesOf(A).find((w) => w.path === unmarked.path)?.createdByUxnan).toBe(true);
+      expect(projects.isExternal(unmarked.path)).toBe(false);
+    });
+  });
+
+  describe('self-healing', () => {
+    it('forgets a removed worktree, known or hidden', () => {
+      app.settings.knownWorktrees = [A_SCRATCH.path];
+      app.settings.hiddenWorktrees = [A_SCRATCH.path];
+      projects.dropHidden(A_SCRATCH.path);
+
+      expect(app.settings.knownWorktrees).toEqual([]);
+      expect(app.settings.hiddenWorktrees).toEqual([]);
+    });
+
+    it('prunes known marks and projects that are gone once every project is loaded', () => {
+      app.settings.knownWorktrees = [A_SCRATCH.path, '/gone/forever'];
+      app.settings.worktreeBaselineProjects = [A, B, 'removed-project'];
+      projects.pruneHiddenWorktrees();
+
+      expect(app.settings.knownWorktrees).toEqual([A_SCRATCH.path]);
+      expect(app.settings.worktreeBaselineProjects).toEqual([A, B]);
+    });
+
+    it('prunes nothing while a host could only give its stand-in list', () => {
+      app.settings.knownWorktrees = [A_SCRATCH.path, '/host/only/known'];
+      app.repos = [
+        ...app.repos.slice(0, 1),
+        {
+          id: B,
+          name: 'beta',
+          path: '/host/b',
+          worktrees: [],
+          isGit: true,
+          target: { kind: 'ssh', hostId: 'h1' },
+        } as unknown as (typeof app.repos)[number],
+      ];
+      projects.worktreesByRepo = { [A]: [A_MAIN, A_SCRATCH], [B]: [wt('/host/b', null, { isMain: true })] };
+
+      projects.pruneHiddenWorktrees();
+
+      expect(app.settings.knownWorktrees).toEqual([A_SCRATCH.path, '/host/only/known']);
     });
   });
 });

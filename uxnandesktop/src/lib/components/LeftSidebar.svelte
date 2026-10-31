@@ -6,12 +6,12 @@
   import { projects } from "$lib/state/projects.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { Button } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import KeyChord from "./KeyChord.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import SidebarProfile from "./SidebarProfile.svelte";
+  import SidebarOptionsMenu from "./SidebarOptionsMenu.svelte";
   import BatchCloseDialog from "./BatchCloseDialog.svelte";
   // Aliased: `WorktreeRow` is already the component imported above.
   import type { WorktreeRow as WorktreeRowData } from "$lib/state/projects.svelte";
@@ -20,7 +20,6 @@
   import { CLOSABLE_LANE, isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
   import { sidebarEmptyState, type SidebarEmptyState } from "$lib/sidebar-visibility";
   import type { ReviewGroup } from "$lib/sidebar-review";
-  import type { SidebarGroupBy, SortMode } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import { field, focus, icon, row, shell, text } from "$lib/design";
@@ -30,27 +29,12 @@
   import { formatChord, isMac, resolveBinding } from "$lib/keyboard";
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
-  import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
-  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
-  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
   import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
-  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
   // A bell: this pill is the general notification for the tree, counting both
   // `waiting` and `blocked` worktrees (see `projects.needsYouCount`). Neither
   // state's own glyph would do — half the count is never a question for you.
   import BellIcon from "@hugeicons/core-free-icons/Notification01Icon";
-
-  // The five sort modes offered for each axis (projects and worktrees). "manual"
-  // and the two "name" modes don't drift over time; "recent"/"attention" do (they
-  // read agent state), so the rendered order is frozen between settle windows.
-  const SORT_MODES: { value: SortMode; label: () => string }[] = [
-    { value: "manual", label: () => i18n.t("sidebar.sortManual") },
-    { value: "name-asc", label: () => i18n.t("sidebar.sortNameAsc") },
-    { value: "name-desc", label: () => i18n.t("sidebar.sortNameDesc") },
-    { value: "recent", label: () => i18n.t("sidebar.sortRecent") },
-    { value: "attention", label: () => i18n.t("sidebar.sortAttention") },
-  ];
 
   // Raw bindings (for the split keycaps via KeyChord) + their formatted strings
   // (for tooltips / presence guards) for the shortcut hints on the quick actions.
@@ -62,11 +46,6 @@
   // hover, a quiet accent fill when "active".
   const navBase = cn(row.sidebar, focus.ring);
   const navIdle = row.sidebarInactive;
-
-  /** Shell/args for a region-level new terminal (blank command → backend default). */
-  function profileLabel(name: string): string {
-    return name.trim() || i18n.t("terminal.unnamedProfile");
-  }
 
   // Load every repo's worktrees once the backend is ready.
   let initialized = false;
@@ -237,19 +216,19 @@
   <!-- Region: Projects — header (label + actions) and the project tree. -->
   <header class={shell.sidebarSectionHeader}>
     <!-- The label yields before it is cut mid-word, by the panel's own width
-         (`@container/sidebar`): first the count, which the pills beside it make
-         the most expendable thing here, then the whole label, which leaves the
-         pills and the buttons — what the header is for at 200px — the room.
-         The outer span stays so the pills keep their place at the right edge. -->
+         (`@container/sidebar`): first the count, which the attention pill beside
+         it makes the most expendable thing here, then the whole label, which
+         leaves the pill and the buttons — what the header is for at 200px — the
+         room. The outer span stays so they keep their place at the right edge. -->
     <span class={cn("min-w-0 flex-1 truncate", text.section)}>
-      <span class="@max-[16rem]/sidebar:hidden">
+      <span class="@max-[13rem]/sidebar:hidden">
         {i18n.t("sidebar.projects")}
         <span
           class={cn(
             "text-muted-foreground/60",
-            projects.hiddenCount > 0 || projects.needsYouCount > 0
-              ? "@max-[22rem]/sidebar:hidden"
-              : "@max-[16rem]/sidebar:hidden",
+            projects.needsYouCount > 0
+              ? "@max-[15rem]/sidebar:hidden"
+              : "@max-[13rem]/sidebar:hidden",
           )}>({projects.filteredRepos.length})</span
         >
       </span>
@@ -276,169 +255,30 @@
         {/snippet}
       </TooltipSimple>
     {/if}
-    <!-- Hidden worktrees — the panel's one filter, said where it can be seen: how
-         many are held back, and a switch to look at them. Never appears without
-         something hidden, so a panel nobody filtered stays as it was. -->
-    {#if projects.hiddenCount > 0}
-      {@const hiddenLabel = projects.showHidden
-        ? i18n.plural(projects.hiddenCount, "sidebar.hiddenShownTooltipOne", "sidebar.hiddenShownTooltipOther")
-        : i18n.plural(projects.hiddenCount, "sidebar.hiddenTooltipOne", "sidebar.hiddenTooltipOther")}
-      <TooltipSimple title={hiddenLabel}>
-        {#snippet children(props)}
-          <button
-            {...props}
-            aria-label={hiddenLabel}
-            aria-pressed={projects.showHidden}
-            class={cn(
-              shell.sidebarPill,
-              projects.showHidden
-                ? "bg-foreground/[0.12] text-foreground hover:bg-foreground/[0.16]"
-                : "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.1] hover:text-foreground",
-              focus.ring,
-              text.indicator,
-            )}
-            onclick={() => projects.setShowHidden(!projects.showHidden)}
-          >
-            <!-- At the narrowest the header has no room for a glyph in each pill;
-                 the count stays, and the tooltip says what it counts. -->
-            <Icon
-              icon={projects.showHidden ? ViewIcon : ViewOffIcon}
-              class={cn(
-                icon.decorative,
-                // Beside the attention pill the header has room for one glyph,
-                // not two; alone it keeps its own until the narrowest.
-                projects.needsYouCount > 0
-                  ? "@max-[22rem]/sidebar:hidden"
-                  : "@max-[15rem]/sidebar:hidden",
-              )}
-            />
-            {projects.hiddenCount}
-          </button>
-        {/snippet}
-      </TooltipSimple>
-    {/if}
     {#if resourceMode.freshness.git}
       <FreshnessHint
         label={i18n.t("resourceMode.freshness.git")}
         onrefresh={() => projects.refreshNow()}
       />
     {/if}
+    <!-- Add a project — the panel's own primary action, so it stays in sight. -->
     <TooltipSimple title={`${i18n.t("sidebar.addProject")} (${addChord})`}>
       {#snippet children(props)}
         <Button
           {...props}
           variant="ghost"
           size="icon-xs"
+          aria-label={i18n.t("sidebar.addProject")}
           onclick={() => (projects.pickerOpen = true)}
         >
           <Icon icon={FolderPlusIcon} class={icon.action} />
         </Button>
       {/snippet}
     </TooltipSimple>
-    <TooltipSimple title={i18n.t("sidebar.refresh")}>
-      {#snippet children(props)}
-        <Button
-          {...props}
-          variant="ghost"
-          size="icon-xs"
-          onclick={() => void projects.init()}
-        >
-          <Icon icon={RefreshCwIcon} class={icon.action} />
-        </Button>
-      {/snippet}
-    </TooltipSimple>
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        {#snippet child({ props })}
-          <TooltipSimple title={i18n.t("sidebar.sort")}>
-            {#snippet children(tp)}
-              <Button variant="ghost" size="icon-xs" {...tp} {...props}>
-                <Icon icon={ArrowUpDownIcon} class={icon.action} />
-              </Button>
-            {/snippet}
-          </TooltipSimple>
-        {/snippet}
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content width="standard" align="end">
-        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.view")}</DropdownMenu.Label>
-        <DropdownMenu.RadioGroup
-          value={projects.groupBy}
-          onValueChange={(v) => projects.setGroupBy(v as SidebarGroupBy)}
-        >
-          <DropdownMenu.RadioItem class={text.menu} value="none">{i18n.t("sidebar.viewTree")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="status">{i18n.t("sidebar.viewStatus")}</DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={text.menu} value="review">{i18n.t("sidebar.viewReview")}</DropdownMenu.RadioItem>
-        </DropdownMenu.RadioGroup>
-        {#if (app.settings.hiddenWorktrees?.length ?? 0) > 0}
-          <!-- Only once something is hidden, and right under the view it
-               filters: at the foot of this long menu it would sit below the
-               scroll fold, where nobody looks for it. -->
-          <DropdownMenu.Separator />
-          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.hiddenSection")}</DropdownMenu.Label>
-          <DropdownMenu.CheckboxItem
-            class={text.menu}
-            checked={projects.showHidden}
-            onCheckedChange={(on) => projects.setShowHidden(on)}
-          >
-            {i18n.t("sidebar.showHiddenWorktrees")}
-          </DropdownMenu.CheckboxItem>
-          <DropdownMenu.Item class={text.menu} onclick={() => projects.showAllHidden()}>
-            {i18n.t("sidebar.unhideAll")}
-          </DropdownMenu.Item>
-        {/if}
-        <DropdownMenu.Separator />
-        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
-        <DropdownMenu.RadioGroup
-          value={projects.projectSort}
-          onValueChange={(v) => projects.setProjectSort(v as SortMode)}
-        >
-          {#each SORT_MODES as m (m.value)}
-            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
-          {/each}
-        </DropdownMenu.RadioGroup>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortWorktrees")}</DropdownMenu.Label>
-        <DropdownMenu.RadioGroup
-          value={projects.worktreeSort}
-          onValueChange={(v) => projects.setWorktreeSort(v as SortMode)}
-        >
-          {#each SORT_MODES as m (m.value)}
-            <DropdownMenu.RadioItem class={text.menu} value={m.value}>{m.label()}</DropdownMenu.RadioItem>
-          {/each}
-        </DropdownMenu.RadioGroup>
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
-    <!-- New terminal (moved here from the center pane). Click for the default
-         shell; the menu also offers each configured profile. -->
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        {#snippet child({ props })}
-          <TooltipSimple title={i18n.t("terminal.newTerminal")}>
-            {#snippet children(tp)}
-              <Button variant="ghost" size="icon-xs" {...tp} {...props}>
-                <Icon icon={PlusIcon} class={icon.action} />
-              </Button>
-            {/snippet}
-          </TooltipSimple>
-        {/snippet}
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content width="standard" align="end">
-        <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal()}>
-          <Icon icon={TerminalIcon} class={icon.button} />
-          {i18n.t("terminal.newDefault")}
-        </DropdownMenu.Item>
-        {#if app.terminalProfiles.length > 0}
-          <DropdownMenu.Separator />
-          <DropdownMenu.Label class={text.menuLabel}>{i18n.t("terminal.chooseProfile")}</DropdownMenu.Label>
-          {#each app.terminalProfiles as p (p.id)}
-            <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal({ profileId: p.id })}>
-              <Icon icon={TerminalIcon} class={icon.button} />
-              {profileLabel(p.name)}
-            </DropdownMenu.Item>
-          {/each}
-        {/if}
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
+    <!-- Everything else — new terminal (and its profiles), view, sorts, hidden
+         worktrees, refresh — lives in this one menu; the held-back count rides
+         on its button. -->
+    <SidebarOptionsMenu />
   </header>
 
   <!-- Project rows: either the project → worktree tree, or (group by status) every

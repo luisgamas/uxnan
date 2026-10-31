@@ -93,13 +93,18 @@ import type { RemovalInputs } from "$lib/worktree-removal";
 import { planBatchClose } from "$lib/worktree-batch-close";
 import { buildReviewGroups, type ReviewGroup, type ReviewPr } from "$lib/sidebar-review";
 import {
+  addKnown,
+  baselineKnown,
   canHide,
   canHideIdle,
   hidesImmediately,
+  isAuthoritativeList,
+  isExternalWorktree,
   isRowShown,
+  isSetAside,
   isSuppressed,
   nextLingering,
-  pruneHidden,
+  pruneMarks,
   SURFACING_ATTENTION,
   type VisibilityInputs,
 } from "$lib/sidebar-visibility";
@@ -630,9 +635,7 @@ class ProjectsStore {
     const cur = app.settings.pinnedWorktrees ?? [];
     const pinning = !cur.includes(path);
     app.settings.pinnedWorktrees = pinning ? [...cur, path] : cur.filter((x) => x !== path);
-    if (pinning && this.isHidden(path)) {
-      app.settings.hiddenWorktrees = (app.settings.hiddenWorktrees ?? []).filter((x) => x !== path);
-    }
+    if (pinning) this.#unsetAside(path);
     void app.persistSettings();
   }
 
@@ -651,6 +654,77 @@ class ProjectsStore {
     return app.settings.hiddenWorktrees?.includes(path) ?? false;
   }
 
+  /** Worktrees created outside Uxnan that nobody has taken in: not the primary
+   *  one, no creation record from the engine (`createdByUxnan`), not in
+   *  `knownWorktrees`. Derived from the listing, never stored — a worktree
+   *  stops being external the moment it is known, and a late listing cannot
+   *  bring one back. */
+  #externalPaths = $derived.by(() => {
+    const known = new Set(app.settings.knownWorktrees ?? []);
+    const out = new Set<string>();
+    for (const list of Object.values(this.worktreesByRepo)) {
+      for (const w of list) {
+        if (isExternalWorktree({ isMain: w.isMain, createdByUxnan: w.createdByUxnan === true, known: known.has(w.path) })) {
+          out.add(w.path);
+        }
+      }
+    }
+    return out;
+  });
+
+  /** Whether a worktree appeared outside Uxnan and is still untaken (see
+   *  `#externalPaths`). Whether the panel holds it back also needs it to be
+   *  untouched — see `isHeldBack`. */
+  isExternal(path: string): boolean {
+    return this.#externalPaths.has(path);
+  }
+
+  /** Whether any worktree is marked to be out of the list — hidden by the user,
+   *  or external. The cheap guard in front of every per-row verdict: a panel
+   *  with neither costs nothing. */
+  get #anySetAsideMark(): boolean {
+    return (app.settings.hiddenWorktrees?.length ?? 0) > 0 || this.#externalPaths.size > 0;
+  }
+
+  /** Stop setting a worktree aside: off the hidden list, and — when it is
+   *  external — known, so it stays shown. Does not persist. */
+  #unsetAside(path: string): boolean {
+    let changed = false;
+    if (this.isHidden(path)) {
+      app.settings.hiddenWorktrees = (app.settings.hiddenWorktrees ?? []).filter((x) => x !== path);
+      changed = true;
+    }
+    if (this.isExternal(path)) {
+      app.settings.knownWorktrees = addKnown(app.settings.knownWorktrees ?? [], [path]);
+      changed = true;
+    }
+    return changed;
+  }
+
+  /** The first time a project's worktrees are listed — after this arrived, or
+   *  when the project was added — everything already there is *known*, so only
+   *  what appears afterwards is "new" (`baselineKnown`). Called with the list
+   *  *before* it is assigned, so no row is ever drawn and then pulled. A
+   *  stand-in list (a host that cannot be asked) takes nothing in and does not
+   *  count: its real worktrees would all arrive "new". */
+  #takeIn(repoId: string, list: WorktreeEntry[]): void {
+    const done = app.settings.worktreeBaselineProjects ?? [];
+    if (done.includes(repoId) || !isAuthoritativeList(list)) return;
+    app.settings.knownWorktrees = baselineKnown(
+      app.settings.knownWorktrees ?? [],
+      list.map((w) => ({ path: w.path, isMain: w.isMain, createdByUxnan: w.createdByUxnan === true })),
+    );
+    app.settings.worktreeBaselineProjects = [...done, repoId];
+    void app.persistSettings();
+  }
+
+  /** Whether the panel marks this worktree to be out of the list: hidden by the
+   *  user, or external and untouched. The row says so when it is drawn anyway. */
+  isSetAside(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
+    if (!this.isHidden(row.path) && !this.isExternal(row.path)) return false;
+    return isSetAside(this.#visibilityInputs(row));
+  }
+
   /** Whether the panel draws hidden worktrees (dimmed) instead of holding them
    *  back. Persisted. */
   get showHidden(): boolean {
@@ -667,13 +741,16 @@ class ProjectsStore {
   /** The facts `sidebar-visibility.ts` decides from, read for one worktree. */
   #visibilityInputs(row: { path: string; branch: string | null; isMain?: boolean }): VisibilityInputs {
     const meta = this.workspaceMeta(row.path, row.branch ?? baseName(row.path));
+    const completion = this.completion(row);
     return {
       hidden: this.isHidden(row.path),
+      external: this.isExternal(row.path),
+      quiet: completion === "inert",
       isMain: row.isMain === true,
       pinned: this.isWorktreePinned(row.path),
       active: this.activeWorktreePath === row.path,
       attention: attentionClass(meta.status, meta.unread),
-      closable: isClosable(this.completion(row)),
+      closable: isClosable(completion),
       lingering: this.#lingering.includes(row.path),
     };
   }
@@ -692,7 +769,10 @@ class ProjectsStore {
    *  (so the effect reruns on any change that matters); the list itself is
    *  compared untracked so writing it cannot re-trigger the effect. */
   syncLingering(): void {
-    const hidden = app.settings.hiddenWorktrees ?? [];
+    // Everything marked to be out of the list: the user's hidden ones and the
+    // external ones — a result being read must not take the row from under the
+    // pointer for either.
+    const hidden = [...new Set([...(app.settings.hiddenWorktrees ?? []), ...this.#externalPaths])];
     const activePath = this.activeWorktreePath;
     const attentive = hidden.filter((path) => {
       const meta = this.workspaceMeta(path, baseName(path));
@@ -715,7 +795,7 @@ class ProjectsStore {
   /** Whether the panel draws this worktree under the current search and
    *  "show hidden" setting. Cheap for the common case — nothing hidden. */
   isRowShown(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
-    if (!this.isHidden(row.path)) return true;
+    if (!this.isHidden(row.path) && !this.isExternal(row.path)) return true;
     return isRowShown(this.#visibilityInputs(row), {
       showHidden: this.showHidden,
       searching: this.query.trim().length > 0,
@@ -725,7 +805,8 @@ class ProjectsStore {
   /** Whether the panel is holding this worktree back right now: hidden, and
    *  nothing (selection, an agent at work, a finished PR…) surfaces it. */
   isHeldBack(row: { path: string; branch: string | null; isMain?: boolean }): boolean {
-    return this.isHidden(row.path) && isSuppressed(this.#visibilityInputs(row));
+    if (!this.isHidden(row.path) && !this.isExternal(row.path)) return false;
+    return isSuppressed(this.#visibilityInputs(row));
   }
 
   /** Whether the menus may offer "Hide" for this worktree. */
@@ -736,14 +817,14 @@ class ProjectsStore {
   /** Worktrees the panel is holding back in one project. Independent of "show
    *  hidden" and of the search: it is the number a "N hidden" label reports. */
   hiddenCountOf(repoId: string): number {
-    if (!(app.settings.hiddenWorktrees?.length ?? 0)) return 0;
+    if (!this.#anySetAsideMark) return 0;
     return this.childWorktrees(repoId).filter((w) => this.isHeldBack(w)).length;
   }
 
   /** Worktrees the panel is holding back across every project — the count in the
    *  header. */
   get hiddenCount(): number {
-    if (!(app.settings.hiddenWorktrees?.length ?? 0)) return 0;
+    if (!this.#anySetAsideMark) return 0;
     let n = 0;
     for (const repo of app.repos) n += this.hiddenCountOf(repo.id);
     return n;
@@ -760,10 +841,10 @@ class ProjectsStore {
     return hidesImmediately(inputs);
   }
 
-  /** Show a hidden worktree again and persist. */
+  /** Show a set-aside worktree again and persist: off the hidden list, and — for
+   *  an external one — known, so showing it once means it stays shown. */
   showWorktree(path: string): void {
-    if (!this.isHidden(path)) return;
-    app.settings.hiddenWorktrees = (app.settings.hiddenWorktrees ?? []).filter((x) => x !== path);
+    if (!this.#unsetAside(path)) return;
     void app.persistSettings();
   }
 
@@ -788,23 +869,29 @@ class ProjectsStore {
     return take.length;
   }
 
-  /** Show every hidden worktree again — of one project, or of all. Also stops
-   *  showing hidden ones, which has nothing left to show. */
+  /** Stop hiding — of one project, or of all: every hidden mark goes, and every
+   *  external worktree becomes known, so none of them is set aside again. Also
+   *  stops showing hidden ones, which has nothing left to show. */
   showAllHidden(repoId?: string): void {
     const cur = app.settings.hiddenWorktrees ?? [];
-    if (cur.length === 0) return;
-    const scope = repoId
-      ? new Set(this.childWorktrees(repoId).map((w) => w.path))
-      : null;
+    const scope = repoId ? new Set(this.childWorktrees(repoId).map((w) => w.path)) : null;
+    const externals = [...this.#externalPaths].filter((p) => !scope || scope.has(p));
+    if (cur.length === 0 && externals.length === 0) return;
     app.settings.hiddenWorktrees = scope ? cur.filter((p) => !scope.has(p)) : [];
-    if (!app.settings.hiddenWorktrees.length) app.settings.sidebarShowHidden = false;
+    app.settings.knownWorktrees = addKnown(app.settings.knownWorktrees ?? [], externals);
+    if (!this.#anySetAsideMark) app.settings.sidebarShowHidden = false;
     void app.persistSettings();
   }
 
   /** Forget a removed worktree's hidden mark, so the list doesn't keep paths that
    *  no longer exist. Called from the removal path. */
   dropHidden(path: string): void {
-    this.showWorktree(path);
+    const hidden = app.settings.hiddenWorktrees ?? [];
+    const known = app.settings.knownWorktrees ?? [];
+    if (!hidden.includes(path) && !known.includes(path)) return;
+    app.settings.hiddenWorktrees = hidden.filter((x) => x !== path);
+    app.settings.knownWorktrees = known.filter((x) => x !== path);
+    void app.persistSettings();
   }
 
   /** Drop hidden marks whose worktree is gone from every project (a folder
@@ -812,16 +899,26 @@ class ProjectsStore {
    *  read before the first load would otherwise wipe the lot. */
   pruneHiddenWorktrees(): void {
     const cur = app.settings.hiddenWorktrees ?? [];
-    if (cur.length === 0) return;
+    const known = app.settings.knownWorktrees ?? [];
+    const baselined = app.settings.worktreeBaselineProjects ?? [];
+    if (cur.length === 0 && known.length === 0 && baselined.length === 0) return;
     const existing = new Set<string>();
     for (const repo of app.repos) {
       const list = this.worktreesByRepo[repo.id];
       if (!list) return; // not loaded yet — pruning now would forget real marks
+      // A host that could not be asked answers with a stand-in: its real
+      // worktrees are missing from it, and forgetting their marks would hide
+      // them all once it reconnects.
+      if (!isAuthoritativeList(list) && !isLocalTarget(targetOf(repo.target))) return;
       for (const w of list) existing.add(w.path);
     }
-    const kept = pruneHidden(cur, existing);
-    if (kept === cur) return;
-    app.settings.hiddenWorktrees = kept;
+    const keptHidden = pruneMarks(cur, existing);
+    const keptKnown = pruneMarks(known, existing);
+    const keptProjects = pruneMarks(baselined, new Set(app.repos.map((r) => r.id)));
+    if (keptHidden === cur && keptKnown === known && keptProjects === baselined) return;
+    app.settings.hiddenWorktrees = keptHidden;
+    app.settings.knownWorktrees = keptKnown;
+    app.settings.worktreeBaselineProjects = keptProjects;
     void app.persistSettings();
   }
 
@@ -1068,9 +1165,14 @@ class ProjectsStore {
                 (entry, index) =>
                   entry.path === list[index]?.path &&
                   entry.branch === list[index]?.branch &&
-                  entry.isMain === list[index]?.isMain,
+                  entry.isMain === list[index]?.isMain &&
+                  // The creation record can land a moment after git lists the
+                  // worktree; a list that only differs by it must still replace
+                  // the one that called it external.
+                  entry.createdByUxnan === list[index]?.createdByUxnan,
               );
             if (!same) {
+              this.#takeIn(repo.id, list);
               this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
               // Reads git on whichever machine the worktree is on (see
               // `refreshStatuses`), so a host's project gets real badges.
@@ -1090,6 +1192,7 @@ class ProjectsStore {
   async loadWorktrees(repoId: string, refreshStatus = true): Promise<void> {
     try {
       const list = await worktreeList(repoId);
+      this.#takeIn(repoId, list);
       this.worktreesByRepo = { ...this.worktreesByRepo, [repoId]: list };
       if (refreshStatus) await this.refreshStatuses(list.map((w) => w.path));
     } catch (e) {

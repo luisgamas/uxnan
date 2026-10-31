@@ -314,6 +314,16 @@ export interface AppSettings {
    *  from live facts (`sidebar-visibility.ts`), never written back. Self-healing:
    *  pruned when a worktree is removed, ignored when its path is gone. */
   hiddenWorktrees?: string[];
+  /** Worktrees (paths) the panel has *taken in*, so it never sets them aside as
+   *  "created outside Uxnan": the ones already there when a project was first
+   *  listed (this feature arriving, or the project being added) and any the user
+   *  later showed, pinned or "stopped hiding". Worktrees Uxnan made need no entry
+   *  — the engine records those itself (`WorktreeEntry.createdByUxnan`). A user
+   *  decision like `hiddenWorktrees`; self-healing, pruned with it. */
+  knownWorktrees?: string[];
+  /** Projects (repo ids) whose existing worktrees were taken in once (see
+   *  `knownWorktrees`); a worktree that appears afterwards is new. */
+  worktreeBaselineProjects?: string[];
   /** Draw the hidden worktrees (dimmed) instead of holding them back. */
   sidebarShowHidden?: boolean;
   /** Free-text note per worktree path — *why this space exists*. Seeded from the
@@ -1135,6 +1145,11 @@ export interface WorktreeEntry {
   branch: string | null;
   head: string | null;
   isMain: boolean;
+  /** Uxnan created it (the app, a control client or the bridge): the engine
+   *  leaves a record in the worktree's own git admin directory. Absent for a
+   *  worktree made by plain `git worktree add` — what an agent's scratch
+   *  checkout is — which the left panel sets aside while it is untouched. */
+  createdByUxnan?: boolean;
 }
 
 /** What the caller wants done with a removed worktree's branch(es) (mirror of
@@ -2007,6 +2022,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedProjects: [],
   pinnedWorktrees: [],
   hiddenWorktrees: [],
+  knownWorktrees: [],
+  worktreeBaselineProjects: [],
   sidebarShowHidden: false,
   worktreeNotes: {},
   sidebarGroupBy: "none",
