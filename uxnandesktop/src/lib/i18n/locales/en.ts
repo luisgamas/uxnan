@@ -29,6 +29,7 @@ export const en = {
   "toast.agentDone": "{name} finished",
   "toast.agentBlocked": "{name} is blocked",
   "toast.agentWaiting": "{name} is waiting for input",
+  "toast.chatNeedsYou": "{name} is waiting for your answer in a chat",
 
   // Common
   "common.cancel": "Cancel",
@@ -1547,7 +1548,7 @@ export const en = {
   "agentView.subagentType": "Sub-agent type",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
-    "Notify when an agent goes idle while you're looking at another space.",
+    "Notify when an agent goes idle, or asks you something in a chat, while you're looking elsewhere.",
   "settings.preventSleep": "Prevent sleep while working",
   "settings.preventSleepDesc":
     "Keep the system awake while an agent is working (auto-releases after 2 h). On macOS and Linux this is experimental: it holds the system's own inhibitor (caffeinate / systemd-inhibit), but that has not been confirmed on real hardware yet.",
@@ -1562,6 +1563,8 @@ export const en = {
   "notify.agentTask": "Task: {task}",
   "notify.agentWaitingTitle": "{agent} is waiting for you",
   "notify.agentWaitingBody": "It needs your attention.",
+  "notify.chatApprovalTitle": "{agent} needs your approval",
+  "notify.chatQuestionTitle": "{agent} has a question for you",
   "notify.agentBlockedTitle": "{agent} hit a problem",
   "notify.agentBlockedBody": "Check the agent's terminal.",
 
@@ -3016,11 +3019,9 @@ export const en = {
   "chat.approvalDecision.approve": "Allowed",
   "chat.approvalDecision.approveSession": "Allowed for this session",
   "chat.approvalDecision.reject": "Denied",
-  "chat.approvalTimedOut": "No answer in time — denied",
   "chat.skip": "Skip",
   "chat.submit": "Answer",
   "chat.questionSkipped": "Skipped",
-  "chat.questionTimedOut": "No answer in time.",
   "chat.plan": "Plan",
   "chat.unsupportedContent": "Unsupported chat content{type}",
   "chat.agentView": "Agent view",

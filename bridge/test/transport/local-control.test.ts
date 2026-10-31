@@ -9,6 +9,7 @@ import { WebSocket } from 'ws';
 import {
   LOCAL_CONTROL_FILE,
   StreamNotification,
+  localReceiverId,
   makeNotification,
   makeRequest,
   type LocalControlFrame,
@@ -249,8 +250,8 @@ test('socket: hello, request/response and broadcast notifications with seq', asy
     assert.equal(hello.type === 'hello' && hello.gap, false);
     assert.deepEqual(handle.connectedClients(), ['desktop']);
     assert.deepEqual(events, ['connected:desktop']);
-    // It counts as a live receiver for the approval countdown.
-    assert.equal(registry.anyActive(), true);
+    // It is a live receiver of notifications, like a phone.
+    assert.equal(registry.isActive(localReceiverId('desktop')), true);
 
     client.ws.send(JSON.stringify(makeRequest(7, 'bridge/status')));
     const reply = await client.next();

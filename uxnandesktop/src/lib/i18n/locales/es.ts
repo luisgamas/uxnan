@@ -26,6 +26,7 @@ export const es: Record<MessageKey, string> = {
   "toast.agentDone": "{name} terminó",
   "toast.agentBlocked": "{name} está bloqueado",
   "toast.agentWaiting": "{name} espera tu respuesta",
+  "toast.chatNeedsYou": "{name} espera tu respuesta en un chat",
 
   // Common
   "common.cancel": "Cancelar",
@@ -1560,12 +1561,14 @@ export const es: Record<MessageKey, string> = {
     "La versión para {os} es experimental: está implementada por completo y se compila en CI, pero Uxnan se desarrolla y valida primero en Windows, así que a esta aún le falta una pasada completa en hardware {os}. Si ves algo raro aquí, tu reporte es más que bienvenido.",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
-    "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",
+    "Notificar cuando un agente queda inactivo, o te pregunta algo en un chat, mientras miras otra cosa.",
   "notify.agentDoneTitle": "{agent} terminó la tarea",
   "notify.agentDoneBody": "Tarea completada.",
   "notify.agentTask": "Tarea: {task}",
   "notify.agentWaitingTitle": "{agent} te está esperando",
   "notify.agentWaitingBody": "Necesita tu atención.",
+  "notify.chatApprovalTitle": "{agent} necesita tu aprobación",
+  "notify.chatQuestionTitle": "{agent} tiene una pregunta para ti",
   "notify.agentBlockedTitle": "{agent} encontró un problema",
   "notify.agentBlockedBody": "Revisa la terminal del agente.",
 
@@ -3016,11 +3019,9 @@ export const es: Record<MessageKey, string> = {
   "chat.approvalDecision.approve": "Permitido",
   "chat.approvalDecision.approveSession": "Permitido en esta sesión",
   "chat.approvalDecision.reject": "Denegado",
-  "chat.approvalTimedOut": "Sin respuesta a tiempo — denegado",
   "chat.skip": "Omitir",
   "chat.submit": "Responder",
   "chat.questionSkipped": "Omitida",
-  "chat.questionTimedOut": "Sin respuesta a tiempo.",
   "chat.plan": "Plan",
   "chat.unsupportedContent": "Contenido de chat no compatible{type}",
   "chat.agentView": "Vista del agente",

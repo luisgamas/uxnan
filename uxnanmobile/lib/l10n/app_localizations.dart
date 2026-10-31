@@ -2882,6 +2882,18 @@ abstract class AppLocalizations {
   /// **'Skipped'**
   String get questionSkipped;
 
+  /// Header of an approval or question card nobody answered: the agent settled it itself, or its run ended.
+  ///
+  /// In en, this message translates to:
+  /// **'Not answered'**
+  String get requestNotAnswered;
+
+  /// Settled row of an approval or question card nobody answered (the agent went on, or its run was stopped or failed).
+  ///
+  /// In en, this message translates to:
+  /// **'No longer waiting for an answer'**
+  String get requestWithdrawn;
+
   /// Inline error shown on a question card when the bridge rejected the answer; the options re-enable so the user can retry.
   ///
   /// In en, this message translates to:
@@ -3725,7 +3737,7 @@ abstract class AppLocalizations {
   /// Description of the Android notification channel.
   ///
   /// In en, this message translates to:
-  /// **'Turn completions and errors from your coding agents.'**
+  /// **'Replies, errors and requests for you from your coding agents.'**
   String get pushChannelDescription;
 
   /// Notification title used when the thread name is unknown.
@@ -3745,6 +3757,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{agent} reported an error'**
   String pushTurnErrorBody(String agent);
+
+  /// Body of the notification raised when an agent asks for an approval and waits (titled with the thread name).
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} needs your approval'**
+  String pushApprovalNeededBody(String agent);
+
+  /// Body of the notification raised when an agent asks the user a question and waits.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} has a question for you'**
+  String pushQuestionBody(String agent);
 
   /// Title of the app settings screen (and its app-bar action tooltip).
   ///
@@ -3787,6 +3811,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notify me when an agent run fails.'**
   String get settingsTurnErrorSubtitle;
+
+  /// Title of the toggle for notifications when an agent asks for an approval or a question.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs you'**
+  String get settingsNeedsInputTitle;
+
+  /// Subtitle of the needs-you notification toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when an agent asks for approval or asks me a question.'**
+  String get settingsNeedsInputSubtitle;
 
   /// Section header for conversation-view preferences.
   ///

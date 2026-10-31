@@ -243,3 +243,53 @@ test('load drops persisted entries without a device token', async () => {
     await rmrf(baseDir);
   }
 });
+
+test('an agent waiting on the person pushes once per request, unless that phone opted out', async () => {
+  const sent: SentPush[] = [];
+  const svc = service({ sender: fakeSender(sent) });
+  await reg(svc, 's1', 'tok-1', 'android');
+  await svc.register({
+    sessionId: 's2',
+    pushToken: 'tok-2',
+    platform: 'ios',
+    preferences: { turnCompleted: true, turnError: true, needsInput: false },
+  });
+
+  svc.onInputRequested({
+    threadId: 't1',
+    turnId: 'u1',
+    requestId: 'appr-u1-1',
+    kind: 'approval',
+    text: 'Allow Bash: rm -rf build',
+  });
+  svc.onInputRequested({
+    threadId: 't1',
+    turnId: 'u1',
+    requestId: 'qst-u1-2',
+    kind: 'question',
+    text: 'Which color?',
+  });
+  await flush();
+
+  assert.deepEqual(
+    sent.map((s) => [s.token, s.payload.title, s.payload.body, s.payload.data?.['requestId']]),
+    [
+      ['tok-1', 'Approval needed', 'Allow Bash: rm -rf build', 'appr-u1-1'],
+      ['tok-1', 'Question for you', 'Which color?', 'qst-u1-2'],
+    ],
+  );
+  assert.equal(sent[0]?.payload.data?.['threadId'], 't1');
+});
+
+test('the needs-you push follows the bridge-wide switch', async () => {
+  const sent: SentPush[] = [];
+  const svc = new PushService({
+    config: { ...DEFAULT_DAEMON_CONFIG, pushOnAgentNeedsInput: false },
+    logger: createLogger('test', 'error'),
+    pushSender: fakeSender(sent),
+  });
+  await reg(svc, 's1', 'tok-1', 'android');
+  svc.onInputRequested({ threadId: 't', turnId: 'u', requestId: 'r', kind: 'question', text: 'Q' });
+  await flush();
+  assert.equal(sent.length, 0);
+});

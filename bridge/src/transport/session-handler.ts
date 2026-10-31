@@ -129,10 +129,6 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       close: () => io.close(),
     };
     ctx.sessionRegistry.register(result.phoneDeviceId, sink);
-    // A phone is now connected: grant a fresh window to any approval that was
-    // waiting (its card replays via the catch-up above) so the user can answer
-    // it instead of it auto-rejecting while they were away.
-    ctx.agentManager.onPhoneConnected();
 
     const trusted = await trustStore.get(result.phoneDeviceId);
     ctx.sessions.add({
@@ -205,10 +201,6 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
           /* best-effort — a dangling row is closed at startup instead */
         });
       }
-      // If this was the last connected phone, stop the approval auto-reject
-      // countdown so a pending approval waits for the user to return rather than
-      // defaulting to reject. No-op while another phone is still connected.
-      ctx.agentManager.onPhoneDisconnected();
     }
     clearTimeout(idleTimer);
     io.close();

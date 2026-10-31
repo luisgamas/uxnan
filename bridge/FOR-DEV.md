@@ -293,14 +293,19 @@ push validation (FOR-HUMAN).
 - **Direct FCM push from the bridge** — the only push path (the token goes
   nowhere but FCM; the relay carries no push), persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
-  (no creds = silent no-op; foreground local notifications still work).
+  (no creds = silent no-op; foreground local notifications still work). Pushes
+  a turn's end and, once per request, an agent waiting on the person
+  (`onInputRequested`, `needsInput` / `pushOnAgentNeedsInput`).
 - **Sanitized per-agent `auth/status`** — never tokens; login detected by
   auth-file existence only.
 - **Interactive approval intake** — Echo demo + Claude Code over its stream-json
   `can_use_tool` control requests + Codex via the `codex app-server` turn protocol + OpenCode via
   `opencode serve` `permission.asked` + Zero and Grok
   via ACP `session/request_permission`; all routed through one `requestApproval`
-  round-trip, validated end-to-end.
+  round-trip, validated end-to-end. A request has **no clock**: it waits until a
+  person answers, the agent withdraws it, or the run ends (then `withdrawn`), and
+  its outcome is stored on the card — measured 12/30-minute holds on every agent
+  with an ask surface (`docs/agents.md` → *How long a request can wait*).
 - **Attachments in the sentence** — each image and file reaches the agent
   where the person put it: a numbered label at its marker and a note mapping
   every label to its file, written into the directory the CLI actually runs in
@@ -355,6 +360,21 @@ push validation (FOR-HUMAN).
 
 ## Transport & connectivity
 
+- [ ] **Take a background "needs you" push back once the request is answered.**
+      A phone that is connected gets a local notification it removes when
+      `stream/approval|question/resolved` arrives, but a push the OS already
+      showed while the app was in the background stays in the tray after the
+      request is answered elsewhere. Where: `PushService.onInputRequested`
+      (`src/push/push-service.ts`, inline `FOR-DEV:`) — send the push with an
+      Android `tag` / APNs `apns-collapse-id` equal to `requestId`, and on
+      resolution a replacing (or data-only "dismiss") message the phone handles
+      in its background handler. Why deferred: it needs the HTTP v1 sender below
+      (per-platform fields `PushSender` does not carry today) and a real device
+      with Firebase credentials to validate. The same change should localize
+      the push titles ("Approval needed" / "Question for you", like the
+      turn-end ones, are English only: the bridge does not know the phone's
+      language) — e.g. send the copy as FCM `title_loc_key` / `body_loc_key`
+      the app resolves, or the phone's locale on `notifications/register`.
 - [ ] **Push through FCM's HTTP v1 API, for every bridge kind.** The bridge
       Uxnan Desktop carries ships **without** `firebase-admin` (an optional
       dependency, ~66 MB; maintainer's decision, 2026-10-29), so today it sends

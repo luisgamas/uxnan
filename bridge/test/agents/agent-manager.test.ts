@@ -535,8 +535,9 @@ test('a withdrawn approval or question resolves at once and every client retires
   question.abort();
   assert.equal(await decision, 'reject');
   assert.deepEqual(await answers, []);
-  assert.ok(notes.some((n) => n.method === StreamNotification.ApprovalResolved));
-  assert.ok(notes.some((n) => n.method === StreamNotification.QuestionResolved));
+  // Announced once the settled cards are on disk.
+  await waitFor(() => notes.some((n) => n.method === StreamNotification.ApprovalResolved));
+  await waitFor(() => notes.some((n) => n.method === StreamNotification.QuestionResolved));
 
   // Already withdrawn: nothing is asked at all.
   assert.equal(
@@ -623,86 +624,158 @@ test('requestApproval resolves deny on rejection', async () => {
   await rmrf(baseDir);
 });
 
-test('approval waits while no phone is connected, then times out once one connects', async () => {
-  const baseDir = join(tmpdir(), `uxnan-am-appr-offline-${randomUUID()}`);
+/** A manager on a scratch store driving the in-process {@link ControlledAdapter}. */
+async function requestHarness(): Promise<{
+  baseDir: string;
+  store: ThreadStore;
+  manager: AgentManager;
+  adapter: ControlledAdapter;
+  notes: { method: string; params: Record<string, unknown> }[];
+  asked: { requestId: string; kind: string; text: string }[];
+  threadId: string;
+  turnId: string;
+}> {
+  const baseDir = join(tmpdir(), `uxnan-am-req-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
-  const blocks: { content: { approvalId?: string; action?: string } }[] = [];
-  let connected = false;
+  const notes: { method: string; params: Record<string, unknown> }[] = [];
+  const asked: { requestId: string; kind: string; text: string }[] = [];
   const manager = new AgentManager({
     store,
-    notify: (message) => {
-      const m = message as { method: string; params?: unknown };
-      if (m.method === StreamNotification.ContentBlock) {
-        blocks.push(m.params as { content: { approvalId?: string; action?: string } });
-      }
-    },
+    notify: (message) => notes.push(message as (typeof notes)[number]),
     now: () => 1,
     logger: createLogger('test', 'error'),
     defaultAgent: 'echo',
-    isPhoneConnected: () => connected,
-    approvalTimeoutMs: 60, // tiny window so the test is fast
+    onInputRequested: (info) => asked.push(info),
   });
-  manager.register(new EchoAgentAdapter());
-
+  const adapter = new ControlledAdapter();
+  manager.register(adapter);
   const thread = await store.startThread({ projectId: 'p' }, 1);
-  await manager.sendTurn(thread.id, 'approval-demo');
-  await waitFor(() => blocks.length > 0);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  await waitFor(() => manager.activeTurnId(thread.id) === turnId);
+  return { baseDir, store, manager, adapter, notes, asked, threadId: thread.id, turnId };
+}
 
-  // Phone offline: the approval must NOT auto-reject, even past its window.
-  let settled: string | undefined;
-  const decisionPromise = manager
-    .requestApproval(thread.id, { toolName: 'Bash', input: { command: 'ls' } })
-    .then((d) => (settled = d));
-  await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
-  await new Promise((resolve) => setTimeout(resolve, 200)); // > window
-  assert.equal(settled, undefined, 'must keep waiting while offline');
+/** The stored request card with [id] on [turnId] (`turn/list` serves this). */
+async function storedRequest(
+  store: ThreadStore,
+  turnId: string,
+  id: string,
+): Promise<Record<string, unknown> | undefined> {
+  const turn = await store.getTurn(turnId);
+  const segments = turn.messages.find((m) => m.role === 'assistant')?.segments ?? [];
+  return (segments as Record<string, unknown>[]).find(
+    (b) => b['approvalId'] === id || b['questionId'] === id,
+  );
+}
 
-  // Phone connects: a fresh window is armed and the approval now times out.
-  connected = true;
-  manager.onPhoneConnected();
-  await decisionPromise;
-  assert.equal(settled, 'reject', 'times out to reject once a phone can see it');
+baseTest('a pending approval and question wait with no clock until a person answers', async (t) => {
+  const h = await requestHarness();
+  let decision: string | undefined;
+  let answers: string[][] | undefined;
+  void h.manager
+    .requestApproval(h.threadId, { toolName: 'Bash', input: { command: 'ls' } })
+    .then((d) => (decision = d));
+  void h.manager
+    .requestQuestion(h.threadId, [{ question: 'Which?', options: [{ label: 'A' }] }])
+    .then((a) => (answers = a));
+  await waitFor(() => h.asked.length === 2);
+  const [approval, question] = h.asked;
+  assert.equal(approval?.kind, 'approval');
+  assert.equal(approval?.text, 'Allow Bash: ls');
+  assert.equal(question?.kind, 'question');
+  assert.equal(question?.text, 'Which?');
 
-  await rmrf(baseDir);
+  // A day passes: nothing resolves on its own, both stay open for every client.
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.mock.timers.tick(24 * 60 * 60 * 1000);
+  t.mock.timers.reset();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(decision, undefined);
+  assert.equal(answers, undefined);
+  assert.deepEqual(
+    h.manager.liveStates()[0]?.awaitingInput?.sort(),
+    [approval!.requestId, question!.requestId].sort(),
+  );
+  assert.equal(
+    (await storedRequest(h.store, h.turnId, approval!.requestId))?.['outcome'],
+    undefined,
+  );
+
+  // A person answers: the adapter gets it, the stored cards carry the outcome.
+  await h.manager.respondApproval(h.threadId, approval!.requestId, 'approve');
+  await h.manager.respondQuestion(h.threadId, question!.requestId, [['A']]);
+  assert.equal(decision, 'approve');
+  assert.deepEqual(answers, [['A']]);
+  assert.deepEqual((await storedRequest(h.store, h.turnId, approval!.requestId))?.['outcome'], {
+    decision: 'approve',
+  });
+  assert.deepEqual((await storedRequest(h.store, h.turnId, question!.requestId))?.['outcome'], {
+    answers: [['A']],
+  });
+  const resolved = h.notes.filter(
+    (n) =>
+      n.method === StreamNotification.ApprovalResolved ||
+      n.method === StreamNotification.QuestionResolved,
+  );
+  assert.equal(resolved.length, 2);
+  assert.ok(resolved.every((n) => n.params['withdrawn'] === undefined));
+  assert.equal(h.manager.liveStates()[0]?.awaitingInput, undefined);
+
+  h.adapter.complete(h.threadId, h.turnId, 'ok');
+  await rmrf(h.baseDir);
 });
 
-test('a disconnect pauses the approval countdown so it never fires offline', async () => {
-  const baseDir = join(tmpdir(), `uxnan-am-appr-pause-${randomUUID()}`);
-  const store = new ThreadStore(new DaemonState(baseDir));
-  const blocks: { content: { approvalId?: string; action?: string } }[] = [];
-  let connected = true;
-  const manager = new AgentManager({
-    store,
-    notify: (message) => {
-      const m = message as { method: string; params?: unknown };
-      if (m.method === StreamNotification.ContentBlock) {
-        blocks.push(m.params as { content: { approvalId?: string; action?: string } });
-      }
-    },
-    now: () => 1,
-    logger: createLogger('test', 'error'),
-    defaultAgent: 'echo',
-    isPhoneConnected: () => connected,
-    approvalTimeoutMs: 60,
+baseTest('a run that ends withdraws the requests it was waiting on', async () => {
+  const h = await requestHarness();
+  const decision = h.manager.requestApproval(h.threadId, {
+    toolName: 'Bash',
+    input: { command: 'ls' },
   });
-  manager.register(new EchoAgentAdapter());
+  const answers = h.manager.requestQuestion(h.threadId, [
+    { question: 'Which?', options: [{ label: 'A' }] },
+  ]);
+  await waitFor(() => h.asked.length === 2);
 
-  const thread = await store.startThread({ projectId: 'p' }, 1);
-  await manager.sendTurn(thread.id, 'approval-demo');
-  await waitFor(() => blocks.length > 0);
+  // The CLI died: the turn errors, and nothing waits on its requests any more.
+  h.adapter.error(h.threadId, h.turnId, 'agent exited');
+  assert.equal(await decision, 'reject');
+  assert.deepEqual(await answers, []);
+  await waitFor(() => h.notes.some((n) => n.method === StreamNotification.QuestionResolved));
+  const approvalNote = h.notes.find((n) => n.method === StreamNotification.ApprovalResolved);
+  const questionNote = h.notes.find((n) => n.method === StreamNotification.QuestionResolved);
+  assert.equal(approvalNote?.params['withdrawn'], true);
+  assert.equal(questionNote?.params['withdrawn'], true);
+  assert.equal(questionNote?.params['skipped'], true);
+  const [approval, question] = h.asked;
+  assert.deepEqual((await storedRequest(h.store, h.turnId, approval!.requestId))?.['outcome'], {
+    decision: 'reject',
+    withdrawn: true,
+  });
+  assert.deepEqual((await storedRequest(h.store, h.turnId, question!.requestId))?.['outcome'], {
+    answers: [],
+    withdrawn: true,
+  });
+  await rmrf(h.baseDir);
+});
 
-  // Armed while connected, but the phone drops before the window elapses.
-  let settled: string | undefined;
-  void manager
-    .requestApproval(thread.id, { toolName: 'Bash', input: { command: 'ls' } })
-    .then((d) => (settled = d));
-  await waitFor(() => blocks.some((b) => b.content.action?.includes('Bash')));
-  connected = false;
-  manager.onPhoneDisconnected();
-  await new Promise((resolve) => setTimeout(resolve, 200)); // > window
-  assert.equal(settled, undefined, 'paused countdown must not fire while offline');
-
-  await rmrf(baseDir);
+baseTest('an agent that withdraws its request settles the card as withdrawn', async () => {
+  const h = await requestHarness();
+  const controller = new AbortController();
+  const decision = h.manager.requestApproval(
+    h.threadId,
+    { toolName: 'Bash', input: { command: 'ls' } },
+    controller.signal,
+  );
+  await waitFor(() => h.asked.length === 1);
+  controller.abort();
+  assert.equal(await decision, 'reject');
+  await waitFor(() => h.notes.some((n) => n.method === StreamNotification.ApprovalResolved));
+  const note = h.notes.find((n) => n.method === StreamNotification.ApprovalResolved);
+  assert.equal(note?.params['withdrawn'], true);
+  // A late answer from a client finds nothing pending and changes nothing.
+  await assert.rejects(h.manager.respondApproval(h.threadId, h.asked[0]!.requestId, 'approve'));
+  h.adapter.complete(h.threadId, h.turnId, 'ok');
+  await rmrf(h.baseDir);
 });
 
 test('respondApproval rejects when the thread has no agent', async () => {

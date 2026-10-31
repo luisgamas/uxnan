@@ -325,15 +325,15 @@ export interface CodexAdapterOptions {
   defaultModel?: string;
   /**
    * Callback that surfaces a Codex app-server approval to the bridge so the
-   * phone can decide. Returns the user's `ApprovalDecision` (or
-   * `'reject'` after the 5-min timeout). Wired by the bridge during adapter
-   * registration. Optional in tests.
+   * phone can decide. Returns the user's `ApprovalDecision` whenever they
+   * answer (there is no clock), or `'reject'` once withdrawn. Wired by the
+   * bridge during adapter registration. Optional in tests.
    */
   onApprovalRequest?: ApprovalRequester;
   /**
    * Callback that puts a Codex `item/tool/requestUserInput` question to the
    * person. Resolves with one answer list per question (chosen labels, or
-   * the typed text); empty when skipped or after the 5-min timeout. Without
+   * the typed text); empty when skipped or withdrawn. Without
    * it the questions are answered with nothing, so Codex carries on.
    */
   onQuestionRequest?: QuestionRequester;

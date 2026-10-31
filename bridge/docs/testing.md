@@ -173,6 +173,15 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   (Claude Code 2.1.284, Codex 0.157.1, OpenCode 2.0.19, pi 0.85.1, Antigravity,
   Grok, Zero); a model with credits is needed (OpenCode `opencode/big-pickle`,
   pi an OpenRouter `:free` model).
+- **A request waits for a person — every agent.** Drive the real
+  `AgentManager` and adapter on a scratch store, make the agent ask (an approval
+  in *Request approval*, a question), leave it unanswered longer than any
+  timeout under test, then answer: the request must stay pending (no
+  `stream/approval|question/resolved` meanwhile) and the agent must act on the
+  late answer. Cancel a turn while one is pending: it must be announced
+  `withdrawn` and its stored card carry `outcome`. Verified live 2026-10-31 with
+  12- and 30-minute holds — results in [`agents.md`](./agents.md) → *How long a
+  request can wait*.
 - **Codex live steps.** A turn that reads a file, searches and runs a command:
   each `stream/content/block` arrives `running` and again settled with the same
   `blockId`, and the stored turn holds one row per step (verified 2026-09-26).

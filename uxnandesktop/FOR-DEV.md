@@ -60,6 +60,9 @@ outbox until the bridge has it (a failed one survives a restart with Retry),
 writing images and files as chips inside the message's text where they go
 (plan 047, `docs/chat.md` → *Commands, files and images*) and
 setting the composer's text aside as a saved draft when a message comes back;
+keeping an agent's approval or question pinned until a person answers it (no
+clock; settled from the bridge's stored outcome after a reconnect) and saying
+so with a toast or an OS notification when its chat is not on screen;
 the desktop's projects and the phone's are **one mirrored registry**; a phone
 is **paired from the Bridge window** (the sidebar's Bridge row, or Settings)
 with the running bridge's own QR, and renamed or unpaired from Settings; and

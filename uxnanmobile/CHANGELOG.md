@@ -6,6 +6,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Approval and question cards wait for an answer, with no clock.** A card the
+  agent withdrew, or whose run ended, reads *Not answered · No longer waiting
+  for an answer* in a neutral tone — never "Rejected" or "Skipped" for a choice
+  nobody made. A card answered on another client while the phone was away
+  settles from the outcome the bridge stores on it (`ApprovalRequest.outcome`,
+  `QuestionRequest.outcome`) on the next history read.
+
+### Added
+
+- **"Needs you" notifications.** A new *Needs you* switch in Settings →
+  Notifications (sent to the bridge as `needsInput`); when an agent asks for an
+  approval or a question outside the conversation on screen, the phone shows
+  one local notification for it and removes it once the request is answered
+  anywhere. A foreground "needs you" push is keyed the same way.
+
 ## [0.0.46-alpha.20261030+20261030] - 20261030
 ### Added
 

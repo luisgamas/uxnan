@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/context_compaction_reason.dart';
@@ -229,6 +230,44 @@ void main() {
   });
 
   group('advanced content tolerant parsing', () {
+    test('a stored card carries how it ended, and a bad record is none', () {
+      final approval = MessageContent.fromJson({
+        'type': 'approval',
+        'approvalId': 'a1',
+        'action': 'Allow Bash',
+        'outcome': {'decision': 'reject', 'withdrawn': true},
+      }) as ApprovalContent;
+      expect(
+        approval.request.outcome,
+        const ApprovalOutcome(
+          decision: ApprovalDecision.reject,
+          withdrawn: true,
+        ),
+      );
+      expect(roundTrip(approval), approval);
+      final question = MessageContent.fromJson({
+        'type': 'question',
+        'questionId': 'q1',
+        'questions': <Object>[],
+        'outcome': {
+          'answers': [
+            ['Dart', 3],
+          ],
+        },
+      }) as QuestionContent;
+      expect(
+        question.request.outcome,
+        const QuestionOutcome(
+          answers: [
+            ['Dart'],
+          ],
+        ),
+      );
+      expect(roundTrip(question), question);
+      expect(ApprovalOutcome.tryParse({'decision': 'maybe'}), isNull);
+      expect(QuestionOutcome.tryParse({'answers': 'no'}), isNull);
+    });
+
     test('approval accepts a flat payload', () {
       final c = MessageContent.fromJson({
         'type': 'approval',

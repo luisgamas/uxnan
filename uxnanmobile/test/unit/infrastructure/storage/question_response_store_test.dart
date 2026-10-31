@@ -172,5 +172,17 @@ void main() {
         ['A'],
       ]);
     });
+
+    test('remembers that no person answered a withdrawn question', () async {
+      final store = QuestionResponseStore();
+      await store.record(
+        questionId: 'q-w',
+        answers: const [[]],
+        answeredAtMs: 1,
+        withdrawn: true,
+      );
+      final read = await QuestionResponseStore().read('q-w');
+      expect(read!.withdrawn, isTrue);
+    });
   });
 }

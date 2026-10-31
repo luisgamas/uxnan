@@ -119,5 +119,23 @@ void main() {
       expect(all.length, 1);
       expect(all['good']!.decision, 'approve');
     });
+
+    test('remembers that no person answered a withdrawn approval', () async {
+      final store = ApprovalResponseStore();
+      await store.record(
+        approvalId: 'ap-w',
+        decision: 'reject',
+        decidedAtMs: 1,
+        withdrawn: true,
+      );
+      final read = await ApprovalResponseStore().read('ap-w');
+      expect(read!.withdrawn, isTrue);
+      await store.record(
+        approvalId: 'ap-a',
+        decision: 'reject',
+        decidedAtMs: 2,
+      );
+      expect((await store.read('ap-a'))!.withdrawn, isFalse);
+    });
   });
 }

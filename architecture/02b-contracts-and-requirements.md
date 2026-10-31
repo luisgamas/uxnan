@@ -1,6 +1,17 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.6.0 | **Fecha:** 2026-10-30 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.7.0 | **Fecha:** 2026-10-31 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.7.0):** approvals and questions never expire.
+> `ApprovalResolvedParams.timedOut` and `QuestionResolvedParams.timedOut` are
+> replaced by `withdrawn` (no person answered: the agent settled the request
+> itself, or the run that asked ended), and the bridge writes the same record
+> over the stored card as `ApprovalRequestBlock.outcome` (`ApprovalOutcome
+> { decision, withdrawn? }`) / `QuestionRequestBlock.outcome` (`QuestionOutcome
+> { answers, withdrawn? }`), so `turn/list` converges a client that missed the
+> notification. `NotificationPreferences` gains `needsInput?` (absent = on): a
+> push per approval or question an agent waits on. No method or notification
+> count changes: **108 methods**, 26 notifications.
 >
 > **Executive summary (1.6.0):** a message's attachments sit **inside its
 > text**. `turn/send` `text` (or `command.args`) carries one
@@ -637,8 +648,8 @@ stream/thread/updated       -> ThreadUpdatedParams { thread }                   
 stream/thread/deleted       -> ThreadDeletedParams { threadId, rev? }                       (NUEVO 2026-09)
 stream/history/changed      -> HistoryChangedParams { threadId, rev }                       (NUEVO 2026-10; el historial guardado del hilo cambio fuera de un turno vivo — el bridge fusiono la transcripcion del propio agente; quien muestra la conversacion relee su pagina mas nueva — 02a §5.8.8)
 stream/turn/created         -> TurnCreatedParams   { threadId, turn, clientTurnId? }        (NUEVO 2026-09)
-stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, timedOut? }  (NUEVO 2026-09)
-stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, timedOut? }  (NUEVO 2026-09)
+stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, withdrawn? }  (NUEVO 2026-09; withdrawn reemplaza timedOut 2026-10-31)
+stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, withdrawn? }  (NUEVO 2026-09; withdrawn reemplaza timedOut 2026-10-31)
 stream/project/updated      -> ProjectUpdatedParams { project }                             (NUEVO 2026-09, §5.8.17)
 stream/project/removed      -> ProjectRemovedParams { projectId, rev }                      (NUEVO 2026-09)
 stream/settings/updated     -> SettingsUpdatedParams { settings, rev }                      (NUEVO 2026-09)
@@ -679,8 +690,11 @@ notificaciones de 2026-09 cierran lo que faltaba para eso:
   **antes** que la respuesta de `turn/send`. El `turn` viaja resumido, como en
   una pagina (§1.5 *Historial acotado*).
 - `stream/approval/resolved` y `stream/question/resolved` retiran la tarjeta en
-  todos los clientes cuando alguno responde (o vence el plazo: `timedOut`).
-  `answers` viaja para que un cliente que no respondio muestre lo elegido.
+  todos los clientes cuando alguno responde, o cuando se retira sin respuesta
+  de nadie (`withdrawn`: el agente la resolvio solo o termino su ejecucion).
+  Nunca vencen por tiempo. `answers` viaja para que un cliente que no
+  respondio muestre lo elegido, y el mismo desenlace queda escrito en la card
+  guardada (`outcome`) para quien se perdio la notificacion.
 
 **Nombre de la conversacion (2026-08).** Ningun CLI de agente nos da un titulo:
 todos dejan esa tarea a su propio cliente (un hilo creado por uxnan vuelve de
@@ -995,14 +1009,25 @@ concreto depende del adaptador:
   `requestApproval` cuando el texto es `approval-demo` y pausa el
   turno hasta que el usuario responde.
 
-**Timeout consciente de la conexión.** El auto-rechazo de una aprobación
-(`APPROVAL_TIMEOUT_MS`, 5 min) solo corre **mientras hay un teléfono con canal
-vivo**. Si el teléfono está en background/desconectado, la aprobación **espera**
-(su `approval` content block se reenvía vía el outbound log al reconectar), de
-modo que un turno que pide aprobación con la app cerrada nunca cae al `reject`
-por una tarjeta que el usuario no vio. Una reconexión otorga una ventana nueva;
-la última desconexión pausa la cuenta atrás. El temporizador es solo el del
-bridge: ningun adapter lleva uno propio.
+**Sin plazo (2026-10-31).** Una aprobación o una pregunta **espera a una
+persona** el tiempo que haga falta: no hay auto-rechazo ni auto-omisión (el
+antiguo `APPROVAL_TIMEOUT_MS` de 5 min y su cuenta atrás con teléfono
+conectado se eliminaron). Termina cuando alguien responde, cuando el agente la
+retira o cuando acaba la ejecución que la pidió (su CLI salió, se detuvo o
+falló) — entonces se resuelve con `withdrawn: true`. Ningún CLI conducido vence
+la petición por sí mismo (medido con 12 y 30 min, `bridge/docs/agents.md` →
+*How long a request can wait*). Al resolverse, el bridge escribe
+`outcome` sobre el bloque guardado y luego difunde la notificación:
+
+```typescript
+interface ApprovalRequestBlock { /* … */ outcome?: ApprovalOutcome }
+interface ApprovalOutcome { decision: ApprovalDecision; withdrawn?: boolean }
+interface QuestionRequestBlock { /* … */ outcome?: QuestionOutcome }
+interface QuestionOutcome { answers: string[][]; withdrawn?: boolean }
+```
+
+Cada petición nueva dispara un push "te necesita" (`NotificationPreferences.needsInput`,
+ausente = activado; `data.requestId` la nombra) por la ruta de 02a §5.10.2.
 
 **Salir del modo plan** (Claude `ExitPlanMode`, Grok `_x.ai/exit_plan_mode`): el
 plan se muestra como texto del turno; en *Plan only* se rechaza, en *Full

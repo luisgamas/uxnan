@@ -25,8 +25,15 @@ Two independent surfaces, both already wired in the app:
 
 | Kind | When it fires | Needs Firebase? |
 |---|---|---|
-| **Local notification** | App is **open/foreground** and an agent turn completes or errors (driven by the bridge's `stream/turn/*` events), or a foreground FCM message arrives. Shown via `flutter_local_notifications`. | No — see note below |
-| **Push (FCM)** | App is **backgrounded or terminated**: the bridge sends to FCM, FCM wakes the phone, tapping opens the thread. | Yes |
+| **Local notification** | App is **open/foreground** and an agent turn completes or errors (driven by the bridge's `stream/turn/*` events), an agent starts waiting on you — an approval or a question card arrives (`stream/content/block`) — or a foreground FCM message arrives. Shown via `flutter_local_notifications`; a "needs you" one is keyed by the request id and removed when the request is answered on any client (`stream/approval\|question/resolved`). | No — see note below |
+| **Push (FCM)** | App is **backgrounded or terminated**: the bridge sends to FCM, FCM wakes the phone, tapping opens the thread. Sent when a turn completes or errors, and once per approval or question an agent waits on (`data.requestId` names it). | Yes |
+
+Each kind follows the phone's preferences (*Settings → Notifications*: replies,
+needs you, errors → `NotificationPreferences { turnCompleted, needsInput,
+turnError }`) and the bridge-wide switches `pushOnAgentDone` /
+`pushOnAgentNeedsInput` / `pushOnAgentError` ([`configuration.md`](./configuration.md)).
+An approval or question never expires, so the "needs you" notification is the
+cue that an agent is blocked until someone answers.
 
 > **Note:** in the current build the app's `PushNotificationService.init()`
 > initializes Firebase first and only then the local-notifications plugin, so on a
@@ -42,6 +49,7 @@ Two independent surfaces, both already wired in the app:
 
 ```text
 agent turn ends ─► bridge (PushService.onTurnEnd)
+agent waits on you ─► bridge (PushService.onInputRequested, one per request)
                      │  createBridgePushSender → FCM HTTP v1
                      │  (firebase-admin, service account on the bridge)
                      ▼

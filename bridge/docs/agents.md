@@ -982,9 +982,9 @@ there is nothing to expire and nothing to kill.
 Measured on the real CLI: a 75-second foreground wait ran as **one turn lasting
 100 seconds**, with `tool_progress` events at +35 s and +65 s, the work
 completing normally, and `result` arriving only afterwards. There is also **no
-turn-level timeout anywhere in the bridge** — the only timers in `AgentManager`
-bound how long it waits for *the user* to answer an approval or a question, not
-how long a turn may run. A turn can take minutes or hours.
+turn-level timeout anywhere in the bridge**, nor one on how long it waits for
+*the user* to answer an approval or a question (see *How long a request can
+wait*). A turn can take minutes or hours.
 
 So the two cases split cleanly:
 
@@ -1124,12 +1124,60 @@ answer the person types (returned like a label). Per agent:
 | **OpenCode** | its `question` tool: 1.x a question, 2.x a **form** (`form.created`, one field per question; `type: "multiselect"` — `array` / `multiple` on early 2.x — for several picks, `custom: true` for typed text) | 1.x `/question/{id}/reply` (or `/reject`); 2.x `/api/session/:id/form/:id/reply` with each chosen option's **`value`** (an array for a multi-select field), or `DELETE` to dismiss. A reply the server refuses dismisses the form, so the turn goes on instead of hanging |
 | **Claude Code** | `AskUserQuestion`, offered only with `--permission-prompt-tool stdio`; it arrives as a `can_use_tool` control request (questions, options, `multiSelect`; always `custom`) | `control_response` allow with `updatedInput.answers` keyed by question text (several labels joined with `, `); skipped → deny "The user did not answer." |
 | **Grok** | `ask_user_question`, as the server request `_x.ai/ask_user_question` (`{label, description}` options, `multiSelect`) | `{ outcome: "accepted", answers: { <question>: <label> } }`; skipped, or nobody to ask → `{ outcome: "skip_interview" }` — never an error, which the model reads as "could not be delivered" |
-| **Codex** | `item/tool/requestUserInput` (`questions: [{ id, header, question, isOther, isSecret, options \| null }]`; `isOther` or no options → `custom`). On 0.162.1 the model only has the tool in the app-server's *plan* collaboration mode, which the bridge does not use, so it is wired for when Codex sends it | `{ answers: { <question id>: { answers: [...] } } }`; skipped → `{ answers: {} }`. A request Codex settles itself (`serverRequest/resolved`) withdraws the card |
-| **Zero** | `ask_user` exists, but `zero acp` never sends it to the client: the tool answers itself "No interactive user is available" (0.9.0) | — (the tool call is shown read-only) |
+| **Codex** | `item/tool/requestUserInput` (`questions: [{ id, header, question, isOther, isSecret, options \| null }]`; `isOther` or no options → `custom`). On 0.162.1 (and 0.163.0, re-checked 2026-10-31) the model only has the tool in the app-server's *plan* collaboration mode, which the bridge does not use, so it is wired for when Codex sends it | `{ answers: { <question id>: { answers: [...] } } }`; skipped → `{ answers: {} }`. A request Codex settles itself (`serverRequest/resolved`) withdraws the card |
+| **Zero** | `ask_user` exists, but `zero acp` never sends it to the client: the tool answers itself "No interactive user is available" (0.9.0; still so on 0.10.0) | — (the tool call is shown read-only) |
 | **Antigravity** | `ask_question` shows only as `step_type: "unknown"`, and the CLI answers "User Skipped" itself (1.3.5) | — |
 | **pi** | no question tool | — | OpenCode 1's
 `permission.v2.asked` shape is routed through the same approval path as
 `permission.asked`.
+
+### How long a request can wait
+
+An approval or a question **waits for a person, with no clock.** The bridge
+keeps it pending — on every client, across reconnects and app restarts — until
+someone answers it, the agent withdraws it (an `AbortSignal`: Codex's
+`serverRequest/resolved`, Claude's own cancel), or the run that asked ends
+(completed, stopped, failed, or its CLI exited: `AgentManager.#forgetRun`
+withdraws what it still waited on). The only bound is the CLI process, never a
+wall clock; the five-minute auto-reject / auto-skip it replaced is gone. A
+withdrawn request is announced with `withdrawn: true` and stored on its card as
+`outcome`, so every client says it is no longer waiting rather than inventing a
+decision.
+
+Measured 2026-10-31 by running each adapter on a scratch store (the real
+`AgentManager`, no CLI timeout shortened), leaving the request unanswered, then
+answering it late and checking the agent acted on that answer:
+
+| Agent (version) | Asks on the driven surface | Held unanswered | Withdrawn by the CLI meanwhile | Late answer taken |
+|---|---|---|---|---|
+| Claude Code 2.1.312 | approval (`can_use_tool`) | 12 min and 30 min | no | yes — the command ran, `DONE` |
+| Claude Code 2.1.312 | question (`AskUserQuestion`) | 12 min | no | yes — "Blue it is." |
+| Codex 0.163.0 | approval (`item/commandExecution/requestApproval`) | 12 min and 30 min | no | yes — the command ran, `DONE` |
+| Codex 0.163.0 | question | — never asked: `request_user_input` exists only in the app-server's *plan* collaboration mode, which the bridge does not use (two prompts naming the tool; the model wrote the question as text) | — | — |
+| OpenCode 2.2.0 | approval (`permission.asked`) | 12 min | no | yes — the command ran |
+| OpenCode 2.2.0 | question (form) | 12 min and 30 min | no | yes — "You chose blue." |
+| Grok 1.0.70 | approval (`session/request_permission`) | 12 min | no | yes — the command ran (exit 0); the model call after it hit the account's free-usage limit (429), unrelated to the wait |
+| Grok 1.0.70 | question (`_x.ai/ask_user_question`) | 12 min | no | yes — "You chose blue." |
+| Zero 0.10.0 | approval (`session/request_permission`) | 12 min and 30 min | no | yes — `DONE` |
+| Zero 0.10.0 | question | — never reaches the client: `ask_user` answers itself "No interactive user is available to answer questions. Proceed with your best assumption" at once — the self-answer the apps used to show as the agent going on alone. No ACP method carries it, so the bridge cannot hold it | — | — |
+| Antigravity 1.4.12 | none — `ask_question` is answered "skipped" by the CLI itself (the model replied "You skipped the question"); tools that would prompt are auto-denied | — | — | — |
+| pi 1.4.0 | none — no question tool; the model asked in plain text and the turn ended (extension dialogs are declined, see the pi adapter) | — | — | — |
+
+**12/12 holds** (8 at 12 minutes, 4 at 30) kept the request pending and took
+the late answer; no CLI times out a pending request on the surface the bridge
+drives, so **no client shows a countdown**. Where an agent cannot be held (Zero
+and Antigravity questions, Codex questions outside plan mode), it is because
+the question never reaches the client at all, not because of a timer — there
+is no card to keep open. Re-run this when a CLI's protocol changes: the
+harness is a scratch `ThreadStore` + `AgentManager` with the adapter built as
+`bridge.ts` builds it, a prompt that makes it ask, and a wait longer than the
+longest timeout under test.
+
+Every request is also **announced once** (`AgentManagerOptions.onInputRequested`):
+a "needs you" push to every phone that keeps `needsInput` on
+([`push-notifications.md`](./push-notifications.md)), a local notification on a
+connected phone (removed when the request is answered anywhere) and a toast /
+OS notification on the desktop when that chat is not on screen.
 
 ### OpenCode 1 and OpenCode 2
 

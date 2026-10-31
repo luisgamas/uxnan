@@ -1,11 +1,30 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.10.0
-> **Fecha:** 2026-10-30
+> **Version:** 1.11.0
+> **Fecha:** 2026-10-31
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
+> **Executive summary (1.11.0):** an agent's approval or question **waits for a
+> person, with no clock** (§5.8.16). The bridge's five-minute auto-reject /
+> auto-skip and its phone-connected countdown are gone; a request ends only
+> when someone answers it, when the agent withdraws it, or when the run that
+> asked ends (the bound is the CLI process, not a wall clock) — then it is
+> settled as `withdrawn`. Measured on every wired agent's driven surface with
+> 12- and 30-minute holds: none times out a pending request itself, and each
+> took the late answer (`bridge/docs/agents.md` → *How long a request can
+> wait*), so no client needs a countdown. The bridge writes each request's
+> outcome over its stored card (`ApprovalRequestBlock.outcome`,
+> `QuestionRequestBlock.outcome`) as it announces
+> `stream/approval|question/resolved` (whose `timedOut` becomes `withdrawn`),
+> so a client that missed the notification converges from `turn/list`. An
+> agent starting to wait is announced once per request on every surface: a
+> "needs you" push from the bridge (§5.10.2, `NotificationPreferences.needsInput`,
+> `pushOnAgentNeedsInput`), a local notification on the phone (cancelled when
+> the request is answered anywhere) and a toast / OS notification on the
+> desktop when that chat is not on screen.
+>
 > **Executive summary (1.10.0):** a message's images and files sit **inside
 > its sentence** (§5.8.12). The text carries one `ATTACHMENT_MARKER` (U+FFFC)
 > per attachment, in order — the n-th marker is the n-th attachment — in
@@ -3327,7 +3346,28 @@ converjan, todo lo que cambia el estado se difunde (`02b` §1.4):
 | hilo creado / metadatos (titulo, modelo, acceso, archivo) | `stream/thread/updated { thread }` |
 | hilo borrado | `stream/thread/deleted` |
 | turno de usuario guardado (arrancado o encolado) | `stream/turn/created { turn, clientTurnId? }` — **antes** de `stream/turn/started` |
-| aprobacion / pregunta resuelta (o vencida) | `stream/approval/resolved`, `stream/question/resolved` |
+| aprobacion / pregunta resuelta (o retirada) | `stream/approval/resolved`, `stream/question/resolved` — y su `outcome` escrito sobre la card guardada |
+
+**Una aprobacion o pregunta espera a una persona, sin reloj (2026-10-31).**
+El bridge no la resuelve por tiempo: queda pendiente —en todos los clientes, a
+traves de reconexiones y reinicios de las apps— hasta que alguien responde, el
+agente la retira (`AbortSignal`, p. ej. Codex `serverRequest/resolved`) o
+termina la ejecucion que la pidio (completada, detenida, fallida o su CLI
+salio: `AgentManager.#forgetRun` la retira). Lo unico que la acota es la vida
+del proceso del CLI. Retirada se anuncia con `withdrawn: true` y la `decision`
+/ `answers` son lo que el bridge le contesto al adapter, nunca la eleccion de
+nadie: los clientes muestran "ya no espera respuesta". Medido en la superficie
+que conduce cada agente con esperas de 12 y 30 minutos: ningun CLI vence la
+peticion por si mismo y todos aceptan la respuesta tardia, asi que ninguna card
+lleva cuenta atras (`bridge/docs/agents.md` → *How long a request can wait*).
+Al resolverla, el bridge escribe su `outcome` sobre la card guardada (por
+`blockId`, `ThreadStore.settleStep`) **antes** de difundir
+`stream/approval|question/resolved`: un cliente que se perdio la notificacion
+lee el mismo desenlace en su siguiente `turn/list`. Cada peticion nueva se
+avisa una vez (`AgentManagerOptions.onInputRequested` → push "te necesita",
+§5.10.2); el telefono lanza ademas una notificacion local y la quita cuando la
+peticion se resuelve en cualquier cliente, y el desktop un toast o una
+notificacion del sistema si ese chat no esta en pantalla.
 
 El emisor manda `clientTurnId` (el id de su burbuja optimista) en `turn/send`;
 el bridge lo devuelve en `stream/turn/created` y el emisor confirma esa burbuja
@@ -4446,8 +4486,11 @@ Cloudflare sobre el runtime open-source de Workers (pendiente, `relay/FOR-DEV.md
    (`notifications/register` { pushToken, platform, preferences? }). El bridge
    lo guarda en ~/.uxnan/push-state.json (por sessionId) y no lo envia a
    ningun otro sitio que no sea FCM.
-2. Agente completa un turno en la PC
-3. Bridge detecta el evento de completado (AgentManager.onTurnEnd)
+2. Agente completa un turno en la PC — o empieza a esperar a la persona (una
+   aprobacion o una pregunta: un push por peticion, `data.requestId` la nombra)
+3. Bridge detecta el evento (AgentManager.onTurnEnd / onInputRequested); lo
+   filtran `pushOnAgentDone` / `pushOnAgentError` / `pushOnAgentNeedsInput` y
+   las preferencias del telefono (`turnCompleted` / `turnError` / `needsInput`)
 4. PushService resuelve el token y la plataforma de cada telefono registrado
 5. Bridge → Firebase (FCM HTTP v1) DIRECTO usando el service account local
    Body: { notification: { title, body }, data: { threadId, turnId, ... },

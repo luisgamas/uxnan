@@ -138,6 +138,32 @@ describe("ChatBlock", () => {
     expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
   });
 
+  it("says a withdrawn approval is no longer waiting, not that it was denied", async () => {
+    const c = conversation();
+    const { screen } = mount(ChatBlock, {
+      props: { block: approval, threadId: "t1", conversation: c },
+    });
+    c.apply({
+      method: "stream/approval/resolved",
+      params: { threadId: "t1", approvalId: "ap-1", decision: "reject", withdrawn: true },
+    });
+    await until(() => screen.queryByText("No longer waiting for an answer") !== null);
+    expect(screen.queryByText("Denied")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
+  });
+
+  it("settles from the stored outcome of a card answered while this window was away", () => {
+    const { screen } = mount(ChatBlock, {
+      props: {
+        block: { ...approval, outcome: { decision: "approveSession" } },
+        threadId: "t1",
+        conversation: conversation(),
+      },
+    });
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
+    expect(screen.getByText("Allowed for this session")).toBeTruthy();
+  });
+
   it("answers a question with the chosen option", async () => {
     const c = conversation();
     const { screen, backend, user } = mount(ChatBlock, {

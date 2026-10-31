@@ -71,5 +71,6 @@ function readPreferences(params: unknown): NotificationPreferences | undefined {
   return {
     turnCompleted: optionalBoolean(prefs, 'turnCompleted') ?? true,
     turnError: optionalBoolean(prefs, 'turnError') ?? true,
+    needsInput: optionalBoolean(prefs, 'needsInput') ?? true,
   };
 }

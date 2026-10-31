@@ -13,6 +13,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   Uxnan while they are untouched — does not hide a checkout made from the phone.
   Best-effort: a failure to write it never fails the creation.
 
+### Changed
+
+- **An approval or a question waits for a person — no clock.** The five-minute
+  auto-reject / auto-skip (`APPROVAL_TIMEOUT_MS`) and its phone-connected
+  countdown (`isPhoneConnected`, `approvalTimeoutMs`, `onPhoneConnected` /
+  `onPhoneDisconnected`, `SessionRegistry.anyActive`) are deleted. A request now
+  ends only when someone answers it, when the agent withdraws it, or when the
+  run that asked ends — completed, stopped, failed or its CLI exited
+  (`AgentManager.#forgetRun` withdraws whatever it still waited on, so a dead
+  CLI never leaves a card open). Withdrawn requests are announced with
+  `withdrawn: true` (was `timedOut`). Measured on each agent's driven surface
+  with a request left unanswered for 12 and 30 minutes: no CLI times it out and
+  every one took the late answer (`docs/agents.md` → *How long a request can
+  wait*), so no client needs a countdown.
+- **The stored card records how it ended.** As a request settles, the bridge
+  writes `outcome` over its stored `approval` / `question` block
+  (`ThreadStore.settleStep`, by `blockId`) before it announces
+  `stream/approval|question/resolved`, so a client that missed the notification
+  reads the same outcome from `turn/list`.
+
+### Added
+
+- **"Needs you" push.** `AgentManagerOptions.onInputRequested` fires once per
+  approval or question; `PushService.onInputRequested` pushes it to every
+  registered phone whose `needsInput` preference is on (absent = on), behind the
+  new `pushOnAgentNeedsInput` config switch (default `true`). The push carries
+  `data.requestId` so the phone can drop it once the request is answered.
+
 ## [0.0.54-alpha.20261030] - 20261030
 ### Added
 

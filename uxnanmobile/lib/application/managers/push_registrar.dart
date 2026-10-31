@@ -5,6 +5,7 @@ import 'package:uxnan/application/managers/thread_manager.dart' show RpcSend;
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 
@@ -18,6 +19,8 @@ class PushNotificationStrings {
   const PushNotificationStrings({
     required this.turnCompletedBody,
     required this.turnErrorBody,
+    required this.approvalNeededBody,
+    required this.questionBody,
     required this.fallbackTitle,
   });
 
@@ -25,6 +28,8 @@ class PushNotificationStrings {
   const PushNotificationStrings.fallback()
       : turnCompletedBody = _fallbackCompleted,
         turnErrorBody = _fallbackError,
+        approvalNeededBody = _fallbackApproval,
+        questionBody = _fallbackQuestion,
         fallbackTitle = 'Uxnan';
 
   /// Body for a completed turn given the agent label, e.g. "Opencode replied".
@@ -34,15 +39,25 @@ class PushNotificationStrings {
   /// Body for a failed turn given the agent label.
   final String Function(String agent) turnErrorBody;
 
+  /// Body when an agent asks for an approval and waits, given its label.
+  final String Function(String agent) approvalNeededBody;
+
+  /// Body when an agent asks the user a question and waits, given its label.
+  final String Function(String agent) questionBody;
+
   /// Title used when the thread's name is unknown.
   final String fallbackTitle;
 }
 
 String _fallbackCompleted(String agent) => '$agent replied';
 String _fallbackError(String agent) => '$agent reported an error';
+String _fallbackApproval(String agent) => '$agent needs your approval';
+String _fallbackQuestion(String agent) => '$agent has a question for you';
 
 /// Registers the phone's FCM token with the bridge and surfaces local
-/// notifications for turn-completed events (application layer, spec 02a §5.2).
+/// notifications for turn-completed events and for an agent that starts
+/// waiting on the person — one per approval or question, taken back once it is
+/// answered here or anywhere else (application layer, spec 02a §5.2).
 ///
 /// Listens to the connection phase: when the session reaches
 /// [ConnectionPhase.connected] and a token is available it calls
@@ -195,6 +210,29 @@ class PushRegistrar {
             payload: event.threadId,
           ),
         );
+      // An agent asked for an approval or a question: it waits, however long,
+      // until someone answers — worth telling the person, once per request.
+      case ContentBlockEvent(:final content, :final threadId):
+        final request = _openRequest(content);
+        if (request == null || !_prefs.needsInput) break;
+        if (_isViewing(threadId)) break;
+        final info = _info(threadId);
+        unawaited(
+          _push.showLocalNotification(
+            title: info.title,
+            body: request.approval
+                ? strings.approvalNeededBody(info.agent)
+                : strings.questionBody(info.agent),
+            payload: threadId,
+            key: request.id,
+          ),
+        );
+      // Answered here, on another client, or withdrawn: its notification is
+      // no longer news.
+      case ApprovalResolvedEvent(:final approvalId):
+        unawaited(_push.cancelLocalNotification(approvalId));
+      case QuestionResolvedEvent(:final questionId):
+        unawaited(_push.cancelLocalNotification(questionId));
       // A queued message being accepted, cancelled, drained or handed straight
       // to the running turn is not worth a notification: the user is the one
       // who queued it, and the turn it joins (or becomes) will announce itself
@@ -202,15 +240,12 @@ class PushRegistrar {
       case TurnStartedEvent() ||
             MessageDeltaEvent() ||
             ThinkingDeltaEvent() ||
-            ContentBlockEvent() ||
             TurnAbortedEvent() ||
             TurnCancelledEvent() ||
             ThreadUpdatedEvent() ||
             ThreadDeletedEvent() ||
             TurnCreatedEvent() ||
             HistoryChangedEvent() ||
-            ApprovalResolvedEvent() ||
-            QuestionResolvedEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
             ProjectUpdatedEvent() ||
@@ -227,6 +262,18 @@ class PushRegistrar {
         break;
     }
   }
+
+  /// The still-open approval or question [content] asks, if it is one.
+  static ({String id, bool approval})? _openRequest(MessageContent content) =>
+      switch (content) {
+        ApprovalContent(:final request)
+            when request.outcome == null && request.approvalId.isNotEmpty =>
+          (id: request.approvalId, approval: true),
+        QuestionContent(:final request)
+            when request.outcome == null && request.questionId.isNotEmpty =>
+          (id: request.questionId, approval: false),
+        _ => null,
+      };
 
   /// Releases resources.
   Future<void> dispose() async {

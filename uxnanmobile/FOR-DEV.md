@@ -95,7 +95,9 @@ pass.
   shared start folder; a "Linked with Uxnan Desktop on <machine>" line and a
   desktop-origin mark tell the two setups apart. Another client's prompt is
   placed above its answer (`stream/turn/created` + `clientTurnId`), and a card
-  answered elsewhere settles here (`stream/approval|question/resolved`).
+  answered elsewhere settles here (`stream/approval|question/resolved`, or the
+  outcome the bridge stored on the card when the notification was missed); one
+  nobody answered reads *No longer waiting for an answer*.
   A rename, archive, unarchive or delete — or a PC rename — made while the PC
   is out of reach waits in `ActionOutbox` and is sent, dated (`ageMs`), before
   the next sync; the latest action wins, whichever device took it. The phone
@@ -455,7 +457,9 @@ pass.
   straight from a folder row in the threads list; git state is kept per `cwd`.
 - **FCM push** (gated) — Android LIVE; deep-link to conversation; **personalized
   copy** + foreground suppression; per-channel notification preferences (Replies /
-  Errors).
+  Needs you / Errors). An approval or question raises one local notification
+  (keyed by its id, removed once it is answered anywhere) unless its
+  conversation is on screen.
 - **Settings** — theme mode (System/Light/Dark) + a **custom-theme library** with a
   dedicated Theme Manager (single/dual-brightness themes, live-preview grid,
   multi-select bulk delete/export, JSON import/export); language (EN/ES, follows

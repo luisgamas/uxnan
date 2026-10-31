@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 
@@ -32,7 +33,27 @@ class ApprovalResponseState {
     required this.phase,
     this.decision,
     this.decidedAtMs,
+    this.withdrawn = false,
   });
+
+  /// What the card shows: the bridge's stored record on the card when it has
+  /// one (the owner's word, so a card settled while this phone was away is
+  /// settled here too), else this phone's own state. The time this phone
+  /// answered is kept when both agree it is settled.
+  static ApprovalResponseState? settled(
+    ApprovalOutcome? stored,
+    ApprovalResponseState? local,
+  ) {
+    if (stored == null) return local;
+    return ApprovalResponseState(
+      phase: ApprovalResponsePhase.resolved,
+      decision: stored.decision,
+      decidedAtMs: local?.phase == ApprovalResponsePhase.resolved
+          ? local?.decidedAtMs
+          : null,
+      withdrawn: stored.withdrawn,
+    );
+  }
 
   /// Where the response is in its lifecycle.
   final ApprovalResponsePhase phase;
@@ -44,6 +65,11 @@ class ApprovalResponseState {
   /// When the user picked the decision (epoch ms); null while [phase] is idle.
   final int? decidedAtMs;
 
+  /// True when no person answered it: the agent settled it itself, or the run
+  /// that asked ended. The card then says it is no longer waiting, not what
+  /// [decision] the bridge sent the agent.
+  final bool withdrawn;
+
   /// Creates a copy with the given fields replaced.
   ApprovalResponseState copyWith({
     ApprovalResponsePhase? phase,
@@ -54,6 +80,7 @@ class ApprovalResponseState {
         phase: phase ?? this.phase,
         decision: decision ?? this.decision,
         decidedAtMs: decidedAtMs ?? this.decidedAtMs,
+        withdrawn: withdrawn,
       );
 }
 
@@ -77,7 +104,7 @@ class ApprovalResponses extends Notifier<Map<String, ApprovalResponseState>> {
   }
 
   /// Settles the card for an approval the bridge says is no longer pending —
-  /// answered on this phone, another phone, the desktop, or timed out — so a
+  /// answered on this phone, another phone, the desktop, or withdrawn — so a
   /// card never stays actionable after someone else answered it. A card this
   /// phone already resolved keeps its own record. Fed from
   /// `ThreadManager.resolutionsStream` by the app root.
@@ -86,12 +113,19 @@ class ApprovalResponses extends Notifier<Map<String, ApprovalResponseState>> {
     if (existing?.phase == ApprovalResponsePhase.resolved) return;
     final decision = resolution.decision ?? ApprovalDecision.reject;
     final now = DateTime.now().millisecondsSinceEpoch;
-    _set(resolution.approvalId, ApprovalResponsePhase.resolved, decision, now);
+    _set(
+      resolution.approvalId,
+      ApprovalResponsePhase.resolved,
+      decision,
+      now,
+      withdrawn: resolution.withdrawn,
+    );
     unawaited(
       ref.read(approvalResponseStoreProvider).record(
             approvalId: resolution.approvalId,
             decision: _decisionToWire(decision),
             decidedAtMs: now,
+            withdrawn: resolution.withdrawn,
           ),
     );
   }
@@ -116,6 +150,7 @@ class ApprovalResponses extends Notifier<Map<String, ApprovalResponseState>> {
         phase: ApprovalResponsePhase.resolved,
         decision: decision,
         decidedAtMs: entry.value.decidedAtMs,
+        withdrawn: entry.value.withdrawn,
       );
       changed = true;
     }
@@ -168,14 +203,16 @@ class ApprovalResponses extends Notifier<Map<String, ApprovalResponseState>> {
     String approvalId,
     ApprovalResponsePhase phase,
     ApprovalDecision d,
-    int decidedAtMs,
-  ) {
+    int decidedAtMs, {
+    bool withdrawn = false,
+  }) {
     state = {
       ...state,
       approvalId: ApprovalResponseState(
         phase: phase,
         decision: d,
         decidedAtMs: decidedAtMs,
+        withdrawn: withdrawn,
       ),
     };
   }

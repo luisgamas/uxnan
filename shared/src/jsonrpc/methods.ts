@@ -591,6 +591,12 @@ export interface NotificationPreferences {
   turnCompleted: boolean;
   /** Push when an agent turn errors. */
   turnError: boolean;
+  /**
+   * Push when an agent starts waiting on the person — an approval or a
+   * question it asked. One push per request. Absent (an older phone) reads as
+   * on: an agent that is blocked on you is worth knowing about.
+   */
+  needsInput?: boolean;
 }
 
 export interface RegisterNotificationsParams {

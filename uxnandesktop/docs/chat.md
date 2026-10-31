@@ -485,13 +485,20 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   message stored before attachments had a place in the text shows them after
   its words.
 - **Approvals and questions** wait in a dock **pinned above the composer**
-  until they are answered. Several questions asked at once come one at a
+  until they are answered — however long that takes: nothing closes them on a
+  clock (the bridge keeps them pending until a person answers, the agent
+  withdraws one, or its run ends). Several questions asked at once come one at a
   time (*1 of 3*, *Back* / *Next*, *Answer* on the last; a single choice moves
   on by itself), and **1–9** pick the options of the one on screen (never
   while a field has the focus); the timeline keeps a one-line record of each (what
-  was asked, then how it ended). One answered on the phone (or timed out)
-  settles here too; one from a turn that already ended never offers its buttons
-  again.
+  was asked, then how it ended). One answered on the phone settles here too —
+  live, or from the outcome the bridge stores on the card when this window was
+  closed or offline (`Conversation.approvalOutcome` / `questionOutcome`); one
+  the agent withdrew, or from a turn that already ended, says *No longer
+  waiting for an answer* and never offers its buttons again. When a card
+  arrives in a chat that is not on screen, the desktop says so once — a toast
+  while the window has the focus, an OS notification when it does not
+  (`src/lib/state/chatAlerts.ts`, behind Settings → *Idle notifications*).
 - **Queue**: a message sent while the agent works always waits in the queue,
   and the composer says what happens next before it is sent — *it reaches it
   at its next pause* on an agent that takes input mid-turn, *it goes out when

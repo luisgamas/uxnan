@@ -58,7 +58,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                 first: true,
               ),
               ExpressiveCardGroup(
-                count: 2,
+                count: 3,
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
@@ -68,6 +68,15 @@ class NotificationsSectionScreen extends ConsumerWidget {
                       value: prefs.turnCompleted,
                       onChanged: (v) =>
                           notifications.save(prefs.copyWith(turnCompleted: v)),
+                    ),
+                  1 => NeSwitchTile(
+                      position: pos,
+                      icon: UxIcons.notifications,
+                      title: l10n.settingsNeedsInputTitle,
+                      subtitle: l10n.settingsNeedsInputSubtitle,
+                      value: prefs.needsInput,
+                      onChanged: (v) =>
+                          notifications.save(prefs.copyWith(needsInput: v)),
                     ),
                   _ => NeSwitchTile(
                       position: pos,

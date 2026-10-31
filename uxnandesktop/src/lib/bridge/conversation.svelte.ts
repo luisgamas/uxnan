@@ -16,9 +16,8 @@
 // lives (`stepRun`, `fullStep`); it goes with it when no chat
 // shows it any more (`chat.release`).
 
-import type {
-  ApprovalDecision,
-} from '$shared/models/approval';
+import type { ApprovalDecision, ApprovalOutcome } from '$shared/models/approval';
+import type { QuestionOutcome } from '$shared/models/question';
 import type {
   Message,
   MessageAttachment,
@@ -78,18 +77,7 @@ export interface QueueState {
   delivering?: string;
 }
 
-/** How a settled approval ended. */
-export interface ApprovalOutcome {
-  decision: ApprovalDecision;
-  timedOut: boolean;
-}
-
-/** How a settled question ended. */
-export interface QuestionOutcome {
-  answers: string[][];
-  skipped: boolean;
-  timedOut: boolean;
-}
+export type { ApprovalOutcome, QuestionOutcome };
 
 /** Ids of the notifications that concern one thread's timeline. */
 const TIMELINE_METHODS = new Set([
@@ -128,6 +116,26 @@ function record(value: unknown): Record<string, unknown> {
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+const DECISIONS: readonly ApprovalDecision[] = ['approve', 'reject', 'approveSession'];
+
+/** A stored approval card's `outcome`, validated (bridge payloads are input). */
+function storedApprovalOutcome(value: unknown): ApprovalOutcome | undefined {
+  const o = record(value);
+  const decision = DECISIONS.find((d) => d === o.decision);
+  if (!decision) return undefined;
+  return { decision, ...(o.withdrawn === true ? { withdrawn: true } : {}) };
+}
+
+/** A stored question card's `outcome`, validated. */
+function storedQuestionOutcome(value: unknown): QuestionOutcome | undefined {
+  const o = record(value);
+  if (!Array.isArray(o.answers)) return undefined;
+  const answers = o.answers.map((a) =>
+    Array.isArray(a) ? a.filter((label): label is string => typeof label === 'string') : [],
+  );
+  return { answers, ...(o.withdrawn === true ? { withdrawn: true } : {}) };
 }
 
 /** A text segment in a message's ordered `segments`. */
@@ -181,6 +189,10 @@ export class Conversation {
   usage = $state<TurnUsage | null>(null);
   /** The concrete model an alias resolved to on the latest turn. */
   resolvedModel = $state<string | null>(null);
+  /** Outcomes this window heard live (`stream/approval|question/resolved`, or
+   *  its own answer), by request id. A reloaded page carries the bridge's
+   *  stored record on the block itself (`outcome`): read both through
+   *  {@link approvalOutcome} / {@link questionOutcome}. */
   approvals = $state<Record<string, ApprovalOutcome>>({});
   questions = $state<Record<string, QuestionOutcome>>({});
   /** Messages the bridge has not confirmed — mirrored to the outbox. */
@@ -189,7 +201,8 @@ export class Conversation {
   running = $derived(this.activeTurnId !== null);
   /** Approvals and questions of the running turn nobody has answered yet, in
    *  the order the agent raised them — the requests the chat pins above its
-   *  composer until they are answered here, on the phone, or time out. */
+   *  composer until they are answered here or on the phone, or the agent
+   *  withdraws them. Nothing closes them on a clock. */
   openRequests = $derived.by<Record<string, unknown>[]>(() => {
     const turn = this.activeTurnId ? this.turns.find((t) => t.id === this.activeTurnId) : undefined;
     const segments = assistantOf(turn)?.segments ?? [];
@@ -198,9 +211,9 @@ export class Conversation {
       const block = record(raw);
       const req = block.request && typeof block.request === 'object' ? record(block.request) : block;
       if (block.type === 'approval' && typeof req.approvalId === 'string') {
-        if (!this.approvals[req.approvalId]) open.push(block);
+        if (!this.approvalOutcome(block)) open.push(block);
       } else if (block.type === 'question' && typeof req.questionId === 'string') {
-        if (!this.questions[req.questionId]) open.push(block);
+        if (!this.questionOutcome(block)) open.push(block);
       }
     }
     return open;
@@ -444,7 +457,10 @@ export class Conversation {
         if (typeof params.approvalId !== 'string') return;
         this.approvals = {
           ...this.approvals,
-          [params.approvalId]: { decision: params.decision, timedOut: params.timedOut === true },
+          [params.approvalId]: {
+            decision: params.decision,
+            ...(params.withdrawn === true ? { withdrawn: true } : {}),
+          },
         };
         return;
       }
@@ -455,8 +471,7 @@ export class Conversation {
           ...this.questions,
           [params.questionId]: {
             answers: Array.isArray(params.answers) ? params.answers : [],
-            skipped: params.skipped === true,
-            timedOut: params.timedOut === true,
+            ...(params.withdrawn === true ? { withdrawn: true } : {}),
           },
         };
         return;
@@ -622,18 +637,29 @@ export class Conversation {
   }
 
   settleApprovalLocally(approvalId: string, decision: ApprovalDecision): void {
-    this.approvals = { ...this.approvals, [approvalId]: { decision, timedOut: false } };
+    this.approvals = { ...this.approvals, [approvalId]: { decision } };
   }
 
   settleQuestionLocally(questionId: string, answers: string[][]): void {
-    this.questions = {
-      ...this.questions,
-      [questionId]: {
-        answers,
-        skipped: answers.every((a) => a.length === 0),
-        timedOut: false,
-      },
-    };
+    this.questions = { ...this.questions, [questionId]: { answers } };
+  }
+
+  /** How an approval card ended, if it has: what this window heard, else the
+   *  record the bridge stored on the block — so a card answered on the phone
+   *  while this window was closed or offline is settled once its page loads. */
+  approvalOutcome(block: unknown): ApprovalOutcome | undefined {
+    const b = record(block);
+    const req = b.request && typeof b.request === 'object' ? record(b.request) : b;
+    const id = typeof req.approvalId === 'string' ? req.approvalId : '';
+    return (id ? this.approvals[id] : undefined) ?? storedApprovalOutcome(b.outcome);
+  }
+
+  /** How a question card ended, if it has — like {@link approvalOutcome}. */
+  questionOutcome(block: unknown): QuestionOutcome | undefined {
+    const b = record(block);
+    const req = b.request && typeof b.request === 'object' ? record(b.request) : b;
+    const id = typeof req.questionId === 'string' ? req.questionId : '';
+    return (id ? this.questions[id] : undefined) ?? storedQuestionOutcome(b.outcome);
   }
 
   #find(turnId: string | undefined): Turn | undefined {

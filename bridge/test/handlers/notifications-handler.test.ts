@@ -119,3 +119,22 @@ test('removeTrustedDevice prunes the device push registration', async () => {
   assert.deepEqual(removed, ['dev_gone'], 'trust revoked');
   assert.deepEqual(calls, [{ op: 'unregisterDevice', arg: 'dev_gone' }], 'push pruned');
 });
+
+test('register reads every preference, an absent one as on', async () => {
+  const calls: PushCall[] = [];
+  const router = reqRouter(ctxWith(pushStub(calls)));
+  const session: RequestSession = { sessionId: 'ses_A', deviceId: 'dev_A' };
+  await router.dispatch(
+    REGISTER({ pushToken: 't', platform: 'ios', preferences: { turnCompleted: false } }),
+    session,
+  );
+  await router.dispatch(
+    REGISTER({ pushToken: 't', platform: 'ios', preferences: { needsInput: false } }),
+    session,
+  );
+  const prefs = calls.map((c) => (c.arg as { preferences?: unknown }).preferences);
+  assert.deepEqual(prefs, [
+    { turnCompleted: false, turnError: true, needsInput: true },
+    { turnCompleted: true, turnError: true, needsInput: false },
+  ]);
+});

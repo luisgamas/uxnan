@@ -574,3 +574,31 @@ describe('helpers', () => {
     expect(sessionKey('codex', 'abc')).toBe('codex:abc');
   });
 });
+
+describe('ChatStore.onRequest', () => {
+  it('tells its listeners once per approval or question an agent raises', () => {
+    const { store } = harness();
+    const raised: unknown[] = [];
+    const stop = store.onRequest((r) => raised.push(r));
+    const block = (content: Record<string, unknown>) => ({
+      method: 'stream/content/block',
+      params: { threadId: 't1', turnId: 'u', messageId: 'm', content },
+    });
+    const approval = { type: 'approval', approvalId: 'ap', action: 'Allow Bash: ls' };
+    store.apply(block(approval));
+    store.apply(block(approval)); // the same card delivered twice
+    store.apply(
+      block({ type: 'question', questionId: 'q', questions: [{ question: 'Which?', options: [] }] }),
+    );
+    // A settled card or an ordinary step raises nothing.
+    store.apply(block({ ...approval, approvalId: 'ap-done', outcome: { decision: 'approve' } }));
+    store.apply(block({ type: 'command_execution', command: 'ls' }));
+    expect(raised).toEqual([
+      { threadId: 't1', requestId: 'ap', kind: 'approval', text: 'Allow Bash: ls' },
+      { threadId: 't1', requestId: 'q', kind: 'question', text: 'Which?' },
+    ]);
+    stop();
+    store.apply(block({ ...approval, approvalId: 'ap-later' }));
+    expect(raised).toHaveLength(2);
+  });
+});

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/agent_view_page.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
@@ -601,6 +602,57 @@ void main() {
       // "Answered" timestamp.
       expect(find.text('Approved'), findsOneWidget);
       expect(find.textContaining('Answered'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a card settled while this phone was away is settled from its stored '
+    'outcome, and a withdrawn one says nobody answered it',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final message = Message(
+        id: 'm-stored',
+        threadId: 'th1',
+        turnId: 't1',
+        role: MessageRole.assistant,
+        contents: const [
+          ApprovalContent(
+            ApprovalRequest(
+              approvalId: 'a-desk',
+              action: 'Delete build/',
+              outcome: ApprovalOutcome(decision: ApprovalDecision.approve),
+            ),
+          ),
+          QuestionContent(
+            QuestionRequest(
+              questionId: 'q-gone',
+              questions: [
+                QuestionItem(
+                  question: 'Which colour?',
+                  options: [QuestionOption(label: 'Blue')],
+                ),
+              ],
+              outcome: QuestionOutcome(answers: [[]], withdrawn: true),
+            ),
+          ),
+        ],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+      );
+
+      await tester
+          .pumpWidget(_wrap(MessageBubble(message: message, running: true)));
+      await tester.pump();
+
+      // Answered on the desktop: settled, no buttons.
+      expect(find.text('Approved'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Approve'), findsNothing);
+      // Withdrawn: neither "Skipped" nor a choice nobody made.
+      expect(find.text('Not answered'), findsOneWidget);
+      expect(find.text('No longer waiting for an answer'), findsOneWidget);
+      expect(find.text('Skipped'), findsNothing);
+      expect(find.text('Submit'), findsNothing);
     },
   );
 

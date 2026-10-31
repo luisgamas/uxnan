@@ -44,6 +44,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   buttons the *PROJECTS (N)* label keeps its count until 15rem of panel width with
   the attention pill showing (13rem without) instead of 22rem/16rem.
 
+### Changed
+
+- **A chat's approval or question stays pinned until a person answers it.**
+  Nothing closes it on a clock any more (the bridge no longer auto-rejects
+  after five minutes). One the agent withdrew, or whose run ended, reads *No
+  longer waiting for an answer* — never "Denied" or "No answer in time"
+  (`chat.approvalTimedOut` / `chat.questionTimedOut` are gone).
+- **A card answered elsewhere while this window was closed or offline settles
+  from the bridge's stored outcome** (`Conversation.approvalOutcome` /
+  `questionOutcome`) instead of offering its buttons again.
+
+### Added
+
+- **"Needs you" alerts for chats.** When an agent in a bridge chat asks for an
+  approval or a question and that chat is not on screen, the desktop says so
+  once per request: a toast while the window has the focus, an OS notification
+  when it does not (`src/lib/state/chatAlerts.ts`, behind Settings → *Idle
+  notifications*, whose description now says so).
+
 ## [0.0.84] - 20261030
 ### Fixed
 
