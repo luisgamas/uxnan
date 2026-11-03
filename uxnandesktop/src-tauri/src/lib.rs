@@ -34,6 +34,7 @@ mod fonts;
 mod fs;
 mod fswatch;
 mod git;
+mod repowatch;
 
 // Public for the same integration tests: they drive the *production* gh layer —
 // against a scripted fake `gh` in the mandatory suite, and against the
@@ -660,6 +661,7 @@ pub fn run() {
             commands::zero_session,
             commands::image_fetch_data_url,
             commands::fs_set_watch,
+            commands::git_watch_repos,
             commands::browse_set_watch,
             commands::reveal_path,
             commands::editors_detect,

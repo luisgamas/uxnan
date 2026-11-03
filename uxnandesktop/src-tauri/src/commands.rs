@@ -4690,6 +4690,19 @@ pub async fn image_fetch_data_url(
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
+/// Watch the git directory of exactly these local projects (main worktree
+/// paths), dropping any other, and answer which of them are now watched. Each
+/// change is a `git:repo-changed` event naming the project. A project left out
+/// of the answer is not watched — the sidebar keeps reconciling it on its timer.
+#[tauri::command]
+pub async fn git_watch_repos(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    repos: Vec<String>,
+) -> Result<Vec<String>, CommandError> {
+    Ok(state.repo_watcher.set(&app, repos).await)
+}
+
 /// Set (or clear with `None`) the worktree root the filesystem watcher follows.
 /// The frontend calls this when the active worktree changes; the backend emits
 /// `fs:changed` (debounced) as files under it are created/deleted/edited so the

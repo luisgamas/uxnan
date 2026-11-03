@@ -18,6 +18,7 @@ use crate::model::AppData;
 use crate::persistence::PersistenceManager;
 use crate::power::SleepBlocker;
 use crate::pty::PtyManager;
+use crate::repowatch::RepoWatcher;
 
 /// Coordinates for the local agent hook server (spec `02d` §1.1). Published once
 /// the server is listening, then injected into every terminal as environment so
@@ -140,6 +141,9 @@ pub struct AppState {
     /// `browse:changed` so a folder created/removed in the browsed directory
     /// appears without a manual refresh.
     pub browse_watcher: BrowseWatcher,
+    /// Watches each local project's git directory and emits `git:repo-changed`,
+    /// so the sidebar's worktree lists and badges follow git without polling.
+    pub repo_watcher: RepoWatcher,
     /// Whether the app window is focused; the watcher pauses polling when not.
     pub focused: Arc<AtomicBool>,
     /// Agent commands to look for in the process-detection poll (the catalog +
@@ -230,6 +234,7 @@ impl AppState {
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),
             browse_watcher: BrowseWatcher::default(),
+            repo_watcher: RepoWatcher::default(),
             focused: Arc::new(AtomicBool::new(true)),
             agent_commands: Arc::new(RwLock::new(Vec::new())),
             hook: Arc::new(RwLock::new(None)),

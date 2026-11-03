@@ -52,7 +52,7 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 Later phases add the runtime modules that are all present today — `pty.rs`,
 `git.rs` (the workspace engine's git, re-exported), `control/` (the one local server, the control catalog's
 services, the window bridge), `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
-`fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs` — plus the whole
+`fs.rs` / `fswatch.rs` / `repowatch.rs` (each local project's git directory, over the engine's `gitwatch.rs`), `power.rs`, `pets.rs` and `which.rs` — plus the whole
 **`ssh/`** subsystem behind remote hosts (`conn`, `auth`, `hostkey`, `config`,
 `registry`, `inventory`, `shellkind`, `pty`, `browse`, `sftp`, `git`), which is
 what `target.rs` above exists for: a path stopped being an identity the moment a

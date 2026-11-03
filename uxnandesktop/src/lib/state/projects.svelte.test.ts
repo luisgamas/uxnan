@@ -1199,3 +1199,124 @@ describe('worktrees created outside Uxnan', () => {
     });
   });
 });
+
+describe('projects whose git directory is watched', () => {
+  const A = { id: 'repo-a', name: 'a', path: '/w/a', worktrees: [], isGit: true };
+  const B = { id: 'repo-b', name: 'b', path: '/w/b', worktrees: [], isGit: true };
+  const PLAIN = { id: 'repo-p', name: 'p', path: '/w/p', worktrees: [], isGit: false };
+  const HOSTED = { id: 'repo-h', name: 'h', path: '/w/h', target: 'ssh:h1', worktrees: [], isGit: true };
+  const mainOf = (path: string): WorktreeEntry => ({ path, branch: 'main', head: 'abc', isMain: true });
+  const clean = { branch: 'main', dirty: 0, ahead: 0, behind: 0, isRepo: true };
+
+  beforeEach(() => {
+    app.repos = [A, B, PLAIN, HOSTED].map((r) => ({ ...r }));
+    projects.worktreesByRepo = {
+      [A.id]: [mainOf(A.path)],
+      [B.id]: [mainOf(B.path)],
+      [PLAIN.id]: [mainOf(PLAIN.path)],
+      [HOSTED.id]: [mainOf(HOSTED.path)],
+    };
+    projects.missingRepoIds = new Set();
+    // Each test has its own fake backend: subscribe again on it.
+    (projects as unknown as { repoEventsListening: boolean }).repoEventsListening = false;
+  });
+
+  it('asks the backend to watch every local project that is there — folders too', async () => {
+    projects.missingRepoIds = new Set([B.id]);
+    const backend = installFakeBackend({ git_watch_repos: ({ repos }) => repos as string[] });
+
+    await projects.watchRepos();
+
+    // A plain folder is watched for `.git` appearing; a host's project is not
+    // this machine's to watch.
+    expect(backend.lastCallTo('git_watch_repos')?.args).toEqual({ repos: [A.path, PLAIN.path] });
+  });
+
+  it('a plain folder that ran `git init` is reconciled on its event, not on the timer', async () => {
+    const backend = installFakeBackend({
+      git_watch_repos: ({ repos }) => repos as string[],
+      repo_probe_git: ({ id }) => (id === PLAIN.id ? { ...PLAIN, isGit: true } : null),
+      worktree_list: ({ repoId }) => [mainOf(repoId === PLAIN.id ? PLAIN.path : String(repoId))],
+      git_repo_status: () => clean,
+    });
+    await projects.watchRepos();
+
+    backend.emit('git:repo-changed', { repo: PLAIN.path });
+
+    await until(() => app.repos.find((r) => r.id === PLAIN.id)?.isGit === true);
+  });
+
+  it('a change in a watched project reconciles that project only — list and badges', async () => {
+    const created: WorktreeEntry = { path: '/w/a-wt/feat', branch: 'feat', head: 'def', isMain: false };
+    const backend = installFakeBackend({
+      git_watch_repos: ({ repos }) => repos as string[],
+      worktree_list: ({ repoId }) =>
+        repoId === A.id ? [mainOf(A.path), created] : [mainOf(String(repoId))],
+      git_repo_status: ({ path }) => (path === created.path ? { ...clean, dirty: 2 } : clean),
+    });
+    await projects.watchRepos();
+
+    // An agent ran `git worktree add` in a terminal.
+    backend.emit('git:repo-changed', { repo: A.path });
+
+    await until(() => projects.worktreesOf(A.id).length === 2);
+    await until(() => projects.status(created.path)?.dirty === 2);
+    expect(backend.callsTo('worktree_list').map((c) => c.args?.repoId)).toEqual([A.id]);
+  });
+
+  it('a change that leaves the list alone still re-reads that project’s badges', async () => {
+    let ahead = 0;
+    const backend = installFakeBackend({
+      git_watch_repos: ({ repos }) => repos as string[],
+      worktree_list: ({ repoId }) => [mainOf(repoId === A.id ? A.path : B.path)],
+      git_repo_status: () => ({ ...clean, ahead }),
+    });
+    await projects.watchRepos();
+
+    ahead = 1; // a commit landed
+    backend.emit('git:repo-changed', { repo: A.path });
+
+    await until(() => projects.status(A.path)?.ahead === 1);
+    expect(projects.status(B.path)).toBeUndefined();
+    expect(backend.callsTo('git_repo_status').map((c) => c.args?.path)).toEqual([A.path]);
+  });
+
+  it('the timer skips watched projects, keeps reconciling the rest, and a forced pass checks all', async () => {
+    const backend = installFakeBackend({
+      repos_missing: () => [],
+      repo_probe_git: () => null,
+      // B could not be watched (the platform refused): it stays on the timer.
+      git_watch_repos: () => [A.path],
+      worktree_list: ({ repoId }) => [mainOf(String(repoId))],
+      git_repo_status: () => clean,
+    });
+    await projects.watchRepos();
+    await projects.refreshWorktrees(true); // a forced pass checks everything once
+    const forced = backend.callsTo('worktree_list').map((c) => c.args?.repoId);
+    expect(forced.sort()).toEqual([A.id, B.id, HOSTED.id, PLAIN.id].sort());
+
+    const before = backend.callsTo('worktree_list').length;
+    await projects.refreshWorktrees(); // the 3 s driver, within the safety window
+    const timed = backend
+      .callsTo('worktree_list')
+      .slice(before)
+      .map((c) => c.args?.repoId);
+    expect(timed.sort()).toEqual([B.id, HOSTED.id, PLAIN.id].sort());
+  });
+});
+
+describe('worktree badges', () => {
+  it('a sweep leaves a badge whose counts did not move untouched', async () => {
+    installFakeBackend({
+      git_repo_status: ({ path }) =>
+        path === '/w/x' ? { branch: 'main', dirty: 3, ahead: 0, behind: 0, isRepo: true } : null,
+    });
+    await projects.refreshStatuses(['/w/x']);
+    const first = projects.status('/w/x');
+
+    const changed = await projects.refreshStatuses(['/w/x']);
+
+    expect(changed).toEqual([]);
+    expect(projects.status('/w/x')).toBe(first);
+  });
+});
