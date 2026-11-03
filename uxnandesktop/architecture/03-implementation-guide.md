@@ -317,28 +317,37 @@ loop {
 }
 ```
 
-#### Debounce para Persistencia
+#### Escrituras agrupadas y respaldos
 
-La persistencia de layout y estado usa un patron de debounce con Tokio para evitar escrituras excesivas a disco. Cada cambio reinicia un timer de 250ms; solo cuando el timer expira sin nuevos cambios se escribe:
+Hay dos clases de escritura, y un solo dueño para ambas (`src-tauri/src/persistence.rs`,
+`PersistenceManager`):
+
+- **Lo que alguien espera** (un proyecto agregado, un ajuste, un worktree) se escribe al
+  momento con `save` — escritura a `.tmp` + `rename` atómico.
+- **Lo que solo tiene que sobrevivir a un reinicio y cambia mucho más seguido de lo que vale
+  escribir** — el estado que reportan los agentes, que llega con cada uso de herramienta — se
+  pide con `save_soon`: una sola tarea escribe el estado más reciente como mucho una vez por
+  segundo (`COALESCE`), y al salir la app se escribe lo que haya quedado pendiente. Antes cada
+  reporte reescribía `state.json` completo, con el lock del estado tomado.
 
 ```rust
-use tokio::time::{sleep, Duration};
-use tokio::sync::Notify;
+// Quien solo necesita que sobreviva un reinicio:
+state.persistence.save_soon();
 
-let notify = Arc::new(Notify::new());
+// La tarea única que escribe (en `setup`):
+loop {
+    state.persistence.next_coalesced().await; // espera COALESCE tras el primer pedido
+    let data = state.data.read().await;
+    let _ = state.persistence.save(&data);
+}
 
-// Cada vez que el estado cambia, se notifica
-notify.notify_one();
-
-// Task de debounce
-tokio::spawn(async move {
-    loop {
-        notify.notified().await;
-        sleep(Duration::from_millis(250)).await;
-        persist_state_to_disk(&state).await;
-    }
-});
+// Al salir: si `take_pending()`, se escribe ya.
 ```
+
+El anillo de 5 respaldos (`state.bak.1..5`) gira **como mucho una vez cada 10 minutos**
+(`BACKUP_EVERY`), y el primer guardado de cada sesión siempre respalda lo que dejó la anterior:
+girar en cada escritura dejaba, con agentes activos, cinco copias de la última fracción de segundo
+— que no recuperan nada.
 
 ### 2.4 Persistencia con Serde
 

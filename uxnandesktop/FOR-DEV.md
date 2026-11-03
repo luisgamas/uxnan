@@ -35,7 +35,7 @@ runtime copied, verified, to a per-user folder and run as the user's service
 from the first launch, updated with the app, switched atomically with rollback
 (`bridgeclient/runtime.rs`, `docs/bridge-runtime.md`) — and **a welcome tour
 that leaves it ready**: the agents found turned on (one owner with Settings →
-Agents) and a phone paired with the running bridge's QR. 1,158 Rust tests (725 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 11 in `uxnan-cli` + 311
+Agents) and a phone paired with the running bridge's QR. 1,160 Rust tests (727 unit in the app crate + 18 in `uxnan-control-protocol` + 4 in `uxnan-control-client` + 11 in `uxnan-cli` + 311
 in `uxnan-workspace-engine` + 5 in `uxnan-host-protocol` + 39 in `uxnan-host` (29 against the daemon itself) + 45
 integration), of which 56 are ignored probes that need something real to talk to
 (one copies and runs a built bridge runtime, 48 live SSH probes — 3 of them against a **Linux host in a
@@ -77,8 +77,8 @@ Continue as chat / Open in terminal, holds and the sessions list — is built
 
 **Built (DONE), in detail:**
 
-- **Three-panel resizable shell** with atomic JSON persistence (5 rotating
-  backups + sequential schema migrations). The right side is **one dock per
+- **Three-panel resizable shell** with atomic JSON persistence (5 backups turned at most every 10 min, agent reports
+  written coalesced, sequential schema migrations). The right side is **one dock per
   workspace** offering only the surfaces that workspace has (Files · Git ·
   GitHub · Browser), with a first-open chooser and a surface selector.
 - **One keyboard layer** (`src/lib/keyboard/`, `docs/keyboard.md`): a router
@@ -1865,7 +1865,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-15}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,158 Rust + 2,170 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,160 Rust + 2,170 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
