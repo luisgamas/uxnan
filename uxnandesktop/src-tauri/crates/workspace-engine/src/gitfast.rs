@@ -7,9 +7,12 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use git2::{Branch, DiffFormat, DiffOptions, Oid, Repository, Sort, Status, StatusOptions};
+use git2::{
+    Branch, DiffFormat, DiffOptions, Oid, Repository, RepositoryOpenFlags, Sort, Status,
+    StatusOptions,
+};
 
-use crate::git::{CommitInfo, FileChange, FileNumstat, WorktreeStatus};
+use crate::git::{CommitInfo, FileChange, FileNumstat, RepoStatus, WorktreeStatus};
 
 /// Map a libgit2 `Status` to the porcelain `XY` code pair the frontend expects
 /// (`index` = X, `worktree` = Y). Untracked → `"?","?"`, conflicts → `"U","U"`.
@@ -114,14 +117,66 @@ fn ahead_behind(repo: &Repository) -> (u32, u32) {
 
 /// Working-tree status summary (dirty count + ahead/behind).
 pub fn worktree_status(path: &str) -> Result<WorktreeStatus, git2::Error> {
+    summary(&Repository::open(path)?)
+}
+
+/// `git rev-parse --is-inside-work-tree`, answered by libgit2: the repository
+/// is discovered the way git discovers it (walking up, honouring `GIT_DIR`,
+/// `GIT_CEILING_DIRECTORIES` and the filesystem boundary), and the answer is
+/// whether `path` lies in its working tree — not in a bare repository, not
+/// inside the git directory itself. `None` when libgit2 cannot tell (an error
+/// other than "no repository here"): the caller asks `git`.
+pub fn inside_work_tree(path: &str) -> Option<bool> {
+    let repo = match Repository::open_ext(
+        path,
+        RepositoryOpenFlags::FROM_ENV,
+        std::iter::empty::<&std::ffi::OsStr>(),
+    ) {
+        Ok(repo) => repo,
+        Err(e) if e.code() == git2::ErrorCode::NotFound => return Some(false),
+        Err(_) => return None,
+    };
+    let Some(workdir) = repo.workdir() else {
+        return Some(false); // bare
+    };
+    let here = std::fs::canonicalize(path).ok()?;
+    let workdir = std::fs::canonicalize(workdir).ok()?;
+    let gitdir = std::fs::canonicalize(repo.path()).ok()?;
+    Some(here.starts_with(&workdir) && !here.starts_with(&gitdir))
+}
+
+/// A worktree's row data — status and branch — from one open repository, so a
+/// sweep over every worktree spawns no `git` at all. Only a worktree's own root
+/// opens here (a bare repository is refused): anything else is the caller's CLI
+/// path to decide, which keeps "is it a repository?" answered by `git` itself.
+pub fn repo_status(path: &str) -> Result<RepoStatus, git2::Error> {
     let repo = Repository::open(path)?;
+    if repo.is_bare() {
+        return Err(git2::Error::from_str("bare repository"));
+    }
+    let status = summary(&repo)?;
+    // What `rev-parse --abbrev-ref HEAD` names: the branch, nothing when
+    // detached, and nothing on a branch with no commit yet.
+    let branch = repo
+        .head()
+        .ok()
+        .filter(|h| h.is_branch())
+        .and_then(|h| h.shorthand().map(str::to_string));
+    Ok(RepoStatus {
+        branch,
+        status,
+        is_repo: true,
+    })
+}
+
+fn summary(repo: &Repository) -> Result<WorktreeStatus, git2::Error> {
     let mut opts = status_options();
     let dirty = repo
         .statuses(Some(&mut opts))?
         .iter()
         .filter(|e| !e.status().contains(Status::IGNORED))
         .count() as u32;
-    let (ahead, behind) = ahead_behind(&repo);
+    let (ahead, behind) = ahead_behind(repo);
     Ok(WorktreeStatus {
         dirty,
         ahead,

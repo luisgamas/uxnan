@@ -202,8 +202,19 @@ async fn git_diff_tolerant(repo_path: &str, args: &[&str]) -> Result<String, Err
     }
 }
 
-/// Whether `path` is inside a git work tree.
+/// Whether `path` is inside a git work tree. Answered by libgit2 the way git
+/// answers it, without a subprocess — this is asked for every project on every
+/// reconcile pass; a WSL path, or anything libgit2 cannot tell, is `git`'s to
+/// answer.
 pub async fn is_git_repo(path: &str) -> bool {
+    if !crate::wsl::is_wsl_path(path) {
+        let p = path.to_string();
+        if let Ok(Some(answer)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::inside_work_tree(&p)).await
+        {
+            return answer;
+        }
+    }
     matches!(
         git(path, &["rev-parse", "--is-inside-work-tree"]).await,
         Ok(out) if out.trim() == "true"
@@ -843,8 +854,29 @@ pub struct RepoStatus {
     pub is_repo: bool,
 }
 
-/// Read a worktree's [`RepoStatus`].
+/// Working-tree scans [`repo_status`] runs at once. A sweep asks for every
+/// worktree together; past a few scans they only contend for the same disk and
+/// cores, and every other command waits behind them.
+const REPO_STATUS_SLOTS: usize = 4;
+static REPO_STATUS_GATE: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(REPO_STATUS_SLOTS);
+
+/// Read a worktree's [`RepoStatus`]: from libgit2 in one open when it can (no
+/// subprocess — this runs for every worktree on every sweep), else from the CLI.
+/// At most [`REPO_STATUS_SLOTS`] run at a time; the rest queue.
 pub async fn repo_status(worktree_path: &str) -> Result<RepoStatus, Error> {
+    let _slot = REPO_STATUS_GATE
+        .acquire()
+        .await
+        .expect("the repo-status gate is never closed");
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::repo_status(&p)).await
+        {
+            return Ok(v);
+        }
+    }
     if !is_git_repo(worktree_path).await {
         return Ok(RepoStatus::default());
     }
@@ -2197,6 +2229,118 @@ mod tests {
         std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
         run_git(dir, &["add", "-A"]).await;
         run_git(dir, &["commit", "-m", "initial"]).await;
+    }
+
+    /// What the CLI answers for a row — the path `repo_status` takes when
+    /// libgit2 cannot open the folder.
+    async fn repo_status_by_cli(path: &str) -> RepoStatus {
+        if !is_git_repo(path).await {
+            return RepoStatus::default();
+        }
+        RepoStatus {
+            branch: current_branch(path)
+                .await
+                .ok()
+                .map(|b| b.trim().to_string())
+                .filter(|b| !b.is_empty() && b != "HEAD"),
+            status: worktree_status_cli(path).await.unwrap(),
+            is_repo: true,
+        }
+    }
+
+    /// The sweep's libgit2 row reads exactly what the CLI reads, in every state
+    /// a row can be in — so dropping the two `git` spawns per worktree changes
+    /// no badge and no branch name.
+    #[tokio::test]
+    async fn a_row_read_by_libgit2_matches_the_cli() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+        let same = |label: &'static str, path: String| async move {
+            let fast = crate::gitfast::repo_status(&path).unwrap();
+            assert_eq!(fast, repo_status_by_cli(&path).await, "{label}");
+            assert_eq!(repo_status(&path).await.unwrap(), fast, "{label}");
+        };
+
+        // A branch, clean, then dirty (a modified file and an untracked one).
+        same("clean branch", repo_path.clone()).await;
+        std::fs::write(format!("{repo_path}/README.md"), "edited\n").unwrap();
+        std::fs::create_dir_all(format!("{repo_path}/new/deep")).unwrap();
+        std::fs::write(format!("{repo_path}/new/deep/a.md"), "x").unwrap();
+        same("dirty branch", repo_path.clone()).await;
+
+        // A linked worktree on its own branch.
+        let linked = tempfile::tempdir().unwrap();
+        let linked_path = format!("{}/wt", crate::worktreeloc::canonical_temp(linked.path()));
+        run_git(
+            &repo_path,
+            &["worktree", "add", "-b", "feat/x", &linked_path],
+        )
+        .await;
+        same("linked worktree", linked_path.clone()).await;
+
+        // Detached HEAD: no branch.
+        run_git(&linked_path, &["checkout", "--detach"]).await;
+        same("detached", linked_path).await;
+
+        // A branch with no commit yet.
+        let unborn = tempfile::tempdir().unwrap();
+        let unborn_path = crate::worktreeloc::canonical_temp(unborn.path());
+        run_git(&unborn_path, &["init", "-b", "fresh"]).await;
+        same("unborn branch", unborn_path).await;
+
+        // Not a repository: libgit2 refuses it, and the CLI path answers.
+        let plain = tempfile::tempdir().unwrap();
+        let plain_path = crate::worktreeloc::canonical_temp(plain.path());
+        assert!(crate::gitfast::repo_status(&plain_path).is_err());
+        assert_eq!(
+            repo_status(&plain_path).await.unwrap(),
+            RepoStatus::default()
+        );
+    }
+
+    /// "Is it a repository?" answered by libgit2 for a worktree root agrees
+    /// with `git rev-parse --is-inside-work-tree`, and everything libgit2 does
+    /// not prove is still git's to answer — a subfolder inside a repository is
+    /// one, a plain folder and a bare repository are not.
+    #[tokio::test]
+    async fn is_git_repo_agrees_with_git_everywhere() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+        let sub = format!("{repo_path}/sub/deeper");
+        std::fs::create_dir_all(&sub).unwrap();
+        let linked_dir = tempfile::tempdir().unwrap();
+        let linked = format!(
+            "{}/wt",
+            crate::worktreeloc::canonical_temp(linked_dir.path())
+        );
+        run_git(&repo_path, &["worktree", "add", "-b", "feat/y", &linked]).await;
+        let plain = tempfile::tempdir().unwrap();
+        let plain_path = crate::worktreeloc::canonical_temp(plain.path());
+        let bare = tempfile::tempdir().unwrap();
+        let bare_path = crate::worktreeloc::canonical_temp(bare.path());
+        run_git(&bare_path, &["init", "--bare"]).await;
+
+        for (label, path, expected) in [
+            ("root", repo_path.clone(), true),
+            ("subfolder", sub, true),
+            ("linked worktree", linked, true),
+            ("plain folder", plain_path, false),
+            ("bare repository", bare_path, false),
+            (
+                "inside the git directory",
+                format!("{repo_path}/.git/refs"),
+                false,
+            ),
+        ] {
+            let by_git = matches!(
+                git(&path, &["rev-parse", "--is-inside-work-tree"]).await,
+                Ok(out) if out.trim() == "true"
+            );
+            assert_eq!(by_git, expected, "git, {label}");
+            assert_eq!(is_git_repo(&path).await, expected, "is_git_repo, {label}");
+        }
     }
 
     /// A worktree made by plain `git worktree add` — what an agent or a person
