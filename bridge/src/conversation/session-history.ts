@@ -97,6 +97,7 @@ import { opencodeToolBlock } from '../adapters/opencode-tools.js';
 import type { OpenCodeHistoryMessage } from '../adapters/opencode-protocol.js';
 import { piToolBlock, piResultText, type PiToolUse } from '../adapters/pi-tools.js';
 import { ReplySegments } from '../adapters/reply-segments.js';
+import { TranscriptTails, type TranscriptParser } from './transcript-tail.js';
 
 /** Where a thread's on-disk history lives, as known by the bridge. */
 export interface HistorySource {
@@ -153,6 +154,8 @@ export class SessionHistoryReader {
   readonly #now: () => number;
   readonly #ttl: number;
   readonly #cache = new Map<string, CacheEntry>();
+  /** Where each transcript was last read up to, so a growing one is read on from there. */
+  readonly #tails = new TranscriptTails();
   readonly #openCodeMessages:
     | ((sessionId: string, cwd?: string) => Promise<OpenCodeHistoryMessage[]>)
     | undefined;
@@ -292,153 +295,13 @@ export class SessionHistoryReader {
   async #readClaude(sessionId: string): Promise<RawMessage[] | null> {
     const file = await this.#claudeFile(sessionId);
     if (!file) return null;
-    const out: RawMessage[] = [];
-    // Track the assistant's pending `tool_use` invocations so we can pair each
-    // with the matching `tool_result` from the following user message and emit
-    // structured blocks (attached to the assistant message that initiated them).
-    let pendingToolUses: ClaudeToolUse[] | null = null;
-    for (const obj of await readJsonl(file)) {
-      const type = obj['type'];
-      if (type !== 'user' && type !== 'assistant') continue;
-      const message = asRecord(obj['message']);
-      const role = message?.['role'];
-      if (role !== 'user' && role !== 'assistant') continue;
-      const content = message?.['content'];
-      if (role === 'assistant') {
-        const { text, segments } = anthropicReply(content).build();
-        out.push({ role, text, segments, createdAt: parseTime(obj['timestamp']) });
-        const tools = extractToolUses(content);
-        if (tools.length > 0) pendingToolUses = tools;
-      } else {
-        const text = anthropicText(content);
-        // user message — may carry tool_results AND/OR plain text
-        const results = extractToolResults(content);
-        if (results.length > 0 && pendingToolUses) {
-          const blocks: unknown[] = [];
-          for (const use of pendingToolUses) {
-            const result = results.find((r) => r.toolUseId === use.id);
-            const block = result ? toolUseToBlock(use, result) : null;
-            if (block) blocks.push(block);
-          }
-          attachBlocksToLastAssistant(out, blocks);
-          pendingToolUses = null;
-        }
-        if (!text) continue; // pure tool_result echo — skip per existing behavior
-        // Not a prompt: what Claude Code adds to the conversation on its own —
-        // an image's size note, a loaded skill, a hook's context (`isMeta`),
-        // or the summary a compaction leaves (`isCompactSummary`). Each is
-        // written as a "user" line of the prompt it belongs to; taken as a
-        // prompt, one run became a turn per line, imported next to the
-        // bridge's own record of that run and shown as bubbles on the phone.
-        if (obj['isMeta'] === true || obj['isCompactSummary'] === true) continue;
-        out.push({ role, text, createdAt: parseTime(obj['timestamp']) });
-      }
-    }
-    return out;
+    return this.#tails.read(file, 'claude-code', claudeParser);
   }
 
   async #readCodex(sessionId: string): Promise<RawMessage[] | null> {
     const file = await this.#codexFile(sessionId);
     if (!file) return null;
-    const out: RawMessage[] = [];
-    // Reasoning and tool events waiting, in rollout order, for the assistant
-    // message they lead to: Codex's on-disk order is `user → reasoning / tool
-    // events → assistant`, so they open that message's segments, before its
-    // text. What no assistant message followed (a run stopped before it
-    // answered, or still going) is a reply of its own, in its own turn.
-    let pending = new ReplySegments();
-    let pendingAt = 0;
-    const flushPending = (): void => {
-      if (pending.empty) return;
-      const { text, segments } = pending.build();
-      if (segments.length > 0)
-        out.push({ role: 'assistant', text, segments, createdAt: pendingAt });
-      pending = new ReplySegments();
-    };
-    // Pending tool invocations awaiting their `*_output` sibling (newer
-    // codex-cli 0.98+ format), keyed by call_id.
-    const pendingToolCalls = new Map<
-      string,
-      { name: string; arguments: Record<string, unknown>; kind: 'function' | 'custom' }
-    >();
-    for (const obj of await readJsonl(file)) {
-      if (obj['type'] !== 'response_item') continue;
-      const payload = asRecord(obj['payload']);
-      if (!payload) continue;
-      const ptype = payload['type'];
-      // ---- Newer format (codex-cli 0.98+): function_call + function_call_output
-      //      / custom_tool_call + custom_tool_call_output (paired by call_id) ----
-      if (ptype === 'function_call' || ptype === 'custom_tool_call') {
-        const callId = typeof payload['call_id'] === 'string' ? payload['call_id'] : '';
-        const name = typeof payload['name'] === 'string' ? payload['name'] : '';
-        if (!callId || !name) continue;
-        const args = parseCodexArguments(payload);
-        pendingToolCalls.set(callId, {
-          name,
-          arguments: args,
-          kind: ptype === 'function_call' ? 'function' : 'custom',
-        });
-        continue;
-      }
-      if (ptype === 'function_call_output' || ptype === 'custom_tool_call_output') {
-        const callId = typeof payload['call_id'] === 'string' ? payload['call_id'] : '';
-        const call = callId ? pendingToolCalls.get(callId) : undefined;
-        if (!call) continue;
-        pendingToolCalls.delete(callId);
-        const output = extractCodexOutputText(payload['output']);
-        const isError = codexOutputIsError(payload['output']);
-        const block = codexToolCallBlock(call, output, isError);
-        if (block) {
-          pending.block(block);
-          pendingAt = parseTime(obj['timestamp']);
-        }
-        continue;
-      }
-      // ---- Legacy format (pre-0.98): standalone items per event ----
-      if (ptype === 'command_execution' || ptype === 'mcp_tool_call') {
-        for (const b of codexItemBlocks(payload)) pending.block(b);
-        pendingAt = parseTime(obj['timestamp']);
-        continue;
-      }
-      if (ptype === 'file_change') {
-        for (const c of codexFileChanges(payload)) pending.block(fileChangeBlock(c.path));
-        pendingAt = parseTime(obj['timestamp']);
-        continue;
-      }
-      // ---- Reasoning (either format): a thought, queued in order with the
-      //      tool events. codex-cli encrypts the long-form reasoning body into
-      //      `encrypted_content`; the human-readable summary (when present)
-      //      is the best we can show. ----
-      if (ptype === 'reasoning') {
-        const text = codexReasoningText(payload);
-        if (text) {
-          pending.thought(text);
-          pendingAt = parseTime(obj['timestamp']);
-        }
-        continue;
-      }
-      // ---- Conversation message ----
-      if (ptype === 'message') {
-        const role = payload['role'];
-        // Codex logs developer/system priming messages; only keep the conversation.
-        if (role !== 'user' && role !== 'assistant') continue;
-        const text = extractCodexContent(payload['content']);
-        if (!text) continue;
-        const createdAt = parseTime(obj['timestamp']);
-        if (role === 'user') {
-          // What waited belongs to the turn this prompt closes.
-          flushPending();
-          out.push({ role, text, createdAt });
-          continue;
-        }
-        // The reasoning and tool events that led here open this message.
-        const reply = pending.text(text).build();
-        pending = new ReplySegments();
-        out.push({ role, text: reply.text, segments: reply.segments, createdAt });
-      }
-    }
-    flushPending();
-    return out;
+    return this.#tails.read(file, 'codex', codexParser);
   }
 
   async #readOpenCode(sessionId: string, cwd?: string): Promise<RawMessage[] | null> {
@@ -524,20 +387,220 @@ export class SessionHistoryReader {
   async #readPi(sessionId: string): Promise<RawMessage[] | null> {
     const file = await this.#piFile(sessionId);
     if (!file) return null;
-    const out: RawMessage[] = [];
-    // Pending `toolCall` content blocks from the most recent assistant message,
-    // keyed by `id` so the next matching `role:'toolResult'` message can pair
-    // with them and produce structured blocks.
-    let pendingToolCalls: PiToolUse[] | null = null;
-    for (const obj of await readJsonl(file)) {
-      if (obj['type'] !== 'message') continue;
+    return this.#tails.read(file, 'pi-agent', piParser);
+  }
+
+  async #readZero(sessionId: string): Promise<RawMessage[] | null> {
+    const file = await this.#zeroFile(sessionId);
+    if (!file) return null;
+    return this.#tails.read(file, 'zero', zeroParser);
+  }
+
+  async #readGrok(sessionId: string): Promise<RawMessage[] | null> {
+    const file = await this.#grokFile(sessionId);
+    if (!file) return null;
+    // One parser per session: Grok's log names the session on every event.
+    return this.#tails.read(file, `grok\u0000${sessionId}`, () => grokParser(sessionId));
+  }
+
+  // --- Path cache (TTL) -------------------------------------------------------
+
+  async #cached(key: string, resolve: () => Promise<string | null>): Promise<string | null> {
+    const now = this.#now();
+    const hit = this.#cache.get(key);
+    if (hit && hit.expires > now) return hit.path;
+    const path = await resolve();
+    this.#cache.set(key, { path, expires: now + this.#ttl });
+    return path;
+  }
+}
+
+// --- Transcript parsers -------------------------------------------------------
+//
+// One per agent that keeps its history in a JSONL file: a fold over the file's
+// records, line by line, whose state between lines (a tool call waiting for its
+// result, reasoning waiting for its reply) is exactly what lets
+// `TranscriptTails` carry on from where the last read stopped.
+
+/** Claude Code: `user` / `assistant` lines; a tool's result arrives on the next user line. */
+function claudeParser(): TranscriptParser<RawMessage> {
+  const out: RawMessage[] = [];
+  // Track the assistant's pending `tool_use` invocations so we can pair each
+  // with the matching `tool_result` from the following user message and emit
+  // structured blocks (attached to the assistant message that initiated them).
+  let pendingToolUses: ClaudeToolUse[] | null = null;
+  return {
+    feed(obj) {
+      const type = obj['type'];
+      if (type !== 'user' && type !== 'assistant') return;
+      const message = asRecord(obj['message']);
+      const role = message?.['role'];
+      if (role !== 'user' && role !== 'assistant') return;
+      const content = message?.['content'];
+      if (role === 'assistant') {
+        const { text, segments } = anthropicReply(content).build();
+        out.push({ role, text, segments, createdAt: parseTime(obj['timestamp']) });
+        const tools = extractToolUses(content);
+        if (tools.length > 0) pendingToolUses = tools;
+        return;
+      }
+      const text = anthropicText(content);
+      // user message — may carry tool_results AND/OR plain text
+      const results = extractToolResults(content);
+      if (results.length > 0 && pendingToolUses) {
+        const blocks: unknown[] = [];
+        for (const use of pendingToolUses) {
+          const result = results.find((r) => r.toolUseId === use.id);
+          const block = result ? toolUseToBlock(use, result) : null;
+          if (block) blocks.push(block);
+        }
+        attachBlocksToLastAssistant(out, blocks);
+        pendingToolUses = null;
+      }
+      if (!text) return; // pure tool_result echo — skip per existing behavior
+      // Not a prompt: what Claude Code adds to the conversation on its own —
+      // an image's size note, a loaded skill, a hook's context (`isMeta`),
+      // or the summary a compaction leaves (`isCompactSummary`). Each is
+      // written as a "user" line of the prompt it belongs to; taken as a
+      // prompt, one run became a turn per line, imported next to the
+      // bridge's own record of that run and shown as bubbles on the phone.
+      if (obj['isMeta'] === true || obj['isCompactSummary'] === true) return;
+      out.push({ role, text, createdAt: parseTime(obj['timestamp']) });
+    },
+    messages: () => out,
+  };
+}
+
+/** Codex rollouts: reasoning and tool events lead the assistant message they belong to. */
+function codexParser(): TranscriptParser<RawMessage> {
+  const out: RawMessage[] = [];
+  // Reasoning and tool events waiting, in rollout order, for the assistant
+  // message they lead to: Codex's on-disk order is `user → reasoning / tool
+  // events → assistant`, so they open that message's segments, before its
+  // text. What no assistant message followed (a run stopped before it
+  // answered, or still going) is a reply of its own, in its own turn.
+  let pending = new ReplySegments();
+  let pendingAt = 0;
+  const pendingMessage = (): RawMessage | null => {
+    if (pending.empty) return null;
+    const { text, segments } = pending.build();
+    return segments.length > 0 ? { role: 'assistant', text, segments, createdAt: pendingAt } : null;
+  };
+  const flushPending = (): void => {
+    if (pending.empty) return;
+    const message = pendingMessage();
+    if (message) out.push(message);
+    pending = new ReplySegments();
+  };
+  // Pending tool invocations awaiting their `*_output` sibling (newer
+  // codex-cli 0.98+ format), keyed by call_id.
+  const pendingToolCalls = new Map<
+    string,
+    { name: string; arguments: Record<string, unknown>; kind: 'function' | 'custom' }
+  >();
+  return {
+    feed(obj) {
+      if (obj['type'] !== 'response_item') return;
+      const payload = asRecord(obj['payload']);
+      if (!payload) return;
+      const ptype = payload['type'];
+      // ---- Newer format (codex-cli 0.98+): function_call + function_call_output
+      //      / custom_tool_call + custom_tool_call_output (paired by call_id) ----
+      if (ptype === 'function_call' || ptype === 'custom_tool_call') {
+        const callId = typeof payload['call_id'] === 'string' ? payload['call_id'] : '';
+        const name = typeof payload['name'] === 'string' ? payload['name'] : '';
+        if (!callId || !name) return;
+        const args = parseCodexArguments(payload);
+        pendingToolCalls.set(callId, {
+          name,
+          arguments: args,
+          kind: ptype === 'function_call' ? 'function' : 'custom',
+        });
+        return;
+      }
+      if (ptype === 'function_call_output' || ptype === 'custom_tool_call_output') {
+        const callId = typeof payload['call_id'] === 'string' ? payload['call_id'] : '';
+        const call = callId ? pendingToolCalls.get(callId) : undefined;
+        if (!call) return;
+        pendingToolCalls.delete(callId);
+        const output = extractCodexOutputText(payload['output']);
+        const isError = codexOutputIsError(payload['output']);
+        const block = codexToolCallBlock(call, output, isError);
+        if (block) {
+          pending.block(block);
+          pendingAt = parseTime(obj['timestamp']);
+        }
+        return;
+      }
+      // ---- Legacy format (pre-0.98): standalone items per event ----
+      if (ptype === 'command_execution' || ptype === 'mcp_tool_call') {
+        for (const b of codexItemBlocks(payload)) pending.block(b);
+        pendingAt = parseTime(obj['timestamp']);
+        return;
+      }
+      if (ptype === 'file_change') {
+        for (const c of codexFileChanges(payload)) pending.block(fileChangeBlock(c.path));
+        pendingAt = parseTime(obj['timestamp']);
+        return;
+      }
+      // ---- Reasoning (either format): a thought, queued in order with the
+      //      tool events. codex-cli encrypts the long-form reasoning body into
+      //      `encrypted_content`; the human-readable summary (when present)
+      //      is the best we can show. ----
+      if (ptype === 'reasoning') {
+        const text = codexReasoningText(payload);
+        if (text) {
+          pending.thought(text);
+          pendingAt = parseTime(obj['timestamp']);
+        }
+        return;
+      }
+      // ---- Conversation message ----
+      if (ptype === 'message') {
+        const role = payload['role'];
+        // Codex logs developer/system priming messages; only keep the conversation.
+        if (role !== 'user' && role !== 'assistant') return;
+        const text = extractCodexContent(payload['content']);
+        if (!text) return;
+        const createdAt = parseTime(obj['timestamp']);
+        if (role === 'user') {
+          // What waited belongs to the turn this prompt closes.
+          flushPending();
+          out.push({ role, text, createdAt });
+          return;
+        }
+        // The reasoning and tool events that led here open this message.
+        const reply = pending.text(text).build();
+        pending = new ReplySegments();
+        out.push({ role, text: reply.text, segments: reply.segments, createdAt });
+      }
+    },
+    // What is still waiting at the end of the file is a reply of its own —
+    // read as if the file ended here, without consuming it.
+    messages: () => {
+      const tail = pendingMessage();
+      return tail ? [...out, tail] : out;
+    },
+  };
+}
+
+/** pi: `message` lines; a `toolResult` pairs with the last assistant's `toolCall`. */
+function piParser(): TranscriptParser<RawMessage> {
+  const out: RawMessage[] = [];
+  // Pending `toolCall` content blocks from the most recent assistant message,
+  // keyed by `id` so the next matching `role:'toolResult'` message can pair
+  // with them and produce structured blocks.
+  let pendingToolCalls: PiToolUse[] | null = null;
+  return {
+    feed(obj) {
+      if (obj['type'] !== 'message') return;
       const message = asRecord(obj['message']);
       const role = message?.['role'];
       if (role === 'user') {
         const text = extractPiContent(message?.['content']);
-        if (!text) continue;
+        if (!text) return;
         out.push({ role, text, createdAt: parseTime(obj['timestamp']) });
-        continue;
+        return;
       }
       if (role === 'assistant') {
         const content = message?.['content'];
@@ -548,7 +611,7 @@ export class SessionHistoryReader {
         out.push({ role, text, segments, createdAt: parseTime(obj['timestamp']) });
         const toolCalls = extractPiToolCalls(content);
         if (toolCalls.length > 0) pendingToolCalls = toolCalls;
-        continue;
+        return;
       }
       if (role === 'toolResult') {
         const callId =
@@ -581,40 +644,41 @@ export class SessionHistoryReader {
             pendingToolCalls = pendingToolCalls.filter((t) => t.id !== callId);
           }
         }
-        continue;
       }
       // Unknown role — skip.
-    }
-    return out;
-  }
+    },
+    messages: () => out,
+  };
+}
 
-  async #readZero(sessionId: string): Promise<RawMessage[] | null> {
-    const file = await this.#zeroFile(sessionId);
-    if (!file) return null;
-    const out: RawMessage[] = [];
-    for (const event of await readJsonl(file)) {
-      if (event['type'] !== 'message') continue;
+/** Zero: persisted ACP `message` events. */
+function zeroParser(): TranscriptParser<RawMessage> {
+  const out: RawMessage[] = [];
+  return {
+    feed(event) {
+      if (event['type'] !== 'message') return;
       const payload = asRecord(event['payload']);
       const role = payload?.['role'];
       const text = typeof payload?.['content'] === 'string' ? payload['content'].trim() : '';
-      if ((role !== 'user' && role !== 'assistant') || !text) continue;
+      if ((role !== 'user' && role !== 'assistant') || !text) return;
       out.push({ role, text, createdAt: parseTime(event['createdAt']) });
-    }
-    return out;
-  }
+    },
+    messages: () => out,
+  };
+}
 
-  async #readGrok(sessionId: string): Promise<RawMessage[] | null> {
-    const file = await this.#grokFile(sessionId);
-    if (!file) return null;
-    const out: RawMessage[] = [];
-    let user = '';
-    // The agent's prose and reasoning chunks, in the order they streamed.
-    let reply = new ReplySegments();
-    let userAt = 0;
-    let completedAt = 0;
-    for (const event of await readJsonl(file)) {
+/** Grok: ACP updates for one session; a turn counts once `turn_completed` closes it. */
+function grokParser(sessionId: string): TranscriptParser<RawMessage> {
+  const out: RawMessage[] = [];
+  let user = '';
+  // The agent's prose and reasoning chunks, in the order they streamed.
+  let reply = new ReplySegments();
+  let userAt = 0;
+  let completedAt = 0;
+  return {
+    feed(event) {
       const params = asRecord(event['params']);
-      if (params?.['sessionId'] !== sessionId) continue;
+      if (params?.['sessionId'] !== sessionId) return;
       const update = asRecord(params['update']);
       const kind = update?.['sessionUpdate'];
       const text = acpContentText(update?.['content']);
@@ -638,22 +702,11 @@ export class SessionHistoryReader {
         reply = new ReplySegments();
         userAt = 0;
       }
-    }
+    },
     // Deliberately ignore a trailing uncompleted turn. Polling `turn/list`
     // will pick it up after Grok persists `turn_completed`.
-    return out;
-  }
-
-  // --- Path cache (TTL) -------------------------------------------------------
-
-  async #cached(key: string, resolve: () => Promise<string | null>): Promise<string | null> {
-    const now = this.#now();
-    const hit = this.#cache.get(key);
-    if (hit && hit.expires > now) return hit.path;
-    const path = await resolve();
-    this.#cache.set(key, { path, expires: now + this.#ttl });
-    return path;
-  }
+    messages: () => out,
+  };
 }
 
 // --- Turn assembly -----------------------------------------------------------
@@ -1017,27 +1070,6 @@ function textRuns(text: string): unknown[] {
 }
 
 // --- Filesystem + parsing helpers (all tolerant) -----------------------------
-
-async function readJsonl(file: string): Promise<Record<string, unknown>[]> {
-  let raw: string;
-  try {
-    raw = await readFile(file, 'utf-8');
-  } catch {
-    return [];
-  }
-  const out: Record<string, unknown>[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed) as unknown;
-      if (obj && typeof obj === 'object') out.push(obj as Record<string, unknown>);
-    } catch {
-      // Skip a malformed/partial line (e.g. a half-flushed final line).
-    }
-  }
-  return out;
-}
 
 async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
   try {

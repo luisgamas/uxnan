@@ -4,6 +4,24 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A conversation that keeps going somewhere else no longer makes the bridge
+  re-read its whole transcript.** While a phone or the desktop shows a thread
+  whose agent is running in a terminal (or another app), every time the
+  transcript grew the bridge read and parsed all of it again: on a real 92 MB
+  Claude Code transcript that was ~270 ms and a few hundred megabytes of heap
+  every two seconds, on the loop every client is served from. Each transcript
+  is now read on from where the last read stopped (`TranscriptTails`): the
+  parser of each agent — Claude Code, Codex, pi, Zero and Grok — keeps what it
+  carries from line to line, only new whole lines are parsed, and a file that is
+  no longer the one read (another inode, shorter, or different where it was
+  already read) is read from its start. The same transcript growing now costs
+  6–11 ms a read, and the answer is unchanged: checked byte cut by byte cut
+  against a whole read for every agent, and on this machine's real transcripts
+  of all five against the published bridge. The first read is faster too (read
+  in 4 MB chunks: 115 ms for that 92 MB file), and only the last eight
+  transcripts read are remembered.
 
 ## [0.0.55-alpha.20261031] - 20261031
 ### Added
