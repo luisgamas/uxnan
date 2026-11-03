@@ -1726,7 +1726,8 @@ sesion nueva.
 target; para un host, el motor vigila la carpeta **alli** con el mismo vigilante
 que la local (`workspace_engine::watch`: `notify`, debounce de 300 ms, `.git`
 fuera de las rutas y nada fuera de la carpeta —macOS entrega del historial la
-creacion de la propia carpeta y de su padre—) y el
+creacion de la propia carpeta y de su padre—; sin indice por archivo y sin
+seguir enlaces simbolicos, arrancado fuera del runtime async del motor) y el
 desktop emite el mismo `fs:changed`, con `target` (la misma ruta puede existir en
 las dos maquinas) y `git` cuando cambio algo bajo `.git` (un commit o un stage en
 una terminal, que el arbol ignora y el panel de Cambios no). El arbol y las

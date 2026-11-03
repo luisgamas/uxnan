@@ -4,6 +4,26 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The app no longer slows the whole Mac down after a project as wide as your
+  home folder is opened.** Watching a project for the file tree used to index
+  every file under it and keep that index in memory, walking the folder again
+  each time the system asked for a rescan. On a home folder — where OrbStack's
+  VM folders mount the whole disk again — that index never finished and grew to
+  tens of gigabytes in a day and a half, and macOS's swapping it in and out is
+  what made chats, panels, scrolling and tooltips lag. The watcher now keeps no
+  per-file index and follows no symbolic link out of the project: starting it on
+  a home folder takes milliseconds and a few megabytes instead of growing
+  without end. Switching projects while a watch is still starting no longer
+  leaves several of them starting at once on the threads every other command
+  shares — the latest switch wins and the start runs off them. The same watcher
+  runs a project on an SSH host, which gets the same fix.
+
+### Changed
+
+- `notify` 6 → 8.2 and `notify-debouncer-full` 0.3 → 0.7 (same licenses), for
+  the setting that keeps a recursive watch from following symbolic links.
 
 ## [0.0.85] - 20261031
 ### Added

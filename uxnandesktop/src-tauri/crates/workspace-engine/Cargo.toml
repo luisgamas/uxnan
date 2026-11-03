@@ -33,8 +33,8 @@ vt100 = "0.16"
 # Watching a project folder for the file tree, editor and git panel. The same
 # crates and versions the app's other watchers use; `notify` is re-exported by
 # the debouncer, so the two are pinned together.
-notify = "6"
-notify-debouncer-full = "0.3"
+notify = "8.2"
+notify-debouncer-full = "0.7"
 # The agents' hook installer (`agent_hooks`, `codex_trust`): it reads and merges
 # their JSON and TOML configs and reproduces Codex's per-hook trust hash. The
 # same crates and versions the app already used for it.

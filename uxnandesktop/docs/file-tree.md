@@ -9,6 +9,16 @@ The tree state lives in `src/lib/state/fileTree.svelte.ts`, so it survives
 switching tabs; the filesystem watcher (`fswatch.rs` → the `fs:changed` event)
 reloads whichever loaded folders actually changed.
 
+The watcher costs the same on any folder, however wide: it keeps no entry per
+file (the debouncer's file-id cache, which walked the whole tree on every start
+and rescan, is not used) and follows no symbolic link, so a project as wide as
+a home directory — or one holding a VM's mount of the whole disk — is watched
+as cheaply as a small repository. Aiming it at the root it already watches does
+nothing; switching roots happens off the async runtime, in order, and a switch
+a newer one overtook is skipped. Both live in
+`crates/workspace-engine/src/watch.rs` (`watch::start`, `watch::debounced`),
+which every watcher in the app is built with.
+
 **On a project that lives on an SSH host**, the same tree is served by that
 host's engine (`$lib/fsRouter` names the machine; the engine runs the same file
 code there): git-ignored entries are dimmed as here, and searching walks the

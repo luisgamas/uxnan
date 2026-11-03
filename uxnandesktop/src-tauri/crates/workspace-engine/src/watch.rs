@@ -7,20 +7,44 @@
 //! folder: the platform's watcher can name paths outside it (macOS reports the
 //! creation of the watched folder itself, and its parent, from history), and
 //! git's own churn under `.git` is never a path — only a flag.
+//!
+//! What a watch costs is held to what the platform's watcher keeps, never the
+//! size of the folder. Nothing is indexed per file: the debouncer's file-id
+//! cache walks the whole tree when a watch starts (and again on every rescan
+//! the platform asks for) and keeps an entry per file, so a folder as wide as a
+//! home directory — or one holding a VM's mount of the whole disk — grew it
+//! without bound, tens of gigabytes. What it buys, pairing a rename's two
+//! halves, is nothing to a watcher that only reports paths. And symbolic links
+//! are not followed, so a link inside the folder never takes the watch outside
+//! it.
 
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
+use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{
+    new_debouncer_opt, DebounceEventHandler, DebounceEventResult, Debouncer, NoCache,
+};
 
 /// Paths one batch lists at most. A `git checkout` or a build can touch
 /// thousands; past this the batch says "reload the folder" instead.
 pub const MAX_PATHS: usize = 512;
 
 /// A running watch. Dropping it stops its thread.
-pub type Watch = Debouncer<RecommendedWatcher, FileIdMap>;
+pub type Watch = Debouncer<RecommendedWatcher, NoCache>;
+
+/// A debounced watcher that indexes nothing and follows no symbolic link —
+/// the only way this app builds one. Nothing is watched until the caller asks.
+pub fn debounced<F: DebounceEventHandler>(timeout: Duration, handler: F) -> notify::Result<Watch> {
+    new_debouncer_opt(
+        timeout,
+        None,
+        handler,
+        NoCache,
+        notify::Config::default().with_follow_symlinks(false),
+    )
+}
 
 /// One debounced batch of changes under the watched folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,9 +128,8 @@ where
     F: Fn(Batch) + Send + 'static,
 {
     let roots = root_forms(Path::new(root));
-    let mut debouncer = new_debouncer(
+    let mut debouncer = debounced(
         Duration::from_millis(300),
-        None,
         move |result: DebounceEventResult| {
             // A watcher error is not fatal; this batch is skipped.
             let Ok(events) = result else {
@@ -120,14 +143,7 @@ where
             }
         },
     )?;
-    debouncer
-        .watcher()
-        .watch(Path::new(root), RecursiveMode::Recursive)?;
-    // Track the root in the file-id cache too, so renames and removals under
-    // it are resolved.
-    debouncer
-        .cache()
-        .add_root(Path::new(root), RecursiveMode::Recursive);
+    debouncer.watch(Path::new(root), RecursiveMode::Recursive)?;
     Ok(debouncer)
 }
 
@@ -179,6 +195,71 @@ mod tests {
     #[test]
     fn paths_are_reported_with_forward_slashes() {
         assert_eq!(normalize(Path::new("C:\\repo\\a.md")), "C:/repo/a.md");
+    }
+
+    /// Start a real watch on `root`, forwarding its batches.
+    fn watch_real(root: &Path) -> (Watch, std::sync::mpsc::Receiver<Batch>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let watch = start(root.to_str().unwrap(), move |b| {
+            let _ = tx.send(b);
+        })
+        .unwrap();
+        // Let the platform's watcher settle before anything changes.
+        std::thread::sleep(Duration::from_millis(300));
+        (watch, rx)
+    }
+
+    /// The paths batches name within `wait`, or until one satisfies `found`.
+    fn paths_within(
+        rx: &std::sync::mpsc::Receiver<Batch>,
+        wait: Duration,
+        found: impl Fn(&str) -> bool,
+    ) -> Vec<String> {
+        let until = std::time::Instant::now() + wait;
+        let mut paths = Vec::new();
+        while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+            let Ok(b) = rx.recv_timeout(left) else {
+                break;
+            };
+            paths.extend(b.paths);
+            if paths.iter().any(|p| found(p)) {
+                break;
+            }
+        }
+        paths
+    }
+
+    #[test]
+    fn a_real_watch_reports_a_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let (_watch, rx) = watch_real(&root);
+        std::fs::write(root.join("new.md"), "x").unwrap();
+        let found = |p: &str| p.ends_with("/new.md");
+        let paths = paths_within(&rx, Duration::from_secs(5), found);
+        assert!(
+            paths.iter().any(|p| found(p)),
+            "no batch named the new file: {paths:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_out_of_the_folder_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(dir.path()).unwrap();
+        let root = base.join("project");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let (_watch, rx) = watch_real(&root);
+        std::fs::write(outside.join("far.md"), "x").unwrap();
+        let paths = paths_within(&rx, Duration::from_secs(2), |p| p.ends_with("far.md"));
+        assert!(
+            !paths.iter().any(|p| p.ends_with("far.md")),
+            "a change outside the folder was reported through a link: {paths:?}"
+        );
     }
 
     #[test]
