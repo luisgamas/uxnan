@@ -139,8 +139,8 @@ getrandom = "0.3"
 # debounced, cross-platform watch of the active worktree root that emits
 # `fs:changed` so the UI reflects files created/deleted/edited on disk without a
 # manual refresh. `notify` is re-exported by the debouncer; pinned together.
-notify = "6"
-notify-debouncer-full = "0.3"
+notify = "8.2"
+notify-debouncer-full = "0.7"
 # Moves a deleted file/folder to the OS trash (Recycle Bin / Trash / freedesktop)
 # instead of unlinking it, so the file-tree "Delete" action is recoverable. Thin,
 # cross-platform, pure-Rust API (`trash::delete`); the call is synchronous so it

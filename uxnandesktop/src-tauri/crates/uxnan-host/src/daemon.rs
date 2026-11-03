@@ -1051,18 +1051,29 @@ where
                                 watch = None;
                                 let reporter = viewer.clone();
                                 let watched = root.clone();
-                                let outcome = match uxnan_workspace_engine::watch::start(&root, move |batch| {
-                                    reporter.send(Frame::control(&ServerMessage::Event(Event::Changed {
-                                        root: watched.clone(),
-                                        paths: batch.paths,
-                                        overflow: batch.overflow,
-                                        git: batch.git,
-                                    })));
-                                }) {
-                                    Ok(w) => {
+                                let folder = root.clone();
+                                // Starting can walk the folder (Linux puts a
+                                // watch on every directory): off the runtime.
+                                let started = tokio::task::spawn_blocking(move || {
+                                    uxnan_workspace_engine::watch::start(&folder, move |batch| {
+                                        reporter.send(Frame::control(&ServerMessage::Event(Event::Changed {
+                                            root: watched.clone(),
+                                            paths: batch.paths,
+                                            overflow: batch.overflow,
+                                            git: batch.git,
+                                        })));
+                                    })
+                                })
+                                .await;
+                                let outcome = match started {
+                                    Ok(Ok(w)) => {
                                         watch = Some(w);
                                         Outcome::Ok { reply: Reply::Done }
                                     }
+                                    Ok(Err(e)) => Outcome::Error {
+                                        code: ErrorCode::Invalid,
+                                        message: format!("could not watch {root}: {e}"),
+                                    },
                                     Err(e) => Outcome::Error {
                                         code: ErrorCode::Invalid,
                                         message: format!("could not watch {root}: {e}"),

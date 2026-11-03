@@ -780,6 +780,15 @@ cambia `HEAD`.
   directorios afectados conservando la expansión, de modo que archivos
   creados/eliminados en disco (p. ej. por un agente) aparecen sin recargar a
   mano. El watcher se apunta al worktree activo centralmente (`+page.svelte`).
+  **Su costo no depende del tamaño de la carpeta**: no indexa nada por archivo
+  (sin la caché de file-ids del debouncer, que recorría el árbol entero al
+  arrancar y en cada *rescan* y guardaba una entrada por archivo —una carpeta
+  tan ancha como el home, o una que contiene el montaje del disco completo de
+  una VM, la hacía crecer sin límite—) y no sigue enlaces simbólicos, así que
+  un enlace dentro del proyecto nunca saca la vigilancia de él. Apuntarlo a la
+  raíz que ya vigila no hace nada; cambiarla se hace fuera del runtime async
+  (arrancar puede recorrer las carpetas: Linux pone un watch por directorio), en
+  orden, y una llamada que otra más nueva rebasó se descarta.
 - **Abrir archivo**: un clic en un archivo lo abre como **pestaña de archivo**
   en el área central (ver §6.2).
 - **Búsqueda en todo el proyecto**: la lupa filtra recursivamente **todo** el
