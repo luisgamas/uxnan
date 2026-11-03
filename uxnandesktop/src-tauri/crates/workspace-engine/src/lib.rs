@@ -21,6 +21,7 @@ pub mod error;
 pub mod fs;
 pub mod git;
 pub mod gitfast;
+pub mod gitwatch;
 pub mod mcp_launch;
 pub mod ports;
 pub mod precondition;

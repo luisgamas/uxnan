@@ -437,6 +437,7 @@ uxnandesktop/
 │       ├── browse.rs      # in-app directory picker
 │       ├── fs.rs          # file read/write for the center editor
 │       ├── fswatch.rs     # filesystem watcher (file-tree auto-refresh)
+│       ├── repowatch.rs   # each local project's git directory → `git:repo-changed`
 │       ├── pets.rs        # pet library: Codex-format manifests + validating import
 │       ├── which.rs       # agent/shell install detection
 │       └── error.rs       # AppError / CommandError

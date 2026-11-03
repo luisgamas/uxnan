@@ -7,11 +7,13 @@
 // currently-active worktree. All git mutations go through `$lib/api`.
 
 import { untrack } from "svelte";
+import { listen } from "@tauri-apps/api/event";
 
 import {
   branchIntegrated,
   branchList,
   fsPathExists,
+  gitWatchRepos,
   githubIssueDevelop,
   githubPrCheckout,
   ptyWrite,
@@ -153,6 +155,11 @@ export interface WorktreeRow extends WorktreeEntry {
 export type ProjectChangeOrigin = "local" | "bridge";
 
 type RepoListener = (repo: RepoData, origin: ProjectChangeOrigin) => void;
+
+
+/** How often the sidebar's timer re-checks a project whose git directory is
+ *  watched — a safety net for a lost event, not how it learns of changes. */
+const EVENT_BACKED_RECONCILE_MS = 30_000;
 
 class ProjectsStore {
   /** Shared search query (filters projects and their worktrees). */
@@ -1009,6 +1016,16 @@ class ProjectsStore {
   private worktreeRefreshInFlight = false;
   /** When the last worktree-list reconcile pass started (policy pacing). */
   #lastReconcile = 0;
+  /** Projects whose git directory the backend watches (`git:repo-changed`):
+   *  their lists and badges follow git as it moves, so the timer only checks
+   *  them every [`EVENT_BACKED_RECONCILE_MS`] in case an event was missed. */
+  #eventBacked = new Set<string>();
+  /** When the timer last checked the event-backed projects. */
+  #lastEventBackedReconcile = 0;
+  /** Projects with a reconcile in flight, and those asked again meanwhile. */
+  #repoInFlight = new Set<string>();
+  #repoAgain = new Set<string>();
+  private repoEventsListening = false;
 
   /** Projects whose folder is not on disk right now, by id.
    *
@@ -1026,7 +1043,12 @@ class ProjectsStore {
   /** Re-read which projects are missing. Cheap: one directory check each. */
   async refreshMissing(): Promise<void> {
     try {
-      this.missingRepoIds = new Set(await reposMissing());
+      const next = new Set(await reposMissing());
+      // Asked on every reconcile tick: an unchanged answer must not replace the
+      // set, or every card reading `isMissing` re-renders every 3 s for nothing.
+      const same =
+        next.size === this.missingRepoIds.size && [...next].every((id) => this.missingRepoIds.has(id));
+      if (!same) this.missingRepoIds = next;
     } catch {
       // Unknown is treated as present: marking a project missing on a failed
       // check would hide a working project behind a warning.
@@ -1143,49 +1165,112 @@ class ProjectsStore {
       intervalMs: resourceMode.policy.capabilities.worktreeReconcileIntervalMs,
     });
     if (!proceed) return;
-    this.#lastReconcile = Date.now();
+    const now = Date.now();
+    this.#lastReconcile = now;
+    // A project whose git directory is watched tells us when it moves; the
+    // timer only re-checks it now and then, in case an event was lost.
+    const checkWatched = force || now - this.#lastEventBackedReconcile >= EVENT_BACKED_RECONCILE_MS;
+    if (checkWatched) this.#lastEventBackedReconcile = now;
     this.worktreeRefreshInFlight = true;
     try {
       await this.refreshMissing();
       await Promise.all(
-        app.repos.map(async (repo) => {
-          // A project whose folder is gone has nothing to reconcile, and asking
-          // anyway is what turned one deleted folder into an endless stream of
-          // failed git and `gh` spawns.
-          if (this.isMissing(repo.id)) return;
-          try {
-            // Before listing: a plain folder that ran `git init` since the last
-            // pass lists real worktrees only once its record says it can.
-            await this.reprobeGit(repo);
-            const list = await worktreeList(repo.id);
-            const current = this.worktreesByRepo[repo.id] ?? [];
-            const same =
-              current.length === list.length &&
-              current.every(
-                (entry, index) =>
-                  entry.path === list[index]?.path &&
-                  entry.branch === list[index]?.branch &&
-                  entry.isMain === list[index]?.isMain &&
-                  // The creation record can land a moment after git lists the
-                  // worktree; a list that only differs by it must still replace
-                  // the one that called it external.
-                  entry.createdByUxnan === list[index]?.createdByUxnan,
-              );
-            if (!same) {
-              this.#takeIn(repo.id, list);
-              this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
-              // Reads git on whichever machine the worktree is on (see
-              // `refreshStatuses`), so a host's project gets real badges.
-              await this.refreshStatuses(list.map((w) => w.path));
-            }
-          } catch {
-            // A repository can briefly be unavailable while an agent creates a
-            // worktree; the next polling pass will reconcile it.
-          }
-        }),
+        app.repos
+          .filter((repo) => checkWatched || !this.#eventBacked.has(repo.id))
+          .map((repo) => this.#reconcileRepo(repo, false)),
       );
     } finally {
       this.worktreeRefreshInFlight = false;
+    }
+  }
+
+  /** Bring one project's worktree list up to date with git; its badges too when
+   *  the list changed, or always when `withStatus` (its git directory moved: a
+   *  stage, a commit, a push all change a badge without changing the list). */
+  async #reconcileRepo(repo: RepoData, withStatus: boolean): Promise<void> {
+    // A project whose folder is gone has nothing to reconcile, and asking
+    // anyway is what turned one deleted folder into an endless stream of
+    // failed git and `gh` spawns.
+    if (this.isMissing(repo.id)) return;
+    try {
+      // Before listing: a plain folder that ran `git init` since the last
+      // pass lists real worktrees only once its record says it can.
+      await this.reprobeGit(repo);
+      const list = await worktreeList(repo.id);
+      const current = this.worktreesByRepo[repo.id] ?? [];
+      const same =
+        current.length === list.length &&
+        current.every(
+          (entry, index) =>
+            entry.path === list[index]?.path &&
+            entry.branch === list[index]?.branch &&
+            entry.isMain === list[index]?.isMain &&
+            // The creation record can land a moment after git lists the
+            // worktree; a list that only differs by it must still replace
+            // the one that called it external.
+            entry.createdByUxnan === list[index]?.createdByUxnan,
+        );
+      if (!same) {
+        this.#takeIn(repo.id, list);
+        this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
+      }
+      if (!same || withStatus) {
+        // Reads git on whichever machine the worktree is on (see
+        // `refreshStatuses`), so a host's project gets real badges.
+        await this.refreshStatuses(list.map((w) => w.path));
+      }
+    } catch {
+      // A repository can briefly be unavailable while an agent creates a
+      // worktree; the next pass (or event) will reconcile it.
+    }
+  }
+
+  /** Have the backend watch every local project — a repository's git
+   *  directory, a plain folder for `.git` appearing — so its worktrees and
+   *  badges follow git without the timer. Called whenever the set of projects
+   *  (or their kind) changes; a project the backend could not watch stays on
+   *  the timer. */
+  async watchRepos(): Promise<void> {
+    this.#listenRepoEvents();
+    const local = app.repos.filter((r) => isLocalTarget(targetOf(r.target)) && !this.isMissing(r.id));
+    let watched: string[];
+    try {
+      watched = await gitWatchRepos(local.map((r) => r.path));
+    } catch {
+      watched = []; // no backend (web preview): everything stays on the timer
+    }
+    const paths = new Set(watched);
+    this.#eventBacked = new Set(local.filter((r) => paths.has(r.path)).map((r) => r.id));
+  }
+
+  #listenRepoEvents(): void {
+    if (this.repoEventsListening) return;
+    this.repoEventsListening = true;
+    listen<{ repo: string }>("git:repo-changed", (e) => {
+      const repo = app.repos.find(
+        (r) => r.path === e.payload.repo && isLocalTarget(targetOf(r.target)),
+      );
+      if (repo) void this.#onRepoChanged(repo);
+    }).catch(() => {
+      this.repoEventsListening = false; // no Tauri event bus
+    });
+  }
+
+  /** A project's git directory moved: reconcile it now. Changes that arrive
+   *  while it runs fold into one more pass, never into a pile. */
+  async #onRepoChanged(repo: RepoData): Promise<void> {
+    if (this.#repoInFlight.has(repo.id)) {
+      this.#repoAgain.add(repo.id);
+      return;
+    }
+    this.#repoInFlight.add(repo.id);
+    try {
+      do {
+        this.#repoAgain.delete(repo.id);
+        await this.#reconcileRepo(repo, true);
+      } while (this.#repoAgain.has(repo.id));
+    } finally {
+      this.#repoInFlight.delete(repo.id);
     }
   }
 
@@ -1219,23 +1304,12 @@ class ProjectsStore {
         }
       }),
     );
-    const merged = { ...this.statusByPath };
     const changed: string[] = [];
     for (const entry of entries) {
       if (!entry) continue;
       const [path, next] = entry;
-      const prev = merged[path];
-      if (
-        !prev ||
-        prev.dirty !== next.dirty ||
-        prev.ahead !== next.ahead ||
-        prev.behind !== next.behind
-      ) {
-        changed.push(path);
-      }
-      merged[path] = next;
+      if (this.#writeStatus(path, next)) changed.push(path);
     }
-    this.statusByPath = merged;
     if (changed.length) {
       // Announce it for the GitHub poll (a worktree that just gained commits or
       // got pushed is exactly when its PR badge is worth re-reading). Draining
@@ -1466,7 +1540,25 @@ class ProjectsStore {
   /** Set a worktree's status badge directly. The git review panel calls this so
    *  the project card stays in sync with the live status (e.g. after a commit). */
   setStatus(path: string, status: WorktreeStatus): void {
-    this.statusByPath = { ...this.statusByPath, [path]: status };
+    this.#writeStatus(path, status);
+  }
+
+  /** The one writer of `statusByPath`: a path whose counts did not move is left
+   *  untouched, so a sweep over every worktree re-renders only the rows whose
+   *  badges changed — replacing the whole record made every row re-read it.
+   *  Returns whether it changed. */
+  #writeStatus(path: string, next: WorktreeStatus): boolean {
+    const prev = this.statusByPath[path];
+    if (
+      prev &&
+      prev.dirty === next.dirty &&
+      prev.ahead === next.ahead &&
+      prev.behind === next.behind
+    ) {
+      return false;
+    }
+    this.statusByPath[path] = { dirty: next.dirty, ahead: next.ahead, behind: next.behind };
+    return true;
   }
 
   /** A repo's branches + resolved default base, for the new-worktree dialog. */

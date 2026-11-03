@@ -126,7 +126,7 @@ be what blocks the machine.
 | Capability | Efficient | Balanced (default) | Performance |
 |---|---|---|---|
 | All-worktree git status sweep (`gitSweepIntervalMs`)* | every 45 s | every 15 s | every 10 s |
-| Worktree-list reconcile poll | every 10 s | every driver tick (3 s) | every driver tick (3 s) |
+| Worktree-list reconcile poll (projects whose git directory is not watched — hosts, refused watches; watched ones follow `git:repo-changed` and are re-checked every 30 s) | every 10 s | every driver tick (3 s) | every driver tick (3 s) |
 | GitHub polling (× the user's interval; 0 stays manual) | ×4, long TTL | ×1 | ×0.5, floored at 30 s |
 | Provider-usage refresh (× the user's interval) | ×3 | ×1 | ×1 (quota data gains nothing from more) |
 | Orchestration concurrency (`orchestrationConcurrency`)* | 2 | 4 | 4, up to **6 with measured headroom** |
@@ -194,7 +194,8 @@ evidence points at the benchmark scenarios
 |---|---|---|---|---|---|
 | Active-worktree git status watcher | `src-tauri/src/commands.rs` → `git_set_watch` (Tokio) | 3 s, focus-paused | follows `gitSetWatch`; parks with no watched path | R01/R06 | not governed — it feeds the visible Changes panel |
 | All-worktree status sweep | `projects.sweepStatuses` | ≥ 15 s (3 s driver tick in `LeftSidebar`) | skipped hidden; forced by focus / agent activity / own git actions | R06 | `gitSweepIntervalMs` |
-| Worktree-list reconcile | `projects.refreshWorktrees` | every 3 s tick | forced by `refreshNow` | R06 | `worktreeReconcileIntervalMs` |
+| Worktree-list reconcile | `projects.refreshWorktrees` | every 3 s tick for unwatched projects; 30 s safety pass for watched ones | forced by `refreshNow` | R06 | `worktreeReconcileIntervalMs` |
+| Repository git-directory watch | `src-tauri/src/repowatch.rs` (`gitwatch.rs` in the engine) | on change only (300 ms debounce) | one watch per local repository project; a project's `git:repo-changed` reconciles its list and badges | — | not governed — event-driven, no timer |
 | GitHub context/rate-limit/badge poll | `github.startPolling` | user setting (45 s), hidden-paused; ≤ 2 badge reads per tick | armed while the app runs, `0` = manual | R08 | `githubPollFactor` (+ 30 s floor) |
 | GitHub launch fill (one-shot) | `github.prime` | once per arm/sign-in, batches of 2, ≤ 24 reads | skipped when the interval is `0` (manual) | R08 | `githubPollFactor` scales the cap (Efficient ≈ 6) |
 | Provider-usage poll | `usage.reschedule` | user setting (5 min), armed lazily | `0` = manual; surfaces call `ensureFresh` on open | — | `usageRefreshFactor` |

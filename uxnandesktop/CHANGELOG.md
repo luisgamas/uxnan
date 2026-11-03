@@ -4,6 +4,39 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The sidebar follows git as it moves instead of asking every project every
+  few seconds.** Each local repository's git directory is watched: a worktree an
+  agent's CLI (or anyone) creates or removes, a commit, a stage, a checkout or a
+  push that moves an upstream now reconciles that one project — its worktree
+  list and its badges — the moment it happens, where before a commit or a stage
+  waited for the next 15-second sweep. Only the git directory is watched (never
+  the working tree, nothing indexed), so the cost does not grow with the
+  project. Projects on an SSH host, and any the platform refuses to watch, keep
+  the 3-second reconcile as before, and watched ones are re-checked every 30
+  seconds in case an event was lost. A plain folder is watched for `.git`
+  appearing in it, so it is no longer asked "are you a repository yet?" twice
+  every 3 seconds. "Is this a repository?" itself is now answered by libgit2
+  the way git answers it, without starting `git`. Measured on twelve real
+  projects (seven repositories, five plain folders) with the app idle: **529
+  `git` processes a minute before, 42 after** — the 30-second safety pass and
+  the GitHub badges — and a worktree created from a terminal shows in about
+  half a second.
+- **Project cards no longer re-render every 3 seconds for nothing.** The check
+  for project folders gone from disk replaced its answer on every pass even
+  when nothing was missing, which made every card that reads it render again.
+- **Badge sweeps spawn no `git` and re-render only what changed.** A worktree's
+  row (changed / ahead / behind, its branch) is read from libgit2 in one pass,
+  where every worktree used to cost two `git` processes on every sweep; at most
+  four scans run at once on this machine and on a host's engine, so a sweep over
+  every worktree no longer contends with everything else; and a worktree whose
+  counts did not move keeps its badge as it was instead of every row re-reading
+  a replaced record.
+- **Spotting which agent a terminal runs costs the same with 1 terminal or
+  30.** The process table is read once per scan and shared by every terminal,
+  where it used to be rebuilt for each one (here and in a host's engine).
+
 ### Fixed
 
 - **The app no longer slows the whole Mac down after a project as wide as your

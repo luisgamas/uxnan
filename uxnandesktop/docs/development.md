@@ -94,10 +94,15 @@ Consequences worth knowing:
   content of those shared scripts when its version is newer — an older build
   leaves them alone.
 
-The Projects sidebar performs a lightweight worktree reconciliation every 3
-seconds while the shell is mounted. This also discovers worktrees created by an
-agent CLI or another Git process; the manual refresh button remains available
-for an immediate pass.
+The Projects sidebar learns of git changes from the backend: every local
+repository's git directory is watched, and every plain folder for `.git`
+appearing in it (`git_watch_repos` → `git:repo-changed`),
+so a worktree an agent CLI or another git process creates, a commit, a stage or
+a push reconciles that one project when it happens. Projects that cannot be
+watched — on an SSH host, or refused by the platform — keep the lightweight
+reconciliation every 3 seconds, and the watched ones are re-checked every 30 s
+in case an event was lost. The manual refresh button remains available for an
+immediate pass.
 
 ## Iterate on UI only (fast, in a browser)
 

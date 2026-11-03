@@ -155,6 +155,25 @@
     void fsSetWatch(path, remote ? projects.activeWorktreeTarget : null).catch(() => {});
   });
 
+  // Watch every local repository's git directory, so a worktree an agent makes,
+  // a commit, a stage or a push shows in the sidebar when it happens rather than
+  // on the next poll. Re-aimed only when the set of projects (or which of them
+  // are missing) changes; the watch itself is the backend's.
+  // The key is derived so the effect re-runs only when its value changes — not
+  // whenever a list it is built from is replaced by an equal one.
+  const repoWatchKey = $derived(
+    app.backend !== "ready"
+      ? ""
+      : [
+          ...app.repos.map((r) => `${r.target ?? ""}\u0000${r.path}\u0000${r.isGit}`),
+          ...[...projects.missingRepoIds].sort(),
+        ].join("\n"),
+  );
+  $effect(() => {
+    if (!repoWatchKey) return;
+    untrack(() => void projects.watchRepos());
+  });
+
   // Load the active worktree's git status here too — at the always-mounted shell,
   // not inside the right panel. The status feeds the file-tree coloring, the
   // project-card dirty badges AND the Changes tab, so it must follow the active

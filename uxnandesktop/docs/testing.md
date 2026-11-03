@@ -78,9 +78,9 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,150 backend tests**
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **1,158 backend tests**
 in total — 725 unit tests in the app crate, 18 in `uxnan-control-protocol`, 4
-in `uxnan-control-client`, 11 in `uxnan-cli`, 303 in `uxnan-workspace-engine` (its git, the folder watcher against the real platform watcher, libgit2 fast path, worktree placement and cleanup, and the headless runner and an automation's gate among them), 5 in `uxnan-host-protocol`, 39 in
+in `uxnan-control-client`, 11 in `uxnan-cli`, 311 in `uxnan-workspace-engine` (its git — libgit2 answers held to the CLI's —, the folder and git-directory watchers against the real platform watcher, libgit2 fast path, worktree placement and cleanup, and the headless runner and an automation's gate among them), 5 in `uxnan-host-protocol`, 39 in
 `uxnan-host` (29 against the real daemon over its socket — a headless agent run answering from its folder and cancelled by name, and an automation's gate run in its folder, among them — among them the bridge it keeps running and its agents reaching the app's tools but never a hook, started again when it dies and let go when asked, a project's
 files listed, saved and searched on the host, its git read, staged and
 committed there, its worktrees made and removed there, and which agent a terminal runs
@@ -321,7 +321,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,886 tests** across both
+ships in every build and is never shown). **2,170 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

@@ -959,6 +959,7 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
 | `native_text_editor()` | El editor de texto nativo del SO (Notepad / TextEdit / uno detectado en Linux), ofrecido para archivos de texto. |
 | `open_in_editor(command, args, path)` | Abre una ruta (carpeta o archivo) en un editor externo: `command` + `args` + la ruta al final; en Windows un `.exe` se lanza directo y **sin ventana**, un nombre de CLI (`.cmd`/`.bat`) vía `cmd /C` sin ventana; en macOS `open -a`, directo en el resto. |
 | `fs_set_watch(path?)` | Apunta (o limpia) el watcher de filesystem al worktree activo; emite `fs:changed` al crearse/eliminarse/editarse archivos. |
+| `git_watch_repos(repos)` | Vigila exactamente esos proyectos locales (sus rutas principales) y responde cuáles quedaron vigilados: de un repositorio, su directorio git común; de una carpeta plana, la carpeta misma (sin recursión) por la aparición o desaparición de `.git`, y un proyecto que cambió de tipo se vuelve a armar; cada cambio que una fila muestra (worktree añadido/quitado, `HEAD`, índice, refs, `packed-refs`; nunca objetos, reflogs ni `.lock`) emite `git:repo-changed { repo }`. La barra lateral reconcilia ese proyecto al evento; los no vigilados (hosts, vigilancia rechazada) siguen con el sondeo de 3 s y los vigilados se revisan cada 30 s como red de seguridad. |
 | `git_numstat(path)` | Líneas añadidas/eliminadas por archivo vs `HEAD` (`+a −d` en la lista de cambios). |
 
 La barra de la pestaña Archivos ofrece además: **búsqueda/filtro** por nombre,

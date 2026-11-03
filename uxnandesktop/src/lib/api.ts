@@ -1183,6 +1183,13 @@ export function mcpInfo(target?: string): Promise<McpInfo> {
  *  The backend then emits `fs:changed` as files under it change on disk. With a
  *  host `target`, the folder is watched **there** by the host's engine, and its
  *  changes arrive as the same event carrying that target. */
+/** Watch the git directory of exactly these local projects (their main
+ *  worktree paths); answers the ones now watched. Each change arrives as a
+ *  `git:repo-changed` event naming the project's path. */
+export function gitWatchRepos(repos: string[]): Promise<string[]> {
+  return invoke('git_watch_repos', { repos });
+}
+
 export function fsSetWatch(path: string | null, target?: TargetId | null): Promise<void> {
   return invoke('fs_set_watch', { path, target: target ?? null });
 }
