@@ -82,7 +82,10 @@ function toLive(e: AgentStatusEvent): LiveAgentState {
 }
 
 class AgentStatusStore {
-  /** Reported state per agent id (= PTY/tab id). */
+  /** Reported state per agent id (= PTY/tab id). Written one key at a time:
+   *  a report reaches only what reads that agent — replacing the whole record
+   *  on each report (every tool call of every agent) re-ran every row, tab and
+   *  indicator that reads any agent. */
   byId = $state<Record<string, LiveAgentState>>({});
   private started = false;
 
@@ -102,7 +105,7 @@ class AgentStatusStore {
       await listen<AgentStatusEvent>('agent:status-changed', (e) => {
         const p = e.payload;
         const prevState = this.byId[p.agentId];
-        this.byId = { ...this.byId, [p.agentId]: toLive(p) };
+        this.byId[p.agentId] = toLive(p);
         // Let the hook establish the tab's agent identity (below), so an agent
         // started by hand shows up without waiting for process detection.
         this.sealIdentity(p);
@@ -140,8 +143,7 @@ class AgentStatusStore {
       // still taken from it, which is what makes a resumed tab resumable again.
       await listen<AgentStatusClearedEvent>('agent:status-cleared', (e) => {
         const p = e.payload;
-        const { [p.agentId]: _dropped, ...rest } = this.byId;
-        this.byId = rest;
+        delete this.byId[p.agentId];
         this.sealIdentity({ agentId: p.agentId, agentType: p.agentType });
         if (p.session) terminals.recordAgentSession(p.agentId, p.agentType, p.session);
       });
@@ -260,10 +262,7 @@ class AgentStatusStore {
   synthesizeInterruptedDone(id: string): void {
     const prev = this.byId[id];
     if (!prev || prev.status !== 'working') return;
-    this.byId = {
-      ...this.byId,
-      [id]: { ...prev, status: 'done', interrupted: true, lastUpdate: Date.now() },
-    };
+    this.byId[id] = { ...prev, status: 'done', interrupted: true, lastUpdate: Date.now() };
   }
 
   /** Let the hook itself establish the tab's agent identity. A hook report is
