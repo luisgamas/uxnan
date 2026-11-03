@@ -308,11 +308,21 @@ fn detect_in_tree(
 
 /// The process table, kept between scans, for asking which agent each terminal
 /// runs — on this machine by the app's 2-second watch, on a host by its engine.
-pub struct Table(System);
+///
+/// The lookup map is built once per [`refresh`](Self::refresh) and shared by
+/// every terminal asked about until the next one: rebuilding it per terminal
+/// made a scan cost processes × terminals.
+pub struct Table {
+    sys: System,
+    procs: HashMap<u32, ProcInfo>,
+}
 
 impl Default for Table {
     fn default() -> Self {
-        Self(System::new())
+        Self {
+            sys: System::new(),
+            procs: HashMap::new(),
+        }
     }
 }
 
@@ -322,18 +332,43 @@ impl Table {
     /// …) would never match without its `…/agent.js` argument. A blocking,
     /// syscall-heavy walk — run it off the async runtime.
     pub fn refresh(&mut self) {
-        self.0.refresh_processes_specifics(
+        self.sys.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always),
         );
+        self.procs = proc_map(&self.sys);
     }
 
     /// The agent in the terminal whose shell is `root_pid`, as of the last
     /// [`refresh`](Self::refresh). See [`detect_agent`].
     pub fn agent_of(&self, root_pid: u32, commands: &[String]) -> Option<String> {
-        detect_agent(&self.0, root_pid, commands)
+        if commands.is_empty() {
+            return None;
+        }
+        detect_in_tree(&self.procs, root_pid, commands).map(|(cmd, _)| cmd)
     }
+}
+
+/// What the agent matcher reads of each process, keyed by pid.
+fn proc_map(sys: &System) -> HashMap<u32, ProcInfo> {
+    sys.processes()
+        .iter()
+        .map(|(pid, proc)| {
+            (
+                pid.as_u32(),
+                ProcInfo {
+                    name: strip_ext(&proc.name().to_string_lossy()).to_ascii_lowercase(),
+                    argv: proc
+                        .cmd()
+                        .iter()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .collect(),
+                    parent: proc.parent().map(|p| p.as_u32()),
+                },
+            )
+        })
+        .collect()
 }
 
 /// The agent command running as the foreground job of `root_pid`, or `None` when
@@ -352,22 +387,7 @@ pub fn detect_agent_process(
     if commands.is_empty() {
         return None;
     }
-    let mut procs: HashMap<u32, ProcInfo> = HashMap::new();
-    for (pid, proc) in sys.processes() {
-        procs.insert(
-            pid.as_u32(),
-            ProcInfo {
-                name: strip_ext(&proc.name().to_string_lossy()).to_ascii_lowercase(),
-                argv: proc
-                    .cmd()
-                    .iter()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .collect(),
-                parent: proc.parent().map(|p| p.as_u32()),
-            },
-        );
-    }
-    detect_in_tree(&procs, root_pid, commands)
+    detect_in_tree(&proc_map(sys), root_pid, commands)
 }
 
 #[cfg(all(test, unix))]
