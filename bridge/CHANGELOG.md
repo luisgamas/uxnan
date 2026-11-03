@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.56-alpha.20261103] - 20261103
 ### Changed
 
 - **A conversation that keeps going somewhere else no longer makes the bridge
