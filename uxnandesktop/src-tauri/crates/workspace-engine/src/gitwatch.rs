@@ -178,7 +178,7 @@ mod tests {
 
     fn repo() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
-        let path = std::fs::canonicalize(dir.path()).unwrap();
+        let path = PathBuf::from(crate::worktreeloc::canonical_temp(dir.path()));
         git(&path, &["init", "-b", "main"]);
         git(&path, &["config", "user.email", "test@uxnan.dev"]);
         git(&path, &["config", "user.name", "Uxnan Test"]);
@@ -246,7 +246,7 @@ mod tests {
         while rx.try_recv().is_ok() {}
 
         let outside = tempfile::tempdir().unwrap();
-        let linked = std::fs::canonicalize(outside.path()).unwrap().join("wt");
+        let linked = PathBuf::from(crate::worktreeloc::canonical_temp(outside.path())).join("wt");
         git(
             &path,
             &["worktree", "add", "-b", "feat/x", linked.to_str().unwrap()],
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn a_plain_folder_reports_becoming_a_repository_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
-        let path = std::fs::canonicalize(dir.path()).unwrap();
+        let path = PathBuf::from(crate::worktreeloc::canonical_temp(dir.path()));
         assert_eq!(kind_of(&path), Some(Kind::Folder));
         let (tx, rx) = mpsc::channel();
         let (kind, _w) = start_any(&path, move || {
