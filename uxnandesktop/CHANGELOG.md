@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Changed
 
+- **Agents reporting no longer rewrite the app's state file on every tool
+  call.** Each hook report (every tool call of every agent) rewrote the whole
+  `state.json` — and turned the backup ring — while holding the state lock.
+  The agents' reported state is now written by one background task at most
+  once a second (and on exit), so a burst of reports costs one write. Measured
+  with an agent reporting 30 times a second: the app's extra CPU went from +10
+  to +3 points. Every report still reaches the screen at once; only the disk
+  write is grouped.
+- **The five state backups are backups again.** The ring turned on every save,
+  so while agents were working all five copies were from the last fraction of
+  a second. It now turns at most once every 10 minutes, and the first save of a
+  session still keeps what the previous session left.
+- **An agent's report updates only what shows that agent.** The reported
+  states were replaced as a whole on every report, so every row, tab and
+  indicator reading any agent recomputed; now only the reporting agent's entry
+  changes.
+
 - **The sidebar follows git as it moves instead of asking every project every
   few seconds.** Each local repository's git directory is watched: a worktree an
   agent's CLI (or anyone) creates or removes, a commit, a stage, a checkout or a
@@ -37,6 +54,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   30.** The process table is read once per scan and shared by every terminal,
   where it used to be rebuilt for each one (here and in a host's engine).
 
+- `notify` 6 → 8.2 and `notify-debouncer-full` 0.3 → 0.7 (same licenses), for
+  the setting that keeps a recursive watch from following symbolic links.
+
 ### Fixed
 
 - **The app no longer slows the whole Mac down after a project as wide as your
@@ -52,11 +72,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   leaves several of them starting at once on the threads every other command
   shares — the latest switch wins and the start runs off them. The same watcher
   runs a project on an SSH host, which gets the same fix.
-
-### Changed
-
-- `notify` 6 → 8.2 and `notify-debouncer-full` 0.3 → 0.7 (same licenses), for
-  the setting that keeps a recursive watch from following symbolic links.
 
 ## [0.0.85] - 20261031
 ### Added

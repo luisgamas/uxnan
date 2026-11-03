@@ -718,7 +718,7 @@ pub(crate) async fn handle_report<R: tauri::Runtime>(
                 },
                 now,
             );
-            let _ = state.persistence.save(&data);
+            state.persistence.save_soon();
             entry
         };
         emit_agent_status(app, entry);
@@ -760,7 +760,7 @@ pub(crate) async fn handle_report<R: tauri::Runtime>(
                 let mut data = state.data.write().await;
                 let entry = data.touch_subagent_activity(&agent_id, &child_id, tool, now);
                 if entry.is_some() {
-                    let _ = state.persistence.save(&data);
+                    state.persistence.save_soon();
                 }
                 entry
             };
@@ -790,7 +790,7 @@ pub(crate) async fn handle_report<R: tauri::Runtime>(
                 {
                     let mut data = state.data.write().await;
                     data.clear_agent_state(&agent_id);
-                    let _ = state.persistence.save(&data);
+                    state.persistence.save_soon();
                 }
                 emit_agent_status_cleared(app, agent_id, agent_type, session);
                 return StatusCode::NO_CONTENT;
@@ -873,8 +873,9 @@ pub(crate) async fn handle_report<R: tauri::Runtime>(
             },
             now,
         );
-        // Best-effort persist so the state survives a restart (TTL-pruned).
-        let _ = state.persistence.save(&data);
+        // Kept across a restart (TTL-pruned): written soon, not on every report
+        // — a busy agent reports on every tool call.
+        state.persistence.save_soon();
         entry
     };
 
