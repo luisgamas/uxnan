@@ -5,15 +5,26 @@
 //! interrupted write can never leave a half-written `state.json` — the previous
 //! good copy stays intact.
 //!
-//! Before each write the current file is rotated into a ring of **5 numbered
+//! Before a write the current file is rotated into a ring of **5 numbered
 //! backups** (`state.bak.1` … `state.bak.5`), so a bad migration or a corrupt
-//! write can be recovered from a recent snapshot. Loading applies forward schema
-//! migrations in sequence (see [`migrate`]).
+//! write can be recovered from a recent snapshot — at most once every
+//! [`BACKUP_EVERY`]. Rotating on every save made the five copies the last
+//! fraction of a second whenever agents were reporting, which recovers
+//! nothing. The first save of a session always backs up what the last session
+//! left. Loading applies forward schema migrations in sequence (see
+//! [`migrate`]).
 //!
-//! A debounced async writer (coalesce rapid saves) is still a follow-up; the
-//! frontend already debounces the high-frequency layout writes. See `FOR-DEV.md`.
+//! A save something waits on is written at once ([`PersistenceManager::save`]).
+//! What only has to survive a restart and changes far more often than it is
+//! worth writing — the agents' reported state, which arrives with every tool
+//! call — is asked for with [`PersistenceManager::save_soon`]: one background
+//! task writes the latest state at most once per [`COALESCE`], and the app
+//! writes whatever is still pending when it exits.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::error::AppError;
 use crate::model::{AppData, SCHEMA_VERSION};
@@ -24,18 +35,39 @@ const STATE_FILE: &str = "state.json";
 /// Number of rotating backups kept alongside `state.json` (spec §7).
 const MAX_BACKUPS: usize = 5;
 
+/// How often the backup ring may turn.
+pub const BACKUP_EVERY: Duration = Duration::from_secs(10 * 60);
+
+/// How long a [`PersistenceManager::save_soon`] waits for more of the same.
+pub const COALESCE: Duration = Duration::from_secs(1);
+
 /// Owns the on-disk location of the ADE's persisted state and performs the
 /// atomic load/save.
 #[derive(Debug, Clone)]
 pub struct PersistenceManager {
     path: PathBuf,
+    backup_every: Duration,
+    /// When the backup ring last turned (`None`: not yet this session).
+    backed_up_at: Arc<Mutex<Option<Instant>>>,
+    /// A [`save_soon`](Self::save_soon) not written yet.
+    pending: Arc<AtomicBool>,
+    wake: Arc<tokio::sync::Notify>,
 }
 
 impl PersistenceManager {
     /// Build a manager rooted at `data_dir` (typically `app_data_dir()`).
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
+        Self::with_backup_interval(data_dir, BACKUP_EVERY)
+    }
+
+    /// [`new`](Self::new) with another backup cadence.
+    pub fn with_backup_interval(data_dir: impl AsRef<Path>, backup_every: Duration) -> Self {
         Self {
             path: data_dir.as_ref().join(STATE_FILE),
+            backup_every,
+            backed_up_at: Arc::new(Mutex::new(None)),
+            pending: Arc::new(AtomicBool::new(false)),
+            wake: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -51,26 +83,66 @@ impl PersistenceManager {
         Ok(serde_json::from_value(migrated)?)
     }
 
-    /// Persist `data` atomically (rotate backups → write temp → rename over
-    /// target). Backup rotation is best-effort: a failed snapshot never blocks
-    /// the actual save.
+    /// Persist `data` atomically (rotate backups when due → write temp →
+    /// rename over target). Backup rotation is best-effort: a failed snapshot
+    /// never blocks the actual save. A pending [`save_soon`](Self::save_soon)
+    /// is not consumed here: the next coalesced write repeats this one, harmless.
     pub fn save(&self, data: &AppData) -> Result<(), AppError> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(data)?;
-        self.rotate_backups();
+        self.rotate_backups_when_due();
         let tmp = self.path.with_extension("tmp");
         std::fs::write(&tmp, json.as_bytes())?;
         std::fs::rename(&tmp, &self.path)?;
         Ok(())
     }
 
+    /// Ask for the state to be written soon. The task waiting on
+    /// [`next_coalesced`](Self::next_coalesced) writes it.
+    pub fn save_soon(&self) {
+        self.pending.store(true, Ordering::SeqCst);
+        self.wake.notify_one();
+    }
+
+    /// Wait until a [`save_soon`](Self::save_soon) is due: [`COALESCE`] after
+    /// the first request, folding in every request made meanwhile.
+    pub async fn next_coalesced(&self) {
+        loop {
+            self.wake.notified().await;
+            tokio::time::sleep(COALESCE).await;
+            if self.pending.swap(false, Ordering::SeqCst) {
+                return;
+            }
+        }
+    }
+
+    /// Whether a [`save_soon`](Self::save_soon) is still unwritten — taken, so
+    /// the caller writes it (on exit).
+    pub fn take_pending(&self) -> bool {
+        self.pending.swap(false, Ordering::SeqCst)
+    }
+
+    fn rotate_backups_when_due(&self) {
+        let mut at = self.backed_up_at.lock().unwrap_or_else(|e| e.into_inner());
+        if at.is_some_and(|t| t.elapsed() < self.backup_every) {
+            return;
+        }
+        if self.rotate_backups() {
+            *at = Some(Instant::now());
+        }
+    }
+
     /// Rotate the current `state.json` into the backup ring before it is
     /// overwritten: `bak.4→bak.5` (oldest dropped), …, `bak.1→bak.2`, then the
     /// live file is copied to `bak.1`. Best-effort — errors are ignored so a
-    /// backup problem can't stop the save.
-    fn rotate_backups(&self) {
+    /// backup problem can't stop the save. Answers whether there was a file to
+    /// back up.
+    fn rotate_backups(&self) -> bool {
+        if !self.path.exists() {
+            return false;
+        }
         for i in (1..MAX_BACKUPS).rev() {
             let from = self.path.with_extension(format!("bak.{i}"));
             if from.exists() {
@@ -78,9 +150,8 @@ impl PersistenceManager {
                 let _ = std::fs::rename(&from, &to);
             }
         }
-        if self.path.exists() {
-            let _ = std::fs::copy(&self.path, self.path.with_extension("bak.1"));
-        }
+        let _ = std::fs::copy(&self.path, self.path.with_extension("bak.1"));
+        true
     }
 }
 
@@ -382,8 +453,55 @@ mod tests {
     }
 
     #[test]
-    fn backups_are_capped_at_max() {
+    fn saves_in_quick_succession_back_up_once() {
+        // The ring is for recovering from a bad write, so it must hold states
+        // from before a burst of saves, not five moments of the same burst.
         let (dir, mgr) = temp_manager();
+        let mut data = AppData::default();
+        for width in [100, 200, 300, 400, 500, 600, 700] {
+            data.settings.left_sidebar_width = width;
+            mgr.save(&data).unwrap();
+        }
+        let backed: AppData =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("state.bak.1")).unwrap())
+                .unwrap();
+        assert_eq!(
+            backed.settings.left_sidebar_width, 100,
+            "the state before the burst"
+        );
+        assert!(!dir.path().join("state.bak.2").exists());
+        assert_eq!(mgr.load().unwrap().settings.left_sidebar_width, 700);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn save_soon_folds_a_burst_into_one_write() {
+        let (_dir, mgr) = temp_manager();
+        let writer = mgr.clone();
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = writes.clone();
+        let task = tokio::spawn(async move {
+            loop {
+                writer.next_coalesced().await;
+                counted.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        for _ in 0..30 {
+            mgr.save_soon();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        tokio::time::sleep(COALESCE * 3).await;
+        // 30 requests over 0.6 s: one write when the window closed.
+        assert_eq!(writes.load(Ordering::SeqCst), 1);
+        assert!(!mgr.take_pending(), "nothing left once written");
+        mgr.save_soon();
+        assert!(mgr.take_pending(), "an exit takes what is still pending");
+        task.abort();
+    }
+
+    #[test]
+    fn backups_are_capped_at_max() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = PersistenceManager::with_backup_interval(dir.path(), Duration::ZERO);
         for _ in 0..(MAX_BACKUPS + 3) {
             mgr.save(&AppData::default()).unwrap();
         }

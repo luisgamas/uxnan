@@ -446,6 +446,18 @@ pub fn run() {
                 });
             }
 
+            // The one writer of `save_soon` requests (the agents' reported
+            // state): the latest state, at most once per coalescing window.
+            let persist_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = persist_handle.state::<AppState>();
+                loop {
+                    state.persistence.next_coalesced().await;
+                    let data = state.data.read().await;
+                    let _ = state.persistence.save(&data);
+                }
+            });
+
             // Background git watcher: poll the watched worktree every 3 s (paused
             // when unfocused) and emit `git:status-changed` only when it changes.
             let handle = app.handle().clone();
@@ -796,6 +808,11 @@ pub fn run() {
                 // Kill every live PTY child, so no shell/agent is left running
                 // in the background.
                 if let Some(state) = app_handle.try_state::<AppState>() {
+                    // What was asked to be written soon, written now.
+                    if state.persistence.take_pending() {
+                        let data = state.data.blocking_read();
+                        let _ = state.persistence.save(&data);
+                    }
                     state.pty.close_all();
                     // Release any keep-awake helper (kills caffeinate /
                     // systemd-inhibit on macOS/Linux) so none is left running.
