@@ -54,7 +54,7 @@ end, live and on journal replay, `blockIndex` counting them
 (`thread-store.test.ts`, `thread-store-layout.test.ts`), an older layout's
 reasoning converted to a leading thought, the reasoning order each transcript
 reader keeps (`session-history.test.ts`), and a thought told in arrival order
-with the prose and blocks around it (`agent-delta-batching.test.ts`); the **native-history watcher** (`native-history-watcher.test.ts`, on
+with the prose and blocks around it (`agent-delta-batching.test.ts`); the **transcript tail** (`transcript-tail.test.ts`: every agent's transcript written cut by cut — inside lines and inside multi-byte characters — reads the same at each cut as a whole read, a rewritten / shorter / replaced file is read from its start, a half-written line waits, concurrent reads take turns and the cache keeps the last few files); the **native-history watcher** (`native-history-watcher.test.ts`, on
 hand-fired timers and a fake reader that answers like the real one: interest
 expiry and disconnects, no read while a turn is live, an unchanged signature
 only `stat`-ed, a merge announced with its revision, OpenCode's 10 s cadence,

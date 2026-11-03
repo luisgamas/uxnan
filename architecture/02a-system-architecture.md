@@ -2627,8 +2627,15 @@ last merged together with the thread's turn count, last position and number of
 ended turns (`ThreadStore.nativeHistoryCurrent`). While both are the same, a
 merge cannot change anything, so the read skips reading and merging the
 transcript — a real 40 MB Claude Code transcript cost ~115 ms per read. A
-transcript that grew, or a thread that gained, lost or ended a turn, is read
-and merged again in full. OpenCode's history, read through its server, has no
+transcript that grew, or a thread that gained, lost or ended a turn, is merged
+again in full — but the transcript itself is read on from where the last read
+stopped (`bridge/src/conversation/transcript-tail.ts`): each agent's parser
+keeps what it carries from one line to the next, only the new whole lines are
+parsed, and a file that is no longer the one read (another inode, shorter, or
+different in its first bytes or just before where reading stopped) is read from
+its start. The result is a copy, identical to a whole read; the last eight
+transcripts read are remembered. A real 92 MB transcript growing costs 6–11 ms
+a read instead of ~270 ms. OpenCode's history, read through its server, has no
 signature: it is read on every idle `turn/list`, and by the watcher at most
 every 10 s.
 
