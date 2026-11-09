@@ -381,6 +381,30 @@ describe("ChatComposer", () => {
     expect(sent).toEqual([]);
   });
 
+  it("writes a mention with spaces in quotes, browsing a quoted folder", async () => {
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { mentionRoot: "/repo", onsend: () => undefined },
+      commands: {
+        bridge_call: (args) => {
+          const inDocs = (args.params as { cwd: string }).cwd === "/repo/My Docs";
+          return {
+            cwd: ".",
+            entries: inDocs ? [{ name: "a b.md", type: "file" }] : [{ name: "My Docs", type: "dir" }],
+          };
+        },
+      },
+    });
+    const box = screen.getByRole("textbox");
+    await user.click(box);
+    await user.keyboard("@");
+    await until(() => screen.queryByRole("option", { name: "My Docs/" }) !== null);
+    await user.keyboard("{Enter}");
+    expect(valueOf(box)).toBe('@"My Docs/');
+    await until(() => screen.queryByRole("option", { name: "My Docs/a b.md" }) !== null);
+    await user.keyboard("{Enter}");
+    expect(valueOf(box)).toBe('@"My Docs/a b.md" ');
+  });
+
   /** A composer holding "ab", a pasted file's chip, and " cd". */
   async function withChip() {
     const mounted = mountWithProviders(ChatComposer, { props: { value: "ab", onsend: () => undefined } });

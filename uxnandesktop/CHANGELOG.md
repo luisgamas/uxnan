@@ -25,6 +25,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   one, and steps ← / → over a chip itself — also before a chip that starts a
   line, where WebKit alone cannot place the caret. After a paste the caret
   lands right after the chip and its space.
+- **A file whose path has spaces is mentioned whole.** Picking it from `@`,
+  or dropping it from the project, writes `@"My Docs/notes v2.md"` (browsing a
+  folder with spaces keeps the quote open: `@"My Docs/`), as the phone does,
+  so the agent reads one path instead of two words.
 
 ## [0.0.86] - 20261103
 ### Changed

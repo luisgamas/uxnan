@@ -604,7 +604,10 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   asks the bridge that owns the conversation's folder, as the phone does: a
   bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
   the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
-  folder drills in and a picked file is inserted as its relative path.
+  folder drills in and a picked file is inserted as its relative path —
+  quoted when it has spaces, `@"My Docs/notes.md"` (a folder being browsed
+  keeps the quote open, `@"My Docs/`), exactly as the phone writes it
+  (`mentionText` in `src/lib/bridge/mentions.ts`).
   **Images and files** come from **+**, a paste or a drop onto the composer —
   from the system file manager (Finder, Explorer, the Linux one) or a row of
   the file tree — and each becomes a **chip inside the text, at the caret**,
@@ -631,7 +634,8 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   item becomes:
   - an **image**, when the agent takes images — attached as an image;
   - a **file or folder of the conversation's project** — **mentioned**
-    (`@path`, as if picked from `@`: the agent opens it itself);
+    (`@path`, or `@"path"` with spaces, as if picked from `@`: the agent opens
+    it itself);
   - a **folder from outside the project** (or the project's own folder) —
     written at the caret as its absolute path, quoted when it has spaces, the
     same text a terminal gets (`fs_is_dir` tells a folder from a file);

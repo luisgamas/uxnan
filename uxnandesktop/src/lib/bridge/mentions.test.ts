@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mentionEntries, mentionFor, MENTION_LIMIT } from './mentions';
+import { mentionEntries, mentionFor, mentionText, MENTION_LIMIT } from './mentions';
 
 function fake(answers: Record<string, unknown>) {
   const calls: { method: string; params: unknown }[] = [];
@@ -64,6 +64,19 @@ describe('mentionEntries', () => {
   });
 });
 
+describe('mentionText', () => {
+  it('writes a path as it is, and quotes one with spaces', () => {
+    expect(mentionText('src/main.ts')).toBe('@src/main.ts');
+    expect(mentionText('My Docs/notes v2.md')).toBe('@"My Docs/notes v2.md"');
+  });
+
+  it('leaves a browsed folder open, keeping its quote', () => {
+    expect(mentionText('src', { folder: true })).toBe('@src/');
+    expect(mentionText('My Docs', { folder: true })).toBe('@"My Docs/');
+    expect(mentionText('My Docs/notes.md', { quoted: true })).toBe('@"My Docs/notes.md"');
+  });
+});
+
 describe('mentionFor', () => {
   it('mentions a file inside the project by its relative path', () => {
     expect(mentionFor('/Users/me/app', '/Users/me/app/src/main.ts')).toBe('@src/main.ts');
@@ -74,6 +87,10 @@ describe('mentionFor', () => {
     expect(mentionFor('/Users/me/app', '/Users/me/other/a.ts')).toBeNull();
     expect(mentionFor('/Users/me/app', '/Users/me/app-old/a.ts')).toBeNull();
     expect(mentionFor('/Users/me/app', '/Users/me/app')).toBeNull();
+  });
+
+  it('quotes a dropped file whose path has spaces', () => {
+    expect(mentionFor('/Users/me/app', '/Users/me/app/My Docs/a b.md')).toBe('@"My Docs/a b.md"');
   });
 
   it('writes a Windows path with forward slashes and matches its drive case-insensitively', () => {

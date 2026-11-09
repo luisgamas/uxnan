@@ -58,10 +58,10 @@ class ComposerTextController extends TextEditingController {
   /// How many files (not images) the message carries.
   int get fileCount => _attachments.where((a) => !a.isImage).length;
 
-  /// `@` token: `@` followed by one or more non-space, non-`@` chars. The
-  /// leading word boundary is checked separately (so an email like `a@b` is
-  /// not styled).
-  static final RegExp _mention = RegExp(r'@[^\s@￼]+');
+  /// `@` token: a quoted `@"path with spaces"`, or `@` followed by one or
+  /// more non-space, non-`@` chars. The leading word boundary is checked
+  /// separately (so an email like `a@b` is not styled).
+  static final RegExp _mention = RegExp(r'@"[^"\n￼]+"|@[^\s@￼]+');
 
   @override
   set value(TextEditingValue newValue) {

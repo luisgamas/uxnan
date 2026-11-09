@@ -1854,7 +1854,12 @@ hermanas 8 dp por encima del composer. Comparten superficie tonal elevada,
 geometria, ancho y una cabecera con el trigger y el titulo. `/` usa filas
 continuas de al menos 56 dp con icono contenido, nombre y descripcion; `@`
 conserva sus filas y estados de navegacion, busqueda, carga y error. Ambos
-respetan reduced motion.
+respetan reduced motion. Un archivo elegido con `@` se escribe como su ruta
+relativa, `@ruta`, y **entre comillas cuando la ruta tiene espacios**
+(`@"Mis docs/notas v2.md"`; una carpeta que se esta recorriendo deja la comilla
+abierta, `@"Mis docs/`): asi el composer dibuja el nombre completo como una sola
+insignia y el agente lee una ruta, no dos palabras. La app de escritorio escribe
+lo mismo (`mentionText`), y el bridge entrega el texto tal cual.
 
 #### 5.6.2 Composer avanzado
 

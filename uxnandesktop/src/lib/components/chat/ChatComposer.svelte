@@ -59,7 +59,7 @@
     type ComposerAttachment,
   } from "$lib/bridge/composerAttachments";
   import { stripAttachmentMarkers } from "$shared/models/inline-attachments";
-  import { mentionEntries, mentionFor } from "$lib/bridge/mentions";
+  import { mentionEntries, mentionFor, mentionText } from "$lib/bridge/mentions";
   import { fileDropTarget } from "$lib/fileDrop";
   import { fsIsDir } from "$lib/api";
   import { quoteDropPath } from "$lib/terminal/terminalDrop";
@@ -287,7 +287,9 @@
   function pick(item: Suggestion) {
     if (!token) return;
     const replacement =
-      item.kind === "command" ? `/${item.command.name}` : `@${item.path}${item.isDir ? "/" : ""}`;
+      item.kind === "command"
+        ? `/${item.command.name}`
+        : mentionText(item.path, { folder: item.isDir, quoted: token.kind === "mention" && token.quoted });
     const next = complete(value, token, replacement);
     value = next.text;
     token = undefined;
