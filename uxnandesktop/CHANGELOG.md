@@ -4,6 +4,22 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The arrow keys no longer type boxes at the start or end of the message.**
+  0.0.87 stopped one form of it, but an arrow with nowhere to move (→ at the
+  end, ← at the start) still reached the composer as text — WKWebView writes
+  it as the classic Mac key code (→ is U+001D), which 0.0.87 did not
+  recognize. The editor now treats those codes, and any other control
+  character an engine writes, as the key they stand for, and removes any that
+  get through after an edit; line breaks and tabs stay text.
+
+### Changed
+
+- **The composer no longer suggests or autocorrects words.** macOS's inline
+  predictions (the grey completion while typing) and its autocorrection are
+  off in the chat composer, so nothing is written that you did not type.
+  Misspellings are still underlined.
 
 ## [0.0.87] - 20261109
 ### Fixed

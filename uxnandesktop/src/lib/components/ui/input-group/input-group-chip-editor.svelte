@@ -31,6 +31,7 @@
 		caretOf,
 		chipAround,
 		chipNode,
+		dropAppKitKeys,
 		CHIP_ATTR,
 		isChip,
 		makeAtomic,
@@ -260,6 +261,7 @@
 	});
 
 	function handleInput(e: Event) {
+		if (ref) dropAppKitKeys(ref);
 		read();
 		oninput?.(e);
 	}
@@ -297,11 +299,14 @@
 			case "insertFromDrop":
 				e.preventDefault();
 				return;
-			// An arrow (Home, End…) WKWebView handed over as its AppKit
-			// character instead of as its command: the move it meant, never
-			// a box in the text.
-			case "insertText": {
-				const keys = appKitKeys(e.data);
+			// An arrow (Home, End…) WKWebView handed over as a character
+			// instead of as its command: the move it meant, never a box in
+			// the text. Whatever insertion carries it.
+			case "insertText":
+			case "insertReplacementText":
+			case "insertCompositionText":
+			case "insertFromComposition": {
+				const keys = appKitKeys(e.data ?? e.dataTransfer?.getData("text/plain") ?? null);
 				if (!keys) return;
 				e.preventDefault();
 				const selection = ref?.ownerDocument.getSelection();
@@ -352,6 +357,12 @@
 		if (target?.closest("[data-chip-action]")) e.preventDefault();
 	}
 
+	/** WebKit's `autocorrect` holds on any editable element, but the DOM
+	 *  types know it only on inputs. Off, with `writingsuggestions`: macOS's
+	 *  inline predictions and its autocorrection write into the message words
+	 *  the person never typed. Spelling stays underlined. */
+	const noAutocorrect: Record<string, string> = { autocorrect: "off" };
+
 	/** A stop is selectable text that takes no room and no pointer. */
 	const stopClass = "pointer-events-none absolute size-0 overflow-hidden select-text";
 
@@ -381,6 +392,8 @@
 	data-empty={value === "" ? "" : undefined}
 	contenteditable={disabled ? "false" : "true"}
 	spellcheck="true"
+	writingsuggestions="false"
+	{...noAutocorrect}
 	class={cn(
 		"relative flex-1 w-full min-w-0 overflow-y-auto whitespace-pre-wrap break-words rounded-none border-0 bg-transparent px-2.5 py-2 text-base md:text-sm outline-none",
 		"data-empty:before:pointer-events-none data-empty:before:absolute data-empty:before:text-muted-foreground data-empty:before:content-[attr(data-placeholder)]",
