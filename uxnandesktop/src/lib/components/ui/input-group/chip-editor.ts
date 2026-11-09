@@ -219,6 +219,34 @@ export function chipAround(root: HTMLElement, node: Node | null): HTMLElement | 
   return null;
 }
 
+/** AppKit's key characters (see `appKitKeys`): its function-key range and
+ *  the C0 control codes, except the line break and the tab that are text. */
+const APPKIT_KEY_RUN = /[\uF700-\uF7FF\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g;
+
+/**
+ * Take every AppKit key character out of [root]'s text, keeping the
+ * caret where it was; whether there was any. The last word on them: whatever
+ * path an engine took to write one (an arrow at the very start or end of the
+ * text, where it has nowhere to move, is handed back as text), it never stays.
+ */
+export function dropAppKitKeys(root: HTMLElement): boolean {
+  const selection = root.ownerDocument.getSelection();
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let dropped = false;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.nodeValue ?? '';
+    if (!APPKIT_KEY_RUN.test(text)) continue;
+    APPKIT_KEY_RUN.lastIndex = 0;
+    const caretHere = selection?.isCollapsed && selection.focusNode === node;
+    const caret = caretHere ? selection.focusOffset : 0;
+    const before = text.slice(0, caret).replace(APPKIT_KEY_RUN, '');
+    node.nodeValue = text.replace(APPKIT_KEY_RUN, '');
+    if (caretHere) selection.collapse(node, before.length);
+    dropped = true;
+  }
+  return dropped;
+}
+
 /** A caret move: what `Selection.modify` takes. */
 export type CaretMove = { direction: 'backward' | 'forward'; granularity: 'character' | 'line' | 'lineboundary' };
 
@@ -231,23 +259,41 @@ const APPKIT_KEY_MOVES: Record<number, CaretMove> = {
   0xf72b: { direction: 'forward', granularity: 'lineboundary' }, // End
   0xf72c: { direction: 'backward', granularity: 'line' }, // Page Up
   0xf72d: { direction: 'forward', granularity: 'line' }, // Page Down
+  // The same keys as the classic Mac character codes, which is what WKWebView
+  // has been seen to write for an arrow that had nowhere to move.
+  0x1c: { direction: 'backward', granularity: 'character' }, // ←
+  0x1d: { direction: 'forward', granularity: 'character' }, // →
+  0x1e: { direction: 'backward', granularity: 'line' }, // ↑
+  0x1f: { direction: 'forward', granularity: 'line' }, // ↓
+  0x01: { direction: 'backward', granularity: 'lineboundary' }, // Home
+  0x04: { direction: 'forward', granularity: 'lineboundary' }, // End
+  0x0b: { direction: 'backward', granularity: 'line' }, // Page Up
+  0x0c: { direction: 'forward', granularity: 'line' }, // Page Down
 };
 
+/** Whether [code] is a key, never text: AppKit's function-key range, or a C0
+ *  control code other than the line break and the tab. */
+function isKeyCode(code: number): boolean {
+  if (code >= 0xf700 && code <= 0xf7ff) return true;
+  return code < 0x20 && code !== 0x0a && code !== 0x09 && code !== 0x0d;
+}
+
 /**
- * Whether [data] — the text an insertion would write — is macOS function-key
- * codes rather than text, and the caret move it stands for (`null` for a key
- * that moves nothing). AppKit names the arrows, Home, End, the F-keys… with
- * characters U+F700–U+F7FF; when WKWebView hands a key to the page as text
- * instead of as its command they would land in the message as boxes. That
- * range is AppKit's own (WebKit drops it from keypress text for the same
- * reason); U+F8FF, the Apple logo, is real text and stays.
+ * Whether [data] — the text an insertion would write — is key codes rather
+ * than text, and the caret move each stands for (`null` for a key that moves
+ * nothing). AppKit names the arrows, Home, End, the F-keys… with characters
+ * U+F700–U+F7FF, and macOS's classic character codes name them with C0
+ * controls (→ is U+001D). When WKWebView hands a key to the page as text —
+ * an arrow at the very start or end of the text, where it has nowhere to go —
+ * they would land in the message as boxes. U+F8FF, the Apple logo, is real
+ * text and stays, as do the line break and the tab.
  */
 export function appKitKeys(data: string | null): { move: CaretMove | null }[] | null {
   if (!data) return null;
   const keys: { move: CaretMove | null }[] = [];
   for (const ch of data) {
     const code = ch.codePointAt(0) ?? 0;
-    if (code < 0xf700 || code > 0xf7ff) return null;
+    if (!isKeyCode(code)) return null;
     keys.push({ move: APPKIT_KEY_MOVES[code] ?? null });
   }
   return keys;

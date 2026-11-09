@@ -623,8 +623,10 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (`InputGroup.ChipEditor`), and WebKit needs it to do some of that itself: it
   re-marks every chip atomic after each edit (`insertHTML` drops
   `contenteditable="false"`), moves a caret that lands inside a chip to just
-  after it, steps ← / → over a chip, turns an arrow that arrives as its AppKit
-  character (U+F700–U+F7FF) into the move it meant, and carries a selectable
+  after it, steps ← / → over a chip, turns an arrow that arrives as a character
+  — AppKit's U+F700–U+F7FF or the classic Mac key codes (→ is U+001D), which
+  WKWebView writes for an arrow with nowhere to move — into the move it meant
+  (and removes any such character an edit still leaves), and carries a selectable
   stop on each side — without them, macOS WebKit's per-keystroke look at the
   text around the caret walks the whole unselectable window. Its label is the file name,
   shortened in the middle when long; an image shows a tiny thumbnail and

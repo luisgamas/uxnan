@@ -31,6 +31,7 @@
 		caretOf,
 		chipAround,
 		chipNode,
+		dropAppKitKeys,
 		CHIP_ATTR,
 		isChip,
 		makeAtomic,
@@ -260,6 +261,7 @@
 	});
 
 	function handleInput(e: Event) {
+		if (ref) dropAppKitKeys(ref);
 		read();
 		oninput?.(e);
 	}
@@ -297,11 +299,14 @@
 			case "insertFromDrop":
 				e.preventDefault();
 				return;
-			// An arrow (Home, End…) WKWebView handed over as its AppKit
-			// character instead of as its command: the move it meant, never
-			// a box in the text.
-			case "insertText": {
-				const keys = appKitKeys(e.data);
+			// An arrow (Home, End…) WKWebView handed over as a character
+			// instead of as its command: the move it meant, never a box in
+			// the text. Whatever insertion carries it.
+			case "insertText":
+			case "insertReplacementText":
+			case "insertCompositionText":
+			case "insertFromComposition": {
+				const keys = appKitKeys(e.data ?? e.dataTransfer?.getData("text/plain") ?? null);
 				if (!keys) return;
 				e.preventDefault();
 				const selection = ref?.ownerDocument.getSelection();

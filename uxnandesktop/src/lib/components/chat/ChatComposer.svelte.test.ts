@@ -462,6 +462,20 @@ describe("ChatComposer", () => {
     expect(valueOf(box)).toBe("hola");
   });
 
+  it("never writes the key code WKWebView hands over for an arrow at the end", async () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { value: "hola", onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    setCaret(box, 4);
+    const arrow = new InputEvent("beforeinput", { inputType: "insertText", data: "\u001d", cancelable: true, bubbles: true });
+    box.dispatchEvent(arrow);
+    expect(arrow.defaultPrevented).toBe(true);
+    // A path that writes one anyway (no cancelable beforeinput): gone on input.
+    box.firstChild!.nodeValue = "hola\u001d";
+    await fireEvent.input(box);
+    expect(valueOf(box)).toBe("hola");
+  });
+
   it("puts selectable stops around the field, so WebKit's text lookups end there", () => {
     const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
     const box = screen.getByRole("textbox");

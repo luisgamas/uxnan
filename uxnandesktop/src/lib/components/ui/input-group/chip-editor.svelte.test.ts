@@ -8,6 +8,7 @@ import {
   caretOf,
   chipAround,
   chipNode,
+  dropAppKitKeys,
   isChip,
   makeAtomic,
   offsetOf,
@@ -141,5 +142,32 @@ describe("chip editor model", () => {
     expect(appKitKeys("\uF8FF")).toBeNull();
     expect(appKitKeys("")).toBeNull();
     expect(appKitKeys(null)).toBeNull();
+  });
+
+  it("reads the classic Mac key codes WKWebView writes for an arrow with nowhere to go", () => {
+    expect(appKitKeys("\u001d")).toEqual([{ move: { direction: "forward", granularity: "character" } }]);
+    expect(appKitKeys("\u001c\u001e")).toEqual([
+      { move: { direction: "backward", granularity: "character" } },
+      { move: { direction: "backward", granularity: "line" } },
+    ]);
+    expect(appKitKeys("\u0004")).toEqual([{ move: { direction: "forward", granularity: "lineboundary" } }]);
+    // Another control code moves nothing, and is still no text.
+    expect(appKitKeys("\u0007")).toEqual([{ move: null }]);
+    // A line break and a tab are text.
+    expect(appKitKeys("\n")).toBeNull();
+    expect(appKitKeys("\t")).toBeNull();
+  });
+
+  it("takes key codes out of the text, keeping the caret where it was", () => {
+    const root = editor("");
+    root.textContent = "ab\u001d\u001dcd\uF703";
+    const text = root.firstChild!;
+    window.getSelection()!.collapse(text, 4);
+    expect(dropAppKitKeys(root)).toBe(true);
+    expect(root.textContent).toBe("abcd");
+    expect(caretOf(root)).toBe(2);
+    expect(dropAppKitKeys(root)).toBe(false);
+    root.textContent = "line\nnext\tend";
+    expect(dropAppKitKeys(root)).toBe(false);
   });
 });
