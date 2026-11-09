@@ -4,9 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  appKitKeys,
   caretOf,
+  chipAround,
   chipNode,
   isChip,
+  makeAtomic,
   offsetOf,
   plainTextOf,
   pointAt,
@@ -102,5 +105,41 @@ describe("chip editor model", () => {
     expect(spacedInsert("look at", 7)).toEqual({ before: " ", after: " " });
     expect(spacedInsert("look  at", 5)).toEqual({ before: "", after: "" });
     expect(spacedInsert("a\nb", 2)).toEqual({ before: "", after: " " });
+  });
+
+  it("makes a chip atomic again after an engine dropped its attributes", () => {
+    const root = editor(`a ${M}`, ["x"]);
+    const node = root.querySelector<HTMLElement>("[data-chip]")!;
+    node.removeAttribute("contenteditable");
+    node.removeAttribute("draggable");
+    makeAtomic(node);
+    expect(node.getAttribute("contenteditable")).toBe("false");
+    expect(node.getAttribute("draggable")).toBe("false");
+  });
+
+  it("finds the chip a point is inside, and nothing for a point in the text", () => {
+    const root = editor(`a ${M} b`, ["x"]);
+    const node = root.querySelector<HTMLElement>("[data-chip]")!;
+    expect(chipAround(root, node.firstChild)).toBe(node);
+    expect(chipAround(root, node)).toBe(node);
+    expect(chipAround(root, root.firstChild)).toBeNull();
+    expect(chipAround(root, root)).toBeNull();
+  });
+
+  it("reads macOS function-key characters as the caret moves they stand for", () => {
+    expect(appKitKeys("\uF702")).toEqual([{ move: { direction: "backward", granularity: "character" } }]);
+    expect(appKitKeys("\uF703\uF701")).toEqual([
+      { move: { direction: "forward", granularity: "character" } },
+      { move: { direction: "forward", granularity: "line" } },
+    ]);
+    expect(appKitKeys("\uF729")).toEqual([{ move: { direction: "backward", granularity: "lineboundary" } }]);
+    // An F-key moves nothing, and is still no text.
+    expect(appKitKeys("\uF704")).toEqual([{ move: null }]);
+    // Real text — the Apple logo included — is text.
+    expect(appKitKeys("a")).toBeNull();
+    expect(appKitKeys("\uF702a")).toBeNull();
+    expect(appKitKeys("\uF8FF")).toBeNull();
+    expect(appKitKeys("")).toBeNull();
+    expect(appKitKeys(null)).toBeNull();
   });
 });

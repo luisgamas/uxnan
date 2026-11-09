@@ -196,9 +196,61 @@ export function render(
 export function chipNode(makeChip: (id: string) => HTMLElement, id: string): HTMLElement {
   const node = makeChip(id);
   node.setAttribute(CHIP_ATTR, id);
-  node.setAttribute('contenteditable', 'false');
-  node.setAttribute('draggable', 'false');
+  makeAtomic(node);
   return node;
+}
+
+/**
+ * Mark [chip] as one character of the text: not editable, not draggable.
+ * Needed again after every edit, not only when a chip is built: WebKit's
+ * `insertHTML` drops `contenteditable` from the markup it inserts, and a chip
+ * that lost it lets the caret walk into its name and the typing land there.
+ */
+export function makeAtomic(chip: HTMLElement): void {
+  if (chip.getAttribute('contenteditable') !== 'false') chip.setAttribute('contenteditable', 'false');
+  if (chip.getAttribute('draggable') !== 'false') chip.setAttribute('draggable', 'false');
+}
+
+/** The chip of [root] that [node] is inside (or is), or `null`. */
+export function chipAround(root: HTMLElement, node: Node | null): HTMLElement | null {
+  for (let at = node; at && at !== root; at = at.parentNode) {
+    if (isChip(at)) return at;
+  }
+  return null;
+}
+
+/** A caret move: what `Selection.modify` takes. */
+export type CaretMove = { direction: 'backward' | 'forward'; granularity: 'character' | 'line' | 'lineboundary' };
+
+const APPKIT_KEY_MOVES: Record<number, CaretMove> = {
+  0xf700: { direction: 'backward', granularity: 'line' }, // ↑
+  0xf701: { direction: 'forward', granularity: 'line' }, // ↓
+  0xf702: { direction: 'backward', granularity: 'character' }, // ←
+  0xf703: { direction: 'forward', granularity: 'character' }, // →
+  0xf729: { direction: 'backward', granularity: 'lineboundary' }, // Home
+  0xf72b: { direction: 'forward', granularity: 'lineboundary' }, // End
+  0xf72c: { direction: 'backward', granularity: 'line' }, // Page Up
+  0xf72d: { direction: 'forward', granularity: 'line' }, // Page Down
+};
+
+/**
+ * Whether [data] — the text an insertion would write — is macOS function-key
+ * codes rather than text, and the caret move it stands for (`null` for a key
+ * that moves nothing). AppKit names the arrows, Home, End, the F-keys… with
+ * characters U+F700–U+F7FF; when WKWebView hands a key to the page as text
+ * instead of as its command they would land in the message as boxes. That
+ * range is AppKit's own (WebKit drops it from keypress text for the same
+ * reason); U+F8FF, the Apple logo, is real text and stays.
+ */
+export function appKitKeys(data: string | null): { move: CaretMove | null }[] | null {
+  if (!data) return null;
+  const keys: { move: CaretMove | null }[] = [];
+  for (const ch of data) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0xf700 || code > 0xf7ff) return null;
+    keys.push({ move: APPKIT_KEY_MOVES[code] ?? null });
+  }
+  return keys;
 }
 
 /**

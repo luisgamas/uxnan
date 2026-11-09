@@ -9,13 +9,21 @@ import type { AgentCommand, AgentCommandInvocation } from '$shared/agents/agent-
 /** The token the caret is in, when it is one the panel completes. */
 export type ComposerToken =
   | { kind: 'command'; query: string; start: number; end: number }
-  | { kind: 'mention'; query: string; start: number; end: number };
+  | {
+      kind: 'mention';
+      query: string;
+      start: number;
+      end: number;
+      /** Written `@"…"` (its path has spaces): what is picked stays quoted. */
+      quoted?: boolean;
+    };
 
 /**
  * The token at [caret] in [text]: a `/name` that is the message's first word
- * (a command is the whole message, never mid-sentence), or an `@path` that
- * starts a word. `undefined` otherwise. An attachment chip (its marker,
- * U+FFFC) ends a word like a space does: a token never runs into one.
+ * (a command is the whole message, never mid-sentence), or an `@path` — or an
+ * `@"path with spaces"` (`mentionText`) — that starts a word. `undefined`
+ * otherwise. An attachment chip (its marker, U+FFFC) ends a word like a space
+ * does: a token never runs into one.
  */
 export function tokenAt(text: string, caret: number): ComposerToken | undefined {
   const before = text.slice(0, caret);
@@ -23,7 +31,19 @@ export function tokenAt(text: string, caret: number): ComposerToken | undefined 
   if (command) {
     return { kind: 'command', query: command[1] ?? '', start: 0, end: wordEnd(text, caret) };
   }
-  const mention = /(^|[\s\uFFFC])@([^\s@\uFFFC]*)$/.exec(before);
+  const quoted = /(^|[\s\uFFFC])@"([^"\n\uFFFC]*)$/.exec(before);
+  if (quoted) {
+    const query = quoted[2] ?? '';
+    const rest = /^[^"\n\uFFFC]*"?/.exec(text.slice(caret));
+    return {
+      kind: 'mention',
+      query,
+      start: before.length - query.length - 2,
+      end: caret + (rest?.[0].length ?? 0),
+      quoted: true,
+    };
+  }
+  const mention = /(^|[\s\uFFFC])@([^\s@\uFFFC"]*)$/.exec(before);
   if (mention) {
     const start = before.length - (mention[2]?.length ?? 0) - 1;
     return { kind: 'mention', query: mention[2] ?? '', start, end: wordEnd(text, caret) };

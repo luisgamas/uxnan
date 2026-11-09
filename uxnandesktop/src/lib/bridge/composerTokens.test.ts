@@ -28,6 +28,20 @@ describe('tokenAt', () => {
     expect(tokenAt('mail me@example', 15)).toBeUndefined();
   });
 
+  it('reads a quoted mention, spaces and all, up to its closing quote', () => {
+    expect(tokenAt('see @"My Docs/no', 16)).toEqual({
+      kind: 'mention',
+      query: 'My Docs/no',
+      start: 4,
+      end: 16,
+      quoted: true,
+    });
+    expect(tokenAt('see @"My Docs/notes.md" ok', 10)).toMatchObject({ query: 'My D', end: 23 });
+    // After its closing quote the mention is over.
+    expect(tokenAt('see @"a b.md" ', 13)).toBeUndefined();
+    expect(tokenAt('see @"a b.md" ', 14)).toBeUndefined();
+  });
+
   it('covers the rest of the word after the caret', () => {
     expect(tokenAt('see @src/lib.ts please', 8)).toMatchObject({ start: 4, end: 15 });
   });
@@ -49,6 +63,19 @@ describe('complete', () => {
     const next = complete('see @sr', token, '@src/');
     expect(next).toEqual({ text: 'see @src/', caret: 9 });
     expect(tokenAt(next.text, next.caret)).toMatchObject({ kind: 'mention', query: 'src/' });
+  });
+
+  it('keeps a quoted folder open and closes the quote on the file', () => {
+    const open = tokenAt('see @"My Docs/', 14)!;
+    expect(complete('see @"My Docs/', open, '@"My Docs/Old/')).toEqual({
+      text: 'see @"My Docs/Old/',
+      caret: 18,
+    });
+    const file = tokenAt('see @"My Docs/no" and', 16)!;
+    expect(complete('see @"My Docs/no" and', file, '@"My Docs/notes.md"')).toEqual({
+      text: 'see @"My Docs/notes.md" and',
+      caret: 24,
+    });
   });
 });
 

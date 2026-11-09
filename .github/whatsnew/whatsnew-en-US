@@ -1,1 +1,1 @@
-When an agent asks you something or needs permission, the card no longer closes by itself: it waits for your answer and notifies you. Starting a conversation is cleaner, and the sessions your agents had outside Uxnan now live in the catalog, with titles. Plan usage now shows Antigravity and OpenCode, your saved resets and Codex's estimated cost.
+Mentioning a file whose name has spaces now works: picking it with @ shows the whole name as one badge, and your agent receives the complete path instead of a name cut at the first space.

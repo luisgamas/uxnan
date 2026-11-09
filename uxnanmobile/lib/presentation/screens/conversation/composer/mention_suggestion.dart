@@ -5,6 +5,7 @@
 library;
 
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/value_objects/inline_attachments.dart';
 
 /// What kind of inline affordance the cursor is currently inside.
 enum ComposerTrigger {
@@ -27,6 +28,7 @@ class ComposerTriggerContext extends Equatable {
     required this.query,
     required this.triggerOffset,
     required this.cursor,
+    this.quoted = false,
   });
 
   /// The kind of affordance that is active.
@@ -41,8 +43,12 @@ class ComposerTriggerContext extends Equatable {
   /// The caret offset the context was computed for.
   final int cursor;
 
+  /// Whether the mention is written `@"…"` (its path has spaces): what is
+  /// picked stays quoted.
+  final bool quoted;
+
   @override
-  List<Object?> get props => [trigger, query, triggerOffset, cursor];
+  List<Object?> get props => [trigger, query, triggerOffset, cursor, quoted];
 }
 
 /// The result of applying a suggestion: the new [text] and where to place the
@@ -70,6 +76,8 @@ int _firstWhitespace(String text) {
 /// - **File (`@`)**: the nearest `@` before the caret that sits at a word
 ///   boundary (start of text or after whitespace) with no whitespace between it
 ///   and the caret. The query may contain `/`, `.`, `-` etc. (a partial path).
+///   A quoted mention, `@"My Docs/no`, runs to its closing quote instead, so
+///   its query may hold spaces ([applyFileMention] writes it).
 ComposerTriggerContext? detectComposerTrigger(String text, int cursor) {
   if (cursor < 0 || cursor > text.length) return null;
 
@@ -84,6 +92,23 @@ ComposerTriggerContext? detectComposerTrigger(String text, int cursor) {
         cursor: cursor,
       );
     }
+  }
+
+  // Quoted file mention — `@"` at a word boundary, no quote, line break or
+  // chip between it and the caret.
+  for (var i = cursor - 1; i >= 1; i--) {
+    final ch = text[i];
+    if (ch == '\n' || ch == kAttachmentMarker) break;
+    if (ch != '"') continue;
+    final at = i - 1;
+    if (text[at] != '@' || !(at == 0 || _isWhitespace(text[at - 1]))) break;
+    return ComposerTriggerContext(
+      trigger: ComposerTrigger.file,
+      query: text.substring(i + 1, cursor),
+      triggerOffset: at,
+      cursor: cursor,
+      quoted: true,
+    );
   }
 
   // File mention — nearest '@' at a word boundary, no whitespace up to caret.
@@ -119,14 +144,29 @@ ComposerTriggerContext? detectComposerTrigger(String text, int cursor) {
 /// a trailing slash and no closing space, so [detectComposerTrigger] still sees
 /// an active mention and the next level lists. A file finalizes the mention:
 /// `@<path>` followed by a single space, so the mention closes.
+///
+/// A path with whitespace is quoted — `@"My Docs/` while browsing it,
+/// `@"My Docs/notes.md"` once picked — so the composer draws the whole name as
+/// one badge and the agent reads one path, not two words. The desktop writes
+/// the same (`mentionText` in `uxnandesktop/src/lib/bridge/mentions.ts`).
 ComposerEdit applyFileMention(
   String text,
   ComposerTriggerContext ctx, {
   required String relativePath,
   required bool isDir,
 }) {
-  final insert = isDir ? '@$relativePath/' : '@$relativePath ';
-  final newText = text.replaceRange(ctx.triggerOffset, ctx.cursor, insert);
+  final quote = ctx.quoted || relativePath.contains(RegExp(r'\s')) ? '"' : '';
+  final insert =
+      isDir ? '@$quote$relativePath/' : '@$quote$relativePath$quote ';
+  // A quoted mention being edited goes up to its closing quote.
+  var end = ctx.cursor;
+  if (ctx.quoted) {
+    final close = RegExp(r'^[^"\n\uFFFC]*"').firstMatch(text.substring(end));
+    if (close != null) end += close.end;
+    // …and the space after it, which the picked file brings again.
+    if (!isDir && text.startsWith(' ', end)) end++;
+  }
+  final newText = text.replaceRange(ctx.triggerOffset, end, insert);
   return (text: newText, cursor: ctx.triggerOffset + insert.length);
 }
 

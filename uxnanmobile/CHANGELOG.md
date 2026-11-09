@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A mentioned file whose path has spaces is one badge.** Picking it from
+  `@` writes `@"My Docs/notes v2.md"` — the whole name drawn as one badge, and
+  one path for the agent — and browsing a folder with spaces keeps the quote
+  open (`@"My Docs/`), as the desktop does.
 
 ## [0.0.47-alpha.20261031+20261031] - 20261031
 ### Added

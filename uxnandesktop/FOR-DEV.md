@@ -1080,16 +1080,19 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       with `agentSessionId`) and both apps — `src/lib/bridge/conversationsView.ts`.
 
 ### Chat composer — attachment chips in the text (plan 047)
-- [ ] **Verify the chip editor on WebKit.** `InputGroup.ChipEditor`
+- [ ] **Verify the chip editor on WebKitGTK (Linux), and in the packaged
+      macOS app.** `InputGroup.ChipEditor`
       (`src/lib/components/ui/input-group/input-group-chip-editor.svelte`) is
-      a `contenteditable` field; its behavior was checked in jsdom (Vitest) and
-      in a real Chromium (paste → chips, Backspace over a chip, the caret
-      stepping over one, Shift+Enter, undo, copy as `[name]`, plain-text
-      paste) — which is what WebView2 on Windows runs — but not yet in macOS's
-      WKWebView or Linux's WebKitGTK, whose caret handling next to a
-      `contenteditable="false"` node is known to differ. Run the same checks in
-      `npm run tauri dev` on macOS and Linux; fix in the editor (one layer) what
-      differs. Unblocked by: a WebKit run (no headless WebKit here).
+      a `contenteditable` field. Checked in jsdom (Vitest), in a real Chromium
+      (WebView2's engine) and — since the WKWebView fixes (chips re-marked
+      atomic, caret kept out of chips, ← / → stepping over one, AppKit arrow
+      characters, the selectable stops that keep typing fast) — in a real
+      WKWebView driven with real `NSEvent`s and `insertText:` (typing, arrows,
+      Shift+Enter, chips inserted mid-line and at a line start, a busy window).
+      Still owed: the same checks on Linux's WebKitGTK, and a real paste/drop
+      in `npm run tauri dev` on macOS (the clipboard path the harness could not
+      drive). Fix in the editor (one layer) what differs. Unblocked by: a Linux
+      WebKitGTK run and a maintainer session on macOS.
 
 ### Chat tabs — parity with the phone's conversation screen
 - [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the

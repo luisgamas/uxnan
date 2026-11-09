@@ -4,6 +4,31 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Typing in the chat composer no longer slows down as the window fills.**
+  On macOS, WebKit reads the text around the caret after every keystroke and
+  every frame, walking the page position by position until it reaches
+  selectable text — and the app is not selectable, so the walk crossed the
+  whole window (sidebar, other panes, every row of a long chat) twice per key.
+  Measured in WKWebView with a busy window: 20 keystrokes took 5–16 s, now
+  2–10 ms. The editor now carries a selectable stop on each side.
+- **The arrow keys no longer type boxes into the composer.** When WKWebView
+  hands an arrow (or Home, End…) to the page as its AppKit character
+  (U+F700–U+F7FF) instead of as its command, the editor now moves the caret
+  as the key meant, instead of writing an unprintable character into the
+  message.
+- **A file's chip stays one character on macOS.** WebKit drops
+  `contenteditable="false"` from inserted markup, so the caret walked into a
+  chip's name, typing there was lost, and ← could not leave it. The editor
+  marks every chip atomic again after each edit, never rests the caret inside
+  one, and steps ← / → over a chip itself — also before a chip that starts a
+  line, where WebKit alone cannot place the caret. After a paste the caret
+  lands right after the chip and its space.
+- **A file whose path has spaces is mentioned whole.** Picking it from `@`,
+  or dropping it from the project, writes `@"My Docs/notes v2.md"` (browsing a
+  folder with spaces keeps the quote open: `@"My Docs/`), as the phone does,
+  so the agent reads one path instead of two words.
 
 ## [0.0.86] - 20261103
 ### Changed

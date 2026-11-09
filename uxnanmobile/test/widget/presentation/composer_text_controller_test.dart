@@ -256,6 +256,16 @@ void main() {
       );
     });
 
+    testWidgets('draws a quoted mention with spaces as one badge',
+        (tester) async {
+      final c = ComposerTextController(text: 'see @"My Docs/a b.md" now');
+      addTearDown(c.dispose);
+      final children = (await build(tester, c)).children!.cast<TextSpan>();
+      final mention = children.firstWhere((s) => s.text == '@"My Docs/a b.md"');
+      expect(mention.style?.fontFamily, UxnanTypography.monoFontFamily);
+      expect(children.last.text, ' now');
+    });
+
     testWidgets('plain text without a mention yields a single span',
         (tester) async {
       final c = ComposerTextController(text: 'just a message');

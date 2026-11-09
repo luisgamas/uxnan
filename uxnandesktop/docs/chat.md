@@ -604,7 +604,10 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   asks the bridge that owns the conversation's folder, as the phone does: a
   bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
   the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
-  folder drills in and a picked file is inserted as its relative path.
+  folder drills in and a picked file is inserted as its relative path —
+  quoted when it has spaces, `@"My Docs/notes.md"` (a folder being browsed
+  keeps the quote open, `@"My Docs/`), exactly as the phone writes it
+  (`mentionText` in `src/lib/bridge/mentions.ts`).
   **Images and files** come from **+**, a paste or a drop onto the composer —
   from the system file manager (Finder, Explorer, the Linux one) or a row of
   the file tree — and each becomes a **chip inside the text, at the caret**,
@@ -616,7 +619,14 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (`bridge/docs/agents.md`). A chip is atomic: the caret steps over it,
   Backspace removes it whole, its ✕ takes it out (with the space that set it
   apart), copying a selection writes it as `[name]`, and pasted text arrives
-  plain (never formatting, never a marker). Its label is the file name,
+  plain (never formatting, never a marker). The field is a `contenteditable`
+  (`InputGroup.ChipEditor`), and WebKit needs it to do some of that itself: it
+  re-marks every chip atomic after each edit (`insertHTML` drops
+  `contenteditable="false"`), moves a caret that lands inside a chip to just
+  after it, steps ← / → over a chip, turns an arrow that arrives as its AppKit
+  character (U+F700–U+F7FF) into the move it meant, and carries a selectable
+  stop on each side — without them, macOS WebKit's per-keystroke look at the
+  text around the caret walks the whole unselectable window. Its label is the file name,
   shortened in the middle when long; an image shows a tiny thumbnail and
   resting on it shows the image whole; a file shows its type's glyph
   (`attachmentIcon.ts`). A pasted screenshot without a name of its own is
@@ -624,7 +634,8 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   item becomes:
   - an **image**, when the agent takes images — attached as an image;
   - a **file or folder of the conversation's project** — **mentioned**
-    (`@path`, as if picked from `@`: the agent opens it itself);
+    (`@path`, or `@"path"` with spaces, as if picked from `@`: the agent opens
+    it itself);
   - a **folder from outside the project** (or the project's own folder) —
     written at the caret as its absolute path, quoted when it has spaces, the
     same text a terminal gets (`fs_is_dir` tells a folder from a file);

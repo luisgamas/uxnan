@@ -15,10 +15,12 @@ import { failsWith } from "../../../test/tauri";
 import type { AgentCommand } from "$shared/agents/agent-capabilities";
 import { dropPathsAt } from "$lib/fileDrop";
 import ChatComposer from "./ChatComposer.svelte";
-import { serialize, setCaret } from "$lib/components/ui/input-group/chip-editor";
+import { caretOf, serialize, setCaret } from "$lib/components/ui/input-group/chip-editor";
 
 /** What the composer's editor holds, as the string it sends (a chip is a marker). */
 const valueOf = (box: HTMLElement) => serialize(box).text;
+/** Where the caret is in that string. */
+const caretOfBox = (box: HTMLElement) => caretOf(box);
 
 // jsdom lays nothing out, so it has no `elementFromPoint`; each test says
 // what is under the pointer.
@@ -378,5 +380,92 @@ describe("ChatComposer", () => {
     await fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     expect(sent).toEqual([]);
   });
-});
 
+  it("writes a mention with spaces in quotes, browsing a quoted folder", async () => {
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { mentionRoot: "/repo", onsend: () => undefined },
+      commands: {
+        bridge_call: (args) => {
+          const inDocs = (args.params as { cwd: string }).cwd === "/repo/My Docs";
+          return {
+            cwd: ".",
+            entries: inDocs ? [{ name: "a b.md", type: "file" }] : [{ name: "My Docs", type: "dir" }],
+          };
+        },
+      },
+    });
+    const box = screen.getByRole("textbox");
+    await user.click(box);
+    await user.keyboard("@");
+    await until(() => screen.queryByRole("option", { name: "My Docs/" }) !== null);
+    await user.keyboard("{Enter}");
+    expect(valueOf(box)).toBe('@"My Docs/');
+    await until(() => screen.queryByRole("option", { name: "My Docs/a b.md" }) !== null);
+    await user.keyboard("{Enter}");
+    expect(valueOf(box)).toBe('@"My Docs/a b.md" ');
+  });
+
+  /** A composer holding "ab", a pasted file's chip, and " cd". */
+  async function withChip() {
+    const mounted = mountWithProviders(ChatComposer, { props: { value: "ab", onsend: () => undefined } });
+    const box = mounted.screen.getByRole("textbox");
+    box.focus();
+    setCaret(box, 2);
+    const file = new File(["x"], "my notes.md", { type: "text/markdown" });
+    await fireEvent.paste(box, { clipboardData: { files: [file] } });
+    await until(() => box.querySelector("[data-chip]") !== null);
+    return { ...mounted, box, chip: box.querySelector<HTMLElement>("[data-chip]")! };
+  }
+
+  it("keeps a chip atomic after an edit an engine made without its attributes", async () => {
+    const { box, chip } = await withChip();
+    chip.removeAttribute("contenteditable");
+    await fireEvent.input(box);
+    expect(chip.getAttribute("contenteditable")).toBe("false");
+  });
+
+  it("never leaves the caret inside a chip", async () => {
+    const { box, chip } = await withChip();
+    const name = chip.querySelector("span:not([class*='thumb'])")?.firstChild ?? chip.firstChild!;
+    const range = document.createRange();
+    range.setStart(name, 0);
+    range.collapse(true);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    const selection = document.getSelection()!;
+    expect(chip.contains(selection.focusNode)).toBe(false);
+    expect(serialize(box).text.slice(0, 4)).toBe("ab \uFFFC");
+  });
+
+  it("steps over a chip with the arrows, one character", async () => {
+    const { box, user } = await withChip();
+    // After the chip ("ab ￼|"), ← lands before it, → back after it.
+    setCaret(box, 4);
+    await user.keyboard("{ArrowLeft}");
+    expect(caretOfBox(box)).toBe(3);
+    await user.keyboard("{ArrowRight}");
+    expect(caretOfBox(box)).toBe(4);
+  });
+
+  it("turns a macOS arrow handed over as text into no text at all", async () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { value: "hola", onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    box.focus();
+    setCaret(box, 4);
+    const arrow = new InputEvent("beforeinput", { inputType: "insertText", data: "\uF702", cancelable: true, bubbles: true });
+    box.dispatchEvent(arrow);
+    expect(arrow.defaultPrevented).toBe(true);
+    const text = new InputEvent("beforeinput", { inputType: "insertText", data: "x", cancelable: true, bubbles: true });
+    box.dispatchEvent(text);
+    expect(text.defaultPrevented).toBe(false);
+    expect(valueOf(box)).toBe("hola");
+  });
+
+  it("puts selectable stops around the field, so WebKit's text lookups end there", () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    expect(box.previousElementSibling?.hasAttribute("data-chip-editor-stop")).toBe(true);
+    expect(box.nextElementSibling?.hasAttribute("data-chip-editor-stop")).toBe(true);
+  });
+});

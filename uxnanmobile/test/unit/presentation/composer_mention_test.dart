@@ -38,6 +38,24 @@ void main() {
       expect(ctx.cursor, 4);
     });
 
+    test('reads a quoted mention, spaces and all', () {
+      final ctx = detectComposerTrigger('see @"My Docs/no', 16);
+      expect(ctx!.trigger, ComposerTrigger.file);
+      expect(ctx.query, 'My Docs/no');
+      expect(ctx.triggerOffset, 4);
+      expect(ctx.quoted, isTrue);
+    });
+
+    test('a closed quoted mention is over after its quote', () {
+      expect(detectComposerTrigger('see @"a b.md" ', 14), isNull);
+      expect(detectComposerTrigger('see @"a b.md"', 13), isNull);
+    });
+
+    test('a quote that does not open a mention is plain text', () {
+      expect(detectComposerTrigger('say "hi there', 13), isNull);
+      expect(detectComposerTrigger('mail@"x y', 9), isNull);
+    });
+
     test('detects a leading / command', () {
       final ctx = detectComposerTrigger('/rev', 4);
       expect(ctx!.trigger, ComposerTrigger.command);
@@ -104,6 +122,67 @@ void main() {
       );
       expect(edit.text, 'see @lib/main.dart ');
       expect(edit.cursor, edit.text.length);
+    });
+  });
+
+  group('applyFileMention with spaces', () {
+    test('quotes a folder with spaces and keeps it open', () {
+      const ctx = ComposerTriggerContext(
+        trigger: ComposerTrigger.file,
+        query: 'My',
+        triggerOffset: 4,
+        cursor: 7,
+      );
+      final edit = applyFileMention(
+        'see @My',
+        ctx,
+        relativePath: 'My Docs',
+        isDir: true,
+      );
+      expect(edit.text, 'see @"My Docs/');
+      final next = detectComposerTrigger(edit.text, edit.cursor);
+      expect(next!.quoted, isTrue);
+      expect(next.query, 'My Docs/');
+    });
+
+    test('closes the quote on the picked file', () {
+      final ctx = detectComposerTrigger('see @"My Docs/', 14)!;
+      final edit = applyFileMention(
+        'see @"My Docs/',
+        ctx,
+        relativePath: 'My Docs/a b.md',
+        isDir: false,
+      );
+      expect(edit.text, 'see @"My Docs/a b.md" ');
+      expect(edit.cursor, edit.text.length);
+    });
+
+    test('replaces an edited quoted mention up to its closing quote', () {
+      const text = 'see @"My Docs/no" ok';
+      final ctx = detectComposerTrigger(text, 16)!;
+      final edit = applyFileMention(
+        text,
+        ctx,
+        relativePath: 'My Docs/notes.md',
+        isDir: false,
+      );
+      expect(edit.text, 'see @"My Docs/notes.md" ok');
+    });
+
+    test('a path without spaces stays unquoted', () {
+      const ctx = ComposerTriggerContext(
+        trigger: ComposerTrigger.file,
+        query: 'ma',
+        triggerOffset: 0,
+        cursor: 3,
+      );
+      final edit = applyFileMention(
+        '@ma',
+        ctx,
+        relativePath: 'lib/main.dart',
+        isDir: false,
+      );
+      expect(edit.text, '@lib/main.dart ');
     });
   });
 

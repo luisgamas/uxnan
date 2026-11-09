@@ -3,7 +3,8 @@
 // exactly as the phone asks it: a folder (a bare `@`, or `@dir/`) is listed
 // with `workspace/list`, anything with a name is searched across the project
 // with `workspace/searchFiles`. A picked folder drills in; a picked file is
-// written into the message as `@path`.
+// written into the message as `@path` — `@"path"` when it has spaces
+// (`mentionText`, the phone's `applyFileMention` writes the same).
 
 import type { WorkspaceListing, WorkspaceSearchResult } from '$shared/models/workspace';
 
@@ -51,6 +52,18 @@ export async function mentionEntries(
 }
 
 /**
+ * How a message names the project path [path]: `@path`, or `@"path"` when the
+ * path has whitespace — the quotes keep the name whole for the agent that
+ * opens it and for the phone, which draws a mention as one badge. A [folder]
+ * being browsed stays open (`@dir/`, `@"my dir/`) so the panel lists it; a
+ * mention already [quoted] stays quoted as it drills deeper.
+ */
+export function mentionText(path: string, { folder = false, quoted = false } = {}): string {
+  const quote = quoted || /\s/.test(path) ? '"' : '';
+  return folder ? `@${quote}${path}/` : `@${quote}${path}${quote}`;
+}
+
+/**
  * The mention for [path] — a file dropped on the composer — when it lies inside
  * the project at [root]: its project-relative path, `/`-separated, exactly as
  * picking it from `@` writes it. `null` for anything outside (or the folder
@@ -67,5 +80,5 @@ export function mentionFor(root: string, path: string): string | null {
   const full = norm(path);
   if (base === '' || !full.startsWith(`${base}/`)) return null;
   const relative = path.replace(/\\/g, '/').replace(/\/+$/, '').slice(base.length + 1);
-  return relative === '' ? null : `@${relative}`;
+  return relative === '' ? null : mentionText(relative);
 }
