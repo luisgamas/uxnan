@@ -357,6 +357,12 @@
 		if (target?.closest("[data-chip-action]")) e.preventDefault();
 	}
 
+	/** WebKit's `autocorrect` holds on any editable element, but the DOM
+	 *  types know it only on inputs. Off, with `writingsuggestions`: macOS's
+	 *  inline predictions and its autocorrection write into the message words
+	 *  the person never typed. Spelling stays underlined. */
+	const noAutocorrect: Record<string, string> = { autocorrect: "off" };
+
 	/** A stop is selectable text that takes no room and no pointer. */
 	const stopClass = "pointer-events-none absolute size-0 overflow-hidden select-text";
 
@@ -386,6 +392,8 @@
 	data-empty={value === "" ? "" : undefined}
 	contenteditable={disabled ? "false" : "true"}
 	spellcheck="true"
+	writingsuggestions="false"
+	{...noAutocorrect}
 	class={cn(
 		"relative flex-1 w-full min-w-0 overflow-y-auto whitespace-pre-wrap break-words rounded-none border-0 bg-transparent px-2.5 py-2 text-base md:text-sm outline-none",
 		"data-empty:before:pointer-events-none data-empty:before:absolute data-empty:before:text-muted-foreground data-empty:before:content-[attr(data-placeholder)]",

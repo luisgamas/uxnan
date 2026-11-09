@@ -628,7 +628,9 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   WKWebView writes for an arrow with nowhere to move — into the move it meant
   (and removes any such character an edit still leaves), and carries a selectable
   stop on each side — without them, macOS WebKit's per-keystroke look at the
-  text around the caret walks the whole unselectable window. Its label is the file name,
+  text around the caret walks the whole unselectable window. macOS's inline
+  predictions and autocorrection are off in it (`writingsuggestions`,
+  `autocorrect`); misspellings are still underlined. Its label is the file name,
   shortened in the middle when long; an image shows a tiny thumbnail and
   resting on it shows the image whole; a file shows its type's glyph
   (`attachmentIcon.ts`). A pasted screenshot without a name of its own is

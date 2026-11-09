@@ -476,6 +476,13 @@ describe("ChatComposer", () => {
     expect(valueOf(box)).toBe("hola");
   });
 
+  it("asks macOS for no inline predictions and no autocorrection", () => {
+    const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
+    const box = screen.getByRole("textbox");
+    expect(box.getAttribute("writingsuggestions")).toBe("false");
+    expect(box.getAttribute("autocorrect")).toBe("off");
+  });
+
   it("puts selectable stops around the field, so WebKit's text lookups end there", () => {
     const { screen } = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
     const box = screen.getByRole("textbox");

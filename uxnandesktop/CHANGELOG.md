@@ -14,6 +14,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   character an engine writes, as the key they stand for, and removes any that
   get through after an edit; line breaks and tabs stay text.
 
+### Changed
+
+- **The composer no longer suggests or autocorrects words.** macOS's inline
+  predictions (the grey completion while typing) and its autocorrection are
+  off in the chat composer, so nothing is written that you did not type.
+  Misspellings are still underlined.
+
 ## [0.0.87] - 20261109
 ### Fixed
 
