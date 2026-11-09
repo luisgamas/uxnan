@@ -14,19 +14,26 @@
 	// caller's `onpaste` takes the paste first (files); HTML drops into the
 	// field are refused.
 	//
-	// FOR-DEV: verified in jsdom and Chromium (WebView2's engine), not yet in
-	// WKWebView (macOS) or WebKitGTK (Linux) — caret handling next to a
-	// `contenteditable="false"` chip differs there. Run the FOR-DEV.md checks
-	// (*Chat composer — attachment chips in the text*) in `tauri dev` on both.
+	// FOR-DEV: verified in jsdom, Chromium (WebView2's engine) and WKWebView
+	// (macOS, driven with real NSEvents), not yet in WebKitGTK (Linux) nor with
+	// a real paste in the packaged macOS app. Run the FOR-DEV.md checks (*Chat
+	// composer — attachment chips in the text*) there.
 	import { cn, type WithElementRef } from "$lib/utils.js";
 	import { untrack } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";
-	import { stripAttachmentMarkers, countAttachmentMarkers } from "$shared/models/inline-attachments";
 	import {
+		ATTACHMENT_MARKER,
+		stripAttachmentMarkers,
+		countAttachmentMarkers,
+	} from "$shared/models/inline-attachments";
+	import {
+		appKitKeys,
 		caretOf,
+		chipAround,
 		chipNode,
 		CHIP_ATTR,
 		isChip,
+		makeAtomic,
 		plainTextOf,
 		render,
 		serialize,
@@ -46,8 +53,9 @@
 		class: className,
 		onpaste,
 		oninput,
+		onkeydown,
 		...props
-	}: WithElementRef<Omit<HTMLAttributes<HTMLDivElement>, "onpaste" | "oninput">> & {
+	}: WithElementRef<Omit<HTMLAttributes<HTMLDivElement>, "onpaste" | "oninput" | "onkeydown">> & {
 		value?: string;
 		chips?: string[];
 		/** The look of the chip with this id (the editor makes it atomic). */
@@ -60,6 +68,7 @@
 		disabled?: boolean;
 		onpaste?: (e: ClipboardEvent) => void;
 		oninput?: (e: Event) => void;
+		onkeydown?: (e: KeyboardEvent) => void;
 	} = $props();
 
 	/** The text last read from (or written to) the element. */
@@ -75,6 +84,7 @@
 		for (const node of [...ref.querySelectorAll(`[${CHIP_ATTR}]`)]) {
 			const id = node.getAttribute(CHIP_ATTR) ?? "";
 			if (seen.has(id)) node.remove();
+			else makeAtomic(node as HTMLElement);
 			seen.add(id);
 		}
 		const next = serialize(ref);
@@ -170,16 +180,20 @@
 			escapeHtml(before) +
 			ids.map((id) => chipNode(renderChip, id).outerHTML).join(" ") +
 			escapeHtml(after);
+		const markers = ids.map(() => ATTACHMENT_MARKER).join(" ");
+		const end = at + before.length + markers.length + after.length;
 		if (exec("insertHTML", html)) {
 			read();
+			// Where the engine leaves the caret after inserted markup varies
+			// (WebKit: before the space that follows); it goes after the space.
+			placeCaret(ref, end);
 			return;
 		}
 		// No editing commands here (a test DOM): the same edit, drawn.
-		const markers = ids.map(() => "￼").join(" ");
 		const next = value.slice(0, at) + before + markers + after + value.slice(at);
 		const index = countAttachmentMarkers(value.slice(0, at));
 		const nextChips = [...chips.slice(0, index), ...ids, ...chips.slice(index)];
-		commit(next, nextChips, at + before.length + markers.length + after.length);
+		commit(next, nextChips, end);
 	}
 
 	/** Take the chip [id] out of the text. */
@@ -221,6 +235,18 @@
 
 	function rememberCaret() {
 		if (!ref) return;
+		// A caret never rests inside a chip (a click on its name can put it
+		// there): it goes just after it, where typing joins the text.
+		const selection = ref.ownerDocument.getSelection();
+		const inside = selection?.isCollapsed ? chipAround(ref, selection.focusNode) : null;
+		if (selection && inside) {
+			const range = ref.ownerDocument.createRange();
+			range.setStartAfter(inside);
+			range.collapse(true);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			return;
+		}
 		const at = caretOf(ref);
 		if (at !== null) lastCaret = at;
 	}
@@ -238,6 +264,24 @@
 		oninput?.(e);
 	}
 
+	/** ← / → next to a chip step over it as the one character it is — WebKit
+	 *  alone cannot put the caret before a chip that starts a line. */
+	function handleKeyDown(e: KeyboardEvent) {
+		onkeydown?.(e);
+		if (e.defaultPrevented || e.isComposing || !ref) return;
+		if (e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+		if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+		const selection = ref.ownerDocument.getSelection();
+		if (!selection?.isCollapsed) return;
+		const at = caretOf(ref);
+		if (at === null) return;
+		const target = e.key === "ArrowLeft" ? at - 1 : at + 1;
+		const crossed = e.key === "ArrowLeft" ? value[at - 1] : value[at];
+		if (crossed !== ATTACHMENT_MARKER) return;
+		e.preventDefault();
+		placeCaret(ref, target);
+	}
+
 	function handleBeforeInput(e: InputEvent) {
 		switch (e.inputType) {
 			// One kind of line break, never a paragraph wrapper.
@@ -253,6 +297,19 @@
 			case "insertFromDrop":
 				e.preventDefault();
 				return;
+			// An arrow (Home, End…) WKWebView handed over as its AppKit
+			// character instead of as its command: the move it meant, never
+			// a box in the text.
+			case "insertText": {
+				const keys = appKitKeys(e.data);
+				if (!keys) return;
+				e.preventDefault();
+				const selection = ref?.ownerDocument.getSelection();
+				for (const { move } of keys) {
+					if (move) selection?.modify?.("move", move.direction, move.granularity);
+				}
+				return;
+			}
 		}
 	}
 
@@ -295,11 +352,22 @@
 		if (target?.closest("[data-chip-action]")) e.preventDefault();
 	}
 
+	/** A stop is selectable text that takes no room and no pointer. */
+	const stopClass = "pointer-events-none absolute size-0 overflow-hidden select-text";
+
 	function handleDragStart(e: DragEvent) {
 		if (isChip((e.target as Node) ?? null)) e.preventDefault();
 	}
 </script>
 
+<!-- Selectable stops on both sides of the field. macOS WebKit reads the text
+     around the caret after every keystroke and every frame (its editor state
+     for the input methods), walking the document position by position until
+     it finds selectable text. The app is `user-select: none`, so without
+     these the walk crosses the whole window — the sidebar, other panes, every
+     row of a long chat — and typing slows to a crawl as the window fills
+     (a textarea never pays it: its text lives in its own inner tree). -->
+<span data-chip-editor-stop="" aria-hidden="true" class={stopClass}>&#8203;</span>
 <div
 	bind:this={ref}
 	data-slot="input-group-control"
@@ -320,6 +388,7 @@
 		className,
 	)}
 	oninput={handleInput}
+	onkeydown={handleKeyDown}
 	onbeforeinput={handleBeforeInput}
 	onpaste={handlePaste}
 	oncopy={handleCopy}
@@ -329,3 +398,4 @@
 	ondrop={(e) => e.preventDefault()}
 	{...props}
 ></div>
+<span data-chip-editor-stop="" aria-hidden="true" class={stopClass}>&#8203;</span>

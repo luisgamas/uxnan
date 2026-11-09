@@ -616,7 +616,14 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (`bridge/docs/agents.md`). A chip is atomic: the caret steps over it,
   Backspace removes it whole, its ✕ takes it out (with the space that set it
   apart), copying a selection writes it as `[name]`, and pasted text arrives
-  plain (never formatting, never a marker). Its label is the file name,
+  plain (never formatting, never a marker). The field is a `contenteditable`
+  (`InputGroup.ChipEditor`), and WebKit needs it to do some of that itself: it
+  re-marks every chip atomic after each edit (`insertHTML` drops
+  `contenteditable="false"`), moves a caret that lands inside a chip to just
+  after it, steps ← / → over a chip, turns an arrow that arrives as its AppKit
+  character (U+F700–U+F7FF) into the move it meant, and carries a selectable
+  stop on each side — without them, macOS WebKit's per-keystroke look at the
+  text around the caret walks the whole unselectable window. Its label is the file name,
   shortened in the middle when long; an image shows a tiny thumbnail and
   resting on it shows the image whole; a file shows its type's glyph
   (`attachmentIcon.ts`). A pasted screenshot without a name of its own is
